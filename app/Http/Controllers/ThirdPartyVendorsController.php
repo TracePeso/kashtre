@@ -189,58 +189,90 @@ class ThirdPartyVendorsController extends Controller
                     ->orderBy('name')
                     ->get(['id', 'name', 'code', 'type']);
 
-                // Get invoices from balance history (debit entries with invoices)
-                $invoiceEntries = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-                    ->where('transaction_type', 'debit')
-                    ->whereNotNull('invoice_id')
-                    ->with(['invoice', 'invoice.client', 'client', 'business', 'branch'])
+                // Build invoice tracking from actual invoices that include this vendor in
+                // insurance authorization snapshot (even when vendor debit is zero),
+                // then overlay payer ledger amounts for paid/remaining figures.
+                $candidateInvoices = \App\Models\Invoice::where('business_id', $business->id)
+                    ->whereNotNull('insurance_authorization_snapshot')
+                    ->with(['client', 'business', 'branch'])
                     ->orderBy('created_at', 'desc')
                     ->get();
 
-                // Group by invoice and calculate totals
-                $processedInvoiceIds = [];
-                foreach ($invoiceEntries as $entry) {
-                    if (!$entry->invoice || in_array($entry->invoice_id, $processedInvoiceIds)) {
+                $vendorNameNormalized = strtolower(trim((string) ($thirdPartyPayer->name ?? $vendor['name'] ?? '')));
+                $localInsuranceIdStrings = $localInsuranceCompanyIds->map(fn ($id) => (string) $id)->all();
+                $vendorIdString = (string) $vendorId;
+
+                foreach ($candidateInvoices as $invoiceModel) {
+                    $snapshot = is_array($invoiceModel->insurance_authorization_snapshot)
+                        ? $invoiceModel->insurance_authorization_snapshot
+                        : json_decode($invoiceModel->insurance_authorization_snapshot ?? '[]', true);
+
+                    $vendorsSnap = is_array($snapshot['vendors'] ?? null) ? $snapshot['vendors'] : [];
+                    if (empty($vendorsSnap)) {
                         continue;
                     }
 
-                    $processedInvoiceIds[] = $entry->invoice_id;
+                    $matchedVendorSnap = null;
+                    foreach ($vendorsSnap as $vSnap) {
+                        $snapVendorName = strtolower(trim((string) ($vSnap['vendor_name'] ?? $vSnap['insurance_company_name'] ?? '')));
+                        $snapVendorId = (string) ($vSnap['vendor_id'] ?? '');
+                        $snapInsuranceCompanyId = (string) ($vSnap['insurance_company_id'] ?? '');
 
-                    // Get all entries for this invoice
-                    $allInvoiceEntries = \App\Models\ThirdPartyPayerBalanceHistory::where('invoice_id', $entry->invoice_id)
+                        $matchesByName = $vendorNameNormalized !== '' && $snapVendorName === $vendorNameNormalized;
+                        $matchesByThirdPartyId = $snapVendorId !== '' && $snapVendorId === $vendorIdString;
+                        $matchesByLocalInsuranceId = $snapInsuranceCompanyId !== '' && in_array($snapInsuranceCompanyId, $localInsuranceIdStrings, true);
+
+                        if ($matchesByName || $matchesByThirdPartyId || $matchesByLocalInsuranceId) {
+                            $matchedVendorSnap = $vSnap;
+                            break;
+                        }
+                    }
+
+                    if (!$matchedVendorSnap) {
+                        continue;
+                    }
+
+                    $invoiceLedgerEntries = \App\Models\ThirdPartyPayerBalanceHistory::where('invoice_id', $invoiceModel->id)
                         ->where('third_party_payer_id', $thirdPartyPayer->id)
                         ->get();
 
-                    // Calculate totals
-                    $debits = abs($allInvoiceEntries->where('transaction_type', 'debit')->sum('change_amount'));
-                    $credits = $allInvoiceEntries->where('transaction_type', 'credit')->sum('change_amount');
-                    
-                    $totalAmount = $debits;
+                    $debits = abs($invoiceLedgerEntries->where('transaction_type', 'debit')->sum('change_amount'));
+                    $credits = $invoiceLedgerEntries->where('transaction_type', 'credit')->sum('change_amount');
+
+                    $snapClient = (float) ($matchedVendorSnap['client_portion_allocated']
+                        ?? $matchedVendorSnap['client_total']
+                        ?? $matchedVendorSnap['client_portion']
+                        ?? 0);
+                    $snapInsurance = (float) ($matchedVendorSnap['insurance_total']
+                        ?? $matchedVendorSnap['insurance_portion']
+                        ?? 0);
+                    $snapshotTotal = round($snapClient + $snapInsurance, 2);
+
+                    $totalAmount = $debits > 0 ? $debits : $snapshotTotal;
                     $amountPaid = $credits;
                     $balanceDue = max(0, $totalAmount - $amountPaid);
-                    
-                    // Determine payment status
-                    if ($balanceDue <= 0) {
+
+                    if ($balanceDue <= 0 && $amountPaid > 0) {
                         $paymentStatus = 'paid';
                     } elseif ($amountPaid > 0) {
                         $paymentStatus = 'partial';
                     } else {
-                        $paymentStatus = $entry->payment_status ?? 'pending_payment';
+                        $paymentStatus = 'pending_payment';
                     }
 
                     $invoices->push([
-                        'id' => $entry->invoice_id,
-                        'invoice_number' => $entry->invoice->invoice_number ?? 'N/A',
-                        'client_name' => $entry->client ? $entry->client->name : ($entry->invoice->client_name ?? 'N/A'),
-                        'client_id' => $entry->client ? $entry->client->client_id : null,
+                        'id' => $invoiceModel->id,
+                        'invoice_number' => $invoiceModel->invoice_number ?? 'N/A',
+                        'client_name' => $invoiceModel->client?->name ?? $invoiceModel->client_name ?? 'N/A',
+                        'client_id' => $invoiceModel->client?->client_id,
                         'total_amount' => $totalAmount,
                         'amount_paid' => $amountPaid,
                         'balance_due' => $balanceDue,
                         'payment_status' => $paymentStatus,
-                        'status' => $entry->invoice->status ?? 'confirmed',
-                        'created_at' => $entry->invoice->created_at ? $entry->invoice->created_at : $entry->created_at,
-                        'business_name' => $entry->business ? $entry->business->name : null,
-                        'branch_name' => $entry->branch ? $entry->branch->name : null,
+                        'status' => $invoiceModel->status ?? 'confirmed',
+                        'created_at' => $invoiceModel->created_at,
+                        'business_name' => $invoiceModel->business?->name,
+                        'branch_name' => $invoiceModel->branch?->name,
                     ]);
                 }
             }

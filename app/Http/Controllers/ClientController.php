@@ -415,7 +415,8 @@ class ClientController extends Controller
                         if (isset($insuranceVendorData[$vendorId])) {
                             $vendorData[$vendorId] = $insuranceVendorData[$vendorId];
                         } else {
-                            $vendorData[$vendorId] = ['policy_number' => null];
+                            // Keep payload empty so service preserves existing policy_number (don't wipe mappings).
+                            $vendorData[$vendorId] = [];
                         }
                         
                         // Add priority if provided
@@ -894,9 +895,9 @@ class ClientController extends Controller
                             'vendorData' => $vendorData[$vendorId],
                         ]);
                     } else {
-                        // Fallback if vendor data not provided
-                        $vendorData[$vendorId] = ['policy_number' => null];
-                        Log::warning('MULTI-VENDOR: Vendor data not found, using fallback', [
+                        // Keep payload empty so service preserves existing policy_number (don't wipe mappings).
+                        $vendorData[$vendorId] = [];
+                        Log::warning('MULTI-VENDOR: Vendor data not found; preserving existing vendor mapping', [
                             'vendorId' => $vendorId,
                         ]);
                     }

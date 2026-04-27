@@ -2474,6 +2474,15 @@
                     if (isInsuranceAuth) {
                         // Insurance client: show authorization success then collect client portion
                         const vendorBreakdown = data.insurance_authorization?.vendors ? data.insurance_authorization.vendors : [];
+                        const presentStatus = (status) => {
+                            const normalized = (status || '').toString().toLowerCase();
+                            // We still track pending_review in backend queues, but don't surface it as a
+                            // failure-like status in the POS cascade summary.
+                            if (!normalized || normalized === 'pending_review') {
+                                return '';
+                            }
+                            return normalized.replace(/_/g, ' ');
+                        };
                         const vendorBreakdownHtml = vendorBreakdown.length ? `
                             <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
                                 <p class="text-xs font-semibold tracking-wide text-slate-700 uppercase mb-2">Insurance Cascade Summary</p>
@@ -2484,7 +2493,10 @@
                                             <div class="text-xs text-slate-600 grid grid-cols-2 gap-1 mt-1">
                                                 <span>Submitted: UGX ${fmt(v.amount_submitted)}</span>
                                                 <span>Insurer pays: UGX ${fmt(v.insurance_total)}</span>
+                                                <span>Client allocation: UGX ${fmt(v.client_portion_allocated ?? 0)}</span>
+                                                ${presentStatus(v.authorization_status) ? `<span>Status: ${presentStatus(v.authorization_status)}</span>` : ''}
                                             </div>
+                                            
                                         </div>
                                     `).join('')}
                                 </div>
@@ -2632,7 +2644,15 @@
             const invoiceTotal = data.invoice && data.invoice.total_amount != null ? parseFloat(data.invoice.total_amount) : null;
             const insurancePortion = parseFloat(data.insurance_total || 0) || 0;
             const todayStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-            const receiptBreakdownRows = breakdownRows.length ? breakdownRows.join('') : '<tr><td class="text-left text-gray-600">Client portion</td><td class="text-right">UGX ' + fmt(clientTotalDue) + '</td></tr>';
+            const vendorAllocations = Array.isArray(data?.insurance_authorization?.vendors)
+                ? data.insurance_authorization.vendors
+                : (Array.isArray(data?.vendors) ? data.vendors : []);
+            const vendorAllocationRows = vendorAllocations
+                .filter(v => parseFloat(v.client_portion_allocated || 0) > 0)
+                .map(v => '<tr><td class="text-left text-gray-600">Client allocation (' + ((v.vendor_name || 'Vendor').replace(/</g, '&lt;').replace(/>/g, '&gt;')) + ')</td><td class="text-right">UGX ' + fmt(v.client_portion_allocated) + '</td></tr>');
+            const receiptBreakdownRows = breakdownRows.length
+                ? breakdownRows.join('')
+                : (vendorAllocationRows.length ? vendorAllocationRows.join('') : '<tr><td class="text-left text-gray-600">Client portion</td><td class="text-right">UGX ' + fmt(clientTotalDue) + '</td></tr>');
             const receiptHtml = '<div id="insurance-client-portion-receipt" class="receipt-box text-center text-sm" style="max-width:320px;margin:0 auto;font-family:ui-sans-serif,sans-serif;">' +
                 '<div class="border-b border-slate-200 pb-2 mb-3"><p class="font-semibold text-slate-800 text-base tracking-wide">Client portion receipt</p><p class="text-slate-500 text-xs mt-1">Amount due from client</p></div>' +
                 '<div class="text-left space-y-0.5 text-slate-600 text-xs mb-2">' + (posClientName ? '<p>Client <strong class="text-slate-800">' + (posClientName.replace(/</g, '&lt;').replace(/>/g, '&gt;')) + '</strong></p>' : '') + (posInsuranceName ? '<p>Insurance <strong class="text-slate-800">' + (posInsuranceName.replace(/</g, '&lt;').replace(/>/g, '&gt;')) + '</strong></p>' : '') + '<p>Invoice <strong class="text-slate-800">' + invoiceNumber + '</strong></p><p>Date ' + todayStr + '</p></div>' +

@@ -104,12 +104,36 @@ class MultiVendorClientService
                     continue;
                 }
 
-                // Verify policy with API and extract payment responsibility
-                $policyNumber = $data['policy_number'] ?? null;
-                $paymentResponsibility = null;
-                $policyVerified = false;
+                // Existing mapping (if any) so we never wipe policy data when form payload is partial.
+                $existingClientVendor = ClientVendor::where('client_id', $client->id)
+                    ->where('third_party_payer_id', $thirdPartyPayer->id)
+                    ->first();
 
-                if ($policyNumber) {
+                $isOpenEnrollment = !empty($data['is_open_enrollment']);
+
+                // Verify policy with API and extract payment responsibility
+                $policyNumber = isset($data['policy_number']) ? trim((string) $data['policy_number']) : null;
+                if (($policyNumber === null || $policyNumber === '') && $existingClientVendor && !empty($existingClientVendor->policy_number)) {
+                    $policyNumber = trim((string) $existingClientVendor->policy_number);
+                }
+
+                // In multi-insurance, non-open-enrollment vendors must always have a policy number.
+                // Never create/update a regular vendor mapping with a blank policy.
+                if (!$isOpenEnrollment && empty($policyNumber)) {
+                    $results['failed'][$insuranceCompanyId] = 'Policy number is required for this vendor.';
+                    Log::warning('SERVICE: Missing policy number for non-open-enrollment vendor', [
+                        'client_id' => $client->id,
+                        'insurance_company_id' => $insuranceCompanyId,
+                        'third_party_payer_id' => $thirdPartyPayer->id,
+                        'existing_client_vendor_id' => $existingClientVendor?->id,
+                    ]);
+                    continue;
+                }
+
+                $paymentResponsibility = null;
+                $policyVerified = $existingClientVendor ? (bool) $existingClientVendor->policy_verified : false;
+
+                if (!empty($policyNumber)) {
                     try {
                         $fullName = trim($client->surname . ' ' . $client->first_name . ' ' . ($client->other_names ?? ''));
 
@@ -155,10 +179,10 @@ class MultiVendorClientService
 
                 // Create or update ClientVendor — keyed by the ThirdPartyPayer.id (not insurance_companies.id)
                 $clientVendorData = [
-                    'policy_number'                    => $policyNumber,
+                    'policy_number'                    => !empty($policyNumber) ? $policyNumber : ($existingClientVendor->policy_number ?? null),
                     'policy_verified'                  => $policyVerified,
                     'physical_insurance_card_verified' => $data['physical_insurance_card_verified'] ?? false,
-                    'is_open_enrollment'               => $data['is_open_enrollment'] ?? false,
+                    'is_open_enrollment'               => $isOpenEnrollment,
                     'priority'                         => $assignedPriority,
                     'status'                           => 'active',
                 ];
@@ -197,7 +221,7 @@ class MultiVendorClientService
                     'insurance_company_id'    => $insuranceCompanyId,
                     'third_party_payer_id'    => $thirdPartyPayer->id,
                     'vendor_name'             => $insuranceCompany->name,
-                    'policy_number'           => $policyNumber,
+                    'policy_number'           => $clientVendorData['policy_number'] ?? $policyNumber,
                     'policy_verified'         => $policyVerified,
                     'has_payment_responsibility' => $paymentResponsibility !== null,
                 ];

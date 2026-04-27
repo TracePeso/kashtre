@@ -74,6 +74,21 @@
                             <span class="text-sm text-gray-600">UGX (Items will be selected until budget is reached)</span>
                         </div>
                     </div>
+
+                    <!-- Suite/Payment Mode -->
+                    <div class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label class="flex items-center space-x-3 p-3 border border-gray-300 rounded-lg hover:bg-blue-50 cursor-pointer">
+                            <input type="checkbox" id="full-suite" checked>
+                            <span class="text-sm font-medium text-gray-700">Run full non-insurance scenario suite</span>
+                        </label>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Payment Mode</label>
+                            <select id="payment-mode" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                <option value="simulated" selected>Simulated (recommended for full coverage)</option>
+                                <option value="live">Live YoAPI request</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="border-t pt-6 flex items-center justify-between">
@@ -112,6 +127,8 @@
             const paymentPhone = document.getElementById('payment-phone').value;
             const itemCount = parseInt(document.getElementById('item-count').value) || 3;
             const maxAmount = parseInt(document.getElementById('max-amount').value) || 100000;
+            const fullSuite = document.getElementById('full-suite').checked;
+            const paymentMode = document.getElementById('payment-mode').value || 'simulated';
             
             // Get selected item types
             const selectedTypes = Array.from(document.querySelectorAll('.item-type-checkbox:checked'))
@@ -154,7 +171,9 @@
                     payment_phone: paymentPhone,
                     item_count: itemCount,
                     max_amount: maxAmount,
-                    item_types: selectedTypes
+                    item_types: selectedTypes,
+                    full_suite: fullSuite,
+                    payment_mode: paymentMode
                 })
             })
             .then(response => response.json())

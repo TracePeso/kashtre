@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\InsuranceCompany;
 use App\Models\Invoice;
+use App\Models\ThirdPartyPayerBalanceHistory;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\Log;
 
@@ -11,8 +12,9 @@ use Illuminate\Support\Facades\Log;
  * When an insurance client's portion is paid on Kashtre, records the payment on the third-party
  * insurer app (payments list + client account). Used after MM confirmation (cron) and for cash.
  *
- * Multi-vendor: for cascade invoices, each vendor is notified of their own client_total using
- * their own authorization_reference, so their deductible ledgers are correctly updated.
+ * Multi-vendor: for cascade invoices, each vendor is notified using a recalibrated
+ * client_portion_allocated (sums to the final collected client amount), with vendor-specific
+ * authorization_reference so deductible ledgers are updated without double-counting payments.
  */
 class InsuranceClientPortionThirdPartyNotifier
 {
@@ -91,6 +93,16 @@ class InsuranceClientPortionThirdPartyNotifier
 
             $result = $service->recordClientPortionPayment($payload);
 
+            self::recordLocalVendorClientPortion(
+                $invoice,
+                $transaction,
+                $vendor?->id,
+                $clientPortion,
+                $paymentReference,
+                $localInsurance->name ?? 'Insurance',
+                $method
+            );
+
             Log::info('InsuranceClientPortionThirdPartyNotifier: single-vendor record-client-portion', [
                 'invoice_id'    => $invoice->id,
                 'transaction_id' => $transaction->id,
@@ -107,12 +119,8 @@ class InsuranceClientPortionThirdPartyNotifier
     }
 
     /**
-     * For cascade invoices, notify each vendor of their own client_total using
-     * their own authorization_reference.
-     *
-     * Vendor N's "client portion" is what their authorization calculated as client
-     * responsibility at the time of invoice creation. Notifying each vendor independently
-     * ensures their deductible/copay ledgers are updated correctly.
+     * For cascade invoices, notify each vendor with its allocated share of the
+     * collected client payment using its own authorization_reference.
      */
     private static function notifyMultiVendor(
         Invoice $invoice,
@@ -129,7 +137,9 @@ class InsuranceClientPortionThirdPartyNotifier
 
         foreach ($vendors as $index => $vendorSnap) {
             $authRef      = $vendorSnap['authorization_reference'] ?? null;
-            $clientPortion = (float) ($vendorSnap['client_total'] ?? 0);
+            $clientPortion = isset($vendorSnap['client_portion_allocated'])
+                ? (float) $vendorSnap['client_portion_allocated']
+                : (float) ($vendorSnap['client_total'] ?? 0);
             $vendorName   = $vendorSnap['vendor_name'] ?? 'Vendor ' . ($index + 1);
             $status       = $vendorSnap['authorization_status'] ?? '';
             $policyNumber = $vendorSnap['policy_number'] ?? null;
@@ -180,6 +190,15 @@ class InsuranceClientPortionThirdPartyNotifier
 
             try {
                 $result = $service->recordClientPortionPayment($payload);
+                self::recordLocalVendorClientPortion(
+                    $invoice,
+                    $transaction,
+                    $thirdPartyPayer?->id,
+                    $clientPortion,
+                    (string) $payload['payment_reference'],
+                    $vendorName,
+                    $method
+                );
                 Log::info('InsuranceClientPortionThirdPartyNotifier: multi-vendor record-client-portion', [
                     'invoice_id'    => $invoice->id,
                     'vendor_name'   => $vendorName,
@@ -195,5 +214,48 @@ class InsuranceClientPortionThirdPartyNotifier
                 ]);
             }
         }
+    }
+
+    /**
+     * Mirror per-vendor client allocations in local vendor statements, idempotently.
+     */
+    private static function recordLocalVendorClientPortion(
+        Invoice $invoice,
+        Transaction $transaction,
+        ?int $thirdPartyPayerId,
+        float $amount,
+        string $reference,
+        string $vendorName,
+        string $method
+    ): void {
+        if (!$thirdPartyPayerId || $amount <= 0) {
+            return;
+        }
+
+        $alreadyRecorded = ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayerId)
+            ->where('invoice_id', $invoice->id)
+            ->where('transaction_type', 'credit')
+            ->where('reference_number', $reference)
+            ->exists();
+
+        if ($alreadyRecorded) {
+            return;
+        }
+
+        $thirdPartyPayer = \App\Models\ThirdPartyPayer::find($thirdPartyPayerId);
+        if (!$thirdPartyPayer) {
+            return;
+        }
+
+        ThirdPartyPayerBalanceHistory::recordCredit(
+            $thirdPartyPayer,
+            $amount,
+            'Client allocation collected for invoice ' . $invoice->invoice_number . ' (' . $vendorName . ')',
+            $reference,
+            'Transaction ID: ' . $transaction->id,
+            $method,
+            $invoice->client_id,
+            $invoice->id
+        );
     }
 }

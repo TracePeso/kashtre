@@ -68,6 +68,7 @@
                                     } else {
                                         $totalBalance = $availableBalance + $suspenseBalance;
                                     }
+
                                     
                                     // Credit Remaining calculation for credit clients
                                     $creditLimit = $client->max_credit ?? 0;
@@ -226,8 +227,8 @@
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
                                                 @php
-                                                    // Check if this is an insurance tracking entry (payment_method='insurance' and change_amount=0)
-                                                    $isInsuranceTracking = $history->payment_method === 'insurance' && $history->change_amount == 0;
+                                                    // Insurance entries are informational rows and should be labeled consistently.
+                                                    $isInsuranceTracking = $history->payment_method === 'insurance';
                                                 @endphp
                                                 <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full 
                                                     @if($isInsuranceTracking) bg-purple-100 text-purple-800
@@ -290,11 +291,14 @@
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                                 @php
-                                                    $isInsuranceTracking = $history->payment_method === 'insurance' && $history->change_amount == 0;
+                                                    $isInsuranceTracking = $history->payment_method === 'insurance';
                                                     
-                                                    // For insurance tracking entries, get actual amount from invoice
+                                                    // For insurance tracking entries, prefer the stored change_amount.
                                                     $displayAmount = 0;
-                                                    if ($isInsuranceTracking && $history->invoice) {
+                                                    if ($isInsuranceTracking) {
+                                                        if (abs((float) $history->change_amount) > 0) {
+                                                            $displayAmount = abs((float) $history->change_amount);
+                                                        } elseif ($history->invoice) {
                                                         $description = $history->description;
                                                         $invoice = $history->invoice;
                                                         $items = $invoice->items ?? [];
@@ -321,6 +325,11 @@
                                                                   stripos($description, 'Service Charge') !== false) {
                                                             // For service fee entries
                                                             $displayAmount = (float)($invoice->service_charge ?? 0);
+                                                        } elseif (preg_match('/Client UGX ([0-9,]+(?:\.[0-9]+)?) \+ Insurance UGX ([0-9,]+(?:\.[0-9]+)?)/', $description, $matches)) {
+                                                            // Fallback for vendor breakdown descriptions.
+                                                            $clientAmount = (float) str_replace(',', '', $matches[1]);
+                                                            $insuranceAmount = (float) str_replace(',', '', $matches[2]);
+                                                            $displayAmount = $clientAmount + $insuranceAmount;
                                                         } else {
                                                             // Fallback: if we can't match, try to get from invoice items total
                                                             // This handles cases where description format doesn't match
@@ -331,6 +340,7 @@
                                                                 $totalFromItems += $itemPrice * $itemQty;
                                                             }
                                                             $displayAmount = $totalFromItems > 0 ? $totalFromItems : (float)($invoice->total_amount ?? 0);
+                                                        }
                                                         }
                                                     } else {
                                                         // For non-insurance entries, use change_amount

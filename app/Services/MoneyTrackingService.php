@@ -771,46 +771,25 @@ class MoneyTrackingService
             $isMultiVendorInsurance = $authSnapshot && ($authSnapshot['multi_vendor'] ?? false);
             
             if ($isMultiVendorInsurance && isset($authSnapshot['vendors'])) {
-                // For multi-vendor insurance, create informational BalanceHistory records for each vendor
-                // These don't affect client balance (change_amount=0) but show breakdown
-                Log::info("=== MULTI-VENDOR INSURANCE DETECTED - Creating vendor breakdown records ===", [
+                // For multi-vendor insurance, keep vendor-side ledger updates.
+                // Client statement rows are itemized later in this method.
+                Log::info("=== MULTI-VENDOR INSURANCE DETECTED - Processing vendor ledger entries ===", [
                     'invoice_id' => $invoice->id,
                     'vendor_count' => count($authSnapshot['vendors'])
                 ]);
                 
                 foreach ($authSnapshot['vendors'] as $vendor) {
+                    $vendorStatus = (string) ($vendor['authorization_status'] ?? '');
+                    if (in_array($vendorStatus, ['failed', 'skipped'], true)) {
+                        continue;
+                    }
+
                     $vendorName = $vendor['vendor_name'] ?? $vendor['insurance_company_name'] ?? 'Unknown Insurance';
-                    $clientPortion = $vendor['client_total'] ?? $vendor['client_portion'] ?? 0;
+                    // Use per-vendor allocated client share for multi-vendor cascades.
+                    $clientPortion = $vendor['client_portion_allocated'] ?? $vendor['client_total'] ?? $vendor['client_portion'] ?? 0;
                     $insurancePortion = $vendor['insurance_total'] ?? $vendor['insurance_portion'] ?? 0;
                     $totalVendorAmount = $clientPortion + $insurancePortion;
-                    
-                    $description = "{$vendorName}: Client UGX " . number_format($clientPortion, 2) . 
-                                   " + Insurance UGX " . number_format($insurancePortion, 2);
-                    
-                    // Create informational record (payment_method='insurance', change_amount=0 = doesn't affect balance)
-                    // Get current balance to pass as previous/new balance
-                    $currentBalance = BalanceHistory::where('client_id', $client->id)
-                        ->orderBy('created_at', 'desc')
-                        ->value('new_balance') ?? 0;
-                    
-                    BalanceHistory::create([
-                        'client_id' => $client->id,
-                        'business_id' => $business->id,
-                        'branch_id' => $client->branch_id,
-                        'invoice_id' => $invoice->id,
-                        'user_id' => auth()->id() ?? 1,
-                        'transaction_type' => 'debit',
-                        'payment_method' => 'insurance',
-                        'description' => $description,
-                        'previous_balance' => $currentBalance,
-                        'change_amount' => 0, // Informational only - doesn't affect balance
-                        'new_balance' => $currentBalance, // Balance unchanged for informational records
-                        'reference_number' => $invoice->invoice_number,
-                        'notes' => "Insurance authorization for {$vendorName}. Auth Ref: " . ($vendor['authorization_reference'] ?? 'N/A'),
-                        'payment_status' => 'Paid'
-                    ]);
-                    
-                    Log::info("Insurance vendor breakdown record created", [
+                    Log::info("Insurance vendor allocation tracked for ledger", [
                         'invoice_id' => $invoice->id,
                         'vendor_name' => $vendorName,
                         'client_portion' => $clientPortion,
@@ -852,7 +831,8 @@ class MoneyTrackingService
                                 ]);
                             }
 
-                            if ($invoice->amount_paid > 0) {
+                            // Insurance portion credit remains insurer-side only.
+                            if ($invoice->amount_paid > 0 && $insurancePortion > 0) {
                                 // Create credit entry for the vendor (payment received)
                                 \App\Models\ThirdPartyPayerBalanceHistory::recordCredit(
                                     $thirdPartyPayer,
@@ -875,25 +855,6 @@ class MoneyTrackingService
                     }
                 }
                 
-                // For insurance invoices, skip individual item debits - instead create one debit for client portion
-                if ($invoice->amount_paid > 0) {
-                    $clientPortionRecord = BalanceHistory::recordDebit(
-                        $client,
-                        $invoice->amount_paid,
-                        "Client Portion Payment - Insurance Invoice",
-                        $invoice->invoice_number,
-                        "Client Portion"
-                    );
-                    
-                    Log::info("Client portion debit created for insurance invoice", [
-                        'invoice_id' => $invoice->id,
-                        'amount' => $invoice->amount_paid,
-                        'balance_history_id' => $clientPortionRecord->id ?? null
-                    ]);
-                }
-                
-                // Skip individual item processing for insurance invoices
-                $itemsToProcess = collect();
             }
 
             foreach ($itemsToProcess as $index => $itemData) {
@@ -937,15 +898,40 @@ class MoneyTrackingService
                     continue;
                 }
 
-                // Create debit record for client balance statement
+                // Create balance statement record.
+                // Insurance invoices should still be itemized but must not affect client balance.
                 $itemDisplayName = $item->name;
-                $debitRecord = BalanceHistory::recordDebit(
-                    $client,
-                    $totalAmount,
-                    "{$itemDisplayName} (x{$quantity})",
-                    $invoice->invoice_number,
-                    "{$itemDisplayName} (x{$quantity})"
-                );
+                $debitRecord = null;
+                if ($isInsuranceInvoice) {
+                    $currentBalance = BalanceHistory::where('client_id', $client->id)
+                        ->orderBy('created_at', 'desc')
+                        ->value('new_balance') ?? 0;
+
+                    $debitRecord = BalanceHistory::create([
+                        'client_id' => $client->id,
+                        'business_id' => $business->id,
+                        'branch_id' => $client->branch_id,
+                        'invoice_id' => $invoice->id,
+                        'user_id' => auth()->id() ?? 1,
+                        'transaction_type' => 'debit',
+                        'payment_method' => 'insurance',
+                        'description' => "{$itemDisplayName} (x{$quantity}) [Insurance]",
+                        'previous_balance' => $currentBalance,
+                        'change_amount' => $totalAmount,
+                        'new_balance' => $currentBalance,
+                        'reference_number' => $invoice->invoice_number,
+                        'notes' => "{$itemDisplayName} (x{$quantity})",
+                        'payment_status' => 'Paid',
+                    ]);
+                } else {
+                    $debitRecord = BalanceHistory::recordDebit(
+                        $client,
+                        $totalAmount,
+                        "{$itemDisplayName} (x{$quantity})",
+                        $invoice->invoice_number,
+                        "{$itemDisplayName} (x{$quantity})"
+                    );
+                }
 
                 $debitRecords[] = [
                     'item_name' => $item->name,
@@ -968,8 +954,10 @@ class MoneyTrackingService
                 ]);
             }
 
-            // Create debit record for service charge if applicable
-            if ($invoice->service_charge > 0) {
+            // Create debit record for service charge if applicable.
+            // For insurance invoices, service fee is part of insurance/client-allocation tracking
+            // and must not hit client balance as a standalone debit.
+            if ($invoice->service_charge > 0 && !$isInsuranceInvoice) {
                 $serviceChargeRecord = BalanceHistory::recordDebit(
                     $client,
                     $invoice->service_charge,

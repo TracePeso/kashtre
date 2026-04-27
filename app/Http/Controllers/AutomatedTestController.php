@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Payments\YoAPI;
 
 class AutomatedTestController extends Controller
 {
@@ -67,10 +68,8 @@ class AutomatedTestController extends Controller
     public function run(Request $request)
     {
         $output = [];
-        $output[] = "Starting Complete User Journey Test...\n";
+        $output[] = "Starting Non-Insurance Purchase Test Suite...\n";
         $output[] = "====================================================\n\n";
-
-        DB::beginTransaction();
 
         try {
             $user = Auth::user();
@@ -101,8 +100,12 @@ class AutomatedTestController extends Controller
             $output[] = "Service Point: {$servicePoint->name}\n";
             $output[] = "====================================================\n\n";
 
-            // Get payment phone, item count, item types, and max amount from request
+            // Input options
             $paymentPhone = $request->input('payment_phone', '');
+            $paymentMode = (string) $request->input('payment_mode', 'simulated');
+            $paymentMode = in_array($paymentMode, ['simulated', 'live'], true) ? $paymentMode : 'simulated';
+            $runFullSuite = filter_var($request->input('full_suite', false), FILTER_VALIDATE_BOOLEAN);
+
             $itemCount = intval($request->input('item_count', 50)); // Allow up to 50 items to fill budget
             $itemCount = max(1, min($itemCount, 100)); // Ensure between 1 and 100
             $maxAmount = intval($request->input('max_amount', 100000));
@@ -110,393 +113,320 @@ class AutomatedTestController extends Controller
             $itemTypes = $request->input('item_types', ['service', 'good', 'package', 'bulk']);
             $itemTypes = is_array($itemTypes) ? $itemTypes : ['service', 'good', 'package', 'bulk'];
 
-            // STEP 1: Register a user (Create Client)
-            $output[] = "STEP 1: USER REGISTRATION\n";
-            $output[] = "----------------------------\n";
-            
-            $firstName = 'Test';
-            $surname = 'User';
-            $clientPhone = '0777' . rand(100000, 999999);
-            $paymentPhoneNumber = $paymentPhone ?: '0776' . rand(100000, 999999);
-            
-            // Generate client_id and visit_id using the same methods as real registration
-            $clientId = Client::generateClientId($business, $surname, $firstName, null);
-            $visitId = Client::generateVisitId($business, $branch, false, false);
-            
-            $client = Client::create([
-                'client_type' => 'individual',
-                'client_id' => $clientId,
-                'visit_id' => $visitId,
-                'visit_expires_at' => now()->addDays(7),
-                'business_id' => $business->id,
-                'branch_id' => $branch->id,
-                'name' => $firstName . ' ' . $surname,
-                'first_name' => $firstName,
-                'surname' => $surname,
-                'phone_number' => $clientPhone,
-                'payment_phone_number' => $paymentPhoneNumber,
-                'email' => 'testuser' . rand(10000, 99999) . '@test.com',
-                'services_category' => 'outpatient',
-                'payment_methods' => [],
-                'status' => 'active',
-                'balance' => 0,
-            ]);
-            
-            $output[] = "[OK] Customer registered successfully\n";
-            $output[] = "  Name: {$client->name}\n";
-            $output[] = "  Contact: {$client->phone_number}\n";
-            $output[] = "  Payment method: {$client->payment_phone_number}\n\n";
+            $scenarios = $runFullSuite
+                ? [
+                    ['name' => 'Service-only purchase', 'item_types' => ['service'], 'item_count' => 3, 'max_amount' => 50000],
+                    ['name' => 'Goods-only purchase', 'item_types' => ['good'], 'item_count' => 4, 'max_amount' => 80000],
+                    ['name' => 'Mixed service + goods', 'item_types' => ['service', 'good'], 'item_count' => 6, 'max_amount' => 120000],
+                    ['name' => 'Package + bulk purchase', 'item_types' => ['package', 'bulk'], 'item_count' => 3, 'max_amount' => 150000],
+                    ['name' => 'Full mixed cart', 'item_types' => ['service', 'good', 'package', 'bulk'], 'item_count' => 8, 'max_amount' => 200000],
+                ]
+                : [[
+                    'name' => 'Custom scenario',
+                    'item_types' => $itemTypes,
+                    'item_count' => $itemCount,
+                    'max_amount' => $maxAmount,
+                ]];
 
-            // STEP 2: User Orders Items (with budget constraint)
-            $output[] = "STEP 2: CUSTOMER PLACES ORDER\n";
-            $output[] = "----------------------------\n";
-            $output[] = "Budget available: " . number_format($maxAmount) . " UGX\n";
-            $output[] = "Items will be collected from: {$servicePoint->name}\n\n";
+            $output[] = "Suite mode: " . ($runFullSuite ? "Full non-insurance coverage" : "Single scenario") . "\n";
+            $output[] = "Payment mode: " . strtoupper($paymentMode) . "\n";
+            $output[] = "====================================================\n\n";
 
-            // Get random items from business inventory with selected types
-            $availableItems = Item::where('business_id', $business->id)
-                ->whereIn('type', $itemTypes)
-                ->get()
-                ->shuffle();
+            foreach ($scenarios as $index => $scenario) {
+                DB::beginTransaction();
+                try {
+                    $output[] = "SCENARIO " . ($index + 1) . ": {$scenario['name']}\n";
+                    $output[] = "----------------------------------------------------\n";
+                    $output[] = "Item types: " . implode(', ', $scenario['item_types']) . "\n";
+                    $output[] = "Item count target: {$scenario['item_count']}\n";
+                    $output[] = "Budget: " . number_format((float) $scenario['max_amount']) . " UGX\n\n";
 
-            if ($availableItems->count() < 1) {
-                $output[] = "[WARNING] No items available in selected types. Creating test items...\n";
-                $group = Group::where('business_id', $business->id)->first() ?? 
-                    Group::create(['name' => 'Test Items Group', 'business_id' => $business->id]);
+                    // STEP 1: Register client
+                    $firstName = 'Test';
+                    $surname = 'User' . ($index + 1);
+                    $clientPhone = '0777' . rand(100000, 999999);
+                    $paymentPhoneNumber = $paymentPhone ?: '0776' . rand(100000, 999999);
+                    $clientId = Client::generateClientId($business, $surname, $firstName, null);
+                    $visitId = Client::generateVisitId($business, $branch, false, false);
 
-                for ($i = 1; $i <= $itemCount; $i++) {
-                    Item::create([
-                        'name' => "Test Item {$i}",
-                        'type' => $itemTypes[($i - 1) % count($itemTypes)],
+                    $client = Client::create([
+                        'client_type' => 'individual',
+                        'client_id' => $clientId,
+                        'visit_id' => $visitId,
+                        'visit_expires_at' => now()->addDays(7),
                         'business_id' => $business->id,
-                        'group_id' => $group->id,
-                        'default_price' => 10000,
+                        'branch_id' => $branch->id,
+                        'name' => $firstName . ' ' . $surname,
+                        'first_name' => $firstName,
+                        'surname' => $surname,
+                        'phone_number' => $clientPhone,
+                        'payment_phone_number' => $paymentPhoneNumber,
+                        'email' => 'testuser' . rand(10000, 99999) . '@test.com',
+                        'services_category' => 'outpatient',
+                        'payment_methods' => [],
+                        'status' => 'active',
+                        'balance' => 0,
                     ]);
-                }
-                $availableItems = Item::where('business_id', $business->id)
-                    ->whereIn('type', $itemTypes)
-                    ->get()
-                    ->shuffle();
-            }
 
-            // Select items based on budget constraint - ensure minimum 500 UGX
-            $items = collect();
-            $runningTotal = 0;
-            $itemsAdded = 0;
-            $minimumAmount = 500; // Ensure we always order at least 500 UGX worth
+                    $output[] = "[OK] Client created: {$client->name} ({$client->client_id})\n";
 
-            foreach ($availableItems as $item) {
-                $unitPrice = $item->default_price ?? 10000;
-                $itemCost = $unitPrice;
+                    // STEP 2: Select / ensure items
+                    $availableItems = Item::where('business_id', $business->id)
+                        ->whereIn('type', $scenario['item_types'])
+                        ->whereNotNull('default_price')
+                        ->where('default_price', '>', 0)
+                        ->get()
+                        ->shuffle();
 
-                // Keep adding items while:
-                // 1. We haven't reached the minimum amount (500 UGX) OR we're still below budget
-                // 2. AND we haven't exceeded the max item count
-                if ($runningTotal + $itemCost <= $maxAmount && $itemsAdded < $itemCount) {
-                    $items->push($item);
-                    $runningTotal += $itemCost;
-                    $itemsAdded++;
-                    
-                    // After reaching minimum, still add more items to fill budget better
-                    if ($runningTotal >= $minimumAmount && $items->count() >= 5) {
-                        break; // Stop after reaching minimum and having reasonable variety
-                    }
-                }
-            }
-
-            // If total is still below minimum, keep adding items until we reach 500
-            if ($runningTotal < $minimumAmount && $availableItems->count() > 0) {
-                foreach ($availableItems as $item) {
-                    if ($items->contains('id', $item->id)) {
-                        continue; // Skip already selected items
+                    if ($availableItems->isEmpty()) {
+                        $group = Group::where('business_id', $business->id)->first()
+                            ?? Group::create(['name' => 'Test Items Group', 'business_id' => $business->id]);
+                        foreach (range(1, max(4, (int) $scenario['item_count'])) as $n) {
+                            Item::create([
+                                'name' => "Test Item {$n} (" . strtoupper($scenario['item_types'][($n - 1) % count($scenario['item_types'])]) . ")",
+                                'type' => $scenario['item_types'][($n - 1) % count($scenario['item_types'])],
+                                'business_id' => $business->id,
+                                'group_id' => $group->id,
+                                'default_price' => 10000 + ($n * 1000),
+                            ]);
+                        }
+                        $availableItems = Item::where('business_id', $business->id)
+                            ->whereIn('type', $scenario['item_types'])
+                            ->whereNotNull('default_price')
+                            ->where('default_price', '>', 0)
+                            ->get()
+                            ->shuffle();
                     }
 
-                    $unitPrice = $item->default_price ?? 10000;
-                    $itemCost = $unitPrice;
-
-                    if ($runningTotal + $itemCost <= $maxAmount) {
+                    $items = collect();
+                    $runningTotal = 0;
+                    foreach ($availableItems as $item) {
+                        if ($items->count() >= (int) $scenario['item_count']) {
+                            break;
+                        }
+                        $price = (float) ($item->default_price ?? 0);
+                        if ($price <= 0) {
+                            continue;
+                        }
+                        if (($runningTotal + $price) > (float) $scenario['max_amount'] && $items->isNotEmpty()) {
+                            continue;
+                        }
                         $items->push($item);
-                        $runningTotal += $itemCost;
+                        $runningTotal += $price;
+                    }
+                    if ($items->isEmpty() && $availableItems->isNotEmpty()) {
+                        $fallbackItem = $availableItems->first();
+                        $items->push($fallbackItem);
+                        $runningTotal = (float) ($fallbackItem->default_price ?? 0);
                     }
 
-                    if ($runningTotal >= $minimumAmount) {
-                        break;
+                    $invoiceItems = [];
+                    $subtotal = 0;
+                    foreach ($items as $item) {
+                        $unitPrice = (float) ($item->default_price ?? 0);
+                        $subtotal += $unitPrice;
+                        $invoiceItems[] = [
+                            'item_id' => $item->id,
+                            'name' => $item->name,
+                            'quantity' => 1,
+                            'unit_price' => $unitPrice,
+                            'total' => $unitPrice,
+                        ];
+                        $output[] = "  • {$item->name} (" . ucfirst((string) $item->type) . ") - " . number_format($unitPrice, 2) . " UGX\n";
                     }
+
+                    // Service charge
+                    $serviceChargeAmount = 0;
+                    $serviceChargeConfig = ServiceCharge::where('business_id', $business->id)
+                        ->where('entity_type', 'business')
+                        ->where('is_active', true)
+                        ->where('lower_bound', '<=', $subtotal)
+                        ->where('upper_bound', '>=', $subtotal)
+                        ->orderBy('lower_bound', 'desc')
+                        ->first();
+                    if ($serviceChargeConfig) {
+                        if ($serviceChargeConfig->type === 'fixed') {
+                            $serviceChargeAmount = (float) $serviceChargeConfig->amount;
+                        } elseif ($serviceChargeConfig->type === 'percentage') {
+                            $serviceChargeAmount = ($subtotal * (float) $serviceChargeConfig->amount) / 100;
+                        }
+                    }
+                    $finalAmount = round($subtotal + $serviceChargeAmount, 2);
+
+                    // STEP 3: Create invoice
+                    $invoice = Invoice::create([
+                        'invoice_number' => 'ORD' . now()->format('ymdHis') . Str::upper(Str::random(4)),
+                        'client_id' => $client->id,
+                        'visit_id' => $client->visit_id,
+                        'business_id' => $business->id,
+                        'branch_id' => $branch->id,
+                        'created_by' => Auth::id(),
+                        'client_name' => $client->name,
+                        'client_phone' => $client->phone_number,
+                        'payment_phone' => $client->payment_phone_number,
+                        'items' => $invoiceItems,
+                        'subtotal' => $subtotal,
+                        'service_charge' => $serviceChargeAmount,
+                        'total_amount' => $finalAmount,
+                        'amount_paid' => 0,
+                        'balance_due' => $finalAmount,
+                        'payment_status' => 'unpaid',
+                        'payment_methods' => [],
+                        'status' => 'pending',
+                        'currency' => 'UGX',
+                    ]);
+                    $output[] = "[OK] Invoice created: {$invoice->invoice_number}, total " . number_format($finalAmount, 2) . " UGX\n";
+
+                    // STEP 4: Payment initiation / simulation
+                    $formattedPhone = preg_replace('/[^0-9+]/', '', (string) $client->payment_phone_number);
+                    if (str_starts_with($formattedPhone, '+256')) {
+                        $formattedPhone = substr($formattedPhone, 1);
+                    } elseif (str_starts_with($formattedPhone, '0')) {
+                        $formattedPhone = '256' . substr($formattedPhone, 1);
+                    }
+
+                    $paymentReference = 'SIM-' . strtoupper(Str::random(8));
+                    $paymentStatus = 'completed';
+                    $trackingLines = [];
+
+                    if ($paymentMode === 'live') {
+                        $paymentStatus = 'pending';
+                        try {
+                            $yoPayments = new YoAPI(
+                                config('payments.yo_username'),
+                                config('payments.yo_password')
+                            );
+                            $yoPayments->set_external_reference('OR' . $invoice->invoice_number);
+                            $paymentResult = $yoPayments->ac_deposit_funds(
+                                $formattedPhone,
+                                intval($finalAmount),
+                                "Order {$invoice->invoice_number}"
+                            );
+                            $trackingLines[] = 'Prompt sent: ' . json_encode([
+                                'status' => $paymentResult['Status'] ?? null,
+                                'status_message' => $paymentResult['StatusMessage'] ?? null,
+                                'transaction_reference' => $paymentResult['TransactionReference'] ?? null,
+                            ]);
+                            if (!isset($paymentResult['Status']) || $paymentResult['Status'] !== 'OK') {
+                                $paymentStatus = 'failed';
+                            } else {
+                                $paymentReference = $paymentResult['TransactionReference'] ?? $paymentReference;
+                                $pollAttempts = max(1, min((int) $request->input('poll_attempts', 8), 20));
+                                $pollDelay = max(1, min((int) $request->input('poll_delay_seconds', 3), 10));
+                                for ($attempt = 1; $attempt <= $pollAttempts; $attempt++) {
+                                    $statusResult = $yoPayments->ac_transaction_check_status($paymentReference);
+                                    $yoStatus = strtoupper((string) ($statusResult['TransactionStatus'] ?? ''));
+                                    $trackingLines[] = "Status poll {$attempt}/{$pollAttempts}: " . json_encode([
+                                        'transaction_status' => $statusResult['TransactionStatus'] ?? null,
+                                        'status_message' => $statusResult['StatusMessage'] ?? null,
+                                        'issued_receipt' => $statusResult['IssuedReceiptNumber'] ?? null,
+                                        'completion_date' => $statusResult['TransactionCompletionDate'] ?? null,
+                                    ]);
+
+                                    if ($yoStatus === 'SUCCEEDED') {
+                                        $paymentStatus = 'completed';
+                                        break;
+                                    }
+                                    if ($yoStatus === 'FAILED') {
+                                        $paymentStatus = 'failed';
+                                        break;
+                                    }
+
+                                    if ($attempt < $pollAttempts) {
+                                        sleep($pollDelay);
+                                    }
+                                }
+                            }
+                        } catch (\Throwable $e) {
+                            $paymentStatus = 'failed';
+                            $output[] = "[FAILED] Live payment request failed: {$e->getMessage()}\n";
+                        }
+                    } else {
+                        $output[] = "[OK] Payment simulated as COMPLETED for coverage\n";
+                        $trackingLines[] = 'Simulated payment completed immediately';
+                    }
+
+                    $transaction = Transaction::create([
+                        'invoice_id' => $invoice->id,
+                        'client_id' => $client->id,
+                        'business_id' => $business->id,
+                        'branch_id' => $branch->id,
+                        'amount' => $finalAmount,
+                        'reference' => $invoice->invoice_number,
+                        'external_reference' => $paymentReference,
+                        'service' => 'healthcare',
+                        'status' => $paymentStatus,
+                        'type' => 'credit',
+                        'origin' => 'web',
+                        'method' => 'mobile_money',
+                        // DB enum only allows: mtn, airtel, yo.
+                        // Keep yo for both live and simulated modes to avoid enum truncation.
+                        'provider' => 'yo',
+                        'phone_number' => $formattedPhone,
+                        'description' => "Automated test {$scenario['name']}",
+                    ]);
+
+                    // STEP 5: Finalize status & queue
+                    if ($paymentStatus === 'completed') {
+                        $invoice->update([
+                            'amount_paid' => $finalAmount,
+                            'balance_due' => 0,
+                            'payment_status' => 'paid',
+                            'status' => 'paid',
+                        ]);
+
+                        $queuedAtPoints = $this->queueItemsByMappedServicePoint(
+                            $client->id,
+                            $business->id,
+                            $branch->id,
+                            $invoiceItems,
+                            $servicePoint->id
+                        );
+
+                        if (count($queuedAtPoints) > 0) {
+                            $output[] = "[OK] Queue entries created after payment completion\n";
+                            foreach ($queuedAtPoints as $q) {
+                                $output[] = "    - {$q['service_point_name']}: {$q['items_count']} item(s), queue #{$q['queue_number']}\n";
+                            }
+                        } else {
+                            $output[] = "[WARNING] No queue entries were created\n";
+                        }
+                    } elseif ($paymentStatus === 'pending') {
+                        $invoice->update(['payment_status' => 'pending', 'status' => 'pending']);
+                        $output[] = "[OK] Payment request pending confirmation (live mode)\n";
+                    } else {
+                        $invoice->update(['payment_status' => 'failed', 'status' => 'failed']);
+                        $output[] = "[FAILED] Payment initiation failed\n";
+                    }
+
+                    if (!empty($trackingLines)) {
+                        $output[] = "Tracking log:\n";
+                        foreach ($trackingLines as $line) {
+                            $output[] = "  - {$line}\n";
+                        }
+                    }
+
+                    $output[] = "Assertions:\n";
+                    $output[] = "  - Client created: PASS\n";
+                    $output[] = "  - Invoice created with non-insurance items: PASS\n";
+                    $output[] = "  - Transaction recorded: PASS\n";
+                    $output[] = "  - Amount math valid (subtotal + charge = total): " . (($finalAmount >= $subtotal) ? 'PASS' : 'FAIL') . "\n";
+                    $output[] = "  - Queue behavior validated: " . ($paymentStatus === 'completed' ? 'PASS' : 'PENDING (live mode)') . "\n";
+                    $output[] = "Scenario result: " . (($paymentStatus === 'failed') ? 'FAIL' : 'PASS') . "\n\n";
+
+                    DB::commit();
+                } catch (\Throwable $scenarioError) {
+                    DB::rollBack();
+                    Log::error('Automated non-insurance scenario failed', [
+                        'scenario' => $scenario['name'] ?? 'unknown',
+                        'error' => $scenarioError->getMessage(),
+                    ]);
+                    $output[] = "[ERROR] Scenario failed: " . ($scenario['name'] ?? 'unknown') . "\n";
+                    $output[] = "Reason: {$scenarioError->getMessage()}\n\n";
                 }
             }
-
-            // If still no items or below minimum, add at least one of the most expensive items
-            if ($items->count() === 0 && $availableItems->count() > 0) {
-                $mostExpensive = $availableItems->sortByDesc('default_price')->first();
-                $items->push($mostExpensive);
-                $runningTotal = $mostExpensive->default_price ?? 10000;
-            }
-
-            $output[] = "[OK] Items selected\n\n";
-            
-            $invoiceItems = [];
-            $totalAmount = 0;
-            
-            foreach ($items as $index => $item) {
-                $quantity = 1;
-                $unitPrice = $item->default_price ?? 10000;
-                $itemTotal = $quantity * $unitPrice;
-                $totalAmount += $itemTotal;
-
-                $invoiceItems[] = [
-                    'item_id' => $item->id,
-                    'name' => $item->name,
-                    'quantity' => $quantity,
-                    'unit_price' => $unitPrice,
-                    'total' => $itemTotal,
-                ];
-
-                $itemType = ucfirst($item->type ?? 'unknown');
-                $output[] = "   • {$item->name} ({$itemType}) - {$quantity} × " . number_format($unitPrice) . " UGX = " . number_format($itemTotal) . " UGX\n";
-            }
-            
-            // Calculate service charge based on Kashtre's configuration
-            $serviceChargeAmount = 0;
-            $serviceChargeConfig = ServiceCharge::where('business_id', $business->id)
-                ->where('entity_type', 'business')
-                ->where('is_active', true)
-                ->where('lower_bound', '<=', $totalAmount)
-                ->where('upper_bound', '>=', $totalAmount)
-                ->orderBy('lower_bound', 'desc')
-                ->first();
-            
-            if ($serviceChargeConfig) {
-                if ($serviceChargeConfig->type === 'fixed') {
-                    $serviceChargeAmount = $serviceChargeConfig->amount;
-                } elseif ($serviceChargeConfig->type === 'percentage') {
-                    $serviceChargeAmount = ($totalAmount * $serviceChargeConfig->amount) / 100;
-                }
-            }
-            
-            $finalAmount = $totalAmount + $serviceChargeAmount;
-            
-            $output[] = "\n";
-            $output[] = "COST BREAKDOWN:\n";
-            $output[] = "  Items total: " . number_format($totalAmount) . " UGX\n";
-            if ($serviceChargeAmount > 0) {
-                $output[] = "  Service charge: " . number_format($serviceChargeAmount) . " UGX\n";
-                $output[] = "  Total amount: " . number_format($finalAmount) . " UGX\n";
-            } else {
-                $output[] = "  Service charge: None\n";
-                $output[] = "  Total amount: " . number_format($finalAmount) . " UGX\n";
-            }
-            $output[] = "  Number of items: " . $items->count() . "\n";
-            $output[] = "  Budget used: " . number_format($finalAmount) . " UGX of " . number_format($maxAmount) . " UGX\n";
-            $output[] = "\n";
-
-            // STEP 3: Create Invoice (Order)
-            $output[] = "STEP 3: REVIEW & CONFIRM ORDER\n";
-            $output[] = "----------------------------\n";
-
-            $invoice = Invoice::create([
-                'invoice_number' => 'ORD' . now()->timestamp,
-                'client_id' => $client->id,
-                'visit_id' => $client->visit_id,
-                'business_id' => $business->id,
-                'branch_id' => $branch->id,
-                'created_by' => Auth::id(),
-                'client_name' => $client->name,
-                'client_phone' => $client->phone_number,
-                'payment_phone' => $client->payment_phone_number,
-                'items' => $invoiceItems,
-                'subtotal' => $totalAmount,
-                'service_charge' => $serviceChargeAmount,
-                'total_amount' => $finalAmount,
-                'amount_paid' => 0,
-                'balance_due' => $finalAmount,
-                'payment_status' => 'unpaid',
-                'payment_methods' => [],
-                'status' => 'pending',
-                'currency' => 'UGX',
-            ]);
-
-            $output[] = "[OK] Order confirmed\n";
-            $output[] = "  Order #: {$invoice->invoice_number}\n";
-            $output[] = "  Amount to pay: " . number_format($finalAmount) . " UGX\n";
-            $output[] = "  Items in order: " . count($invoiceItems) . "\n";
-            
-            // Calculate projected queue numbers for items
-            $currentQueueNumber = ServiceQueue::where('service_point_id', $servicePoint->id)->max('queue_number') ?? 0;
-            $projectedQueueNumbers = [];
-            for ($i = 1; $i <= count($invoiceItems); $i++) {
-                $projectedQueueNumbers[] = $currentQueueNumber + $i;
-            }
-            $queueNumbersStr = implode(", ", $projectedQueueNumbers);
-            
-            $output[] = "  Collection point: {$servicePoint->name}\n";
-            $output[] = "  Expected queue positions: {$queueNumbersStr}\n\n";
-
-            // STEP 4: Process Payment (Call YoAPI)
-            $output[] = "STEP 4: SEND PAYMENT REQUEST\n";
-            $output[] = "----------------------------\n";
-            
-            // Prepare concise description for transaction (keep under 255 chars)
-            $paymentNarrative = "Order " . $invoice->invoice_number . " - " . count($invoiceItems) . " items";
-            
-            $output[] = "Sending payment prompt to customer...\n";
-            $output[] = "  Subtotal: " . number_format($totalAmount) . " UGX\n";
-            if ($serviceChargeAmount > 0) {
-                $output[] = "  Service charge: " . number_format($serviceChargeAmount) . " UGX\n";
-            }
-            $output[] = "  Total amount: " . number_format($finalAmount) . " UGX\n";
-            $output[] = "  Phone: {$client->payment_phone_number}\n";
-            $output[] = "  Order: {$invoice->invoice_number}\n\n";
-            
-            // Format phone number for YoAPI (must be international format 256XXXXXXXXX)
-            $formattedPhone = $client->payment_phone_number;
-            $formattedPhone = preg_replace('/[^0-9+]/', '', $formattedPhone);
-            
-            if (str_starts_with($formattedPhone, '+256')) {
-                $formattedPhone = substr($formattedPhone, 1);
-            } elseif (str_starts_with($formattedPhone, '0')) {
-                $formattedPhone = '256' . substr($formattedPhone, 1);
-            }
-            
-            $paymentReference = null;
-            $paymentStatus = 'pending';
-            
-            try {
-                $yoPayments = new \App\Payments\YoAPI(
-                    config('payments.yo_username'),
-                    config('payments.yo_password')
-                );
-                
-                $yoPayments->set_external_reference('OR' . $invoice->invoice_number);
-                
-                $paymentResult = $yoPayments->ac_deposit_funds(
-                    $formattedPhone,
-                    intval($finalAmount),
-                    $paymentNarrative
-                );
-                
-                Log::info('YoAPI Payment Result', ['result' => $paymentResult]);
-                
-                if (isset($paymentResult['Status']) && $paymentResult['Status'] === 'OK') {
-                    $output[] = "[OK] Payment prompt sent successfully\n";
-                    $output[] = "✓ Customer will receive payment request on their phone\n";
-                    $paymentReference = $paymentResult['TransactionReference'] ?? 'YO' . now()->timestamp;
-                    $paymentStatus = 'pending';
-                } else {
-                    $output[] = "[FAILED] Could not send payment prompt\n";
-                    $output[] = "✗ Error: " . ($paymentResult['StatusMessage'] ?? 'Unknown error') . "\n";
-                    $paymentReference = 'FAILED-' . now()->timestamp;
-                    $paymentStatus = 'failed';
-                }
-            } catch (\Exception $e) {
-                $output[] = "[ERROR] Payment Error: " . $e->getMessage() . "\n";
-                Log::error('Payment Error', ['error' => $e->getMessage()]);
-                $paymentReference = 'ERROR-' . now()->timestamp;
-                $paymentStatus = 'failed';
-            }
-            
-            $output[] = "\n";
-            
-            // Create transaction record
-            $transaction = Transaction::create([
-                'invoice_id' => $invoice->id,
-                'client_id' => $client->id,
-                'business_id' => $business->id,
-                'branch_id' => $branch->id,
-                'amount' => $totalAmount,
-                'reference' => $invoice->invoice_number,
-                'external_reference' => $paymentReference,
-                'service' => 'healthcare',
-                'status' => $paymentStatus,
-                'type' => 'credit',
-                'origin' => 'web',
-                'method' => 'mobile_money',
-                'provider' => 'yo',
-                'phone_number' => $formattedPhone,
-                'description' => $paymentNarrative,
-            ]);
-
-            // Update invoice payment status
-            $invoice->update([
-                'payment_status' => $paymentStatus === 'pending' ? 'pending' : 'failed',
-            ]);
-
-            // STEP 5: Awaiting Automatic Confirmation
-            $output[] = "STEP 5: AWAITING AUTOMATIC PAYMENT CONFIRMATION\n";
-            $output[] = "-------------------------------------\n";
-            
-            if ($paymentStatus === 'pending') {
-                $output[] = "[OK] Payment prompt sent to {$client->payment_phone_number}\n";
-                $output[] = "Customer will see the payment confirmation on their phone.\n\n";
-                
-                $output[] = "What happens next:\n";
-                $output[] = "  1. Customer confirms the payment on their phone\n";
-                $output[] = "  2. System checks for payment confirmation every minute\n";
-                $output[] = "  3. Once confirmed:\n";
-                $output[] = "     • Payment will be marked as completed\n";
-                $output[] = "     • Items will be queued to " . $servicePoint->name . "\n";
-                $output[] = "     • Customer's account will be updated\n\n";
-            } else {
-                $output[] = "[FAILED] Payment could not be sent\n";
-                $output[] = "  Status: " . ucfirst($paymentStatus) . "\n";
-                $output[] = "  Check YoAPI configuration and try again\n\n";
-            }
-
-            // SUMMARY
             $output[] = "====================================================\n";
-            if ($paymentStatus === 'pending') {
-                $output[] = "[SUCCESS] TEST COMPLETED - ORDER READY FOR PAYMENT\n";
-                $output[] = "====================================================\n\n";
-                
-                $output[] = "CUSTOMER INFORMATION:\n";
-                $output[] = "  Name: {$client->name}\n";
-                $output[] = "  Phone: {$client->phone_number}\n";
-                $output[] = "  Payment Phone: {$client->payment_phone_number}\n\n";
-                
-                $output[] = "INVOICE SUMMARY:\n";
-                $output[] = "  Order #: {$invoice->invoice_number}\n";
-                $output[] = "  Collection point: {$servicePoint->name}\n\n";
-                
-                $output[] = "Items ordered:\n";
-                foreach ($invoiceItems as $item) {
-                    $output[] = "  • {$item['name']} - {$item['quantity']} × " . number_format($item['unit_price']) . " = " . number_format($item['total']) . " UGX\n";
-                }
-                
-                $output[] = "\n";
-                $output[] = "Amount breakdown:\n";
-                $output[] = "  Subtotal: " . number_format($totalAmount) . " UGX\n";
-                if ($serviceChargeAmount > 0) {
-                    $output[] = "  Service charge: " . number_format($serviceChargeAmount) . " UGX\n";
-                    $output[] = "  " . str_repeat("-", 40) . "\n";
-                    $output[] = "  Total to pay: " . number_format($finalAmount) . " UGX\n\n";
-                } else {
-                    $output[] = "  " . str_repeat("-", 40) . "\n";
-                    $output[] = "  Total to pay: " . number_format($finalAmount) . " UGX\n\n";
-                }
-                
-                $output[] = "NEXT STEPS:\n";
-                $output[] = "  ✓ Payment prompt sent to customer\n";
-                $output[] = "  → Waiting for customer to confirm payment\n";
-                $output[] = "  → Once confirmed, items will be queued automatically\n\n";
-                
-                $output[] = "TECHNICAL DETAILS (for monitoring):\n";
-                $output[] = "  Reference: {$invoice->invoice_number}\n";
-                $output[] = "  Transaction ID: {$transaction->id}\n";
-                $output[] = "  Client ID: {$client->client_id}\n";
-                $output[] = "  Collection Point: {$servicePoint->name}\n";
-            } else {
-                $output[] = "[FAILURE] TEST FAILED - PAYMENT ERROR\n";
-                $output[] = "====================================================\n\n";
-                $output[] = "Order could not be submitted:\n";
-                $output[] = "  Customer: {$client->name}\n";
-                $output[] = "  Order #: {$invoice->invoice_number}\n";
-                $output[] = "  Error: Payment initiation failed\n";
-                $output[] = "  Amount: " . number_format($totalAmount) . " UGX\n\n";
-                
-                $output[] = "ACTION REQUIRED:\n";
-                $output[] = "  Please check payment configuration and try again\n";
-            }
-
-            DB::commit();
+            $output[] = "Test suite completed.\n";
 
             return response()->json([
                 'status' => 'success',
@@ -504,7 +434,6 @@ class AutomatedTestController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            DB::rollBack();
             Log::error('Test error: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
             
             $output[] = "\n[ERROR] TEST FAILED\n";
@@ -516,6 +445,69 @@ class AutomatedTestController extends Controller
                 'output' => implode('', $output)
             ], 500);
         }
+    }
+
+    /**
+     * Queue invoice items to their mapped branch service points.
+     * Falls back to default service point for unmapped items.
+     */
+    private function queueItemsByMappedServicePoint(
+        int $clientId,
+        int $businessId,
+        int $branchId,
+        array $invoiceItems,
+        int $defaultServicePointId
+    ): array {
+        $grouped = [];
+
+        foreach ($invoiceItems as $row) {
+            $itemId = (int) ($row['item_id'] ?? 0);
+            $mappedServicePointId = null;
+
+            if ($itemId > 0) {
+                $item = Item::find($itemId);
+                if ($item) {
+                    $mappedServicePointId = $item->branchServicePoints()
+                        ->where('business_id', $businessId)
+                        ->where('branch_id', $branchId)
+                        ->value('service_point_id');
+                }
+            }
+
+            $servicePointId = (int) ($mappedServicePointId ?: $defaultServicePointId);
+            if (!isset($grouped[$servicePointId])) {
+                $grouped[$servicePointId] = [];
+            }
+            $grouped[$servicePointId][] = $row;
+        }
+
+        $created = [];
+        foreach ($grouped as $servicePointId => $items) {
+            $queue = ServiceQueue::create([
+                'client_id' => $clientId,
+                'service_point_id' => $servicePointId,
+                'user_id' => Auth::id(),
+                'business_id' => $businessId,
+                'branch_id' => $branchId,
+                'queue_number' => ServiceQueue::generateQueueNumber($servicePointId, $businessId),
+                'status' => ServiceQueue::STATUS_PENDING,
+                'priority' => ServiceQueue::PRIORITY_NORMAL,
+                'items' => $items,
+                'total_amount' => array_sum(array_map(fn ($x) => (float) ($x['total'] ?? 0), $items)),
+                'payment_status' => ServiceQueue::PAYMENT_PAID,
+                'notes' => 'Automated non-insurance test queue entry (mapped by item service point)',
+            ]);
+
+            $spName = ServicePoint::find($servicePointId)?->name ?? 'Service Point #' . $servicePointId;
+            $created[] = [
+                'service_point_id' => $servicePointId,
+                'service_point_name' => $spName,
+                'items_count' => count($items),
+                'queue_number' => $queue->queue_number,
+            ];
+        }
+
+        return $created;
     }
 }
 

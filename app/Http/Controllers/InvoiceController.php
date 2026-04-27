@@ -4205,20 +4205,114 @@ class InvoiceController extends Controller
 
             // Filter items for this vendor (remove vendor-specific exclusions)
             $vendorExcludedItemIds = is_array($clientVendor->excluded_items) ? $clientVendor->excluded_items : [];
-            $vendorItems = array_filter($itemsForAuthorization, function (array $item) use ($vendorExcludedItemIds) {
+            $vendorItems = array_values(array_map(function (array $item) use ($vendorExcludedItemIds) {
                 // Mark items as excluded for this vendor if they're in the vendor's excluded list
-                if (!empty($vendorExcludedItemIds) && in_array($item['id'], $vendorExcludedItemIds)) {
+                if (!empty($vendorExcludedItemIds) && in_array($item['id'], $vendorExcludedItemIds, true)) {
                     $item['kashtre_excluded'] = true;
                 }
-                return true; // Always include, but mark excluded ones
-            });
-            $vendorItems = array_values($vendorItems);
+                return $item;
+            }, $itemsForAuthorization));
+
+            $policyNumber = trim((string) ($clientVendor->policy_number ?? ''));
+            if ($policyNumber === '' && $insuranceCompany?->id) {
+                // Fallback: some clients have multiple vendor rows over time; pick the latest non-empty
+                // policy number for the same insurer/vendor family (regardless of row status)
+                // instead of failing the whole cascade.
+                $fallbackPolicy = \App\Models\ClientVendor::where('client_id', $client->id)
+                    ->whereNotNull('policy_number')
+                    ->where('policy_number', '!=', '')
+                    ->whereHas('vendor', function ($q) use ($insuranceCompany) {
+                        $q->where('insurance_company_id', $insuranceCompany->id);
+                    })
+                    ->orderByDesc('updated_at')
+                    ->first();
+
+                if ($fallbackPolicy) {
+                    $policyNumber = trim((string) $fallbackPolicy->policy_number);
+                    Log::info('[Kashtre] Multi-vendor cascade: recovered policy number from alternate active mapping', [
+                        'invoice_id' => $invoice->id,
+                        'vendor_name' => $insuranceCompany->name,
+                        'client_vendor_id' => $clientVendor->id,
+                        'fallback_client_vendor_id' => $fallbackPolicy->id,
+                        'policy_number' => $policyNumber,
+                    ]);
+                }
+            }
+            if ($policyNumber === '') {
+                // Last resort: recover policy using alternative identity verification.
+                // This handles cases where mapping rows are blank but the client is still verifiable.
+                $fullName = trim(implode(' ', array_filter([
+                    (string) ($client->surname ?? ''),
+                    (string) ($client->first_name ?? ''),
+                    (string) ($client->other_names ?? ''),
+                ])));
+
+                if ($fullName !== '' && !empty($client->date_of_birth)) {
+                    try {
+                        $altVerification = $apiService->verifyAlternativeIdentity($thirdPartyBusinessId, [
+                            'name' => $fullName,
+                            'date_of_birth' => $client->date_of_birth,
+                            'services_category' => $client->services_category,
+                        ]);
+
+                        if (!empty($altVerification['success']) && !empty($altVerification['exists'])) {
+                            $recoveredPolicy = trim((string) (
+                                $altVerification['data']['policy_number']
+                                ?? $altVerification['policy_number']
+                                ?? ''
+                            ));
+
+                            if ($recoveredPolicy !== '') {
+                                $policyNumber = $recoveredPolicy;
+                                $clientVendor->policy_number = $policyNumber;
+                                $clientVendor->policy_verified = true;
+                                $clientVendor->save();
+
+                                Log::info('[Kashtre] Multi-vendor cascade: recovered policy number via alternative identity verification', [
+                                    'invoice_id' => $invoice->id,
+                                    'vendor_name' => $insuranceCompany->name,
+                                    'client_vendor_id' => $clientVendor->id,
+                                    'policy_number' => $policyNumber,
+                                ]);
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('[Kashtre] Multi-vendor cascade: alternative identity policy recovery failed', [
+                            'invoice_id' => $invoice->id,
+                            'vendor_name' => $insuranceCompany->name,
+                            'client_vendor_id' => $clientVendor->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
+            if ($policyNumber === '') {
+                Log::warning('[Kashtre] Multi-vendor cascade: missing policy number on client-vendor mapping', [
+                    'invoice_id' => $invoice->id,
+                    'vendor_name' => $insuranceCompany->name,
+                    'client_vendor_id' => $clientVendor->id,
+                ]);
+                $vendorResults[] = [
+                    'vendor_id'               => $clientVendor->third_party_payer_id,
+                    'vendor_name'             => $insuranceCompany->name,
+                    'priority'                => $clientVendor->priority,
+                    'is_open_enrollment'      => $clientVendor->is_open_enrollment,
+                    'amount_submitted'        => $amountForNextVendor,
+                    'authorization_reference' => null,
+                    'client_total'            => $amountForNextVendor,
+                    'insurance_total'         => 0.0,
+                    'authorization_status'    => 'failed',
+                    'error'                   => 'Missing policy number for this vendor on client profile.',
+                ];
+                $allWarnings[] = "{$insuranceCompany->name}: Missing policy number for this vendor on client profile.";
+                continue;
+            }
 
             $authPayload = [
                 'kashtre_invoice_id'                  => (string) $invoice->id,
                 'invoice_number'                      => $invoice->invoice_number,
                 'insurance_company_id'                => $thirdPartyBusinessId,
-                'policy_number'                       => trim((string) ($clientVendor->policy_number ?? '')),
+                'policy_number'                       => $policyNumber,
                 'services_category'                   => $client->services_category ?? null,
                 'total_amount'                        => $amountForNextVendor,
                 'deductible_remaining'                => $deductibleRemaining,
@@ -4298,6 +4392,53 @@ class InvoiceController extends Controller
             return null;
         }
 
+        // Recalibrate: split the *final* client amount across vendors for payment collection
+        // so notifications and UI never double-count client money in cascade scenarios.
+        $allocationBase = $vendorResults;
+        $eligibleIdx = [];
+        $weights = [];
+        foreach ($allocationBase as $idx => $row) {
+            $status = (string) ($row['authorization_status'] ?? '');
+            if (in_array($status, ['failed', 'skipped'], true)) {
+                continue;
+            }
+            $eligibleIdx[] = $idx;
+            $breakdown = is_array($row['breakdown'] ?? null) ? $row['breakdown'] : [];
+            $weight = (float) ($breakdown['deductible'] ?? 0)
+                + (float) ($breakdown['copay'] ?? 0)
+                + (float) ($breakdown['coinsurance'] ?? 0)
+                + (float) ($breakdown['excluded'] ?? 0);
+            $weights[$idx] = max(0.0, $weight);
+        }
+        $weightTotal = array_sum($weights);
+        $remainingAllocation = round(max(0.0, $finalClientTotal), 2);
+        $allocatedCount = 0;
+        foreach ($eligibleIdx as $idx) {
+            $allocatedCount++;
+            $row = $vendorResults[$idx];
+            $alloc = 0.0;
+            if ($remainingAllocation > 0) {
+                if ($weightTotal > 0) {
+                    if ($allocatedCount === count($eligibleIdx)) {
+                        $alloc = $remainingAllocation;
+                    } else {
+                        $alloc = round(($weights[$idx] / $weightTotal) * $finalClientTotal, 2);
+                        $alloc = min($alloc, $remainingAllocation);
+                    }
+                } else {
+                    // Fallback: assign all to the last eligible vendor when no breakdown weights exist.
+                    $alloc = ($allocatedCount === count($eligibleIdx)) ? $remainingAllocation : 0.0;
+                }
+            }
+            $vendorResults[$idx]['client_portion_allocated'] = $alloc;
+            $remainingAllocation = round(max(0.0, $remainingAllocation - $alloc), 2);
+        }
+        foreach ($vendorResults as $idx => $row) {
+            if (!isset($vendorResults[$idx]['client_portion_allocated'])) {
+                $vendorResults[$idx]['client_portion_allocated'] = 0.0;
+            }
+        }
+
         // Aggregate auth references (one per vendor, pipe-separated for storage)
         $authRefs = collect($vendorResults)->pluck('authorization_reference')->filter()->implode('|');
 
@@ -4306,6 +4447,7 @@ class InvoiceController extends Controller
             'multi_vendor'             => true,
             'vendors'                  => $vendorResults,
             'client_total'             => $finalClientTotal,
+            'client_portion_allocated_total' => (float) collect($vendorResults)->sum('client_portion_allocated'),
             'insurance_total'          => $totalInsuranceTotal,
             'authorization_reference'  => $authRefs,
             'authorization_status'     => collect($vendorResults)->contains('authorization_status', 'auto_rejected') ? 'auto_rejected' : 'auto_approved',
