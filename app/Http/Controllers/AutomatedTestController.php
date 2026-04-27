@@ -133,7 +133,6 @@ class AutomatedTestController extends Controller
             $output[] = "====================================================\n\n";
 
             foreach ($scenarios as $index => $scenario) {
-                DB::beginTransaction();
                 try {
                     $output[] = "SCENARIO " . ($index + 1) . ": {$scenario['name']}\n";
                     $output[] = "----------------------------------------------------\n";
@@ -253,6 +252,16 @@ class AutomatedTestController extends Controller
                     }
                     $finalAmount = round($subtotal + $serviceChargeAmount, 2);
 
+                    // YoAPI minimum practical request amount safeguard.
+                    // Keep invoice math consistent by folding any required top-up into service charge.
+                    $minimumYoAmount = 500.00;
+                    if ($finalAmount < $minimumYoAmount) {
+                        $topUp = $minimumYoAmount - $finalAmount;
+                        $serviceChargeAmount = round($serviceChargeAmount + $topUp, 2);
+                        $finalAmount = $minimumYoAmount;
+                        $output[] = "[INFO] Applied minimum Yo amount top-up: " . number_format($topUp, 2) . " UGX (final total set to 500.00 UGX)\n";
+                    }
+
                     // STEP 3: Create invoice
                     $invoice = Invoice::create([
                         'invoice_number' => 'ORD' . now()->format('ymdHis') . Str::upper(Str::random(4)),
@@ -346,6 +355,10 @@ class AutomatedTestController extends Controller
                         $trackingLines[] = 'Simulated payment completed immediately';
                     }
 
+                    // LIVE mode can spend time polling Yo; ensure DB connection is fresh before writes.
+                    DB::disconnect();
+                    DB::reconnect();
+
                     $transaction = Transaction::create([
                         'invoice_id' => $invoice->id,
                         'client_id' => $client->id,
@@ -414,9 +427,7 @@ class AutomatedTestController extends Controller
                     $output[] = "  - Queue behavior validated: " . ($paymentStatus === 'completed' ? 'PASS' : 'PENDING (live mode)') . "\n";
                     $output[] = "Scenario result: " . (($paymentStatus === 'failed') ? 'FAIL' : 'PASS') . "\n\n";
 
-                    DB::commit();
                 } catch (\Throwable $scenarioError) {
-                    DB::rollBack();
                     Log::error('Automated non-insurance scenario failed', [
                         'scenario' => $scenario['name'] ?? 'unknown',
                         'error' => $scenarioError->getMessage(),
