@@ -36,6 +36,7 @@
                 </div>
             </div>
 
+            
             <!-- Total Balance -->
             <div class="bg-white rounded-lg shadow-md p-6 border border-gray-200">
                 <div class="flex items-center">
