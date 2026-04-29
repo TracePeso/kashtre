@@ -10,9 +10,9 @@ jobs:
   deploy:
     name: Deploy Demo Branch
     runs-on: ubuntu-latest
-    env:
-      ACTIONS_RUNNER_DEBUG: true
-      ACTIONS_STEP_DEBUG: true
+    concurrency:
+      group: deploy-demo
+      cancel-in-progress: true
 
     steps:
       # Step 1: Checkout the code
@@ -41,8 +41,7 @@ jobs:
       # Step 5: Test SSH Connection
       - name: Test SSH Connection
         run: |
-          sshpass -p "${{ secrets.FTP_PASSWORD }}" ssh -o StrictHostKeyChecking=no -p 65002 ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }} whoami
-          sshpass -p "${{ secrets.FTP_PASSWORD }}" ssh -o StrictHostKeyChecking=no -p 65002 ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }} "echo 'Test command execution' && ls -la /home/u242329769/domains/demo.kashtre.com/public_html"
+          sshpass -p "${{ secrets.FTP_PASSWORD }}" ssh -o StrictHostKeyChecking=no -p 65002 ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }} "echo 'SSH connection ok' && whoami"
 
       # Step 6: Deploy to Hostinger via SSH
       - name: Deploy to Hostinger
@@ -56,11 +55,13 @@ jobs:
           echo "Local files in GITHUB_WORKSPACE:"
           ls -la $GITHUB_WORKSPACE
 
-          # Copy files using rsync with sshpass, excluding .env and .htaccess
+          # Copy files using rsync with sshpass, excluding local-only/sensitive files
           sshpass -p "$FTP_PASSWORD" rsync -avz --exclude '.env' --exclude '.htaccess' -e "ssh -p 65002 -o StrictHostKeyChecking=no" $GITHUB_WORKSPACE/ ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }}:"$DEPLOY_DIR"
 
           # Step 1: Set permissions and create storage link
           sshpass -p "$FTP_PASSWORD" ssh -o StrictHostKeyChecking=no -p 65002 ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }} "cd /home/u242329769/domains/demo.kashtre.com/public_html && echo '✓ Setting permissions...' && chmod -R 755 storage bootstrap/cache 2>/dev/null || echo 'Warning: Could not set permissions' && echo '✓ Removing existing storage link...' && rm -f public/storage && echo '✓ Creating storage link...' && php artisan storage:link"
 
           # Step 2: Run migrations and optimize
-          sshpass -p "$FTP_PASSWORD" ssh -o StrictHostKeyChecking=no -p 65002 ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }} "cd /home/u242329769/domains/demo.kashtre.com/public_html && echo '✓ Removing problematic migration files...' && rm -f database/migrations/2025_08_27_055414_add_branch_id_foreign_key_to_transactions_table.php && rm -f database/migrations/2025_09_05_171619_add_client_and_invoice_columns_to_transactions_table.php && rm -f database/migrations/2025_09_05_172316_add_yo_to_provider_enum_in_transactions_table.php && rm -f database/migrations/2025_09_05_173557_add_external_reference_to_transactions_table.php && rm -f database/migrations/2025_10_23_143816_create_transactions_table.php && echo '✓ Running migrations...' && php artisan migrate --force --verbose && echo '✓ Checking migration status...' && php artisan migrate:status && echo '✓ Clearing and caching...' && php artisan optimize:clear && php artisan view:clear && php artisan config:cache && php artisan route:cache && echo '✓ Deployment completed successfully!'"
+          sshpass -p "$FTP_PASSWORD" ssh -o StrictHostKeyChecking=no -p 65002 ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }} "cd /home/u242329769/domains/demo.kashtre.com/public_html && echo '✓ Running migrations...' && php artisan migrate --force --verbose && echo '✓ Checking migration status...' && php artisan migrate:status && echo '✓ Clearing and caching...' && php artisan optimize:clear && php artisan view:clear && php artisan config:cache && (php artisan route:cache || echo 'Warning: route:cache skipped') && echo '✓ Deployment completed successfully!'"
+
+          
