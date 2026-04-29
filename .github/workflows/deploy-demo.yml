@@ -13,6 +13,7 @@ jobs:
     concurrency:
       group: deploy-demo
       cancel-in-progress: true
+      
 
     steps:
       # Step 1: Checkout the code
@@ -64,4 +65,3 @@ jobs:
           # Step 2: Run migrations and optimize
           sshpass -p "$FTP_PASSWORD" ssh -o StrictHostKeyChecking=no -p 65002 ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }} "cd /home/u242329769/domains/demo.kashtre.com/public_html && echo '✓ Running migrations...' && php artisan migrate --force --verbose && echo '✓ Checking migration status...' && php artisan migrate:status && echo '✓ Clearing and caching...' && php artisan optimize:clear && php artisan view:clear && php artisan config:cache && (php artisan route:cache || echo 'Warning: route:cache skipped') && echo '✓ Deployment completed successfully!'"
 
-          
