@@ -1835,6 +1835,18 @@ class MoneyTrackingService
     private function transferMoney($fromAccount, $toAccount, $amount, $transferType, $invoice = null, $item = null, $description = '', $packageTrackingNumber = null, $type = 'credit')
     {
         $isCreditEntry = ($fromAccount === null);
+        $isInsuranceFlow = false;
+        $insuranceLabel = null;
+        if ($invoice) {
+            $paymentMethods = $invoice->payment_methods ?? [];
+            if (is_string($paymentMethods)) {
+                $paymentMethods = json_decode($paymentMethods, true) ?? [];
+            }
+            $isInsuranceFlow = in_array('insurance', (array) $paymentMethods, true);
+            if ($isInsuranceFlow) {
+                $insuranceLabel = $this->resolveInsuranceCounterpartyLabel($invoice);
+            }
+        }
         
         Log::info("=== MONEY TRANSFER STARTED ===", [
             'from_account_id' => $fromAccount ? $fromAccount->id : 'null (credit entry)',
@@ -1864,7 +1876,12 @@ class MoneyTrackingService
         // Generate source description
         if ($isCreditEntry) {
             $source = 'Credit Entry';
-            if ($invoice && $invoice->client) {
+            if ($isInsuranceFlow && $insuranceLabel) {
+                $source = $insuranceLabel . " (Insurance Funding)";
+                if ($invoice && $invoice->invoice_number) {
+                    $source .= " (Invoice: {$invoice->invoice_number})";
+                }
+            } elseif ($invoice && $invoice->client) {
                 $source = $invoice->client->name . " (Credit)";
                 if ($invoice->invoice_number) {
                     $source .= " (Invoice: {$invoice->invoice_number})";
@@ -1872,7 +1889,12 @@ class MoneyTrackingService
             }
         } else {
             $source = $fromAccount->name;
-            if ($invoice && $invoice->client) {
+            if ($isInsuranceFlow && $insuranceLabel) {
+                $source = $insuranceLabel;
+                if ($invoice && $invoice->invoice_number) {
+                    $source .= " (Invoice: {$invoice->invoice_number})";
+                }
+            } elseif ($invoice && $invoice->client) {
                 $source = $invoice->client->name;
                 if ($invoice->invoice_number) {
                     $source .= " (Invoice: {$invoice->invoice_number})";
@@ -1884,7 +1906,12 @@ class MoneyTrackingService
         
         // Generate destination description
         $destination = $toAccount->name;
-        if (in_array($toAccount->type, ['business_account', 'kashtre_account'])) {
+        if ($isInsuranceFlow && $insuranceLabel) {
+            $destination = $insuranceLabel . " - {$toAccount->name}";
+            if ($invoice && $invoice->invoice_number) {
+                $destination .= " (Invoice: {$invoice->invoice_number})";
+            }
+        } elseif (in_array($toAccount->type, ['business_account', 'kashtre_account'])) {
             if ($invoice && $invoice->invoice_number) {
                 $destination .= " (Invoice: {$invoice->invoice_number})";
             }
@@ -2045,6 +2072,53 @@ class MoneyTrackingService
         ]);
 
         return $transfer;
+    }
+
+    /**
+     * Resolve a readable insurance counterparty label for transfer source/destination.
+     */
+    private function resolveInsuranceCounterpartyLabel(Invoice $invoice): string
+    {
+        $snapshot = is_array($invoice->insurance_authorization_snapshot ?? null)
+            ? $invoice->insurance_authorization_snapshot
+            : json_decode($invoice->insurance_authorization_snapshot ?? '[]', true);
+
+        $vendors = is_array($snapshot['vendors'] ?? null) ? $snapshot['vendors'] : [];
+        if (!empty($vendors)) {
+            $names = collect($vendors)
+                ->filter(function ($vendor) {
+                    $status = strtolower((string) ($vendor['authorization_status'] ?? ''));
+                    if (in_array($status, ['skipped', 'failed'], true)) {
+                        return false;
+                    }
+
+                    $submitted = (float) ($vendor['amount_submitted'] ?? 0);
+                    $insuranceTotal = (float) ($vendor['insurance_total'] ?? $vendor['insurance_portion'] ?? 0);
+                    $clientAllocated = (float) ($vendor['client_portion_allocated'] ?? $vendor['client_total'] ?? 0);
+
+                    // Only include insurers that actually participated financially.
+                    return ($submitted > 0) || ($insuranceTotal > 0) || ($clientAllocated > 0);
+                })
+                ->map(function ($vendor) {
+                    return trim((string) ($vendor['vendor_name'] ?? $vendor['insurance_company_name'] ?? ''));
+                })
+                ->filter()
+                ->unique()
+                ->values();
+
+            if ($names->count() === 1) {
+                return $names->first();
+            }
+            if ($names->count() > 1) {
+                return 'Insurance Companies: ' . $names->implode(', ');
+            }
+        }
+
+        if ($invoice->client && $invoice->client->insuranceCompany) {
+            return (string) $invoice->client->insuranceCompany->name;
+        }
+
+        return 'Insurance Company';
     }
 
     /**

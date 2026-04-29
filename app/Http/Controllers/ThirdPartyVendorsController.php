@@ -38,19 +38,78 @@ class ThirdPartyVendorsController extends Controller
                 $data = $response->json();
                 $vendors = $data['data'] ?? [];
                 
-                // Load local ThirdPartyPayer records and merge status information
+                // Resolve local insurance companies by third-party vendor id
+                $insuranceCompanies = \App\Models\InsuranceCompany::where('business_id', $business->id)
+                    ->whereNotNull('third_party_business_id')
+                    ->get(['id', 'third_party_business_id']);
+
+                $insuranceCompanyIdsByVendorId = [];
+                foreach ($insuranceCompanies as $company) {
+                    $vendorKey = (string) $company->third_party_business_id;
+                    $insuranceCompanyIdsByVendorId[$vendorKey] = $insuranceCompanyIdsByVendorId[$vendorKey] ?? [];
+                    $insuranceCompanyIdsByVendorId[$vendorKey][] = (int) $company->id;
+                }
+
+                // Load local ThirdPartyPayer records and merge financial summary
                 $payers = \App\Models\ThirdPartyPayer::where('business_id', $business->id)
                     ->where('type', 'insurance_company')
                     ->whereNull('client_id')
                     ->get()
-                    ->keyBy('insurance_company_id');
-                
-                // Merge payer status into vendor data
+                    ->keyBy(fn ($payer) => (int) $payer->insurance_company_id);
+
+                $payerIds = $payers->pluck('id')->all();
+                $creditTotalsByPayer = \App\Models\ThirdPartyPayerBalanceHistory::query()
+                    ->selectRaw('third_party_payer_id, COALESCE(SUM(change_amount), 0) as total')
+                    ->whereIn('third_party_payer_id', $payerIds)
+                    ->where('transaction_type', 'credit')
+                    ->groupBy('third_party_payer_id')
+                    ->pluck('total', 'third_party_payer_id');
+
+                $debitTotalsByPayer = \App\Models\ThirdPartyPayerBalanceHistory::query()
+                    ->selectRaw('third_party_payer_id, COALESCE(SUM(change_amount), 0) as total')
+                    ->whereIn('third_party_payer_id', $payerIds)
+                    ->where('transaction_type', 'debit')
+                    ->groupBy('third_party_payer_id')
+                    ->pluck('total', 'third_party_payer_id');
+
+                $latestBalanceByPayer = \App\Models\ThirdPartyPayerBalanceHistory::query()
+                    ->selectRaw('third_party_payer_id, MAX(id) as latest_id')
+                    ->whereIn('third_party_payer_id', $payerIds)
+                    ->groupBy('third_party_payer_id')
+                    ->pluck('latest_id', 'third_party_payer_id');
+
+                $latestHistories = \App\Models\ThirdPartyPayerBalanceHistory::query()
+                    ->whereIn('id', $latestBalanceByPayer->filter()->values())
+                    ->get(['id', 'third_party_payer_id', 'new_balance'])
+                    ->keyBy('third_party_payer_id');
+
+                // Merge payer status and balances into vendor data
                 foreach ($vendors as &$vendor) {
-                    if (isset($payers[$vendor['id']])) {
-                        $payer = $payers[$vendor['id']];
+                    $vendorInsuranceCompanyIds = $insuranceCompanyIdsByVendorId[(string) ($vendor['id'] ?? '')] ?? [];
+                    $payer = null;
+                    foreach ($vendorInsuranceCompanyIds as $companyId) {
+                        if (isset($payers[$companyId])) {
+                            $payer = $payers[$companyId];
+                            break;
+                        }
+                    }
+
+                    if (!$payer && isset($payers[(int) ($vendor['id'] ?? 0)])) {
+                        // Backward-compatible fallback for legacy mappings.
+                        $payer = $payers[(int) ($vendor['id'] ?? 0)];
+                    }
+
+                    if ($payer) {
+                        $creditTotal = (float) ($creditTotalsByPayer[$payer->id] ?? 0);
+                        $debitTotal = abs((float) ($debitTotalsByPayer[$payer->id] ?? 0));
+                        $currentBalance = isset($latestHistories[$payer->id])
+                            ? (float) $latestHistories[$payer->id]->new_balance
+                            : (float) ($payer->current_balance ?? 0);
+
                         $vendor['payer_status'] = $payer->status;
                         $vendor['payer_id'] = $payer->id;
+                        $vendor['total_balance'] = abs($debitTotal - $creditTotal);
+                        $vendor['current_balance'] = $currentBalance;
                     }
                 }
                 unset($vendor);

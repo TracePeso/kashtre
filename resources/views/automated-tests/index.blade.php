@@ -154,6 +154,11 @@
                 return;
             }
 
+            if (paymentMode === 'live' && fullSuite) {
+                alert('Live mode sends a real Yo prompt. Full suite is disabled in live mode to avoid multiple prompts.');
+                document.getElementById('full-suite').checked = false;
+            }
+
             // Disable button and show output section
             button.disabled = true;
             button.classList.add('opacity-50', 'cursor-not-allowed');
@@ -172,7 +177,7 @@
                     item_count: itemCount,
                     max_amount: maxAmount,
                     item_types: selectedTypes,
-                    full_suite: fullSuite,
+                    full_suite: paymentMode === 'live' ? false : fullSuite,
                     payment_mode: paymentMode
                 })
             })
@@ -233,5 +238,26 @@
             };
             return text.replace(/[&<>"']/g, m => map[m]);
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const paymentModeEl = document.getElementById('payment-mode');
+            const fullSuiteEl = document.getElementById('full-suite');
+            if (!paymentModeEl || !fullSuiteEl) return;
+
+            const syncLiveSafety = () => {
+                const isLive = paymentModeEl.value === 'live';
+                if (isLive) {
+                    fullSuiteEl.checked = false;
+                    fullSuiteEl.disabled = true;
+                    fullSuiteEl.closest('label')?.classList.add('opacity-60');
+                } else {
+                    fullSuiteEl.disabled = false;
+                    fullSuiteEl.closest('label')?.classList.remove('opacity-60');
+                }
+            };
+
+            paymentModeEl.addEventListener('change', syncLiveSafety);
+            syncLiveSafety();
+        });
     </script>
 </x-app-layout>

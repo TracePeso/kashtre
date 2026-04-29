@@ -126,9 +126,9 @@ class UserController extends Controller
                 'allowed_branches' => $validated['allowed_branches'] ?? [],
                 'permissions' => $validated['permissions_menu'],
                 'password' => '',
-                // Auto-set balances for cashier users
-                'total_balance' => $isCashier ? 0.00 : null,
-                'current_balance' => $isCashier ? 0.00 : null,
+                // Keep balances non-null for all users (DB constraint on some environments).
+                'total_balance' => 0.00,
+                'current_balance' => 0.00,
             ]);
             // Send password setup link (uses Laravel’s password reset logic)
             Password::sendResetLink(['email' => $user->email]);

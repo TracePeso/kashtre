@@ -82,6 +82,12 @@
                             @if($thirdPartyPayer)
                                 <dl class="space-y-3 mb-4">
                                     <div>
+                                        <dt class="text-sm font-medium text-gray-500">Total Balance</dt>
+                                        <dd class="mt-1 text-lg font-semibold text-gray-900">
+                                            UGX {{ number_format(abs($totalDebits - $totalCredits), 2) }}
+                                        </dd>
+                                    </div>
+                                    <div>
                                         <dt class="text-sm font-medium text-gray-500">Current Balance</dt>
                                         <dd class="mt-1 text-lg font-semibold {{ $currentBalance < 0 ? 'text-red-600' : ($currentBalance > 0 ? 'text-green-600' : 'text-gray-900') }}">
                                             UGX {{ number_format(abs($currentBalance), 2) }}
@@ -135,78 +141,6 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Vendor Management / Blocking Card -->
-            @if($thirdPartyPayer)
-            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mt-6">
-                <div class="p-6">
-                    @if($thirdPartyPayer->isActive())
-                        <!-- Active - show suspend/block buttons -->
-                        <div class="space-y-4">
-                            <h3 class="text-lg font-medium text-gray-900 mb-4">Vendor Management</h3>
-                            <p class="text-sm text-gray-600 mb-4">This vendor is currently active. You can suspend or block it.</p>
-                            
-                            <!-- Suspend Form -->
-                            <div class="border-l-4 border-yellow-400 bg-yellow-50 p-4 rounded">
-                                <h4 class="font-semibold text-yellow-900 mb-3">⊘ Suspend Vendor</h4>
-                                <p class="text-sm text-yellow-800 mb-3">Temporarily suspend this vendor. They can be reactivated later.</p>
-                                <form action="{{ route('third-party-vendors.block', $vendor['id']) }}" method="POST" class="space-y-3">
-                                    @csrf
-                                    <input type="hidden" name="status" value="suspended">
-                                    <div>
-                                        <label class="block text-sm font-medium text-yellow-900 mb-2">Reason for suspension:</label>
-                                        <textarea name="reason" required placeholder="Enter reason for suspension..."
-                                                  class="w-full px-3 py-2 border border-yellow-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500" rows="2"></textarea>
-                                    </div>
-                                    <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg bg-yellow-600 text-white hover:bg-yellow-700">
-                                        Suspend
-                                    </button>
-                                </form>
-                            </div>
-
-                            <!-- Block Form -->
-                            <div class="border-l-4 border-red-400 bg-red-50 p-4 rounded">
-                                <h4 class="font-semibold text-red-900 mb-3">✕ Block Vendor</h4>
-                                <p class="text-sm text-red-800 mb-3">Block this vendor. This will prevent any access to this vendor's data.</p>
-                                <form action="{{ route('third-party-vendors.block', $vendor['id']) }}" method="POST" class="space-y-3">
-                                    @csrf
-                                    <input type="hidden" name="status" value="blocked">
-                                    <div>
-                                        <label class="block text-sm font-medium text-red-900 mb-2">Reason for blocking:</label>
-                                        <textarea name="reason" required placeholder="Enter reason for blocking..."
-                                                  class="w-full px-3 py-2 border border-red-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500" rows="2"></textarea>
-                                    </div>
-                                    <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700"
-                                            onclick="return confirm('Are you sure you want to block this vendor?')">
-                                        Block
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-                    @else
-                        <!-- Suspended or Blocked - show reactivate button -->
-                        <div class="border-l-4 border-green-400 bg-green-50 p-4 rounded">
-                            <h3 class="text-lg font-medium text-gray-900 mb-2">Vendor Management</h3>
-                            <h4 class="font-semibold text-green-900 mb-3 mt-3">✓ Reactivate Vendor</h4>
-                            <p class="text-sm text-green-800 mb-4">
-                                This vendor is currently {{ $thirdPartyPayer->status === 'suspended' ? 'suspended' : 'blocked' }}.
-                                @if($thirdPartyPayer->block_reason)
-                                    <br><strong>Reason:</strong> {{ $thirdPartyPayer->block_reason }}
-                                @endif
-                                <br>Click below to reactivate it.
-                            </p>
-                            <form action="{{ route('third-party-vendors.reactivate', $vendor['id']) }}" method="POST" class="inline">
-                                @csrf
-                                <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700"
-                                        onclick="return confirm('Are you sure you want to reactivate this vendor?')">
-                                    Reactivate Vendor
-                                </button>
-                            </form>
-                        </div>
-                    @endif
-                </div>
-            </div>
-            @endif
 
             <!-- Tabs Section -->
             @if($thirdPartyPayer)
@@ -506,6 +440,76 @@
                         <p class="text-sm text-gray-500">
                             You do not have permission to edit third party payer exclusions. Contact an administrator if you need this changed.
                         </p>
+                    @endif
+                </div>
+            </div>
+
+            <!-- Vendor Management / Blocking Card -->
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mt-6">
+                <div class="p-6">
+                    @if($thirdPartyPayer->isActive())
+                        <!-- Active - show suspend/block buttons -->
+                        <div class="space-y-4">
+                            <h3 class="text-lg font-medium text-gray-900 mb-4">Vendor Management</h3>
+                            <p class="text-sm text-gray-600 mb-4">This vendor is currently active. You can suspend or block it.</p>
+                            
+                            <!-- Suspend Form -->
+                            <div class="border-l-4 border-yellow-400 bg-yellow-50 p-4 rounded">
+                                <h4 class="font-semibold text-yellow-900 mb-3">⊘ Suspend Vendor</h4>
+                                <p class="text-sm text-yellow-800 mb-3">Temporarily suspend this vendor. They can be reactivated later.</p>
+                                <form action="{{ route('third-party-vendors.block', $vendor['id']) }}" method="POST" class="space-y-3">
+                                    @csrf
+                                    <input type="hidden" name="status" value="suspended">
+                                    <div>
+                                        <label class="block text-sm font-medium text-yellow-900 mb-2">Reason for suspension:</label>
+                                        <textarea name="reason" required placeholder="Enter reason for suspension..."
+                                                  class="w-full px-3 py-2 border border-yellow-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500" rows="2"></textarea>
+                                    </div>
+                                    <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg bg-yellow-600 text-white hover:bg-yellow-700">
+                                        Suspend
+                                    </button>
+                                </form>
+                            </div>
+
+                            <!-- Block Form -->
+                            <div class="border-l-4 border-red-400 bg-red-50 p-4 rounded">
+                                <h4 class="font-semibold text-red-900 mb-3">✕ Block Vendor</h4>
+                                <p class="text-sm text-red-800 mb-3">Block this vendor. This will prevent any access to this vendor's data.</p>
+                                <form action="{{ route('third-party-vendors.block', $vendor['id']) }}" method="POST" class="space-y-3">
+                                    @csrf
+                                    <input type="hidden" name="status" value="blocked">
+                                    <div>
+                                        <label class="block text-sm font-medium text-red-900 mb-2">Reason for blocking:</label>
+                                        <textarea name="reason" required placeholder="Enter reason for blocking..."
+                                                  class="w-full px-3 py-2 border border-red-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500" rows="2"></textarea>
+                                    </div>
+                                    <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700"
+                                            onclick="return confirm('Are you sure you want to block this vendor?')">
+                                        Block
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    @else
+                        <!-- Suspended or Blocked - show reactivate button -->
+                        <div class="border-l-4 border-green-400 bg-green-50 p-4 rounded">
+                            <h3 class="text-lg font-medium text-gray-900 mb-2">Vendor Management</h3>
+                            <h4 class="font-semibold text-green-900 mb-3 mt-3">✓ Reactivate Vendor</h4>
+                            <p class="text-sm text-green-800 mb-4">
+                                This vendor is currently {{ $thirdPartyPayer->status === 'suspended' ? 'suspended' : 'blocked' }}.
+                                @if($thirdPartyPayer->block_reason)
+                                    <br><strong>Reason:</strong> {{ $thirdPartyPayer->block_reason }}
+                                @endif
+                                <br>Click below to reactivate it.
+                            </p>
+                            <form action="{{ route('third-party-vendors.reactivate', $vendor['id']) }}" method="POST" class="inline">
+                                @csrf
+                                <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700"
+                                        onclick="return confirm('Are you sure you want to reactivate this vendor?')">
+                                    Reactivate Vendor
+                                </button>
+                            </form>
+                        </div>
                     @endif
                 </div>
             </div>

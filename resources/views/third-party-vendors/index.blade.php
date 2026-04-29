@@ -53,6 +53,12 @@
                                             Status
                                         </th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            Total Balance
+                                        </th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            Current Balance
+                                        </th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                             Connected At
                                         </th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
@@ -102,6 +108,23 @@
                                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
                                                         Inactive
                                                     </span>
+                                                @endif
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                                                @if(isset($vendor['total_balance']))
+                                                    UGX {{ number_format(abs((float) $vendor['total_balance']), 2) }}
+                                                @else
+                                                    <span class="text-gray-400">N/A</span>
+                                                @endif
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                                @if(isset($vendor['current_balance']))
+                                                    @php $currentBalance = (float) $vendor['current_balance']; @endphp
+                                                    <span class="{{ $currentBalance < 0 ? 'text-red-600' : ($currentBalance > 0 ? 'text-green-600' : 'text-gray-900 dark:text-gray-100') }}">
+                                                        UGX {{ number_format(abs($currentBalance), 2) }}
+                                                    </span>
+                                                @else
+                                                    <span class="text-gray-400">N/A</span>
                                                 @endif
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">

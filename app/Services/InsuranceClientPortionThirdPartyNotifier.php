@@ -162,8 +162,8 @@ class InsuranceClientPortionThirdPartyNotifier
                 continue;
             }
 
-            // Look up the third-party payer to get insurance_company_id (third-party system ID)
-            $thirdPartyPayer  = \App\Models\ThirdPartyPayer::find($vendorSnap['vendor_id'] ?? null);
+            // Resolve the local third-party payer robustly (snapshot vendor_id is not always local payer id).
+            $thirdPartyPayer  = self::resolveLocalThirdPartyPayer($invoice, $vendorSnap, $vendorName);
             $insuranceCompany = $thirdPartyPayer?->insuranceCompany;
 
             if (!$insuranceCompany || !$insuranceCompany->third_party_business_id) {
@@ -214,6 +214,54 @@ class InsuranceClientPortionThirdPartyNotifier
                 ]);
             }
         }
+    }
+
+    /**
+     * Resolve a local ThirdPartyPayer from cascade snapshot fields.
+     */
+    private static function resolveLocalThirdPartyPayer(Invoice $invoice, array $vendorSnap, string $vendorName): ?\App\Models\ThirdPartyPayer
+    {
+        $baseQuery = \App\Models\ThirdPartyPayer::query()
+            ->where('business_id', $invoice->business_id)
+            ->where('type', 'insurance_company')
+            ->whereNull('client_id');
+
+        $vendorId = $vendorSnap['vendor_id'] ?? null;
+        if ($vendorId !== null) {
+            // 1) Direct local payer id
+            $payer = (clone $baseQuery)->where('id', (int) $vendorId)->first();
+            if ($payer) {
+                return $payer;
+            }
+
+            // 2) Snapshot vendor_id may actually be local insurance_company_id
+            $payer = (clone $baseQuery)->where('insurance_company_id', (int) $vendorId)->first();
+            if ($payer) {
+                return $payer;
+            }
+
+            // 3) Snapshot vendor_id may be third_party_business_id on InsuranceCompany
+            $insuranceCompany = \App\Models\InsuranceCompany::query()
+                ->where('business_id', $invoice->business_id)
+                ->where('third_party_business_id', (int) $vendorId)
+                ->first();
+            if ($insuranceCompany) {
+                $payer = (clone $baseQuery)->where('insurance_company_id', $insuranceCompany->id)->first();
+                if ($payer) {
+                    return $payer;
+                }
+            }
+        }
+
+        // 4) Fallback by vendor name (most stable in snapshot rows)
+        if ($vendorName !== '') {
+            $payer = (clone $baseQuery)->where('name', $vendorName)->first();
+            if ($payer) {
+                return $payer;
+            }
+        }
+
+        return null;
     }
 
     /**

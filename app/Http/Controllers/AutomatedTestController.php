@@ -105,6 +105,11 @@ class AutomatedTestController extends Controller
             $paymentMode = (string) $request->input('payment_mode', 'simulated');
             $paymentMode = in_array($paymentMode, ['simulated', 'live'], true) ? $paymentMode : 'simulated';
             $runFullSuite = filter_var($request->input('full_suite', false), FILTER_VALIDATE_BOOLEAN);
+            if ($paymentMode === 'live' && $runFullSuite) {
+                // Safety: avoid sending multiple real Yo prompts in one run.
+                $runFullSuite = false;
+                $output[] = "[INFO] Live mode detected: full suite disabled to prevent multiple payment prompts.\n";
+            }
 
             $itemCount = intval($request->input('item_count', 50)); // Allow up to 50 items to fill budget
             $itemCount = max(1, min($itemCount, 100)); // Ensure between 1 and 100

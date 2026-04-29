@@ -181,7 +181,15 @@ class SimulateSuccessfulPayments extends Command
                                     ]);
                                 }
                             }
-                            $invoiceItems = is_array($invoice->items) ? $invoice->items : json_decode($invoice->items, true) ?? [];
+                            // Ensure insurance itemized statement rows are created (informational only).
+                            $items = is_array($invoice->items) ? $invoice->items : json_decode($invoice->items, true) ?? [];
+                            $balanceStatements = $moneyTrackingService->processPaymentCompleted($invoice, $items);
+                            Log::info("Insurance balance statements created after simulated payment completion", [
+                                'invoice_id' => $invoice->id,
+                                'balance_statements_count' => count($balanceStatements ?? []),
+                            ]);
+
+                            $invoiceItems = $items;
                             $this->createPackageTrackingRecords($invoice, $invoiceItems);
                             $queuedItems = $this->queueItemsAtServicePoints($invoice, $invoiceItems);
                         } else {

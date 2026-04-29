@@ -216,6 +216,13 @@ class User extends Authenticatable
     {
         static::creating(function ($user) {
             $user->uuid = (string) Str::uuid();
+            // Backward-compatible guard for environments where balance columns are NOT NULL without defaults.
+            if ($user->total_balance === null) {
+                $user->total_balance = 0.00;
+            }
+            if ($user->current_balance === null) {
+                $user->current_balance = 0.00;
+            }
         });
     }
 

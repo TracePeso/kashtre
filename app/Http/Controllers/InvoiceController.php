@@ -2096,55 +2096,8 @@ class InvoiceController extends Controller
                     $insuranceAuthorization = $snapshot;
                 }
 
-                // Create per-vendor balance history debit entries now that snapshot is finalised
-                $authVendors = $insuranceAuthorization['vendors'] ?? [];
-                $isMultiVendorAuth = !empty($insuranceAuthorization['multi_vendor']) && !empty($authVendors);
-
-                if ($isMultiVendorAuth) {
-                    foreach ($authVendors as $vendorData) {
-                        $vendorName = $vendorData['vendor_name'] ?? $vendorData['insurance_company_name'] ?? null;
-                        $vendorInsTotal = (float) ($vendorData['insurance_total'] ?? 0);
-                        if (!$vendorName || $vendorInsTotal <= 0) continue;
-
-                        $vendorPayer = \App\Models\ThirdPartyPayer::where('name', $vendorName)
-                            ->where('business_id', $business->id)
-                            ->where('type', 'insurance_company')
-                            ->whereNull('client_id')
-                            ->first();
-                        if (!$vendorPayer) continue;
-
-                        $existingDebit = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $vendorPayer->id)
-                            ->where('invoice_id', $invoice->id)
-                            ->where('transaction_type', 'debit')
-                            ->first();
-                        if (!$existingDebit) {
-                            \App\Models\ThirdPartyPayerBalanceHistory::recordDebit(
-                                $vendorPayer, $vendorInsTotal,
-                                'Invoice ' . $invoice->invoice_number,
-                                $invoice->invoice_number, null, 'insurance',
-                                $invoice->id, $client->id
-                            );
-                            $vendorPayer->decrement('current_balance', $vendorInsTotal);
-                        }
-                    }
-                } elseif ($thirdPartyPayer) {
-                    $singleInsTotal = (float) ($insuranceAuthorization['insurance_total'] ?? 0);
-                    if ($singleInsTotal > 0) {
-                        $existingDebit = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-                            ->where('invoice_id', $invoice->id)
-                            ->where('transaction_type', 'debit')
-                            ->first();
-                        if (!$existingDebit) {
-                            \App\Models\ThirdPartyPayerBalanceHistory::recordDebit(
-                                $thirdPartyPayer, $singleInsTotal,
-                                'Invoice ' . $invoice->invoice_number,
-                                $invoice->invoice_number, null, 'insurance',
-                                $invoice->id, $client->id
-                            );
-                            $thirdPartyPayer->decrement('current_balance', $singleInsTotal);
-                        }
-                    }
-                }
+                // Do not post vendor debit entries at authorization time.
+                // Vendor debits/credits are posted only on successful payment completion.
 
                 $responseData['authorization_status'] = $authStatus;
                 // For multi-vendor: client payment is the FINAL client_total (after all vendors cascade)
@@ -4166,12 +4119,45 @@ class InvoiceController extends Controller
         $vendorResults       = [];
         $amountForNextVendor = (float) $invoice->total_amount;
         $totalInsuranceTotal = 0.0;
-        $finalClientTotal    = $amountForNextVendor;
+        $finalClientTotal    = 0.0;
         $allWarnings         = [];
+        $cascadeBlocked      = false;
 
         foreach ($clientVendors as $clientVendor) {
             $thirdPartyPayer  = $clientVendor->vendor; // ThirdPartyPayer
             $insuranceCompany = $thirdPartyPayer?->insuranceCompany;
+
+            if ($cascadeBlocked) {
+                $vendorResults[] = [
+                    'vendor_id'               => $clientVendor->third_party_payer_id,
+                    'vendor_name'             => $insuranceCompany?->name ?? 'Unknown Insurance',
+                    'priority'                => $clientVendor->priority,
+                    'is_open_enrollment'      => $clientVendor->is_open_enrollment,
+                    'amount_submitted'        => 0.0,
+                    'authorization_reference' => null,
+                    'client_total'            => 0.0,
+                    'insurance_total'         => 0.0,
+                    'authorization_status'    => 'skipped',
+                    'error'                   => 'Cascade stopped because a higher-priority insurer authorization failed.',
+                ];
+                continue;
+            }
+
+            if ($amountForNextVendor <= 0) {
+                $vendorResults[] = [
+                    'vendor_id'               => $clientVendor->third_party_payer_id,
+                    'vendor_name'             => $insuranceCompany?->name ?? 'Unknown Insurance',
+                    'priority'                => $clientVendor->priority,
+                    'is_open_enrollment'      => $clientVendor->is_open_enrollment,
+                    'amount_submitted'        => 0.0,
+                    'authorization_reference' => null,
+                    'client_total'            => 0.0,
+                    'insurance_total'         => 0.0,
+                    'authorization_status'    => 'skipped',
+                    'error'                   => 'No remaining amount to cascade.',
+                ];
+                continue;
+            }
 
             if (!$insuranceCompany || !$insuranceCompany->third_party_business_id) {
                 Log::warning('[Kashtre] Multi-vendor cascade: skipping vendor — no third_party_business_id', [
@@ -4342,6 +4328,20 @@ class InvoiceController extends Controller
                     $vendorClientTotal = $expectedClientTotal;
                 }
 
+                // Only rejected/excluded amount should cascade to the next insurer.
+                // Deductible/co-pay/co-insurance stay as client responsibility.
+                $breakdown = is_array($authResult['breakdown'] ?? null) ? $authResult['breakdown'] : [];
+                $excludedFromBreakdown = (float) ($breakdown['excluded'] ?? 0);
+                $excludedItemsTotal = 0.0;
+                if (!empty($breakdown['excluded_items']) && is_array($breakdown['excluded_items'])) {
+                    foreach ($breakdown['excluded_items'] as $exRow) {
+                        $excludedItemsTotal += (float) ($exRow['amount'] ?? 0);
+                    }
+                }
+                $cascadeEligible = round(max($excludedFromBreakdown, $excludedItemsTotal), 2);
+                $cascadeEligible = min($cascadeEligible, $vendorClientTotal);
+                $nonCascadeClient = round(max(0, $vendorClientTotal - $cascadeEligible), 2);
+
                 $vendorResults[] = [
                     'vendor_id'               => $clientVendor->third_party_payer_id,
                     'vendor_name'             => $insuranceCompany->name,
@@ -4352,20 +4352,23 @@ class InvoiceController extends Controller
                     'authorization_reference' => $authResult['authorization_reference'] ?? null,
                     'client_total'            => $vendorClientTotal,
                     'insurance_total'         => $vendorInsuranceTotal,
-                    'breakdown'               => $authResult['breakdown'] ?? [],
+                    'breakdown'               => $breakdown,
+                    'client_total_cascade_eligible' => $cascadeEligible,
+                    'client_total_non_cascade' => $nonCascadeClient,
                     'authorization_status'    => $authResult['authorization_status'] ?? 'auto_approved',
                     'warnings'                => $authResult['warnings'] ?? [],
                 ];
 
                 $totalInsuranceTotal  += $vendorInsuranceTotal;
-                $finalClientTotal      = $vendorClientTotal;
-                $amountForNextVendor   = $vendorClientTotal; // remainder goes to next vendor
+                $finalClientTotal      += $nonCascadeClient;
+                $amountForNextVendor   = $cascadeEligible; // only rejected/excluded amount goes to next vendor
                 $allWarnings           = array_merge($allWarnings, $authResult['warnings'] ?? []);
 
                 // Reset deductible_remaining for subsequent vendors (they track their own)
                 $deductibleRemaining = 0;
             } else {
-                // Vendor auth failed — log it; next vendor still receives the same remaining amount
+                // Vendor auth failed — stop cascade.
+                // Multi-insurance should only pass remainders after a successful higher-priority authorization.
                 $errorMessage = is_array($authResult) ? ($authResult['message'] ?? 'Authorization failed') : 'No response';
                 Log::warning('[Kashtre] Multi-vendor cascade: authorization failed for vendor', [
                     'invoice_id'  => $invoice->id,
@@ -4385,6 +4388,7 @@ class InvoiceController extends Controller
                     'error'                   => $errorMessage,
                 ];
                 $allWarnings[] = "{$insuranceCompany->name}: {$errorMessage}";
+                $cascadeBlocked = true;
             }
         }
 
@@ -4441,6 +4445,9 @@ class InvoiceController extends Controller
 
         // Aggregate auth references (one per vendor, pipe-separated for storage)
         $authRefs = collect($vendorResults)->pluck('authorization_reference')->filter()->implode('|');
+
+        // Add any remaining unresolved cascaded amount to final client responsibility.
+        $finalClientTotal = round($finalClientTotal + max(0, $amountForNextVendor), 2);
 
         $snapshot = [
             'success'                  => true,

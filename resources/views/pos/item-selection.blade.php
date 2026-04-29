@@ -2474,15 +2474,6 @@
                     if (isInsuranceAuth) {
                         // Insurance client: show authorization success then collect client portion
                         const vendorBreakdown = data.insurance_authorization?.vendors ? data.insurance_authorization.vendors : [];
-                        const presentStatus = (status) => {
-                            const normalized = (status || '').toString().toLowerCase();
-                            // We still track pending_review in backend queues, but don't surface it as a
-                            // failure-like status in the POS cascade summary.
-                            if (!normalized || normalized === 'pending_review') {
-                                return '';
-                            }
-                            return normalized.replace(/_/g, ' ');
-                        };
                         const vendorBreakdownHtml = vendorBreakdown.length ? `
                             <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
                                 <p class="text-xs font-semibold tracking-wide text-slate-700 uppercase mb-2">Insurance Cascade Summary</p>
@@ -2494,7 +2485,6 @@
                                                 <span>Submitted: UGX ${fmt(v.amount_submitted)}</span>
                                                 <span>Insurer pays: UGX ${fmt(v.insurance_total)}</span>
                                                 <span>Client allocation: UGX ${fmt(v.client_portion_allocated ?? 0)}</span>
-                                                ${presentStatus(v.authorization_status) ? `<span>Status: ${presentStatus(v.authorization_status)}</span>` : ''}
                                             </div>
                                             
                                         </div>
