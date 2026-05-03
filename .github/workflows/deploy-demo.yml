@@ -33,7 +33,7 @@ jobs:
             export COMPOSER_ALLOW_SUPERUSER=1
             composer install --no-dev --optimize-autoloader --no-interaction
 
-            npm ci
+            npm install --no-audit --no-fund
             npm run build
 
             chown -R www-data:www-data /var/www/demo

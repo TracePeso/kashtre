@@ -30,6 +30,18 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --no-dev --optimize-autoloader --no-interaction --ignore-platform-reqs
 
+      # Step 3b: Build frontend assets (Vite)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install JS dependencies and build
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
       # Step 4: Install sshpass
       - name: Install sshpass
         run: |
