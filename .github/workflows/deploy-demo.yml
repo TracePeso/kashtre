@@ -1,0 +1,53 @@
+name: Deploy Demo
+
+on:
+  push:
+    branches:
+      - demo
+
+concurrency:
+  group: deploy-demo
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to VPS (Demo)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 187.124.117.169
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+
+            git config --global --add safe.directory /var/www/demo
+
+            cd /var/www/demo
+
+            git fetch origin
+            git reset --hard origin/demo
+
+            export COMPOSER_ALLOW_SUPERUSER=1
+            composer install --no-dev --optimize-autoloader --no-interaction
+
+            npm ci
+            npm run build
+
+            chown -R www-data:www-data /var/www/demo
+            chmod -R 775 storage bootstrap/cache
+
+            php artisan storage:link || true
+            php artisan migrate --force
+
+            php artisan optimize:clear
+
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+
+            php artisan queue:restart || true
+
+            systemctl restart php8.3-fpm
