@@ -277,6 +277,11 @@ class MultiVendorClientService
                     continue;
                 }
 
+                if (!$client->visit_id) {
+                    $results['failed'][$clientVendor->third_party_payer_id] = 'Client has no visit_id — assign or generate a visit before registering with the insurer';
+                    continue;
+                }
+
                 // Resolve the ThirdPartyPayer, then its InsuranceCompany, then the third-party system ID
                 $thirdPartyPayer = ThirdPartyPayer::find($clientVendor->third_party_payer_id);
                 if (!$thirdPartyPayer) {

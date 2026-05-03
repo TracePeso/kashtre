@@ -249,7 +249,25 @@
                                 <p class="text-sm text-gray-900">{{ $client->visit_id }}</p>
                             </div>
                         </div>
-                        
+
+                        @if(is_array($client->visit_authorization_sessions) && count($client->visit_authorization_sessions))
+                            <div class="mt-4 pt-4 border-t border-gray-200">
+                                <label class="text-sm font-medium text-gray-500">Insurer visit authorization (session from vendor)</label>
+                                <p class="text-xs text-gray-500 mb-2">Synced when Kashtre registers the visit with the third-party; validity follows the insurer’s authorization period (days).</p>
+                                <ul class="space-y-2">
+                                    @foreach($client->visit_authorization_sessions as $remoteInsurerId => $sess)
+                                        <li class="bg-white rounded border border-gray-200 p-3 text-sm">
+                                            <span class="text-xs text-gray-500">Remote insurer ID {{ $remoteInsurerId }}</span>
+                                            <p class="font-mono text-xs mt-1 break-all text-gray-900">{{ $sess['session_code'] ?? '—' }}</p>
+                                            <p class="text-gray-700 mt-1">
+                                                Session valid until:
+                                                {{ !empty($sess['session_expires_at']) ? \Carbon\Carbon::parse($sess['session_expires_at'])->format('Y-m-d H:i') : '—' }}
+                                            </p>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
                     </div>
 
                     <!-- Next of Kin Information -->

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Client;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Exception;
@@ -1129,7 +1130,18 @@ class ThirdPartyApiService
 
             if ($response->successful()) {
                 $data = $response->json();
-                
+
+                if (($data['success'] ?? false) && isset($data['data']['visit']) && $client instanceof Client) {
+                    try {
+                        $this->persistVisitAuthorizationSession($client, $data, (int) $insuranceCompanyId);
+                    } catch (\Throwable $e) {
+                        Log::warning('ThirdPartyApiService: could not persist visit authorization session on client', [
+                            'kashtre_client_id' => $client->client_id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
                 Log::info('API: registerAuthorizedVisit - Success', [
                     'kashtre_client_id' => $client->client_id,
                     'visit_id' => $visitId,
@@ -1161,5 +1173,34 @@ class ThirdPartyApiService
 
             return null;
         }
+    }
+
+    /**
+     * Store insurer-issued session code + expiry on the Kashtre client (keyed by remote insurance_company_id sent to the vendor API).
+     */
+    protected function persistVisitAuthorizationSession(Client $client, array $apiResponse, int $remoteInsuranceCompanyId): void
+    {
+        $visit = $apiResponse['data']['visit'] ?? null;
+        if (!$visit || empty($visit['session_code'])) {
+            return;
+        }
+
+        $key = (string) $remoteInsuranceCompanyId;
+        $sessions = $client->visit_authorization_sessions;
+        if (!is_array($sessions)) {
+            $sessions = [];
+        }
+
+        $sessions[$key] = [
+            'session_code' => $visit['session_code'],
+            'session_expires_at' => $visit['session_expires_at'] ?? null,
+            'third_party_authorized_visit_id' => $visit['id'] ?? null,
+            'visit_id' => $visit['visit_id'] ?? null,
+            'visit_authorization_period_days' => $visit['visit_authorization_period_days'] ?? null,
+            'stored_at' => now()->toIso8601String(),
+        ];
+
+        $client->visit_authorization_sessions = $sessions;
+        $client->saveQuietly();
     }
 }
