@@ -2486,7 +2486,6 @@
                                                 <span>Insurer pays: UGX ${fmt(v.insurance_total)}</span>
                                                 <span>Client allocation: UGX ${fmt(v.client_portion_allocated ?? 0)}</span>
                                             </div>
-                                            
                                         </div>
                                     `).join('')}
                                 </div>

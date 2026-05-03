@@ -831,26 +831,8 @@ class MoneyTrackingService
                                 ]);
                             }
 
-                            // Insurance portion credit remains insurer-side only.
-                            if ($invoice->amount_paid > 0 && $insurancePortion > 0) {
-                                // Create credit entry for the vendor (payment received)
-                                \App\Models\ThirdPartyPayerBalanceHistory::recordCredit(
-                                    $thirdPartyPayer,
-                                    $insurancePortion,
-                                    "Insurance payment received",
-                                    $invoice->invoice_number,
-                                    "Payment for invoice {$invoice->invoice_number}",
-                                    'insurance',
-                                    $client->id,
-                                    $invoice->id
-                                );
-                                Log::info("Vendor credit entry created", [
-                                    'invoice_id' => $invoice->id,
-                                    'vendor_id' => $thirdPartyPayer->id,
-                                    'vendor_name' => $vendorName,
-                                    'amount' => $insurancePortion
-                                ]);
-                            }
+                            // Do not post an insurer "payment received" credit here. Client MM/cash only covers
+                            // the client portion; the guarantee debit above remains until insurer settlement.
                         }
                     }
                 }

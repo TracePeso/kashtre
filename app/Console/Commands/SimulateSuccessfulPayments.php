@@ -7,7 +7,6 @@ use App\Models\Invoice;
 use App\Models\Client;
 use App\Models\PaymentMethodAccount;
 use App\Models\ThirdPartyPayer;
-use App\Models\ThirdPartyPayerBalanceHistory;
 use App\Services\MoneyTrackingService;
 use App\Services\InsuranceClientPortionThirdPartyNotifier;
 use App\Services\VendorTransactionSyncService;
@@ -141,45 +140,9 @@ class SimulateSuccessfulPayments extends Command
                                     );
                                 }
 
-                                // Credit each vendor their specific insurance_total from snapshot
-                                $snapVendors = $snapshot['vendors'] ?? [];
-                                $isMultiVendorSnap = !empty($snapshot['multi_vendor']) && !empty($snapVendors);
-
-                                if ($isMultiVendorSnap) {
-                                    foreach ($snapVendors as $vData) {
-                                        $vName = $vData['vendor_name'] ?? $vData['insurance_company_name'] ?? null;
-                                        $vInsTotal = (float) ($vData['insurance_total'] ?? 0);
-                                        if (!$vName || $vInsTotal <= 0) continue;
-                                        $vPayer = ThirdPartyPayer::where('name', $vName)
-                                            ->where('business_id', $invoice->business_id)
-                                            ->where('type', 'insurance_company')
-                                            ->whereNull('client_id')
-                                            ->first();
-                                        if (!$vPayer) continue;
-                                        ThirdPartyPayerBalanceHistory::recordCredit(
-                                            $vPayer, $vInsTotal,
-                                            'Insurance settlement for invoice ' . $invoice->invoice_number,
-                                            $ref, null, 'insurance', $client->id, $invoice->id
-                                        );
-                                        Log::info('Per-vendor insurance credit created (simulated)', [
-                                            'invoice_id' => $invoice->id,
-                                            'vendor' => $vName,
-                                            'amount' => $vInsTotal,
-                                        ]);
-                                    }
-                                } else {
-                                    // Single vendor: credit primary payer their insurance_total
-                                    ThirdPartyPayerBalanceHistory::recordCredit(
-                                        $thirdPartyPayer, $snapshotInsuranceTotal,
-                                        'Insurance settlement for invoice ' . $invoice->invoice_number,
-                                        $ref, null, 'insurance', $client->id, $invoice->id
-                                    );
-                                    Log::info('Insurance settlement credit created (simulated)', [
-                                        'invoice_id' => $invoice->id,
-                                        'third_party_payer_id' => $thirdPartyPayer->id,
-                                        'amount' => $snapshotInsuranceTotal,
-                                    ]);
-                                }
+                                // Insurer share is not credited here — client payment is only the client portion.
+                                // Vendor ledger shows guarantee debit from processPaymentCompleted; settlement credits
+                                // belong on real insurer remittance (separate flow).
                             }
                             // Ensure insurance itemized statement rows are created (informational only).
                             $items = is_array($invoice->items) ? $invoice->items : json_decode($invoice->items, true) ?? [];

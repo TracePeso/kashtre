@@ -296,46 +296,16 @@ class CheckPaymentStatus extends Command
                                                 );
                                             }
 
-                                            // Credit each vendor their specific insurance_total from snapshot
-                                            $snapVendors = $snapshot['vendors'] ?? [];
-                                            $isMultiVendorSnap = !empty($snapshot['multi_vendor']) && !empty($snapVendors);
-
-                                            if ($isMultiVendorSnap) {
-                                                foreach ($snapVendors as $vData) {
-                                                    $vName = $vData['vendor_name'] ?? $vData['insurance_company_name'] ?? null;
-                                                    $vInsTotal = (float) ($vData['insurance_total'] ?? 0);
-                                                    if (!$vName || $vInsTotal <= 0) continue;
-                                                    $vPayer = ThirdPartyPayer::where('name', $vName)
-                                                        ->where('business_id', $invoice->business_id)
-                                                        ->where('type', 'insurance_company')
-                                                        ->whereNull('client_id')
-                                                        ->first();
-                                                    if (!$vPayer) continue;
-                                                    ThirdPartyPayerBalanceHistory::recordCredit(
-                                                        $vPayer, $vInsTotal,
-                                                        'Insurance settlement for invoice ' . $invoice->invoice_number,
-                                                        $ref, null, 'insurance', $client->id, $invoice->id
-                                                    );
-                                                    Log::info('Per-vendor insurance credit created', [
-                                                        'invoice_id' => $invoice->id,
-                                                        'vendor' => $vName,
-                                                        'amount' => $vInsTotal,
-                                                    ]);
-                                                }
-                                            } else {
-                                                // Single vendor: credit primary payer their insurance_total
-                                                ThirdPartyPayerBalanceHistory::recordCredit(
-                                                    $thirdPartyPayer, $snapshotInsuranceTotal,
-                                                    'Insurance settlement for invoice ' . $invoice->invoice_number,
-                                                    $ref, null, 'insurance', $client->id, $invoice->id
-                                                );
-                                                Log::info('Insurance settlement credit created', [
-                                                    'invoice_id' => $invoice->id,
-                                                    'third_party_payer_id' => $thirdPartyPayer->id,
-                                                    'amount' => $snapshotInsuranceTotal,
-                                                ]);
-                                            }
+                                            // Do not credit insurer insurance_total — client MM only settles client portion.
+                                            // Insurer obligation stays as guarantee debit when payment completion runs elsewhere.
                                         }
+                                        $invoice->update([
+                                            'amount_paid' => $transaction->amount,
+                                            'balance_due' => 0,
+                                        ]);
+                                        $moneyTrackingService = new MoneyTrackingService();
+                                        $itemsForStatements = is_array($invoice->items) ? $invoice->items : json_decode($invoice->items, true) ?? [];
+                                        $moneyTrackingService->processPaymentCompleted($invoice->fresh(), $itemsForStatements);
                                         $this->createPackageTrackingRecords($invoice, $invoice->items);
                                         $queuedItems = $this->queueItemsAtServicePoints($invoice, $invoice->items);
                                         InsuranceClientPortionThirdPartyNotifier::notifyIfApplicable($invoice, $transaction);

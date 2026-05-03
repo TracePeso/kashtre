@@ -1131,7 +1131,9 @@ class ThirdPartyApiService
             if ($response->successful()) {
                 $data = $response->json();
 
-                if (($data['success'] ?? false) && isset($data['data']['visit']) && $client instanceof Client) {
+                // Persist session whenever the vendor returns one (no-op if missing). Do not require
+                // $data['success'] so minor API shape differences still store session_code on save.
+                if ($client instanceof Client) {
                     try {
                         $this->persistVisitAuthorizationSession($client, $data, (int) $insuranceCompanyId);
                     } catch (\Throwable $e) {
