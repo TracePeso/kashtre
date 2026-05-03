@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use App\Models\Currency;
 use App\Models\Country;
+use App\Models\Currency;
 use App\Models\InsuranceCompany;
+use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Auth;
 
 class SettingsController extends Controller
 {
@@ -17,10 +18,11 @@ class SettingsController extends Controller
     {
         $user = Auth::user();
 
-        if (
-            (int) ($user->business_id ?? 0) !== 1
-            && !in_array('View Insurance Companies', $user->permissions ?? [])
-        ) {
+        $canAccessSettings = (int) ($user->business_id ?? 0) === 1
+            || in_array('View Insurance Companies', $user->permissions ?? [])
+            || in_array('Manage Service Charges', $user->permissions ?? []);
+
+        if (! $canAccessSettings) {
             return redirect()->route('dashboard')->with('error', 'You do not have permission to view settings.');
         }
 
@@ -29,11 +31,31 @@ class SettingsController extends Controller
             return redirect()->route('settings.countries.index');
         }
 
-        $insuranceCompanies = InsuranceCompany::with('business')
-            ->latest()
-            ->paginate(15);
+        $canViewVendorChargesTab = (int) ($user->business_id ?? 0) === 1
+            || in_array('Manage Service Charges', $user->permissions ?? [])
+            || in_array('View Insurance Companies', $user->permissions ?? []);
 
-        return view('settings.index', compact('insuranceCompanies'));
+        $allowedTabs = ['insurance-companies', 'vendor-service-charges'];
+        $activeTab = $request->query('tab', 'insurance-companies');
+        if (! in_array($activeTab, $allowedTabs, true)) {
+            $activeTab = 'insurance-companies';
+        }
+        if ($activeTab === 'vendor-service-charges' && ! $canViewVendorChargesTab) {
+            $activeTab = 'insurance-companies';
+        }
+
+        $insuranceCompanies = $activeTab === 'insurance-companies'
+            ? InsuranceCompany::with('business')
+                ->latest()
+                ->paginate(15)
+                ->appends(['tab' => 'insurance-companies'])
+            : new LengthAwarePaginator([], 0, 15, 1, [
+                'path' => $request->url(),
+                'query' => $request->query(),
+                'pageName' => 'page',
+            ]);
+
+        return view('settings.index', compact('insuranceCompanies', 'activeTab', 'canViewVendorChargesTab'));
     }
 
     /**
@@ -102,7 +124,7 @@ class SettingsController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'iso_code' => 'required|string|max:10|unique:countries,iso_code,' . $country->id,
+            'iso_code' => 'required|string|max:10|unique:countries,iso_code,'.$country->id,
             'currency_code' => 'required|string|max:10',
             'exchange_rate_to_usd' => 'required|numeric|min:0.000001',
         ]);

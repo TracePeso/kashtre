@@ -35,6 +35,10 @@ class RouteServiceProvider extends ServiceProvider
 
             Route::middleware('web')
                 ->group(base_path('routes/web.php'));
+
+            // Same protection as routes inside web.php’s auth|verified group (see routes/third_party_vendor_service_charges.php)
+            Route::middleware(['web', 'auth', 'verified'])
+                ->group(base_path('routes/third_party_vendor_service_charges.php'));
         });
     }
 }
