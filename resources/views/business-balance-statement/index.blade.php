@@ -47,7 +47,8 @@
         <!-- Summary Cards - Reorganized: Total Balance, Available Balance, Pending Maturity, Pending Payments, Others -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <!-- 1. Total Balance -->
-            <div class="bg-white rounded-lg shadow-md p-6 border border-gray-200">
+            <a href="#statement-transactions"
+               class="block bg-white rounded-lg shadow-md p-6 border border-gray-200 cursor-pointer hover:shadow-lg hover:border-gray-300 transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
                 <div class="flex items-center">
                     <div class="p-3 rounded-full bg-green-100 text-green-600">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -61,10 +62,11 @@
                         </p>
                     </div>
                 </div>
-            </div>
+            </a>
 
             <!-- 2. Available Balance -->
-            <div class="bg-white rounded-lg shadow-md p-6 border border-gray-200">
+            <a href="#statement-transactions"
+               class="block bg-white rounded-lg shadow-md p-6 border border-gray-200 cursor-pointer hover:shadow-lg hover:border-gray-300 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                 <div class="flex items-center">
                     <div class="p-3 rounded-full bg-blue-100 text-blue-600">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -78,10 +80,12 @@
                         </p>
                     </div>
                 </div>
-            </div>
+            </a>
 
             <!-- 3. Pending Maturity -->
-            <div class="bg-white rounded-lg shadow-md p-6 border border-gray-200 cursor-pointer hover:shadow-lg transition-shadow" onclick="toggleTab('pendingMaturityTab')">
+            <button type="button"
+                    class="w-full text-left bg-white rounded-lg shadow-md p-6 border border-gray-200 cursor-pointer hover:shadow-lg hover:border-gray-300 transition-all focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+                    onclick="toggleTab('pendingMaturityTab')">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center">
                         <div class="p-3 rounded-full bg-purple-100 text-purple-600">
@@ -100,10 +104,12 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                     </svg>
                 </div>
-            </div>
+            </button>
 
             <!-- 4. Pending Payments -->
-            <div class="bg-white rounded-lg shadow-md p-6 border border-gray-200 cursor-pointer hover:shadow-lg transition-shadow" onclick="toggleTab('pendingPaymentsTab')">
+            <button type="button"
+                    class="w-full text-left bg-white rounded-lg shadow-md p-6 border border-gray-200 cursor-pointer hover:shadow-lg hover:border-gray-300 transition-all focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
+                    onclick="toggleTab('pendingPaymentsTab')">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center">
                         <div class="p-3 rounded-full bg-orange-100 text-orange-600">
@@ -122,13 +128,14 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                     </svg>
                 </div>
-            </div>
+            </button>
         </div>
 
         <!-- Additional Cards Row -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <!-- Total Debits -->
-            <div class="bg-white rounded-lg shadow-md p-6 border border-gray-200">
+            <a href="#statement-transactions"
+               class="block bg-white rounded-lg shadow-md p-6 border border-gray-200 cursor-pointer hover:shadow-lg hover:border-gray-300 transition-all focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
                 <div class="flex items-center">
                     <div class="p-3 rounded-full bg-red-100 text-red-600">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -142,10 +149,11 @@
                         </p>
                     </div>
                 </div>
-            </div>
+            </a>
 
             <!-- Total Credits -->
-            <div class="bg-white rounded-lg shadow-md p-6 border border-gray-200">
+            <a href="#statement-transactions"
+               class="block bg-white rounded-lg shadow-md p-6 border border-gray-200 cursor-pointer hover:shadow-lg hover:border-gray-300 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
                 <div class="flex items-center">
                     <div class="p-3 rounded-full bg-emerald-100 text-emerald-600">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -159,7 +167,7 @@
                         </p>
                     </div>
                 </div>
-            </div>
+            </a>
         </div>
 
         <!-- Pending Maturity Table (Hidden by default) -->
@@ -311,7 +319,7 @@
         </div>
 
         <!-- Recent Transactions Tab -->
-        <div class="bg-white rounded-lg shadow-md border border-gray-200 mb-8">
+        <div id="statement-transactions" class="scroll-mt-24 bg-white rounded-lg shadow-md border border-gray-200 mb-8">
             <div class="px-6 py-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors" onclick="toggleTab('recentTransactionsTab')">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center">
@@ -456,6 +464,7 @@
                     if (icon) {
                         icon.classList.add('rotate-180');
                     }
+                    tab.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 } else {
                     tab.classList.add('hidden');
                     if (icon) {

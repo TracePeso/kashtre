@@ -9,14 +9,16 @@ use Illuminate\Support\Facades\Schema;
 class ClearOrderDataCommand extends Command
 {
     /**
-     * Tables that store order / invoice / visit-spine data only.
-     * Children are listed before parents. Master data (items, clients, questions, payers) is not dropped.
+     * Default: only clear operational/workflow tables (queues) that are not the same as
+     * "completed" financial history — so you can re-test without re-importing SQL or losing invoices/ledgers.
+     * Use --full for the previous all-tables behaviour.
      */
     protected $signature = 'testing:clear-order-data
         {--confirm : Required; prevents accidental runs}
-        {--keep-balances : Do not zero client, money account, TPP, or business ledger balances}';
+        {--full : Also remove invoices, sales, package tracking, all ledgers, and order history (destructive)}
+        {--reset-balances : Only with --full: zero client, money account, TPP, and business balances}';
 
-    protected $description = 'Delete only POS order / invoice–related rows (queues, ledgers, invoices). Does not touch master catalog, clients as records, or users.';
+    protected $description = 'By default, clears only service queues (in-flight work). Use --full to wipe all order/invoice data; use --reset-balances only with --full to zero account balances.';
 
     public function handle(): int
     {
@@ -25,6 +27,63 @@ class ClearOrderDataCommand extends Command
 
             return 1;
         }
+
+        if ($this->option('reset-balances') && ! $this->option('full')) {
+            $this->error('--reset-balances is only valid with --full (to avoid partial inconsistent state).');
+
+            return 1;
+        }
+
+        if (! $this->option('full')) {
+            $this->lightReset();
+
+            return 0;
+        }
+
+        $this->fullReset();
+
+        if ($this->option('reset-balances')) {
+            $this->resetMoneyState();
+        } else {
+            $this->line('Skipped balance reset (use --reset-balances with --full if you need zeros).');
+        }
+
+        $this->info('Done (full).');
+
+        return 0;
+    }
+
+    /**
+     * Queues and other workflow-only tables. After a fully completed visit/queue flow, these are
+     * the main "stuck" places to clear for a retest without deleting invoices or money records.
+     */
+    private function lightReset(): void
+    {
+        $this->warn('Light reset: only workflow/queue tables (invoices, transactions, balances, users are unchanged).');
+
+        $queueTables = [
+            'service_delivery_queues',
+            'service_queues',
+        ];
+
+        DB::transaction(function () use ($queueTables) {
+            foreach ($queueTables as $table) {
+                if (! Schema::hasTable($table)) {
+                    $this->warn("Skip missing table: {$table}");
+                    continue;
+                }
+                $n = DB::table($table)->count();
+                DB::table($table)->delete();
+                $this->info("Cleared {$table} ({$n} row(s)).");
+            }
+        });
+
+        $this->info('Done (light).');
+    }
+
+    private function fullReset(): void
+    {
+        $this->warn('Full reset: all order/invoice chain tables will be cleared.');
 
         $tables = [
             'credit_note_approvals',
@@ -42,13 +101,13 @@ class ClearOrderDataCommand extends Command
             'package_tracking',
             'package_usages',
             'service_delivery_queues',
+            'service_queues',
             'money_transfers',
             'quotations',
             'invoices',
         ];
 
-        $this->warn('This will delete all rows in order/invoice chain tables:');
-        $this->line('  '.implode(', ', $tables));
+        $this->line('Tables: '.implode(', ', $tables));
 
         DB::transaction(function () use ($tables) {
             foreach ($tables as $table) {
@@ -61,20 +120,12 @@ class ClearOrderDataCommand extends Command
                 $this->info("Cleared {$table} ({$n} rows).");
             }
         });
-
-        if (! $this->option('keep-balances')) {
-            $this->resetMoneyState();
-        } else {
-            $this->warn('Skipped balance reset; totals may not match an empty ledger.');
-        }
-
-        $this->info('Done.');
-
-        return 0;
     }
 
     private function resetMoneyState(): void
     {
+        $this->warn('Resetting balances…');
+
         if (Schema::hasTable('clients') && Schema::hasColumn('clients', 'balance')) {
             $u = DB::table('clients')->where('balance', '!=', 0)->update(['balance' => 0]);
             $this->info("Reset clients.balance on {$u} row(s).");
