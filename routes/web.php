@@ -124,6 +124,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Route::get('/json-data-feed', [DataFeedController::class, 'getDataFeed'])->name('json_data_feed');
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::post('/dashboard/yo-payment-test', [DashboardController::class, 'testYoPayment'])->name('dashboard.yo-payment-test');
 
     // Automated Tests
     Route::get('/automated-tests', [AutomatedTestController::class, 'index'])->name('automated-tests.index');

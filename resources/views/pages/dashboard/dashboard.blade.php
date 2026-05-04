@@ -16,6 +16,55 @@
                 </div>
             @endImpersonating
 
+            @if(session('success'))
+                <div class="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-green-800 shadow-sm" role="alert">
+                    <p class="text-sm font-medium">{{ session('success') }}</p>
+                </div>
+            @endif
+            @if(session('error'))
+                <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-800 shadow-sm" role="alert">
+                    <p class="text-sm font-medium">{{ session('error') }}</p>
+                </div>
+            @endif
+
+            <div class="mb-6 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-6">
+                <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                    <div class="flex items-start space-x-4">
+                        <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center shrink-0">
+                            <svg class="w-6 h-6 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">Test Yo! payment (mobile money prompt)</h3>
+                            <p class="text-sm text-gray-600 mt-1">
+                                Sends a minimal <strong>acdepositfunds</strong> request using this server&apos;s Yo credentials and webhook URL (same path as real collections). Check the phone for the prompt; if it fails, use the message above or server logs.
+                            </p>
+                            <p class="text-xs text-amber-800 mt-2">Minimum amount 500 UGX.</p>
+                        </div>
+                    </div>
+                    <form method="POST" action="{{ route('dashboard.yo-payment-test') }}" class="flex flex-col sm:flex-row sm:items-end gap-3 w-full md:w-auto">
+                        @csrf
+                        <div class="flex-1 min-w-[12rem]">
+                            <label for="yo_test_phone" class="block text-xs font-semibold text-gray-700 mb-1">Mobile number</label>
+                            <input id="yo_test_phone" name="payment_phone" type="text" required placeholder="075xxxxxxx or 256..."
+                                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                                value="{{ old('payment_phone') }}" autocomplete="tel">
+                        </div>
+                        <div class="w-full sm:w-28">
+                            <label for="yo_test_amount" class="block text-xs font-semibold text-gray-700 mb-1">Amount (UGX)</label>
+                            <input id="yo_test_amount" name="amount" type="number" min="500" max="100000" step="1" placeholder="500"
+                                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                                value="{{ old('amount', 500) }}">
+                        </div>
+                        <button type="submit"
+                            class="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition whitespace-nowrap">
+                            Send test prompt
+                        </button>
+                    </form>
+                </div>
+            </div>
+
             <!-- Page Title with User & Branch Info -->
             <div class="mb-8 flex justify-between items-center bg-white/50 backdrop-blur-sm p-6 rounded-xl shadow-sm">
                 <div>
