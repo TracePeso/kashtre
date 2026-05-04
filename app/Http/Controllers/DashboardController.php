@@ -8,6 +8,7 @@ use App\Models\Room;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Payments\YoAPI;
+use App\Support\YoDepositGate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -63,15 +64,22 @@ class DashboardController extends Controller
      */
     public function testYoPayment(Request $request)
     {
-        if (!config('payments.yo_username') || !config('payments.yo_password')) {
-            return redirect()->route('dashboard')
-                ->with('error', 'Yo Payments is not configured. Set YO_PAYMENTS_USERNAME and YO_PAYMENTS_PASSWORD in .env.');
-        }
-
         $validated = $request->validate([
             'payment_phone' => 'required|string|max:32',
             'amount' => 'nullable|numeric|min:500|max:100000',
         ]);
+
+        if (!YoDepositGate::useLiveYoDeposits()) {
+            return redirect()->route('dashboard')->with('success',
+                'Yo test skipped: live deposits are disabled (YO_LIVE_DEPOSITS_ENABLED is not true). '
+                . 'No call to Yo was made. Phone: ' . ($validated['payment_phone'] ?? '') . '.'
+            );
+        }
+
+        if (!config('payments.yo_username') || !config('payments.yo_password')) {
+            return redirect()->route('dashboard')
+                ->with('error', 'Yo Payments is not configured. Set YO_PAYMENTS_USERNAME and YO_PAYMENTS_PASSWORD in .env.');
+        }
 
         $amount = (float) ($validated['amount'] ?? 500);
         $phone = trim($validated['payment_phone']);

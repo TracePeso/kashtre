@@ -10,6 +10,7 @@ use App\Models\ServiceCharge;
 use App\Models\Client;
 use App\Services\InsuranceClientPortionThirdPartyNotifier;
 use App\Services\MoneyTrackingService;
+use App\Support\YoDepositGate;
 use App\Support\YoExternalReference;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -2497,12 +2498,8 @@ class InvoiceController extends Controller
                 $phone = $phone;
             }
             
-            // Initialize YoAPI for mobile money payment
-            $yoPayments = new \App\Payments\YoAPI(config('payments.yo_username'), config('payments.yo_password'));
-            $yoPayments->set_instant_notification_url('https://webhook.site/396126eb-cc9b-4c57-a7a9-58f43d2b7935');
-            $yoPayments->set_external_reference(YoExternalReference::make('MM'));
-            
-            // Log payment attempt details
+            $liveYo = YoDepositGate::useLiveYoDeposits();
+
             Log::info('Mobile money payment attempt', [
                 'original_phone' => $validated['phone_number'],
                 'formatted_phone' => $phone,
@@ -2511,29 +2508,41 @@ class InvoiceController extends Controller
                 'description_length' => strlen($description),
                 'client_id' => $validated['client_id'],
                 'business_id' => $validated['business_id'],
-                'yo_username' => config('payments.yo_username') ? 'SET' : 'NOT SET',
-                'yo_password' => config('payments.yo_password') ? 'SET' : 'NOT SET'
+                'yo_live_deposits' => $liveYo,
             ]);
-            
-            // Log exact parameters being sent to YoAPI
-            Log::info('=== YOAPI REQUEST PARAMETERS ===', [
-                'phone' => $phone,
-                'amount' => $validated['amount'],
-                'narrative' => $description,
-                'narrative_length' => strlen($description),
-                'webhook_url' => 'https://webhook.site/396126eb-cc9b-4c57-a7a9-58f43d2b7935',
-                'external_reference' => 'will_be_generated',
-                'credentials_configured' => [
-                    'username' => config('payments.yo_username') ? substr(config('payments.yo_username'), 0, 3) . '***' : 'MISSING',
-                    'password' => config('payments.yo_password') ? '***SET***' : 'MISSING'
-                ]
-            ]);
-            
-            // Process payment through YoAPI
-            $result = $yoPayments->ac_deposit_funds($phone, $validated['amount'], $description);
-            
-            // Log the actual API response
-            Log::info('YoAPI actual response', ['result' => $result]);
+
+            if (!$liveYo) {
+                $result = [
+                    'Status' => 'OK',
+                    'TransactionReference' => 'SIM-MM-' . strtoupper(Str::random(12)),
+                    'StatusMessage' => 'Simulated (YO_LIVE_DEPOSITS_ENABLED is not true). No handset prompt.',
+                ];
+                Log::info('Mobile money: skipping Yo ac_deposit_funds — creating pending transaction for simulate-success', [
+                    'result' => $result,
+                ]);
+            } else {
+                $yoPayments = new \App\Payments\YoAPI(config('payments.yo_username'), config('payments.yo_password'));
+                $webhook = config('payments.webhook_url');
+                if (!empty($webhook)) {
+                    $yoPayments->set_instant_notification_url($webhook);
+                }
+                $yoPayments->set_external_reference(YoExternalReference::make('MM'));
+
+                Log::info('=== YOAPI REQUEST PARAMETERS ===', [
+                    'phone' => $phone,
+                    'amount' => $validated['amount'],
+                    'narrative' => $description,
+                    'narrative_length' => strlen($description),
+                    'webhook_url' => $webhook ?: 'not_set',
+                    'credentials_configured' => [
+                        'username' => config('payments.yo_username') ? substr((string) config('payments.yo_username'), 0, 3) . '***' : 'MISSING',
+                        'password' => config('payments.yo_password') ? '***SET***' : 'MISSING',
+                    ],
+                ]);
+
+                $result = $yoPayments->ac_deposit_funds($phone, $validated['amount'], $description);
+                Log::info('YoAPI actual response', ['result' => $result]);
+            }
             
             // Check if payment request was initiated successfully
             if (isset($result['Status']) && $result['Status'] === 'OK' && isset($result['TransactionReference'])) {
@@ -2590,10 +2599,13 @@ class InvoiceController extends Controller
                     'success' => true,
                     'transaction_id' => $result['TransactionReference'],
                     'status' => 'pending',
-                    'message' => 'A payment prompt has been sent to your phone. Please complete the payment to proceed.',
+                    'message' => $liveYo
+                        ? 'A payment prompt has been sent to your phone. Please complete the payment to proceed.'
+                        : 'Mobile money payment is pending (simulated — Yo live deposits disabled). Use: php artisan payments:simulate-success --transaction=' . $transaction->id,
                     'description' => $description,
                     'yoapi_response' => $result,
-                    'internal_transaction_id' => $transaction->id
+                    'internal_transaction_id' => $transaction->id,
+                    'yo_simulated' => !$liveYo,
                 ]);
             } else {
                 $errorMessage = isset($result['StatusMessage']) ? "Mobile Money payment failed: {$result['StatusMessage']}" : 
@@ -2750,21 +2762,9 @@ class InvoiceController extends Controller
             // Generate a new unique external reference for the retry
             // This prevents YoAPI duplicate transaction errors
             $newExternalReference = YoExternalReference::make('RTRY');
-            
-            // Initialize YoAPI for mobile money payment
-            $yoPayments = new \App\Payments\YoAPI(config('payments.yo_username'), config('payments.yo_password'));
-            $yoPayments->set_instant_notification_url('https://webhook.site/396126eb-cc9b-4c57-a7a9-58f43d2b7935');
-            $yoPayments->set_external_reference($newExternalReference);
-            
-            Log::info('YoAPI initialized for retry', [
-                'yo_username' => config('payments.yo_username'),
-                'yo_password_set' => !empty(config('payments.yo_password')),
-                'old_external_reference' => $transaction->external_reference,
-                'new_external_reference' => $newExternalReference,
-                'transaction_reference' => $transaction->reference,
-                'notification_url' => 'https://webhook.site/396126eb-cc9b-4c57-a7a9-58f43d2b7935'
-            ]);
-            
+
+            $liveYoRetry = YoDepositGate::useLiveYoDeposits();
+
             Log::info('Reinitiating mobile money payment', [
                 'original_phone' => $transaction->phone_number,
                 'formatted_phone' => $phone,
@@ -2774,24 +2774,38 @@ class InvoiceController extends Controller
                 'business_id' => $transaction->business_id,
                 'old_external_reference' => $transaction->external_reference,
                 'new_external_reference' => $newExternalReference,
-                'transaction_reference' => $transaction->reference
+                'transaction_reference' => $transaction->reference,
+                'yo_live_deposits' => $liveYoRetry,
             ]);
-            
-            // Process payment through YoAPI
-            Log::info('Calling YoAPI ac_deposit_funds', [
-                'phone' => $phone,
-                'amount' => $transaction->amount,
-                'description' => $transaction->description
-            ]);
-            
-            $result = $yoPayments->ac_deposit_funds($phone, $transaction->amount, $transaction->description);
-            
-            // Log the actual API response
-            Log::info('YoAPI reinitiation response received', [
-                'result' => $result,
-                'response_type' => gettype($result),
-                'response_size' => is_string($result) ? strlen($result) : (is_array($result) ? count($result) : 'unknown')
-            ]);
+
+            if (!$liveYoRetry) {
+                $result = [
+                    'Status' => 'OK',
+                    'TransactionReference' => 'SIM-RTRY-' . strtoupper(Str::random(10)),
+                    'StatusMessage' => 'Simulated retry (Yo live deposits disabled).',
+                ];
+                Log::info('Retry: skipping Yo ac_deposit_funds (simulated)', ['result' => $result]);
+            } else {
+                $yoPayments = new \App\Payments\YoAPI(config('payments.yo_username'), config('payments.yo_password'));
+                $webhookRetry = config('payments.webhook_url');
+                if (!empty($webhookRetry)) {
+                    $yoPayments->set_instant_notification_url($webhookRetry);
+                }
+                $yoPayments->set_external_reference($newExternalReference);
+
+                Log::info('Calling YoAPI ac_deposit_funds (retry)', [
+                    'phone' => $phone,
+                    'amount' => $transaction->amount,
+                    'description' => $transaction->description,
+                ]);
+
+                $result = $yoPayments->ac_deposit_funds($phone, $transaction->amount, $transaction->description);
+                Log::info('YoAPI reinitiation response received', [
+                    'result' => $result,
+                    'response_type' => gettype($result),
+                    'response_size' => is_string($result) ? strlen($result) : (is_array($result) ? count($result) : 'unknown'),
+                ]);
+            }
             
             // Check if payment request was initiated successfully
             Log::info('Checking YoAPI response for success', [
@@ -2854,10 +2868,13 @@ class InvoiceController extends Controller
                     'success' => true,
                     'transaction_id' => $result['TransactionReference'],
                     'status' => 'pending',
-                    'message' => 'Transaction reinitiated successfully. A payment prompt has been sent to your phone. Please complete the payment to proceed.',
+                    'message' => $liveYoRetry
+                        ? 'Transaction reinitiated successfully. A payment prompt has been sent to your phone. Please complete the payment to proceed.'
+                        : 'Transaction reinitiated as pending (simulated). Run: php artisan payments:simulate-success --transaction=' . $transaction->id,
                     'description' => $transaction->description,
                     'yoapi_response' => $result,
-                    'internal_transaction_id' => $transaction->id
+                    'internal_transaction_id' => $transaction->id,
+                    'yo_simulated' => !$liveYoRetry,
                 ]);
             } else {
                 $errorMessage = isset($result['StatusMessage']) ? "Transaction reinitiation failed: {$result['StatusMessage']}" : 
@@ -2932,7 +2949,8 @@ class InvoiceController extends Controller
             
             $reinitiatedCount = 0;
             $errors = [];
-            
+            $liveYoInvoice = YoDepositGate::useLiveYoDeposits();
+
             foreach ($failedTransactions as $transaction) {
                 try {
                     // Use the same logic as reinitiateFailedTransaction but without the validation
@@ -2953,14 +2971,22 @@ class InvoiceController extends Controller
                     } elseif (str_starts_with($phone, '0')) {
                         $phone = '256' . substr($phone, 1);
                     }
-                    
-                    // Initialize YoAPI for mobile money payment
-                    $yoPayments = new \App\Payments\YoAPI(config('payments.yo_username'), config('payments.yo_password'));
-                    $yoPayments->set_instant_notification_url('https://webhook.site/396126eb-cc9b-4c57-a7a9-58f43d2b7935');
-                    $yoPayments->set_external_reference(YoExternalReference::make('MM'));
-                    
-                    // Process payment through YoAPI
-                    $result = $yoPayments->ac_deposit_funds($phone, $transaction->amount, $transaction->description);
+
+                    if (!$liveYoInvoice) {
+                        $result = [
+                            'Status' => 'OK',
+                            'TransactionReference' => 'SIM-INV-' . $transaction->id . '-' . strtoupper(Str::random(6)),
+                            'StatusMessage' => 'Simulated (Yo live deposits disabled).',
+                        ];
+                    } else {
+                        $yoPayments = new \App\Payments\YoAPI(config('payments.yo_username'), config('payments.yo_password'));
+                        $wh = config('payments.webhook_url');
+                        if (!empty($wh)) {
+                            $yoPayments->set_instant_notification_url($wh);
+                        }
+                        $yoPayments->set_external_reference(YoExternalReference::make('MM'));
+                        $result = $yoPayments->ac_deposit_funds($phone, $transaction->amount, $transaction->description);
+                    }
                     
                     if (isset($result['Status']) && $result['Status'] === 'OK' && isset($result['TransactionReference'])) {
                         // Update the transaction with new external reference and reset status

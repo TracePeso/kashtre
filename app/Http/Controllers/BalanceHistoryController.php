@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BalanceHistory;
 use App\Models\Client;
+use App\Support\YoDepositGate;
 use App\Support\YoExternalReference;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -433,11 +434,11 @@ class BalanceHistoryController extends Controller
                 'status' => 'draft',
             ]);
 
-            // Check if we're in local environment - skip YoAPI call
-            $isLocal = app()->environment('local') || config('app.env') === 'local';
+            // Local or Yo live deposits off: skip Yo ac_deposit_funds (use simulate-pay-back / cron as needed)
+            $skipYoPayBack = app()->environment('local') || config('app.env') === 'local' || !YoDepositGate::useLiveYoDeposits();
             
-            if ($isLocal) {
-                // Local environment: Create transaction record without calling YoAPI
+            if ($skipYoPayBack) {
+                // Create transaction record without calling YoAPI
                 // The simulation command will handle completing the payment
                 $externalReference = YoExternalReference::make('PPL');
                 
