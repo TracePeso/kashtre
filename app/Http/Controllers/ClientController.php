@@ -2562,6 +2562,10 @@ class ClientController extends Controller
             ]);
             
             $apiService = new ThirdPartyApiService();
+            // Resolve Kashtre-local insurance company ID -> third-party business ID once
+            // and reuse it for both primary and alternative verification paths.
+            $localInsuranceCompany = \App\Models\InsuranceCompany::find($insuranceCompanyId);
+            $thirdPartyInsuranceId = (int)($localInsuranceCompany?->third_party_business_id ?? $insuranceCompanyId);
             
             // Get policy number from route parameter or request
             $policyNumber = $policyNumber ?? $request->input('policy_number');
@@ -2574,10 +2578,6 @@ class ClientController extends Controller
             
             // Try policy number verification first if provided
             if ($policyNumber) {
-                // Resolve Kashtre-local insurance company ID → third-party business ID
-                $localInsuranceCompany = \App\Models\InsuranceCompany::find($insuranceCompanyId);
-                $thirdPartyInsuranceId = (int)($localInsuranceCompany?->third_party_business_id ?? $insuranceCompanyId);
-
                 // Get name and DOB from request for tolerance-based verification
                 $name = $request->input('name');
                 $dateOfBirth = $request->input('date_of_birth');
@@ -2671,7 +2671,7 @@ class ClientController extends Controller
             
             // Only try alternative verification if we have both name and DOB
             if (!empty($alternativeData['name']) && !empty($alternativeData['date_of_birth'])) {
-                $verificationResult = $apiService->verifyAlternativeIdentity((int)$insuranceCompanyId, $alternativeData);
+                $verificationResult = $apiService->verifyAlternativeIdentity($thirdPartyInsuranceId, $alternativeData);
                 
                 Log::info('Kashtre Controller: Received alternative verification result', [
                     'has_result' => !empty($verificationResult),
