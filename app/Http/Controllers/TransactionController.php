@@ -7,6 +7,7 @@ use App\Models\Client;
 use App\Models\Item;
 use App\Models\BranchItemPrice;
 use App\Models\BalanceHistory;
+use App\Support\YoDepositGate;
 use App\Support\YoExternalReference;
 
 class TransactionController extends Controller
@@ -458,15 +459,14 @@ class TransactionController extends Controller
             $transactionReference = null;
             $paymentStatus = 'pending';
             
-            // Locally: Yo doesn't work, so auto-complete mobile money payments. Online: use Yo.
-            $isLocal = app()->environment('local');
+            // Local or YO_LIVE_DEPOSITS_ENABLED=false: complete mobile money without Yo. Live Yo when enabled on server.
+            $simulateMobileMoney = !YoDepositGate::useLiveYoDeposits();
             
-            // Process mobile money payment if applicable (skip Yo API on local)
             if ($validated['payment_method'] === 'mobile_money' && !empty($validated['payment_phone'])) {
-                if ($isLocal) {
+                if ($simulateMobileMoney) {
                     $paymentStatus = 'completed';
                     $transactionReference = 'LOCAL-' . time();
-                    \Illuminate\Support\Facades\Log::info('Local env: auto-completing payment responsibility (Yo not used)', [
+                    \Illuminate\Support\Facades\Log::info('Simulated mobile money: auto-completing payment responsibility (Yo ac_deposit_funds skipped)', [
                         'client_id' => $client->id,
                         'type' => $type,
                         'amount' => $paymentAmount,

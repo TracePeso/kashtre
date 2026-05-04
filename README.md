@@ -6,6 +6,8 @@ Process pending transactions and complete the payment flow:
 
 ```bash
 php artisan payments:simulate-success --limit=1
+php artisan payments:simulate-success --limit=1
+php artisan payments:simulate-success --transaction=123
 ```
 
 ### What This Command Does:

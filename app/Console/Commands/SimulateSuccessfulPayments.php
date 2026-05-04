@@ -16,37 +16,62 @@ use Illuminate\Support\Facades\DB;
 
 class SimulateSuccessfulPayments extends Command
 {
-    protected $signature = 'payments:simulate-success {--limit=10 : Maximum number of transactions to process}';
-    protected $description = 'Simulate successful payments for local testing - treats all pending payments as successful';
+    protected $signature = 'payments:simulate-success
+                            {--limit=10 : Maximum number of transactions to process (oldest first)}
+                            {--transaction= : Single transaction id to complete (pending or failed, method=mobile_money)}';
 
-    public function handle()
+    protected $description = 'Mark pending (or optional failed) mobile money transactions as paid and complete invoices — works on any environment (local, demo, production).';
+
+    public function handle(): int
     {
-        $limit = $this->option('limit');
-        
-        Log::info('=== SIMULATING SUCCESSFUL PAYMENTS FOR LOCAL TESTING ===', [
+        $limit = max(1, (int) $this->option('limit'));
+        $singleId = $this->option('transaction');
+
+        Log::info('=== SIMULATING SUCCESSFUL PAYMENTS ===', [
             'timestamp' => now(),
             'command' => 'payments:simulate-success',
             'limit' => $limit,
+            'transaction' => $singleId,
             'server' => gethostname(),
-            'php_version' => PHP_VERSION
+            'php_version' => PHP_VERSION,
+            'app_env' => config('app.env'),
         ]);
 
-        // Get all pending transactions
-        $pendingTransactions = Transaction::where('status', 'pending')
-            ->where('method', 'mobile_money')
-            ->with(['business', 'client'])
-            ->limit($limit)
-            ->get();
+        if ($singleId !== null && $singleId !== '') {
+            $pendingTransactions = Transaction::query()
+                ->where('id', (int) $singleId)
+                ->where('method', 'mobile_money')
+                ->whereIn('status', ['pending', 'failed'])
+                ->with(['business', 'client'])
+                ->get();
 
-        Log::info('Found pending transactions to simulate as successful', [
+            if ($pendingTransactions->isEmpty()) {
+                $this->error("No transaction #{$singleId} with method=mobile_money and status=pending or failed.");
+                Log::warning('payments:simulate-success: transaction id not eligible', ['id' => $singleId]);
+
+                return self::FAILURE;
+            }
+        } else {
+            // Oldest first so --limit=1 is stable on busy servers
+            $pendingTransactions = Transaction::where('status', 'pending')
+                ->where('method', 'mobile_money')
+                ->with(['business', 'client'])
+                ->orderBy('created_at', 'asc')
+                ->limit($limit)
+                ->get();
+        }
+
+        Log::info('Found transactions to simulate as successful', [
             'count' => $pendingTransactions->count(),
-            'limit' => $limit
+            'limit' => $limit,
+            'ids' => $pendingTransactions->pluck('id')->all(),
         ]);
 
         if ($pendingTransactions->count() === 0) {
-            $this->info('No pending transactions found to simulate.');
+            $this->info('No pending mobile_money transactions found. Use --transaction=ID to complete a specific row, or create a payment first.');
             Log::info('No pending transactions found to simulate');
-            return;
+
+            return self::SUCCESS;
         }
 
         $processedCount = 0;
@@ -254,7 +279,7 @@ class SimulateSuccessfulPayments extends Command
                 DB::commit();
                 $processedCount++;
 
-                // Notify third-party (insurance system) of successful client-portion payment for local simulation.
+                // Notify third-party (insurance system) of successful client-portion payment when applicable.
                 if ($transaction->invoice_id) {
                     $invoice = Invoice::find($transaction->invoice_id);
                     if ($invoice) {
@@ -302,6 +327,8 @@ class SimulateSuccessfulPayments extends Command
         ]);
 
         $this->info("🎉 Simulation completed! Processed {$processedCount} transactions as successful payments.");
+
+        return self::SUCCESS;
     }
 
     /**
