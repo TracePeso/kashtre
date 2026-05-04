@@ -9,6 +9,7 @@ Route::get('/insurance-settings/{insuranceCompanyId}', [\App\Http\Controllers\Cl
 Route::get('/policies/verify/{insuranceCompanyId}/{policyNumber}', [\App\Http\Controllers\ClientController::class, 'verifyPolicyNumber'])->name('api.policies.verify');
 Route::post('/policies/verify/{insuranceCompanyId}', [\App\Http\Controllers\ClientController::class, 'verifyPolicyNumber'])->name('api.policies.verify.post');
 
+
 Route::prefix('v1')->group(function () {
     include_once __DIR__ . '/custom/airtel_routes.php';
     include_once __DIR__ . '/custom/mtn_routes.php';
