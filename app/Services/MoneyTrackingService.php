@@ -2132,13 +2132,53 @@ class MoneyTrackingService
             }
         }
 
+        // Vendor-id based fallback: resolve name from local insurer mapping.
+        $snapshotVendorId = trim((string) ($snapshot['vendor_id'] ?? ''));
+        if ($snapshotVendorId !== '' && $invoice->business_id) {
+            $mappedInsurance = \App\Models\InsuranceCompany::query()
+                ->where('business_id', $invoice->business_id)
+                ->where('third_party_business_id', $snapshotVendorId)
+                ->first();
+            if ($mappedInsurance && !empty($mappedInsurance->name)) {
+                return (string) $mappedInsurance->name;
+            }
+        }
+
         $client = $invoice->client;
         if (!$client && $invoice->client_id) {
             $client = \App\Models\Client::with('insuranceCompany')->find($invoice->client_id);
         }
 
+        // Direct client insurer lookup (works even when relation isn't eagerly loaded).
+        if ($client && $client->insurance_company_id) {
+            $insuranceCompany = \App\Models\InsuranceCompany::find($client->insurance_company_id);
+            if ($insuranceCompany && !empty($insuranceCompany->name)) {
+                return (string) $insuranceCompany->name;
+            }
+        }
+
         if ($client && $client->insuranceCompany) {
             return (string) $client->insuranceCompany->name;
+        }
+
+        // Ledger fallback: infer insurer from payer entries already linked to this invoice.
+        if ($invoice->id) {
+            $payerName = \App\Models\ThirdPartyPayerBalanceHistory::query()
+                ->where('invoice_id', $invoice->id)
+                ->whereNotNull('third_party_payer_id')
+                ->with('thirdPartyPayer:id,name')
+                ->get()
+                ->map(fn ($row) => trim((string) ($row->thirdPartyPayer->name ?? '')))
+                ->filter()
+                ->unique()
+                ->values();
+
+            if ($payerName->count() === 1) {
+                return $payerName->first();
+            }
+            if ($payerName->count() > 1) {
+                return 'Insurance Companies: ' . $payerName->implode(', ');
+            }
         }
 
         return 'Insurance Company';
