@@ -118,11 +118,22 @@
                         <div class="bg-green-50 p-4 rounded-lg border-2 border-green-200">
                             <p class="text-sm text-green-700 font-medium mb-3">Insurance Companies</p>
                             <div class="space-y-2">
-                                @foreach($client->vendors as $vendor)
+                                @foreach($client->vendors->sortBy('priority')->values() as $index => $vendor)
                                     @if($vendor->vendor && $vendor->vendor->insuranceCompany)
+                                        @php
+                                            $isPrimary = ((int)($vendor->priority ?? 0) === 1) || $index === 0;
+                                            $isSecondary = ((int)($vendor->priority ?? 0) === 2) || (!$isPrimary && $index === 1);
+                                        @endphp
                                         <div class="bg-white p-3 rounded border border-green-100 flex items-center justify-between">
                                             <div>
-                                                <p class="text-sm font-semibold text-gray-900">{{ $vendor->vendor->insuranceCompany->name }}</p>
+                                                <div class="flex items-center gap-2">
+                                                    <p class="text-sm font-semibold text-gray-900">{{ $vendor->vendor->insuranceCompany->name }}</p>
+                                                    @if($isPrimary)
+                                                        <span class="inline-block text-[10px] font-semibold text-blue-800 bg-blue-100 px-2 py-0.5 rounded">Primary</span>
+                                                    @elseif($isSecondary)
+                                                        <span class="inline-block text-[10px] font-semibold text-purple-800 bg-purple-100 px-2 py-0.5 rounded">Secondary</span>
+                                                    @endif
+                                                </div>
                                                 <p class="text-xs text-gray-600">Policy: {{ $vendor->policy_number ?? 'N/A' }}</p>
                                                 @if($vendor->policy_verified)
                                                     <span class="inline-block text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded mt-1">✓ Verified</span>
@@ -2495,7 +2506,7 @@
                         // If client portion > 0 and payment method is available: collect now
                         if (clientTotalDue > 0) {
                             // Show authorization then proceed to collection
-                            await Swal.fire({
+                            const authorizationSuccessResult = await Swal.fire({
                                 icon: 'success',
                                 title: 'Invoice Authorized',
                                 html: `
@@ -2508,10 +2519,17 @@
                                         </div>
                                     </div>
                                 `,
+                                showCancelButton: true,
                                 confirmButtonText: 'Collect Payment',
+                                cancelButtonText: 'Cancel',
                                 confirmButtonColor: '#2563eb',
                                 allowOutsideClick: false
                             });
+
+                            if (authorizationSuccessResult.isDismissed) {
+                                finishInvoiceSuccess(data, invoiceNumber, button, originalText);
+                                return;
+                            }
 
                             // Now collect the client portion via phone/mobile money
                             showCollectClientModal(data, paymentPhone, data, invoiceNumber, button, originalText);
@@ -2530,11 +2548,15 @@
                                         </div>
                                     </div>
                                 `,
-                                confirmButtonText: 'OK',
+                                showCancelButton: true,
+                                confirmButtonText: 'Continue',
+                                cancelButtonText: 'Cancel',
                                 confirmButtonColor: '#10b981',
                                 allowOutsideClick: false
-                            }).then(() => {
-                                finishInvoiceSuccess(data, invoiceNumber, button, originalText);
+                            }).then((result) => {
+                                if (result.isConfirmed) {
+                                    finishInvoiceSuccess(data, invoiceNumber, button, originalText);
+                                }
                             });
                         }
                     } else if (clientTotalDue > 0) {

@@ -48,18 +48,6 @@
                         <div class="text-right">
                             <div class="space-y-2">
                                 <div>
-                                    <p class="text-sm text-gray-500">Current Balance</p>
-                                    <p class="text-lg font-semibold {{ $currentBalance < 0 ? 'text-red-600' : ($currentBalance > 0 ? 'text-green-600' : 'text-gray-700') }}">
-                                        UGX {{ number_format(abs($currentBalance), 2) }}
-                                    </p>
-                                    @if($currentBalance < 0)
-                                        <p class="text-xs text-red-500">(Amount Owed)</p>
-                                    @elseif($currentBalance > 0)
-                                        <p class="text-xs text-green-500">(Credit Available)</p>
-                                    @endif
-                                </div>
-                                
-                                <div>
                                     <p class="text-sm text-gray-500">Credit Limit</p>
                                     <p class="text-lg font-semibold text-gray-700">
                                         UGX {{ number_format((($thirdPartyPayer->credit_limit ?? 0) > 0
@@ -91,19 +79,11 @@
                 </div>
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6">
-                        <h3 class="text-sm font-medium text-gray-500 mb-2">Current Balance</h3>
-                        <p class="text-2xl font-bold {{ $currentBalance < 0 ? 'text-red-600' : ($currentBalance > 0 ? 'text-green-600' : 'text-gray-700') }}">
-                            UGX {{ number_format(abs($currentBalance), 2) }}
+                        <h3 class="text-sm font-medium text-gray-500 mb-2">Total Balance</h3>
+                        <p class="text-2xl font-bold text-gray-700">
+                            UGX {{ number_format(abs($totalDebits - $totalCredits), 2) }}
                         </p>
-                        <p class="text-xs text-gray-500 mt-1">
-                            @if($currentBalance < 0)
-                                Amount owed by vendor
-                            @elseif($currentBalance > 0)
-                                Credit available
-                            @else
-                                Balanced
-                            @endif
-                        </p>
+                        <p class="text-xs text-gray-500 mt-1">Calculated as total debits minus total credits</p>
                     </div>
                 </div>
             </div>
@@ -130,7 +110,6 @@
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reference</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Method</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                                 </tr>
@@ -183,9 +162,6 @@
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium {{ $history->transaction_type === 'credit' ? 'text-green-600' : 'text-red-600' }}">
                                         {{ $history->transaction_type === 'credit' ? '+' : '-' }}{{ number_format(abs($history->change_amount), 2) }} UGX
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        <div class="font-medium">{{ number_format($history->new_balance, 2) }} UGX</div>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {{ $history->payment_method ? ucwords(str_replace('_', ' ', $history->payment_method)) : 'N/A' }}

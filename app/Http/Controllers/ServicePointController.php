@@ -48,14 +48,17 @@ class ServicePointController extends Controller
         $servicePoint->load([
             'pendingDeliveryQueues' => function($query) {
                 $query->with(['client', 'invoice', 'item'])
+                      ->whereNotNull('client_id')
                       ->orderBy('queued_at', 'asc');
             },
             'partiallyDoneDeliveryQueues' => function($query) {
                 $query->with(['client', 'invoice', 'item', 'startedByUser'])
+                      ->whereNotNull('client_id')
                       ->orderBy('queued_at', 'asc');
             },
             'serviceDeliveryQueues' => function($query) {
                 $query->where('status', 'completed')
+                      ->whereNotNull('client_id')
                       ->whereDate('completed_at', today())
                       ->with(['client', 'invoice', 'item'])
                       ->orderBy('queued_at', 'asc');
@@ -67,6 +70,9 @@ class ServicePointController extends Controller
         
         // Process pending items
         foreach ($servicePoint->pendingDeliveryQueues as $queue) {
+            if (!$queue->client_id || !$queue->client) {
+                continue;
+            }
             $clientId = $queue->client_id;
             if (!isset($clientsWithItems[$clientId])) {
                 $clientsWithItems[$clientId] = [
@@ -87,6 +93,9 @@ class ServicePointController extends Controller
         
         // Process in-progress items (partially_done)
         foreach ($servicePoint->partiallyDoneDeliveryQueues as $queue) {
+            if (!$queue->client_id || !$queue->client) {
+                continue;
+            }
             if ($user->business_id !== 1 && $queue->assigned_to && $queue->assigned_to !== $user->id) {
                 continue;
             }
@@ -110,6 +119,9 @@ class ServicePointController extends Controller
         
         // Process completed items
         foreach ($servicePoint->serviceDeliveryQueues as $queue) {
+            if (!$queue->client_id || !$queue->client) {
+                continue;
+            }
             if (
                 $queue->status === 'partially_done' &&
                 $user->business_id !== 1 &&
@@ -399,6 +411,7 @@ class ServicePointController extends Controller
             }
             $updatedCount = 0;
             $moneyMovementCount = 0;
+            $touchedInvoiceIds = [];
 
             \Illuminate\Support\Facades\Log::info("Item statuses received", [
                 'item_statuses' => $itemStatuses,
@@ -515,6 +528,9 @@ class ServicePointController extends Controller
                     // Set the invoice if not already set
                     if (!$invoice) {
                         $invoice = $item->invoice;
+                    }
+                    if ($item->invoice_id) {
+                        $touchedInvoiceIds[] = (int) $item->invoice_id;
                     }
                     \Illuminate\Support\Facades\Log::info("Item found for processing", [
                         'item_id' => $item->id,
@@ -651,6 +667,10 @@ class ServicePointController extends Controller
 
                     $updatedCount++;
                 }
+            }
+
+            foreach (array_values(array_unique($touchedInvoiceIds)) as $invoiceId) {
+                $this->syncInsuranceVendorDebitForDeliveredItems($invoiceId);
             }
 
             $message = "Successfully updated {$updatedCount} items and processed {$moneyMovementCount} money movements";
@@ -864,6 +884,104 @@ class ServicePointController extends Controller
         \Illuminate\Support\Facades\Log::info("processServiceCharge called but deprecated - service charges now handled by processSaveAndExit", [
             'invoice_id' => $invoice->id,
             'service_charge' => $invoice->service_charge ?? 0
+        ]);
+    }
+
+    /**
+     * Sync insurer debit rows to the delivered amount after queue status updates.
+     */
+    private function syncInsuranceVendorDebitForDeliveredItems(int $invoiceId): void
+    {
+        $invoice = \App\Models\Invoice::find($invoiceId);
+        if (!$invoice) {
+            return;
+        }
+
+        $debitRows = \App\Models\ThirdPartyPayerBalanceHistory::query()
+            ->where('invoice_id', $invoice->id)
+            ->where('transaction_type', 'debit')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+
+        if ($debitRows->isEmpty()) {
+            return;
+        }
+
+        $deliveredSubtotal = (float) \App\Models\ServiceDeliveryQueue::query()
+            ->where('invoice_id', $invoice->id)
+            ->whereIn('status', ['partially_done', 'completed'])
+            ->sum(\Illuminate\Support\Facades\DB::raw('price * quantity'));
+
+        $invoiceSubtotal = (float) ($invoice->subtotal ?? 0);
+        $serviceCharge = (float) ($invoice->service_charge ?? 0);
+        $serviceChargePortion = 0.0;
+
+        if ($serviceCharge > 0) {
+            if ($invoiceSubtotal > 0) {
+                $ratio = min(1, max(0, $deliveredSubtotal / $invoiceSubtotal));
+                $serviceChargePortion = $serviceCharge * $ratio;
+            } elseif ($deliveredSubtotal > 0) {
+                $serviceChargePortion = $serviceCharge;
+            }
+        }
+
+        $targetDeliveredTotal = round($deliveredSubtotal + $serviceChargePortion, 2);
+        $currentDebitTotal = round(abs((float) $debitRows->sum('change_amount')), 2);
+        $targetDeliveredTotal = min($targetDeliveredTotal, $currentDebitTotal);
+
+        if (abs($targetDeliveredTotal - $currentDebitTotal) < 0.01) {
+            return;
+        }
+
+        $allocated = 0.0;
+        foreach ($debitRows as $index => $row) {
+            $original = abs((float) $row->change_amount);
+            if ($currentDebitTotal <= 0) {
+                $newDebitAmount = 0.0;
+            } elseif ($index === $debitRows->count() - 1) {
+                $newDebitAmount = round(max(0, $targetDeliveredTotal - $allocated), 2);
+            } else {
+                $newDebitAmount = round(($original / $currentDebitTotal) * $targetDeliveredTotal, 2);
+                $allocated += $newDebitAmount;
+            }
+
+            $row->change_amount = -abs($newDebitAmount);
+            $row->payment_status = $newDebitAmount > 0 ? 'pending_payment' : 'paid';
+            $row->save();
+        }
+
+        foreach ($debitRows->pluck('third_party_payer_id')->unique()->filter() as $payerId) {
+            $this->recalculateThirdPartyPayerRunningBalance((int) $payerId);
+        }
+    }
+
+    /**
+     * Rebuild running balances for a third-party payer ledger.
+     */
+    private function recalculateThirdPartyPayerRunningBalance(int $payerId): void
+    {
+        $histories = \App\Models\ThirdPartyPayerBalanceHistory::query()
+            ->where('third_party_payer_id', $payerId)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+
+        $running = 0.0;
+        foreach ($histories as $history) {
+            $previous = $running;
+            $amount = abs((float) $history->change_amount);
+            $delta = $history->transaction_type === 'debit' ? -$amount : $amount;
+            $running = round($previous + $delta, 2);
+
+            $history->previous_balance = $previous;
+            $history->new_balance = $running;
+            $history->change_amount = $history->transaction_type === 'debit' ? -$amount : $amount;
+            $history->save();
+        }
+
+        \App\Models\ThirdPartyPayer::where('id', $payerId)->update([
+            'current_balance' => $running,
         ]);
     }
 

@@ -1625,14 +1625,12 @@ class InvoiceController extends Controller
             ]);
             
             // Queue items for:
-            // 1. Credit clients (they are approved to receive services on credit)
-            // 2. Fully paid cash transactions (payment is complete, queue immediately)
-            //
-            // IMPORTANT: Insurance transactions are NO LONGER queued immediately at invoice save.
-            // For insurance, items are queued only after the client portion payment is confirmed
-            // (via the payment success flow / background payment status checks).
+            // 1. Credit clients (approved to receive services on credit)
+            // 2. Insurance transactions (queue immediately so service points see client/items)
+            // 3. Fully paid cash transactions (payment complete)
             $shouldQueueItems = (
                 $isCreditTransaction ||
+                $isInsurancePaymentMethod ||
                 ($isFullyPaid && $isCashPayment)
             ) && $nonDepositItems->isNotEmpty();
             
@@ -2097,8 +2095,21 @@ class InvoiceController extends Controller
                     $insuranceAuthorization = $snapshot;
                 }
 
-                // Do not post vendor debit entries at authorization time.
-                // Vendor debits/credits are posted only on successful payment completion.
+                // Full-cover insurance should post insurer guarantee immediately on save/confirm.
+                // This keeps vendor financial statements in sync even when client_total is zero.
+                try {
+                    $authorizedClientTotal = (float) ($insuranceAuthorization['client_total'] ?? 0);
+                    $authorizedInsuranceTotal = (float) ($insuranceAuthorization['insurance_total'] ?? 0);
+
+                    if ($authStatus !== 'auto_rejected' && $authorizedInsuranceTotal > 0 && $authorizedClientTotal <= 0.01) {
+                        $this->postImmediateInsuranceGuaranteeDebits($invoice, $client, $business, $insuranceAuthorization);
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('[Kashtre] Immediate insurer guarantee posting failed (non-blocking)', [
+                        'invoice_id' => $invoice->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
 
                 $responseData['authorization_status'] = $authStatus;
                 // For multi-vendor: client payment is the FINAL client_total (after all vendors cascade)
@@ -2149,6 +2160,160 @@ class InvoiceController extends Controller
         }
     }
     
+    /**
+     * Post insurer guarantee debits immediately for full-cover approvals (client_total ~= 0).
+     * Duplicate-safe: checks existing invoice+description debit before creating.
+     */
+    private function postImmediateInsuranceGuaranteeDebits(Invoice $invoice, Client $client, $business, array $authorization): void
+    {
+        // Ensure the client statement always has an insurance tracking row
+        // even when earlier insurance-tracking creation paths are skipped.
+        $this->ensureClientInsuranceTrackingEntry($invoice, $client, $authorization);
+
+        $vendors = [];
+        if (!empty($authorization['multi_vendor']) && !empty($authorization['vendors']) && is_array($authorization['vendors'])) {
+            $vendors = $authorization['vendors'];
+        } else {
+            $vendors[] = [
+                'vendor_name' => null,
+                'insurance_total' => (float) ($authorization['insurance_total'] ?? 0),
+                'authorization_status' => $authorization['authorization_status'] ?? 'auto_approved',
+            ];
+        }
+
+        foreach ($vendors as $vendor) {
+            $vendorStatus = (string) ($vendor['authorization_status'] ?? '');
+            if (in_array($vendorStatus, ['failed', 'skipped', 'auto_rejected'], true)) {
+                continue;
+            }
+
+            $insurancePortion = (float) ($vendor['insurance_total'] ?? 0);
+            if ($insurancePortion <= 0) {
+                continue;
+            }
+
+            $vendorName = $vendor['vendor_name'] ?? $vendor['insurance_company_name'] ?? null;
+
+            $thirdPartyPayer = null;
+            if (!empty($vendorName)) {
+                $thirdPartyPayer = \App\Models\ThirdPartyPayer::where('name', $vendorName)
+                    ->where('business_id', $business->id)
+                    ->where('type', 'insurance_company')
+                    ->whereNull('client_id')
+                    ->first();
+            }
+
+            if (!$thirdPartyPayer && $client->insurance_company_id) {
+                $thirdPartyPayer = \App\Models\ThirdPartyPayer::where('insurance_company_id', $client->insurance_company_id)
+                    ->where('business_id', $business->id)
+                    ->where('type', 'insurance_company')
+                    ->whereNull('client_id')
+                    ->first();
+            }
+
+            if (!$thirdPartyPayer) {
+                continue;
+            }
+
+            $description = 'Insurance guarantee for invoice ' . $invoice->invoice_number;
+            $existingDebit = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
+                ->where('invoice_id', $invoice->id)
+                ->where('transaction_type', 'debit')
+                ->where('description', $description)
+                ->first();
+
+            if ($existingDebit) {
+                continue;
+            }
+
+            \App\Models\ThirdPartyPayerBalanceHistory::recordDebit(
+                $thirdPartyPayer,
+                $insurancePortion,
+                $description,
+                $invoice->invoice_number,
+                'Posted immediately on full-cover authorization',
+                'insurance',
+                $invoice->id,
+                $client->id
+            );
+
+            Log::info('[Kashtre] Immediate insurer guarantee posted', [
+                'invoice_id' => $invoice->id,
+                'third_party_payer_id' => $thirdPartyPayer->id,
+                'vendor_name' => $vendorName,
+                'amount' => $insurancePortion,
+            ]);
+        }
+    }
+
+    /**
+     * Create a single client-side insurance tracking statement row (no balance impact).
+     */
+    private function ensureClientInsuranceTrackingEntry(Invoice $invoice, Client $client, array $authorization): void
+    {
+        $existing = \App\Models\BalanceHistory::where('client_id', $client->id)
+            ->where('invoice_id', $invoice->id)
+            ->where('payment_method', 'insurance')
+            ->first();
+
+        if ($existing) {
+            return;
+        }
+
+        $currentBalance = \App\Models\BalanceHistory::where('client_id', $client->id)
+            ->orderBy('created_at', 'desc')
+            ->value('new_balance') ?? ($client->balance ?? 0);
+
+        $items = collect($invoice->items ?? []);
+        foreach ($items as $itemData) {
+            $itemName = trim((string) ($itemData['name'] ?? $itemData['displayName'] ?? ''));
+            if ($itemName === '') {
+                continue;
+            }
+
+            $quantity = (int) ($itemData['quantity'] ?? 1);
+            if ($quantity <= 0) {
+                $quantity = 1;
+            }
+
+            \App\Models\BalanceHistory::create([
+                'client_id' => $client->id,
+                'business_id' => $client->business_id,
+                'branch_id' => $client->branch_id,
+                'invoice_id' => $invoice->id,
+                'user_id' => auth()->id() ?? 1,
+                'previous_balance' => $currentBalance,
+                'change_amount' => 0,
+                'new_balance' => $currentBalance,
+                'transaction_type' => 'debit',
+                'description' => "{$itemName} (x{$quantity}) [Insurance]",
+                'reference_number' => $invoice->invoice_number,
+                'notes' => "Insurance payment - {$itemName} (x{$quantity}) - Invoice #{$invoice->invoice_number}",
+                'payment_method' => 'insurance',
+                'payment_status' => 'paid',
+            ]);
+        }
+
+        if ((float) ($invoice->service_charge ?? 0) > 0) {
+            \App\Models\BalanceHistory::create([
+                'client_id' => $client->id,
+                'business_id' => $client->business_id,
+                'branch_id' => $client->branch_id,
+                'invoice_id' => $invoice->id,
+                'user_id' => auth()->id() ?? 1,
+                'previous_balance' => $currentBalance,
+                'change_amount' => 0,
+                'new_balance' => $currentBalance,
+                'transaction_type' => 'debit',
+                'description' => 'Service Fee [Insurance]',
+                'reference_number' => $invoice->invoice_number,
+                'notes' => "Insurance payment - Service Fee - Invoice #{$invoice->invoice_number}",
+                'payment_method' => 'insurance',
+                'payment_status' => 'paid',
+            ]);
+        }
+    }
+
     /**
      * Build description with purchased items, client, and business information
      * Simplified to avoid XML special characters that cause parse errors

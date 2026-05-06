@@ -102,9 +102,7 @@ class ThirdPartyVendorsController extends Controller
                     if ($payer) {
                         $creditTotal = (float) ($creditTotalsByPayer[$payer->id] ?? 0);
                         $debitTotal = abs((float) ($debitTotalsByPayer[$payer->id] ?? 0));
-                        $currentBalance = isset($latestHistories[$payer->id])
-                            ? (float) $latestHistories[$payer->id]->new_balance
-                            : (float) ($payer->current_balance ?? 0);
+                        $currentBalance = $creditTotal - $debitTotal;
 
                         $vendor['payer_status'] = $payer->status;
                         $vendor['payer_id'] = $payer->id;
@@ -230,9 +228,7 @@ class ThirdPartyVendorsController extends Controller
                     ->where('transaction_type', 'debit')
                     ->sum('change_amount'));
 
-                $currentBalance = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-                    ->orderBy('created_at', 'desc')
-                    ->value('new_balance') ?? 0;
+                $currentBalance = $totalCredits - $totalDebits;
 
                 // Resolve excluded items for this third-party payer (service exclusions on Kashtre side)
                 $excludedItemIds = (array) ($thirdPartyPayer->excluded_items ?? []);

@@ -1275,7 +1275,8 @@ class MoneyTrackingService
                     ? $this->getOrCreateKashtreAccount()
                     : $this->getOrCreateKashtreSuspenseAccount($business, $client->id);
 
-                $transferDescription = "Service Fee - {$invoice->service_charge} " . ($business->currency_code ?? 'USD');
+                // Keep description currency-neutral; amount column already renders canonical account currency.
+                $transferDescription = 'Service Fee';
                 $routingReason = "Service fee from invoice service_charge field";
 
                 Log::info("✅ SERVICE FEE ROUTED", [
@@ -2094,10 +2095,50 @@ class MoneyTrackingService
             if ($names->count() > 1) {
                 return 'Insurance Companies: ' . $names->implode(', ');
             }
+
+            // Fallback: even when financial fields are missing, use any provided vendor names.
+            $fallbackNames = collect($vendors)
+                ->map(function ($vendor) {
+                    return trim((string) (
+                        $vendor['vendor_name']
+                        ?? $vendor['insurance_company_name']
+                        ?? $vendor['name']
+                        ?? ''
+                    ));
+                })
+                ->filter()
+                ->unique()
+                ->values();
+
+            if ($fallbackNames->count() === 1) {
+                return $fallbackNames->first();
+            }
+            if ($fallbackNames->count() > 1) {
+                return 'Insurance Companies: ' . $fallbackNames->implode(', ');
+            }
         }
 
-        if ($invoice->client && $invoice->client->insuranceCompany) {
-            return (string) $invoice->client->insuranceCompany->name;
+        // Additional snapshot fallbacks (legacy payload shapes).
+        foreach ([
+            'insurance_company_name',
+            'vendor_name',
+            'third_party_payer_name',
+            'payer_name',
+            'insurance_name',
+        ] as $key) {
+            $value = trim((string) ($snapshot[$key] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        $client = $invoice->client;
+        if (!$client && $invoice->client_id) {
+            $client = \App\Models\Client::with('insuranceCompany')->find($invoice->client_id);
+        }
+
+        if ($client && $client->insuranceCompany) {
+            return (string) $client->insuranceCompany->name;
         }
 
         return 'Insurance Company';
