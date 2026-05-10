@@ -123,9 +123,9 @@ class BalanceHistory extends Model
         }
 
         $client = $this->relationLoaded('client') ? $this->client : null;
-        if (!$client && $this->client_id) {
+        if (! $client && $this->client_id) {
             $client = Client::query()->with('insuranceCompany')->find($this->client_id);
-        } elseif ($client && !$client->relationLoaded('insuranceCompany')) {
+        } elseif ($client && ! $client->relationLoaded('insuranceCompany')) {
             $client->load('insuranceCompany');
         }
 
@@ -147,7 +147,7 @@ class BalanceHistory extends Model
         }
 
         $invoice = $this->invoice;
-        if (!$invoice && $this->invoice_id) {
+        if (! $invoice && $this->invoice_id) {
             $invoice = Invoice::query()->find($this->invoice_id);
         }
 
@@ -221,7 +221,7 @@ class BalanceHistory extends Model
         }
 
         foreach ($invoice->items ?? [] as $row) {
-            if (!is_array($row)) {
+            if (! is_array($row)) {
                 continue;
             }
             $name = mb_strtolower(trim((string) ($row['name'] ?? $row['displayName'] ?? '')));
@@ -236,10 +236,10 @@ class BalanceHistory extends Model
     private static function invoiceItemRowWithResolvedCode(array $row): array
     {
         $code = trim((string) ($row['code'] ?? ''));
-        if ($code === '' && !empty($row['id'] ?? $row['item_id'] ?? null)) {
+        if ($code === '' && ! empty($row['id'] ?? $row['item_id'] ?? null)) {
             $id = $row['id'] ?? $row['item_id'];
             $item = Item::query()->find($id);
-            if ($item && !empty($item->code)) {
+            if ($item && ! empty($item->code)) {
                 $row['code'] = $item->code;
             }
         }
@@ -247,10 +247,10 @@ class BalanceHistory extends Model
         return $row;
     }
 
-    private static function invoiceRowExcludedByInsuranceBreakdown(array $invoiceItem, array $excludedRows): bool
+    public static function invoiceRowExcludedByInsuranceBreakdown(array $invoiceItem, array $excludedRows): bool
     {
         foreach ($excludedRows as $ex) {
-            if (!is_array($ex)) {
+            if (! is_array($ex)) {
                 continue;
             }
 
@@ -281,13 +281,13 @@ class BalanceHistory extends Model
     {
         $status = strtolower((string) ($v['authorization_status'] ?? ''));
 
-        return !in_array($status, ['failed', 'skipped'], true);
+        return ! in_array($status, ['failed', 'skipped'], true);
     }
 
     private static function firstEligibleVendorName(array $sorted): ?string
     {
         foreach ($sorted as $v) {
-            if (!self::vendorCascadeRowEligible($v)) {
+            if (! self::vendorCascadeRowEligible($v)) {
                 continue;
             }
             $vendorName = trim((string) ($v['vendor_name'] ?? $v['insurance_company_name'] ?? ''));
@@ -304,7 +304,7 @@ class BalanceHistory extends Model
         $best = null;
         $bestAmt = -1.0;
         foreach ($sorted as $v) {
-            if (!self::vendorCascadeRowEligible($v)) {
+            if (! self::vendorCascadeRowEligible($v)) {
                 continue;
             }
             $amt = (float) ($v['insurance_total'] ?? $v['insurance_portion'] ?? 0);
@@ -324,9 +324,9 @@ class BalanceHistory extends Model
     private static function resolveInsuranceVendorNameFromSnapshotForLine(array $snap, Invoice $invoice, ?array $parsedLine): ?string
     {
         $multiRows = null;
-        if (!empty($snap['multi_vendor']) && !empty($snap['vendors']) && is_array($snap['vendors'])) {
+        if (! empty($snap['multi_vendor']) && ! empty($snap['vendors']) && is_array($snap['vendors'])) {
             $multiRows = $snap['vendors'];
-        } elseif (!empty($snap['vendor_results']) && is_array($snap['vendor_results'])) {
+        } elseif (! empty($snap['vendor_results']) && is_array($snap['vendor_results'])) {
             $multiRows = $snap['vendor_results'];
         }
 
@@ -345,7 +345,7 @@ class BalanceHistory extends Model
             }
 
             foreach ($sorted as $v) {
-                if (!self::vendorCascadeRowEligible($v)) {
+                if (! self::vendorCascadeRowEligible($v)) {
                     continue;
                 }
                 $vendorName = trim((string) ($v['vendor_name'] ?? $v['insurance_company_name'] ?? ''));
@@ -377,7 +377,7 @@ class BalanceHistory extends Model
         }
 
         $trimmed = trim($label);
-        if (!$invoice?->business_id) {
+        if (! $invoice?->business_id) {
             return $trimmed;
         }
 
@@ -404,7 +404,7 @@ class BalanceHistory extends Model
         $collectNames = static function ($rows): array {
             $names = [];
             foreach ($rows as $v) {
-                if (!is_array($v)) {
+                if (! is_array($v)) {
                     continue;
                 }
                 $n = trim((string) ($v['vendor_name'] ?? $v['insurance_company_name'] ?? ''));
@@ -416,14 +416,14 @@ class BalanceHistory extends Model
             return array_values(array_unique($names));
         };
 
-        if (!empty($snap['multi_vendor']) && !empty($snap['vendors']) && is_array($snap['vendors'])) {
+        if (! empty($snap['multi_vendor']) && ! empty($snap['vendors']) && is_array($snap['vendors'])) {
             $names = $collectNames($snap['vendors']);
             if ($names !== []) {
                 return implode(', ', $names);
             }
         }
 
-        if (!empty($snap['vendor_results']) && is_array($snap['vendor_results'])) {
+        if (! empty($snap['vendor_results']) && is_array($snap['vendor_results'])) {
             $names = $collectNames($snap['vendor_results']);
             if ($names !== []) {
                 return implode(', ', $names);
@@ -449,25 +449,26 @@ class BalanceHistory extends Model
     public function getFormattedChangeAmount()
     {
         $amount = abs($this->change_amount);
-        
+
         // Package entries should not have + or - prefix
         if ($this->transaction_type === 'package') {
-            return 'UGX ' . number_format($amount, 2);
+            return 'UGX '.number_format($amount, 2);
         }
-        
+
         // Debits should not have negative sign (they're already shown in red)
         if ($this->transaction_type === 'debit') {
-            return 'UGX ' . number_format($amount, 2);
+            return 'UGX '.number_format($amount, 2);
         }
-        
+
         // Credits get + prefix
         $prefix = $this->isCredit() ? '+' : '';
-        return $prefix . 'UGX ' . number_format($amount, 2);
+
+        return $prefix.'UGX '.number_format($amount, 2);
     }
 
     public function getFormattedBalance()
     {
-        return 'UGX ' . number_format($this->new_balance, 2);
+        return 'UGX '.number_format($this->new_balance, 2);
     }
 
     // Static methods for creating balance statement records
@@ -491,11 +492,11 @@ class BalanceHistory extends Model
             'change_amount' => -$amount, // Negative for debit
             'new_balance' => $newBalance,
             'transaction_type' => 'payment',
-            'description' => $invoice ? "Invoice #{$invoice->invoice_number}" : "Balance adjustment",
+            'description' => $invoice ? "Invoice #{$invoice->invoice_number}" : 'Balance adjustment',
             'reference_number' => $invoice ? $invoice->invoice_number : null,
             'payment_method' => $paymentMethod,
             'payment_reference' => $paymentReference,
-            'notes' => "Balance used for invoice payment",
+            'notes' => 'Balance used for invoice payment',
         ]);
     }
 
@@ -505,7 +506,7 @@ class BalanceHistory extends Model
         $previousBalance = self::where('client_id', $client->id)
             ->orderBy('created_at', 'desc')
             ->value('new_balance') ?? 0;
-        
+
         $newBalance = $previousBalance + $amount; // Credit to balance
 
         // Default payment_status to 'paid' if not provided
@@ -515,12 +516,12 @@ class BalanceHistory extends Model
 
         // Validate payment_method - only allow valid enum values
         $validPaymentMethods = ['account_balance', 'mobile_money', 'bank_transfer', 'v_card', 'p_card', 'insurance'];
-        if ($paymentMethod !== null && !in_array($paymentMethod, $validPaymentMethods)) {
+        if ($paymentMethod !== null && ! in_array($paymentMethod, $validPaymentMethods)) {
             // If invalid payment method provided, default to 'mobile_money' for payments
             \Log::warning("Invalid payment_method '{$paymentMethod}' provided to recordCredit, defaulting to 'mobile_money'", [
                 'client_id' => $client->id,
                 'invalid_method' => $paymentMethod,
-                'description' => $description
+                'description' => $description,
             ]);
             $paymentMethod = 'mobile_money';
         }
@@ -553,33 +554,34 @@ class BalanceHistory extends Model
                 ->where('transaction_type', 'debit')
                 ->where('description', $description)
                 ->first();
-            
+
             if ($existingDebit) {
-                \Log::info("Debit entry already exists for invoice with same description", [
+                \Log::info('Debit entry already exists for invoice with same description', [
                     'invoice_id' => $invoiceId,
                     'client_id' => $client->id,
                     'description' => $description,
-                    'existing_debit_id' => $existingDebit->id
+                    'existing_debit_id' => $existingDebit->id,
                 ]);
+
                 return $existingDebit;
             }
         }
-        
+
         // Calculate previous balance from existing balance history records
         $previousBalance = self::where('client_id', $client->id)
             ->orderBy('created_at', 'desc')
             ->value('new_balance') ?? ($client->balance ?? 0);
-        
+
         $newBalance = $previousBalance - $amount; // Debit from balance
 
         // Validate payment_method - only allow valid enum values
         $validPaymentMethods = ['account_balance', 'mobile_money', 'bank_transfer', 'v_card', 'p_card', 'insurance'];
-        if ($paymentMethod !== null && !in_array($paymentMethod, $validPaymentMethods)) {
+        if ($paymentMethod !== null && ! in_array($paymentMethod, $validPaymentMethods)) {
             // If invalid payment method provided, default to 'mobile_money' for payments
             \Log::warning("Invalid payment_method '{$paymentMethod}' provided to recordDebit, defaulting to 'mobile_money'", [
                 'client_id' => $client->id,
                 'invalid_method' => $paymentMethod,
-                'description' => $description
+                'description' => $description,
             ]);
             $paymentMethod = 'mobile_money';
         }
@@ -623,7 +625,7 @@ class BalanceHistory extends Model
 
     public static function recordPackageUsage($client, $amount, $description, $referenceNumber = null, $notes = null, $paymentMethod = null)
     {
-        \Log::info("=== CREATING PACKAGE USAGE BALANCE HISTORY RECORD ===", [
+        \Log::info('=== CREATING PACKAGE USAGE BALANCE HISTORY RECORD ===', [
             'client_id' => $client->id,
             'client_name' => $client->name ?? 'Unknown',
             'business_id' => $client->business_id,
@@ -633,19 +635,19 @@ class BalanceHistory extends Model
             'reference_number' => $referenceNumber,
             'notes' => $notes,
             'payment_method' => $paymentMethod,
-            'timestamp' => now()->toDateTimeString()
+            'timestamp' => now()->toDateTimeString(),
         ]);
 
         // Calculate previous balance from existing balance history records
         $previousBalance = self::where('client_id', $client->id)
             ->orderBy('created_at', 'desc')
             ->value('new_balance') ?? 0;
-        
-        \Log::info("Previous balance calculated for package usage", [
+
+        \Log::info('Previous balance calculated for package usage', [
             'client_id' => $client->id,
-            'previous_balance' => $previousBalance
+            'previous_balance' => $previousBalance,
         ]);
-        
+
         // Package usage doesn't affect balance - it's just a record
         // The balance remains the same since package was already paid for
         $newBalance = $previousBalance;
@@ -665,20 +667,20 @@ class BalanceHistory extends Model
             'payment_method' => $paymentMethod,
         ];
 
-        \Log::info("Creating BalanceHistory record for package usage", [
-            'balance_history_data' => $balanceHistoryData
+        \Log::info('Creating BalanceHistory record for package usage', [
+            'balance_history_data' => $balanceHistoryData,
         ]);
 
         $balanceHistory = self::create($balanceHistoryData);
 
-        \Log::info("Package usage BalanceHistory record created successfully", [
+        \Log::info('Package usage BalanceHistory record created successfully', [
             'balance_history_id' => $balanceHistory->id,
             'client_id' => $client->id,
             'transaction_type' => 'package',
             'display_amount' => $amount,
             'balance_change' => 0,
             'description' => $description,
-            'note' => 'Package usage shows item amount for display but does not affect balance'
+            'note' => 'Package usage shows item amount for display but does not affect balance',
         ]);
 
         return $balanceHistory;

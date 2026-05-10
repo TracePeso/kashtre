@@ -5,9 +5,10 @@ namespace App\Http\Controllers;
 // Package functionality with comprehensive logging - Updated for testing
 // Version: 2025-09-20-20:30 - Fresh deployment with package transaction type support
 
+use App\Models\BalanceHistory;
+use App\Models\Client;
 use App\Models\Invoice;
 use App\Models\ServiceCharge;
-use App\Models\Client;
 use App\Services\InsuranceClientPortionThirdPartyNotifier;
 use App\Services\MoneyTrackingService;
 use App\Support\YoDepositGate;
@@ -22,6 +23,7 @@ use Illuminate\Support\Str;
 class InvoiceController extends Controller
 {
     protected $currentInvoice;
+
     /**
      * Calculate package adjustment for a client
      */
@@ -39,38 +41,38 @@ class InvoiceController extends Controller
             $businessId = $validated['business_id'];
             $branchId = $validated['branch_id'];
             $items = $validated['items'];
-            
-            Log::info("=== PACKAGE ADJUSTMENT CALCULATION STARTED ===", [
+
+            Log::info('=== PACKAGE ADJUSTMENT CALCULATION STARTED ===', [
                 'client_id' => $clientId,
                 'business_id' => $businessId,
                 'branch_id' => $branchId,
                 'items_count' => count($items),
-                'items' => $items
+                'items' => $items,
             ]);
 
             // Use the new PackageTrackingService for package adjustment calculation
             $packageTrackingService = new \App\Services\PackageTrackingService();
-            
+
             // Create a mock invoice object for the service
             $mockInvoice = new \App\Models\Invoice();
             $mockInvoice->client_id = $clientId;
             $mockInvoice->business_id = $businessId;
-            
-               $result = $packageTrackingService->calculatePackageAdjustment($mockInvoice, $items);
+
+            $result = $packageTrackingService->calculatePackageAdjustment($mockInvoice, $items);
             $totalAdjustment = $result['total_adjustment'];
             $adjustmentDetails = $result['details'];
             $maxQtyWarnings = $result['max_qty_warnings'] ?? [];
 
             // Package adjustment calculation is now handled by the PackageTrackingService
 
-            Log::info("=== PACKAGE ADJUSTMENT CALCULATION COMPLETED ===", [
+            Log::info('=== PACKAGE ADJUSTMENT CALCULATION COMPLETED ===', [
                 'client_id' => $clientId,
                 'business_id' => $businessId,
                 'branch_id' => $branchId,
                 'total_adjustment' => $totalAdjustment,
                 'adjustment_details_count' => count($adjustmentDetails),
                 'adjustment_details' => $adjustmentDetails,
-                'max_qty_warnings_count' => count($maxQtyWarnings)
+                'max_qty_warnings_count' => count($maxQtyWarnings),
             ]);
 
             return response()->json([
@@ -78,13 +80,13 @@ class InvoiceController extends Controller
                 'total_adjustment' => $totalAdjustment,
                 'details' => $adjustmentDetails,
                 'max_qty_warnings' => $maxQtyWarnings,
-                'message' => $totalAdjustment > 0 ? 'Package adjustments applied' : 'No valid package adjustments found'
+                'message' => $totalAdjustment > 0 ? 'Package adjustments applied' : 'No valid package adjustments found',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error calculating package adjustment: ' . $e->getMessage()
+                'message' => 'Error calculating package adjustment: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -98,17 +100,17 @@ class InvoiceController extends Controller
             $clientId = $invoice->client_id;
             $businessId = $invoice->business_id;
             $branchId = $invoice->branch_id;
-            
-            Log::info("=== PACKAGE TRACKING UPDATE STARTED ===", [
+
+            Log::info('=== PACKAGE TRACKING UPDATE STARTED ===', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'client_id' => $clientId,
                 'business_id' => $businessId,
                 'branch_id' => $branchId,
                 'package_adjustment' => $invoice->package_adjustment,
-                'items_count' => count($items)
+                'items_count' => count($items),
             ]);
-            
+
             // Get client's valid package tracking records
             $validPackages = \App\Models\PackageTracking::where('client_id', $clientId)
                 ->where('business_id', $businessId)
@@ -117,132 +119,134 @@ class InvoiceController extends Controller
                 ->where('valid_until', '>=', now()->toDateString())
                 ->with(['packageItem.packageItems.includedItem'])
                 ->get();
-                
-            Log::info("Found valid packages for client", [
+
+            Log::info('Found valid packages for client', [
                 'client_id' => $clientId,
                 'valid_packages_count' => $validPackages->count(),
-                'package_details' => $validPackages->map(function($pkg) {
+                'package_details' => $validPackages->map(function ($pkg) {
                     return [
                         'id' => $pkg->id,
                         'package_name' => $pkg->packageItem->name,
                         'remaining_quantity' => $pkg->remaining_quantity,
                         'used_quantity' => $pkg->used_quantity,
                         'status' => $pkg->status,
-                        'valid_until' => $pkg->valid_until
+                        'valid_until' => $pkg->valid_until,
                     ];
-                })
+                }),
             ]);
 
             foreach ($items as $item) {
                 $itemId = $item['id'] ?? $item['item_id'];
                 $quantity = $item['quantity'] ?? 1;
                 $remainingQuantity = $quantity;
-                
-                Log::info("Processing item for package tracking update", [
+
+                Log::info('Processing item for package tracking update', [
                     'item_id' => $itemId,
                     'item_name' => $item['name'] ?? 'Unknown',
                     'quantity' => $quantity,
-                    'remaining_quantity' => $remainingQuantity
+                    'remaining_quantity' => $remainingQuantity,
                 ]);
-                
+
                 // Get the item price (branch-specific or default)
                 $itemModel = \App\Models\Item::find($itemId);
                 $price = $itemModel ? $itemModel->default_price : 0;
-                
+
                 // Check for branch-specific price
                 $branchPrice = \App\Models\BranchItemPrice::where('branch_id', $branchId)
                     ->where('item_id', $itemId)
                     ->first();
-                
+
                 if ($branchPrice) {
                     $price = $branchPrice->price;
-                    Log::info("Using branch-specific price for item", [
+                    Log::info('Using branch-specific price for item', [
                         'item_id' => $itemId,
                         'branch_id' => $branchId,
                         'branch_price' => $price,
-                        'default_price' => $itemModel->default_price
+                        'default_price' => $itemModel->default_price,
                     ]);
                 } else {
-                    Log::info("Using default price for item", [
+                    Log::info('Using default price for item', [
                         'item_id' => $itemId,
-                        'default_price' => $price
+                        'default_price' => $price,
                     ]);
                 }
 
                 // Check if this item is included in any valid packages
                 foreach ($validPackages as $packageTracking) {
-                    if ($remainingQuantity <= 0) break;
+                    if ($remainingQuantity <= 0) {
+                        break;
+                    }
 
-                    Log::info("Checking package for item match", [
+                    Log::info('Checking package for item match', [
                         'package_tracking_id' => $packageTracking->id,
                         'package_name' => $packageTracking->packageItem->name,
                         'item_id' => $itemId,
-                        'package_remaining_quantity' => $packageTracking->remaining_quantity
+                        'package_remaining_quantity' => $packageTracking->remaining_quantity,
                     ]);
 
                     // Check if the current item is included in this package
                     $packageItems = $packageTracking->packageItem->packageItems;
-                    
+
                     foreach ($packageItems as $packageItem) {
                         if ($packageItem->included_item_id == $itemId) {
-                            Log::info("Item found in package", [
+                            Log::info('Item found in package', [
                                 'package_tracking_id' => $packageTracking->id,
                                 'package_item_id' => $packageItem->id,
                                 'included_item_id' => $packageItem->included_item_id,
                                 'max_quantity' => $packageItem->max_quantity,
-                                'fixed_quantity' => $packageItem->fixed_quantity
+                                'fixed_quantity' => $packageItem->fixed_quantity,
                             ]);
-                            
+
                             // Check max quantity constraint from package_items table
                             $maxQuantity = $packageItem->max_quantity ?? null;
                             $fixedQuantity = $packageItem->fixed_quantity ?? null;
-                            
+
                             // Determine how much quantity can be used from this package
                             $availableFromPackage = $packageTracking->remaining_quantity;
-                            
+
                             if ($maxQuantity !== null) {
                                 // If max_quantity is set, limit by that
                                 $availableFromPackage = min($availableFromPackage, $maxQuantity);
-                                Log::info("Limited by max_quantity constraint", [
+                                Log::info('Limited by max_quantity constraint', [
                                     'max_quantity' => $maxQuantity,
-                                    'available_from_package' => $availableFromPackage
+                                    'available_from_package' => $availableFromPackage,
                                 ]);
                             } elseif ($fixedQuantity !== null) {
                                 // If fixed_quantity is set, use that
                                 $availableFromPackage = min($availableFromPackage, $fixedQuantity);
-                                Log::info("Limited by fixed_quantity constraint", [
+                                Log::info('Limited by fixed_quantity constraint', [
                                     'fixed_quantity' => $fixedQuantity,
-                                    'available_from_package' => $availableFromPackage
+                                    'available_from_package' => $availableFromPackage,
                                 ]);
                             }
-                            
+
                             // Calculate how much we can actually use
                             $quantityToUse = min($remainingQuantity, $availableFromPackage);
-                            
-                            Log::info("Calculated quantity to use from package", [
+
+                            Log::info('Calculated quantity to use from package', [
                                 'remaining_quantity_needed' => $remainingQuantity,
                                 'available_from_package' => $availableFromPackage,
-                                'quantity_to_use' => $quantityToUse
+                                'quantity_to_use' => $quantityToUse,
                             ]);
-                            
+
                             if ($quantityToUse > 0) {
                                 // Store old values for logging
                                 $oldUsedQuantity = $packageTracking->used_quantity;
                                 $oldRemainingQuantity = $packageTracking->remaining_quantity;
                                 $oldStatus = $packageTracking->status;
-                                
+
                                 // Update package tracking record
                                 $packageTracking->used_quantity += $quantityToUse;
                                 $packageTracking->remaining_quantity -= $quantityToUse;
-                                
+
                                 // Mark as expired if no remaining quantity
                                 if ($packageTracking->remaining_quantity <= 0) {
                                     $packageTracking->status = 'expired';
                                 }
-                                
+
                                 $packageTracking->save();
-                                
-                                Log::info("Successfully updated package tracking for adjustment", [
+
+                                Log::info('Successfully updated package tracking for adjustment', [
                                     'package_tracking_id' => $packageTracking->id,
                                     'package_name' => $packageTracking->packageItem->name,
                                     'item_name' => $item['name'] ?? 'Unknown',
@@ -252,42 +256,44 @@ class InvoiceController extends Controller
                                     'old_remaining_quantity' => $oldRemainingQuantity,
                                     'new_remaining_quantity' => $packageTracking->remaining_quantity,
                                     'old_status' => $oldStatus,
-                                    'new_status' => $packageTracking->status
+                                    'new_status' => $packageTracking->status,
                                 ]);
-                                
+
                                 $remainingQuantity -= $quantityToUse;
-                                
+
                                 // If we've used all available quantity from this package, break
-                                if ($remainingQuantity <= 0) break;
+                                if ($remainingQuantity <= 0) {
+                                    break;
+                                }
                             } else {
-                                Log::info("No quantity to use from package", [
+                                Log::info('No quantity to use from package', [
                                     'package_tracking_id' => $packageTracking->id,
-                                    'reason' => 'quantity_to_use is 0'
+                                    'reason' => 'quantity_to_use is 0',
                                 ]);
                             }
                         }
                     }
                 }
-                
-                Log::info("Finished processing item for package tracking", [
+
+                Log::info('Finished processing item for package tracking', [
                     'item_id' => $itemId,
                     'original_quantity' => $quantity,
-                    'remaining_quantity_after_package_usage' => $remainingQuantity
+                    'remaining_quantity_after_package_usage' => $remainingQuantity,
                 ]);
             }
-            
-            Log::info("=== PACKAGE TRACKING UPDATE COMPLETED ===", [
+
+            Log::info('=== PACKAGE TRACKING UPDATE COMPLETED ===', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
-                'total_items_processed' => count($items)
+                'total_items_processed' => count($items),
             ]);
-            
+
         } catch (\Exception $e) {
-            Log::error("Error updating package tracking for adjustments", [
+            Log::error('Error updating package tracking for adjustments', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number ?? 'Unknown',
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
         }
     }
@@ -298,21 +304,21 @@ class InvoiceController extends Controller
     public function store(Request $request)
     {
         try {
-            Log::info("=== INVOICE CREATION STARTED ===", [
+            Log::info('=== INVOICE CREATION STARTED ===', [
                 'user_id' => Auth::id(),
                 'business_id' => $request->input('business_id'),
                 'client_id' => $request->input('client_id'),
                 'total_amount' => $request->input('total_amount'),
                 'payment_status' => $request->input('payment_status'),
-                'status' => $request->input('status')
+                'status' => $request->input('status'),
             ]);
 
             DB::beginTransaction();
-            
+
             $user = Auth::user();
             $business = $user->business;
             $moneyTrackingService = new MoneyTrackingService();
-            
+
             // Validate request
             $validated = $request->validate([
                 'invoice_number' => 'nullable|string|unique:invoices,invoice_number',
@@ -339,10 +345,10 @@ class InvoiceController extends Controller
                 'third_party_payer_id' => 'nullable|exists:third_party_payers,id',
                 'deductible_remaining' => 'nullable|numeric|min:0',
             ]);
-            
+
             // Get client
             $client = Client::find($validated['client_id']);
-            
+
             // Get business
             $business = \App\Models\Business::find($validated['business_id']);
             $invoiceCurrency = strtoupper($business->currency_code ?? 'USD');
@@ -350,18 +356,18 @@ class InvoiceController extends Controller
             // Check for third-party payer exclusions (when payment method is insurance)
             $paymentMethods = $validated['payment_methods'] ?? [];
             $isThirdPartyPayer = in_array('insurance', $paymentMethods);
-            
+
             if ($isThirdPartyPayer) {
                 // Get business-level exclusions
                 $businessExcludedItems = $business->third_party_excluded_items ?? [];
-                
+
                 // Get individual third-party payer exclusions for this insurer+business
                 $thirdPartyPayer = \App\Models\ThirdPartyPayer::where('business_id', $business->id)
                     ->where('insurance_company_id', $client->insurance_company_id)
                     ->where('type', 'insurance_company')
                     ->where('status', 'active')
                     ->first();
-                
+
                 $payerExcludedItems = $thirdPartyPayer ? ($thirdPartyPayer->excluded_items ?? []) : [];
 
                 // Merge business and individual exclusions
@@ -369,7 +375,7 @@ class InvoiceController extends Controller
 
                 // Instead of blocking the invoice, mark these items as non-insurable so the
                 // third-party authorization treats them as client-only (excluded) amounts.
-                if (!empty($excludedItems)) {
+                if (! empty($excludedItems)) {
                     $itemsArray = $validated['items'];
 
                     foreach ($itemsArray as $index => $item) {
@@ -386,40 +392,40 @@ class InvoiceController extends Controller
             // Check for credit client exclusions (when client is credit-eligible and using credit)
             $isCreditClient = $client->is_credit_eligible;
             $isUsingCredit = $validated['balance_due'] > 0;
-            
+
             if ($isCreditClient && $isUsingCredit) {
                 // Get business-level exclusions
                 $businessExcludedItems = $business->credit_excluded_items ?? [];
-                
+
                 // Get individual client exclusions
                 $clientExcludedItems = $client->excluded_items ?? [];
-                
+
                 // Merge business and individual exclusions
                 $excludedItems = array_unique(array_merge($businessExcludedItems, $clientExcludedItems));
-                
-                if (!empty($excludedItems)) {
+
+                if (! empty($excludedItems)) {
                     $itemsArray = $validated['items'];
                     $excludedItemIds = [];
-                    
+
                     foreach ($itemsArray as $item) {
                         $itemId = $item['id'] ?? $item['item_id'] ?? null;
                         if ($itemId && in_array($itemId, $excludedItems)) {
                             $excludedItemIds[] = $itemId;
                         }
                     }
-                    
-                    if (!empty($excludedItemIds)) {
+
+                    if (! empty($excludedItemIds)) {
                         $excludedItemNames = \App\Models\Item::whereIn('id', $excludedItemIds)
                             ->pluck('name')
                             ->toArray();
-                        
+
                         return response()->json([
                             'success' => false,
-                            'message' => "The following items are excluded from credit terms: " . implode(', ', $excludedItemNames) . ". Please remove these items or process payment upfront.",
+                            'message' => 'The following items are excluded from credit terms: '.implode(', ', $excludedItemNames).'. Please remove these items or process payment upfront.',
                             'errors' => [
                                 'excluded_items' => [
-                                    "The following items cannot be offered on credit: " . implode(', ', $excludedItemNames) . ". Please remove these items from the invoice or process payment upfront."
-                                ]
+                                    'The following items cannot be offered on credit: '.implode(', ', $excludedItemNames).'. Please remove these items from the invoice or process payment upfront.',
+                                ],
                             ],
                             'excluded_items' => $excludedItemNames,
                             'excluded_item_ids' => $excludedItemIds,
@@ -430,46 +436,47 @@ class InvoiceController extends Controller
 
             // Check credit limit for credit-eligible clients
             if ($client->is_credit_eligible) {
-                
+
                 // Calculate current outstanding balance from accounts receivable
                 $currentOutstanding = \App\Models\AccountsReceivable::where('client_id', $client->id)
                     ->where('status', '!=', 'paid')
                     ->sum('balance');
-                
+
                 // Calculate new balance if this invoice is created
                 $newOutstanding = $currentOutstanding + $validated['balance_due'];
-                
+
                 // Check if exceeds credit limit
                 if ($client->max_credit && $newOutstanding > $client->max_credit) {
                     $availableCredit = $client->max_credit - $currentOutstanding;
+
                     return response()->json([
                         'success' => false,
-                        'message' => "Credit limit exceeded. Available credit: UGX " . number_format($availableCredit, 2) . ". Requested amount: UGX " . number_format($validated['balance_due'], 2) . ".",
+                        'message' => 'Credit limit exceeded. Available credit: UGX '.number_format($availableCredit, 2).'. Requested amount: UGX '.number_format($validated['balance_due'], 2).'.',
                         'errors' => [
                             'credit_limit' => [
-                                "This order would exceed the client's credit limit of UGX " . number_format($client->max_credit, 2) . ". Current outstanding: UGX " . number_format($currentOutstanding, 2) . ". Available credit: UGX " . number_format($availableCredit, 2) . "."
-                            ]
+                                "This order would exceed the client's credit limit of UGX ".number_format($client->max_credit, 2).'. Current outstanding: UGX '.number_format($currentOutstanding, 2).'. Available credit: UGX '.number_format($availableCredit, 2).'.',
+                            ],
                         ],
                         'credit_info' => [
                             'max_credit' => $client->max_credit,
                             'current_outstanding' => $currentOutstanding,
                             'available_credit' => $availableCredit,
                             'requested_amount' => $validated['balance_due'],
-                        ]
+                        ],
                     ], 422);
                 }
             }
 
             // Generate visit_id if client doesn't have one (only when creating invoice/transaction)
             // This is the only place where we regenerate visit_id after it's been cleared/expired by cron
-            $needsNewVisitId = empty($client->visit_id) 
+            $needsNewVisitId = empty($client->visit_id)
                 || empty($client->visit_expires_at)
                 || Carbon::parse($client->visit_expires_at)->isPast();
-                
+
             if ($needsNewVisitId) {
                 $client->issueNewVisitId();
                 $validated['visit_id'] = $client->visit_id;
-                
+
                 Log::info('Generated new visit_id for client during invoice creation', [
                     'client_id' => $client->id,
                     'visit_id' => $client->visit_id,
@@ -483,16 +490,18 @@ class InvoiceController extends Controller
 
             // Normalize items for further processing
             $itemsCollection = collect($validated['items'])->map(function (array $item) {
-                if (!isset($item['total_amount'])) {
+                if (! isset($item['total_amount'])) {
                     $quantity = (float) ($item['quantity'] ?? 1);
                     $price = (float) ($item['price'] ?? 0);
                     $item['total_amount'] = $price * $quantity;
                 }
+
                 return $item;
             });
 
             $isDepositItem = function (array $item): bool {
-                $name = Str::lower(trim((string)($item['displayName'] ?? $item['name'] ?? $item['item_name'] ?? '')));
+                $name = Str::lower(trim((string) ($item['displayName'] ?? $item['name'] ?? $item['item_name'] ?? '')));
+
                 return $name === 'deposit';
             };
 
@@ -519,7 +528,7 @@ class InvoiceController extends Controller
                 ], 422);
             }
 
-        if ($depositItems->isNotEmpty() && $validated['service_charge'] <= 0) {
+            if ($depositItems->isNotEmpty() && $validated['service_charge'] <= 0) {
                 return response()->json([
                     'success' => false,
                     'message' => 'A service charge is required for deposit invoices.',
@@ -528,34 +537,34 @@ class InvoiceController extends Controller
             }
 
             // Validate service charge for non-package, non-deposit invoices
-        if (
-            !$isDepositOnlyInvoice &&
-            ($validated['package_adjustment'] ?? 0) <= 0 &&
-            ($validated['total_amount'] ?? 0) > 0
-        ) {
-            if ($validated['service_charge'] <= 0) {
+            if (
+                ! $isDepositOnlyInvoice &&
+                ($validated['package_adjustment'] ?? 0) <= 0 &&
+                ($validated['total_amount'] ?? 0) > 0
+            ) {
+                if ($validated['service_charge'] <= 0) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Service charge not configured. Please contact support.',
-                        'errors' => ['service_charge' => ['Service charge not configured. Please contact support.']]
+                        'errors' => ['service_charge' => ['Service charge not configured. Please contact support.']],
                     ], 422);
                 }
             }
-            
+
             // Use provided invoice number or generate one
             // Always start as proforma invoice (P prefix)
             $invoiceNumber = $validated['invoice_number'] ?? Invoice::generateInvoiceNumber($business->id, 'proforma');
-            
+
             // Check if this is a credit client BEFORE creating invoice
             // Refresh client to ensure we have the latest is_credit_eligible status
             $client->refresh();
             $isCreditClient = (bool) $client->is_credit_eligible;
-            
+
             // For credit clients: balance_due should always be total_amount (they owe the full amount)
             // Even if they pay upfront, the invoice balance_due should reflect the debt
             $finalBalanceDue = $validated['balance_due'];
             $finalPaymentStatus = $validated['payment_status'];
-            
+
             if ($isCreditClient) {
                 // Credit clients always owe the full amount (debit entries are created)
                 $finalBalanceDue = $validated['total_amount'];
@@ -563,7 +572,7 @@ class InvoiceController extends Controller
                 if ($finalBalanceDue > 0) {
                     $finalPaymentStatus = 'pending_payment';
                 }
-                Log::info("Credit client invoice - adjusting balance_due and payment_status", [
+                Log::info('Credit client invoice - adjusting balance_due and payment_status', [
                     'client_id' => $client->id,
                     'original_balance_due' => $validated['balance_due'],
                     'adjusted_balance_due' => $finalBalanceDue,
@@ -573,7 +582,7 @@ class InvoiceController extends Controller
                     'amount_paid' => $validated['amount_paid'] ?? 0,
                 ]);
             }
-            
+
             // Create invoice
             $invoice = Invoice::create([
                 'invoice_number' => $invoiceNumber,
@@ -601,7 +610,7 @@ class InvoiceController extends Controller
                 'confirmed_at' => $validated['status'] === 'confirmed' ? now() : null,
             ]);
 
-            Log::info("Invoice created successfully", [
+            Log::info('Invoice created successfully', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'client_id' => $invoice->client_id,
@@ -609,13 +618,13 @@ class InvoiceController extends Controller
                 'total_amount' => $invoice->total_amount,
                 'payment_status' => $invoice->payment_status,
                 'status' => $invoice->status,
-                'items_count' => count($invoice->items ?? [])
+                'items_count' => count($invoice->items ?? []),
             ]);
-            
+
             // Store current invoice for balance statement
             $this->currentInvoice = $invoice;
-            
-            Log::info("=== STEP 1: CLIENT DATA CHECK ===", [
+
+            Log::info('=== STEP 1: CLIENT DATA CHECK ===', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'client_id' => $client->id,
@@ -623,36 +632,36 @@ class InvoiceController extends Controller
                 'client_is_credit_eligible_before_refresh' => $client->is_credit_eligible,
                 'client_balance_before_refresh' => $client->balance,
             ]);
-            
+
             // Refresh client from database to ensure we have latest data
             $client->refresh();
-            
+
             // For credit clients, ensure visit_id has /C suffix
             if ($client->is_credit_eligible) {
                 $hasCorrectVisitIdFormat = str_ends_with($client->visit_id ?? '', '/C') || str_ends_with($client->visit_id ?? '', '/C/M');
-                
-                if (!$hasCorrectVisitIdFormat) {
-                    Log::warning("Credit client visit_id missing /C suffix - regenerating", [
+
+                if (! $hasCorrectVisitIdFormat) {
+                    Log::warning('Credit client visit_id missing /C suffix - regenerating', [
                         'invoice_id' => $invoice->id,
                         'client_id' => $client->id,
                         'current_visit_id' => $client->visit_id,
                         'is_credit_eligible' => $client->is_credit_eligible,
                         'is_long_stay' => $client->is_long_stay ?? false,
                     ]);
-                    
+
                     // Regenerate visit_id with correct format
                     $client->issueNewVisitId();
                     $client->refresh();
-                    
-                    Log::info("Visit ID regenerated for credit client", [
+
+                    Log::info('Visit ID regenerated for credit client', [
                         'invoice_id' => $invoice->id,
                         'client_id' => $client->id,
                         'new_visit_id' => $client->visit_id,
                     ]);
                 }
             }
-            
-            Log::info("=== STEP 2: CLIENT REFRESHED FROM DATABASE ===", [
+
+            Log::info('=== STEP 2: CLIENT REFRESHED FROM DATABASE ===', [
                 'invoice_id' => $invoice->id,
                 'client_id' => $client->id,
                 'client_is_credit_eligible_after_refresh' => $client->is_credit_eligible,
@@ -661,7 +670,7 @@ class InvoiceController extends Controller
                 'client_visit_id' => $client->visit_id,
                 'visit_id_has_credit_suffix' => str_ends_with($client->visit_id ?? '', '/C') || str_ends_with($client->visit_id ?? '', '/C/M'),
             ]);
-            
+
             // Check if this is a credit client
             // For credit clients, ALWAYS treat as credit transaction (even if they pay upfront)
             // Items should be queued immediately and debits created
@@ -670,8 +679,8 @@ class InvoiceController extends Controller
             // For credit clients: always treat as credit transaction, regardless of payment
             // This ensures items are queued immediately and debits are created
             $isCreditTransaction = $isCreditClient;
-            
-            Log::info("=== STEP 3: CREDIT TRANSACTION DECISION ===", [
+
+            Log::info('=== STEP 3: CREDIT TRANSACTION DECISION ===', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'client_id' => $client->id,
@@ -689,46 +698,46 @@ class InvoiceController extends Controller
                 'non_deposit_items' => $nonDepositItems->toArray(),
                 'all_items_count' => count($invoice->items ?? []),
             ]);
-            
+
             // For credit clients: Create accounts receivable and update client balance
             // NO suspense account movement - money stays in accounts receivable
             // This applies even if they pay upfront - items are still offered on credit
             // BUT: Skip client BalanceHistory if insurance is selected (insurance payments debit third-party payer, not client)
             $paymentMethods = $validated['payment_methods'] ?? [];
             $isInsurancePayment = in_array('insurance', $paymentMethods);
-            
-            if ($isCreditTransaction && !$isInsurancePayment) {
-                Log::info("=== STEP 4: CREDIT TRANSACTION DETECTED - STARTING PROCESSING ===", [
+
+            if ($isCreditTransaction && ! $isInsurancePayment) {
+                Log::info('=== STEP 4: CREDIT TRANSACTION DETECTED - STARTING PROCESSING ===', [
                     'invoice_id' => $invoice->id,
                     'invoice_number' => $invoice->invoice_number,
                     'client_id' => $client->id,
                     'client_name' => $client->name,
                 ]);
-                
+
                 // For credit clients, payment_status should already be 'pending_payment' (set during invoice creation)
                 // But verify and update if needed
                 if ($invoice->payment_status !== 'pending_payment' && $invoice->balance_due > 0) {
                     $oldPaymentStatus = $invoice->payment_status;
                     $invoice->update(['payment_status' => 'pending_payment']);
                     $invoice->refresh();
-                    Log::info("=== STEP 5: INVOICE PAYMENT STATUS UPDATED ===", [
+                    Log::info('=== STEP 5: INVOICE PAYMENT STATUS UPDATED ===', [
                         'invoice_id' => $invoice->id,
                         'old_payment_status' => $oldPaymentStatus,
                         'new_payment_status' => $invoice->payment_status,
                     ]);
                 } else {
-                    Log::info("=== STEP 5: CREDIT CLIENT INVOICE STATUS ===", [
+                    Log::info('=== STEP 5: CREDIT CLIENT INVOICE STATUS ===', [
                         'invoice_id' => $invoice->id,
                         'payment_status' => $invoice->payment_status,
                         'balance_due' => $invoice->balance_due,
                         'note' => 'Credit client invoice - balance_due reflects full debt amount',
                     ]);
                 }
-                
+
                 // Create accounts receivable entry
                 // For credit clients: Even if they pay upfront, they still owe the full amount
                 // amount_due = total_amount, amount_paid = 0, balance = total_amount
-                Log::info("=== STEP 6: CREATING ACCOUNTS RECEIVABLE ENTRY ===", [
+                Log::info('=== STEP 6: CREATING ACCOUNTS RECEIVABLE ENTRY ===', [
                     'invoice_id' => $invoice->id,
                     'client_id' => $client->id,
                     'business_id' => $business->id,
@@ -738,18 +747,18 @@ class InvoiceController extends Controller
                     'balance_for_ar' => $invoice->total_amount, // They owe the full amount
                     'default_payment_terms_days' => $business->default_payment_terms_days ?? 30,
                 ]);
-                
+
                 try {
                     // Calculate due date
                     $dueDate = now()->addDays($business->default_payment_terms_days ?? 30)->toDateString();
-                    
+
                     // For credit clients: Always start as 'current' status with balance = total_amount
                     // Even if they paid upfront, the AR entry reflects what they owe
                     $arStatus = 'current';
                     $arAmountPaid = 0; // Credit clients start with 0 paid in accounts receivable
                     $arBalance = $invoice->total_amount; // They owe the full amount
-                    
-                    Log::info("=== STEP 6.5: ACCOUNTS RECEIVABLE CREATION PARAMS ===", [
+
+                    Log::info('=== STEP 6.5: ACCOUNTS RECEIVABLE CREATION PARAMS ===', [
                         'invoice_id' => $invoice->id,
                         'client_id' => $client->id,
                         'business_id' => $business->id,
@@ -761,7 +770,7 @@ class InvoiceController extends Controller
                         'status' => $arStatus,
                         'note' => 'Credit client - AR reflects full debt amount regardless of upfront payment',
                     ]);
-                    
+
                     $accountsReceivable = \App\Models\AccountsReceivable::create([
                         'client_id' => $client->id,
                         'business_id' => $business->id,
@@ -777,8 +786,8 @@ class InvoiceController extends Controller
                         'payer_type' => 'first_party',
                         'notes' => "Credit transaction - Invoice #{$invoiceNumber}",
                     ]);
-                    
-                    Log::info("=== STEP 7: ACCOUNTS RECEIVABLE CREATED SUCCESSFULLY ===", [
+
+                    Log::info('=== STEP 7: ACCOUNTS RECEIVABLE CREATED SUCCESSFULLY ===', [
                         'accounts_receivable_id' => $accountsReceivable->id,
                         'amount_due' => $accountsReceivable->amount_due,
                         'amount_paid' => $accountsReceivable->amount_paid,
@@ -787,7 +796,7 @@ class InvoiceController extends Controller
                         'due_date' => $accountsReceivable->due_date,
                     ]);
                 } catch (\Exception $e) {
-                    Log::error("=== ERROR CREATING ACCOUNTS RECEIVABLE ===", [
+                    Log::error('=== ERROR CREATING ACCOUNTS RECEIVABLE ===', [
                         'invoice_id' => $invoice->id,
                         'client_id' => $client->id,
                         'business_id' => $business->id,
@@ -798,7 +807,7 @@ class InvoiceController extends Controller
                     // Don't throw - continue processing even if AR creation fails
                     // The backfill will create it later
                 }
-                
+
                 // Update client balance with negative entry (they owe money)
                 // For credit clients: subtract the total invoice amount (what they're purchasing on credit)
                 // This ensures the balance reflects their debt, regardless of upfront payment
@@ -806,8 +815,8 @@ class InvoiceController extends Controller
                 // Use balance_due if > 0, otherwise use total_amount (for credit clients who paid upfront but still get credit)
                 $amountToDebit = $invoice->balance_due > 0 ? $invoice->balance_due : $invoice->total_amount;
                 $newBalance = $previousBalance - $amountToDebit; // Negative balance = they owe
-                
-                Log::info("=== STEP 8: UPDATING CLIENT BALANCE ===", [
+
+                Log::info('=== STEP 8: UPDATING CLIENT BALANCE ===', [
                     'invoice_id' => $invoice->id,
                     'client_id' => $client->id,
                     'previous_balance' => $previousBalance,
@@ -816,15 +825,15 @@ class InvoiceController extends Controller
                     'amount_to_debit' => $amountToDebit,
                     'calculated_new_balance' => $newBalance,
                 ]);
-                
+
                 $client->update(['balance' => $newBalance]);
                 $client->refresh();
-                
+
                 // Verify balance was actually saved
                 $clientAfterUpdate = \App\Models\Client::find($client->id);
                 $actualBalance = $clientAfterUpdate->balance ?? 0;
-                
-                Log::info("=== STEP 9: CLIENT BALANCE UPDATED ===", [
+
+                Log::info('=== STEP 9: CLIENT BALANCE UPDATED ===', [
                     'invoice_id' => $invoice->id,
                     'client_id' => $client->id,
                     'calculated_new_balance' => $newBalance,
@@ -832,10 +841,10 @@ class InvoiceController extends Controller
                     'client_balance_from_fresh_query' => $actualBalance,
                     'balance_matches_calculation' => abs($actualBalance - $newBalance) < 0.01,
                 ]);
-                
+
                 // If balance doesn't match, force update again
                 if (abs($actualBalance - $newBalance) >= 0.01) {
-                    Log::warning("=== BALANCE MISMATCH - FORCING UPDATE ===", [
+                    Log::warning('=== BALANCE MISMATCH - FORCING UPDATE ===', [
                         'invoice_id' => $invoice->id,
                         'client_id' => $client->id,
                         'expected_balance' => $newBalance,
@@ -843,74 +852,76 @@ class InvoiceController extends Controller
                     ]);
                     $clientAfterUpdate->update(['balance' => $newBalance]);
                     $clientAfterUpdate->refresh();
-                    Log::info("Balance force-updated", [
+                    Log::info('Balance force-updated', [
                         'client_id' => $client->id,
                         'new_balance' => $clientAfterUpdate->balance,
                     ]);
                 }
-                
+
                 // Get payment method before creating balance history
                 $paymentMethods = $validated['payment_methods'] ?? [];
-                $primaryMethod = !empty($paymentMethods) ? $paymentMethods[0] : 'credit';
-                
-                Log::info("=== STEP 10: PREPARING TO CREATE DEBIT ENTRIES ===", [
+                $primaryMethod = ! empty($paymentMethods) ? $paymentMethods[0] : 'credit';
+
+                Log::info('=== STEP 10: PREPARING TO CREATE DEBIT ENTRIES ===', [
                     'invoice_id' => $invoice->id,
                     'payment_methods' => $paymentMethods,
                     'primary_method' => $primaryMethod,
                     'items_count' => count($invoice->items ?? []),
                 ]);
-                
+
                 // Create separate debit entry for each item (just like regular payments)
                 $itemsCollection = collect($invoice->items ?? []);
                 $debitCount = 0;
                 $skippedItems = [];
-                
-                Log::info("=== STEP 11: PROCESSING ITEMS FOR DEBIT ENTRIES ===", [
+
+                Log::info('=== STEP 11: PROCESSING ITEMS FOR DEBIT ENTRIES ===', [
                     'invoice_id' => $invoice->id,
                     'total_items' => $itemsCollection->count(),
                     'items' => $itemsCollection->toArray(),
                 ]);
-                
+
                 foreach ($itemsCollection as $index => $itemData) {
                     Log::info("=== PROCESSING ITEM {$index} FOR DEBIT ===", [
                         'invoice_id' => $invoice->id,
                         'item_index' => $index,
                         'item_data' => $itemData,
                     ]);
-                    
+
                     $itemId = $itemData['id'] ?? $itemData['item_id'] ?? null;
-                    
-                    Log::info("Processing item for debit entry", [
+
+                    Log::info('Processing item for debit entry', [
                         'invoice_id' => $invoice->id,
                         'item_index' => $index,
                         'item_id' => $itemId,
                         'item_id_source' => isset($itemData['id']) ? 'id' : (isset($itemData['item_id']) ? 'item_id' : 'none'),
                     ]);
-                    
-                    if (!$itemId) {
-                        Log::warning("Skipping item - no item ID found", [
+
+                    if (! $itemId) {
+                        Log::warning('Skipping item - no item ID found', [
                             'invoice_id' => $invoice->id,
                             'item_index' => $index,
                             'item_data' => $itemData,
                         ]);
                         $skippedItems[] = ['reason' => 'no_item_id', 'data' => $itemData];
+
                         continue;
                     }
-                    
+
                     $item = \App\Models\Item::find($itemId);
-                    if (!$item) {
-                        Log::warning("Skipping item - item not found in database", [
+                    if (! $item) {
+                        Log::warning('Skipping item - item not found in database', [
                             'invoice_id' => $invoice->id,
                             'item_id' => $itemId,
                         ]);
                         $skippedItems[] = ['reason' => 'item_not_found', 'item_id' => $itemId];
+
                         continue;
                     }
-                    
+
                     $quantity = $itemData['quantity'] ?? 1;
                     $itemTotalAmount = $itemData['total_amount'] ?? ($itemData['price'] ?? $item->default_price ?? 0) * $quantity;
-                    
-                    Log::info("Item details for debit", [
+
+                    Log::info('Item details for debit', [
                         'invoice_id' => $invoice->id,
                         'item_id' => $itemId,
                         'item_name' => $item->name,
@@ -918,19 +929,20 @@ class InvoiceController extends Controller
                         'item_total_amount' => $itemTotalAmount,
                         'item_total_amount_source' => isset($itemData['total_amount']) ? 'total_amount' : 'calculated',
                     ]);
-                    
+
                     // Skip if amount is zero
                     if ($itemTotalAmount <= 0) {
-                        Log::info("Skipping item - zero amount", [
+                        Log::info('Skipping item - zero amount', [
                             'invoice_id' => $invoice->id,
                             'item_id' => $itemId,
                             'item_name' => $item->name,
                             'item_total_amount' => $itemTotalAmount,
                         ]);
                         $skippedItems[] = ['reason' => 'zero_amount', 'item_id' => $itemId, 'amount' => $itemTotalAmount];
+
                         continue;
                     }
-                    
+
                     // Check if this item is part of a package adjustment (skip if covered by package)
                     $isPackageAdjustmentItem = false;
                     if ($invoice->package_adjustment > 0) {
@@ -939,7 +951,7 @@ class InvoiceController extends Controller
                             ->where('status', 'active')
                             ->where('remaining_quantity', '>', 0)
                             ->get();
-                        
+
                         foreach ($validPackages as $packageTracking) {
                             $packageItems = $packageTracking->packageItem->packageItems ?? collect();
                             foreach ($packageItems as $packageItem) {
@@ -950,23 +962,24 @@ class InvoiceController extends Controller
                             }
                         }
                     }
-                    
+
                     // Skip creating debit record for package adjustment items
                     if ($isPackageAdjustmentItem) {
-                        Log::info("SKIPPING CLIENT DEBIT FOR PACKAGE ITEM (Credit Client)", [
+                        Log::info('SKIPPING CLIENT DEBIT FOR PACKAGE ITEM (Credit Client)', [
                             'item_id' => $itemId,
                             'item_name' => $item->name,
-                            'reason' => 'Item is covered by package adjustment - no debit needed'
+                            'reason' => 'Item is covered by package adjustment - no debit needed',
                         ]);
+
                         continue;
                     }
-                    
+
                     // Create separate debit entry for this item
                     $itemDisplayName = $item->name;
                     $debitDescription = "{$itemDisplayName} (x{$quantity})";
                     $debitNotes = "Credit purchase - {$itemDisplayName} (x{$quantity}) - Invoice #{$invoiceNumber}";
-                    
-                    Log::info("Creating debit entry for item", [
+
+                    Log::info('Creating debit entry for item', [
                         'invoice_id' => $invoice->id,
                         'item_id' => $itemId,
                         'item_name' => $itemDisplayName,
@@ -976,7 +989,7 @@ class InvoiceController extends Controller
                         'notes' => $debitNotes,
                         'primary_method' => $primaryMethod,
                     ]);
-                    
+
                     try {
                         $balanceHistory = \App\Models\BalanceHistory::recordDebit(
                             $client,
@@ -987,10 +1000,10 @@ class InvoiceController extends Controller
                             $primaryMethod,
                             $invoice->id // Pass invoice_id to link entries, but allow multiple per invoice (different descriptions)
                         );
-                        
+
                         $debitCount++;
-                        
-                        Log::info("Debit entry created successfully for item", [
+
+                        Log::info('Debit entry created successfully for item', [
                             'invoice_id' => $invoice->id,
                             'balance_history_id' => $balanceHistory->id ?? 'unknown',
                             'item_id' => $itemId,
@@ -999,7 +1012,7 @@ class InvoiceController extends Controller
                             'amount' => $itemTotalAmount,
                         ]);
                     } catch (\Exception $e) {
-                        Log::error("Error creating debit entry for item", [
+                        Log::error('Error creating debit entry for item', [
                             'invoice_id' => $invoice->id,
                             'item_id' => $itemId,
                             'item_name' => $itemDisplayName,
@@ -1009,41 +1022,41 @@ class InvoiceController extends Controller
                         throw $e; // Re-throw to prevent continuing with invalid state
                     }
                 }
-                
-                Log::info("=== STEP 12: ITEM DEBIT ENTRIES PROCESSING COMPLETE ===", [
+
+                Log::info('=== STEP 12: ITEM DEBIT ENTRIES PROCESSING COMPLETE ===', [
                     'invoice_id' => $invoice->id,
                     'debit_entries_created' => $debitCount,
                     'items_skipped' => count($skippedItems),
                     'skipped_items_details' => $skippedItems,
                 ]);
-                
+
                 // Create separate debit entry for service charge if applicable
                 if ($invoice->service_charge > 0) {
-                    Log::info("=== STEP 13: CREATING SERVICE CHARGE DEBIT ENTRY ===", [
+                    Log::info('=== STEP 13: CREATING SERVICE CHARGE DEBIT ENTRY ===', [
                         'invoice_id' => $invoice->id,
                         'service_charge' => $invoice->service_charge,
                     ]);
-                    
+
                     try {
                         $serviceChargeBalanceHistory = \App\Models\BalanceHistory::recordDebit(
                             $client,
                             $invoice->service_charge,
-                            "Service Fee",
+                            'Service Fee',
                             $invoiceNumber,
                             "Credit purchase - Service Fee - Invoice #{$invoiceNumber}",
                             $primaryMethod,
                             $invoice->id // Pass invoice_id to link entries, but allow multiple per invoice (different descriptions)
                         );
-                        
+
                         $debitCount++;
-                        
-                        Log::info("Service charge debit entry created successfully", [
+
+                        Log::info('Service charge debit entry created successfully', [
                             'invoice_id' => $invoice->id,
                             'balance_history_id' => $serviceChargeBalanceHistory->id ?? 'unknown',
                             'service_charge' => $invoice->service_charge,
                         ]);
                     } catch (\Exception $e) {
-                        Log::error("Error creating service charge debit entry", [
+                        Log::error('Error creating service charge debit entry', [
                             'invoice_id' => $invoice->id,
                             'service_charge' => $invoice->service_charge,
                             'error' => $e->getMessage(),
@@ -1052,13 +1065,13 @@ class InvoiceController extends Controller
                         throw $e; // Re-throw to prevent continuing with invalid state
                     }
                 } else {
-                    Log::info("No service charge to create debit entry for", [
+                    Log::info('No service charge to create debit entry for', [
                         'invoice_id' => $invoice->id,
                         'service_charge' => $invoice->service_charge,
                     ]);
                 }
-                
-                Log::info("=== STEP 14: ALL DEBIT ENTRIES COMPLETE ===", [
+
+                Log::info('=== STEP 14: ALL DEBIT ENTRIES COMPLETE ===', [
                     'invoice_id' => $invoice->id,
                     'client_id' => $client->id,
                     'previous_balance' => $previousBalance,
@@ -1069,18 +1082,18 @@ class InvoiceController extends Controller
                     'total_amount' => $invoice->total_amount,
                     'total_debit_entries_created' => $debitCount,
                 ]);
-                
+
                 // Create transaction record for credit clients (even if payment method is mobile money)
-                
+
                 // Check if transaction already exists
                 $existingTransaction = \App\Models\Transaction::where('reference', $invoiceNumber)
                     ->where('client_id', $validated['client_id'])
                     ->where('invoice_id', $invoice->id)
                     ->first();
-                
-                if (!$existingTransaction) {
+
+                if (! $existingTransaction) {
                     $itemsDescription = $this->buildItemsDescription($validated['items'], $client, $business, $invoiceNumber);
-                    
+
                     $transaction = \App\Models\Transaction::create([
                         'business_id' => $validated['business_id'],
                         'branch_id' => $validated['branch_id'],
@@ -1088,7 +1101,7 @@ class InvoiceController extends Controller
                         'invoice_id' => $invoice->id,
                         'amount' => $invoice->balance_due, // Use balance_due, not amount_paid
                         'reference' => $invoiceNumber,
-                        'description' => $itemsDescription . ' (Credit Transaction)',
+                        'description' => $itemsDescription.' (Credit Transaction)',
                         'status' => ($primaryMethod === 'mobile_money' && ($validated['amount_paid'] ?? 0) > 0) ? 'pending' : 'completed',
                         'payment_status' => 'PP', // Always PP for credit transactions with balance due
                         'type' => 'debit',
@@ -1105,17 +1118,17 @@ class InvoiceController extends Controller
                         'method' => $primaryMethod,
                         'transaction_for' => 'main',
                     ]);
-                    
+
                     // Link transaction to accounts receivable
                     $accountsReceivable->update(['transaction_id' => $transaction->id]);
-                    
-                    Log::info("Transaction created for credit client", [
+
+                    Log::info('Transaction created for credit client', [
                         'transaction_id' => $transaction->id,
                         'payment_status' => 'PP',
                         'amount' => $invoice->balance_due,
                     ]);
                 }
-                
+
                 // For mobile money payments on credit, update existing transaction if needed
                 if ($primaryMethod === 'mobile_money' && ($validated['amount_paid'] ?? 0) > 0) {
                     $existingMobileMoneyTransaction = \App\Models\Transaction::where('reference', $invoiceNumber)
@@ -1123,7 +1136,7 @@ class InvoiceController extends Controller
                         ->where('method', 'mobile_money')
                         ->whereNull('invoice_id')
                         ->first();
-                    
+
                     if ($existingMobileMoneyTransaction) {
                         $existingMobileMoneyTransaction->update([
                             'invoice_id' => $invoice->id,
@@ -1132,28 +1145,28 @@ class InvoiceController extends Controller
                     }
                 }
             }
-            
+
             // For insurance payments: Create accounts receivable and update third-party payer balance
             // Similar to credit clients, but debit the insurance company instead of the client
             // Note: $paymentMethods and $isInsurancePayment are already defined above
             $thirdPartyPayer = null;
             $isInsuranceTransaction = false;
-            
+
             if ($isInsurancePayment) {
                 // Use selected third-party payer ID if provided, otherwise find one linked to this client or insurance company
                 $selectedThirdPartyPayerId = $validated['third_party_payer_id'] ?? null;
-                
+
                 if ($selectedThirdPartyPayerId) {
                     // Use the selected third-party payer
                     $thirdPartyPayer = \App\Models\ThirdPartyPayer::where('id', $selectedThirdPartyPayerId)
                         ->where('business_id', $business->id)
                         ->where('status', 'active')
                         ->first();
-                    
-                    if (!$thirdPartyPayer) {
+
+                    if (! $thirdPartyPayer) {
                         return response()->json([
                             'success' => false,
-                            'message' => 'Selected third-party payer not found or inactive.'
+                            'message' => 'Selected third-party payer not found or inactive.',
                         ], 400);
                     }
                 } else {
@@ -1166,19 +1179,19 @@ class InvoiceController extends Controller
                             ->whereNull('client_id') // Business-level, not client-specific
                             ->where('status', 'active')
                             ->first();
-                        
+
                         // If not found, try client-specific one as fallback
-                        if (!$thirdPartyPayer) {
+                        if (! $thirdPartyPayer) {
                             $thirdPartyPayer = \App\Models\ThirdPartyPayer::where('client_id', $client->id)
                                 ->where('business_id', $business->id)
                                 ->where('type', 'insurance_company')
                                 ->where('status', 'active')
                                 ->first();
                         }
-                        
+
                         // If still not found, create a business-level one automatically
                         // This is the "internal" account where all invoices for this insurance company are posted
-                        if (!$thirdPartyPayer) {
+                        if (! $thirdPartyPayer) {
                             $insuranceCompany = \App\Models\InsuranceCompany::find($client->insurance_company_id);
                             if ($insuranceCompany) {
                                 $thirdPartyPayer = \App\Models\ThirdPartyPayer::create([
@@ -1190,7 +1203,7 @@ class InvoiceController extends Controller
                                     'status' => 'active',
                                     'credit_limit' => 0, // Can be configured later
                                 ]);
-                                
+
                                 Log::info('Auto-created business-level third-party payer for insurance company', [
                                     'third_party_payer_id' => $thirdPartyPayer->id,
                                     'insurance_company_id' => $insuranceCompany->id,
@@ -1209,11 +1222,11 @@ class InvoiceController extends Controller
                             ->first();
                     }
                 }
-                
+
                 if ($thirdPartyPayer) {
                     $isInsuranceTransaction = true;
-                    
-                    Log::info("=== INSURANCE TRANSACTION DETECTED - STARTING PROCESSING ===", [
+
+                    Log::info('=== INSURANCE TRANSACTION DETECTED - STARTING PROCESSING ===', [
                         'invoice_id' => $invoice->id,
                         'invoice_number' => $invoice->invoice_number,
                         'client_id' => $client->id,
@@ -1221,26 +1234,26 @@ class InvoiceController extends Controller
                         'third_party_payer_id' => $thirdPartyPayer->id,
                         'third_party_payer_name' => $thirdPartyPayer->name,
                     ]);
-                    
+
                     // For insurance payments, payment_status should be 'pending_payment' if there's balance due
                     if ($invoice->payment_status !== 'pending_payment' && $invoice->balance_due > 0) {
                         $oldPaymentStatus = $invoice->payment_status;
                         $invoice->update(['payment_status' => 'pending_payment']);
                         $invoice->refresh();
-                        Log::info("=== INSURANCE INVOICE PAYMENT STATUS UPDATED ===", [
+                        Log::info('=== INSURANCE INVOICE PAYMENT STATUS UPDATED ===', [
                             'invoice_id' => $invoice->id,
                             'old_payment_status' => $oldPaymentStatus,
                             'new_payment_status' => $invoice->payment_status,
                         ]);
                     }
-                    
+
                     // Create accounts receivable entry for third-party payer
                     try {
                         $dueDate = now()->addDays($business->default_payment_terms_days ?? 30)->toDateString();
                         $arStatus = 'current';
                         $arAmountPaid = 0;
                         $arBalance = $invoice->total_amount;
-                        
+
                         $accountsReceivable = \App\Models\AccountsReceivable::create([
                             'client_id' => $client->id, // Client who received the service
                             'third_party_payer_id' => $thirdPartyPayer->id, // Who will pay
@@ -1257,61 +1270,61 @@ class InvoiceController extends Controller
                             'payer_type' => 'third_party',
                             'notes' => "Insurance transaction - Invoice #{$invoiceNumber}",
                         ]);
-                        
-                        Log::info("=== INSURANCE ACCOUNTS RECEIVABLE CREATED ===", [
+
+                        Log::info('=== INSURANCE ACCOUNTS RECEIVABLE CREATED ===', [
                             'accounts_receivable_id' => $accountsReceivable->id,
                             'third_party_payer_id' => $thirdPartyPayer->id,
                             'amount_due' => $accountsReceivable->amount_due,
                             'balance' => $accountsReceivable->balance,
                         ]);
                     } catch (\Exception $e) {
-                        Log::error("=== ERROR CREATING INSURANCE ACCOUNTS RECEIVABLE ===", [
+                        Log::error('=== ERROR CREATING INSURANCE ACCOUNTS RECEIVABLE ===', [
                             'invoice_id' => $invoice->id,
                             'third_party_payer_id' => $thirdPartyPayer->id,
                             'error' => $e->getMessage(),
                         ]);
                     }
-                    
+
                     // Per-vendor balance history debits are created in the post-authorization
                     // block below, once the snapshot with per-vendor amounts is available.
-                    
+
                     // Create separate debit entry for each item
                     $itemsCollection = collect($invoice->items ?? []);
                     $debitCount = 0;
                     $primaryMethod = 'insurance';
-                    
-                        // Insurance debits to the third-party payer are now created only
-                        // after the client's portion has been paid (see CheckPaymentStatus).
-                        // We still create tracking entries in the client's BalanceHistory below.
-                    Log::info("=== CREATING CLIENT TRACKING ENTRIES FOR INSURANCE PAYMENT ===", [
+
+                    // Insurance debits to the third-party payer are now created only
+                    // after the client's portion has been paid (see CheckPaymentStatus).
+                    // We still create tracking entries in the client's BalanceHistory below.
+                    Log::info('=== CREATING CLIENT TRACKING ENTRIES FOR INSURANCE PAYMENT ===', [
                         'invoice_id' => $invoice->id,
                         'client_id' => $client->id,
                     ]);
-                    
+
                     $itemsCollectionForTracking = collect($invoice->items ?? []);
                     $trackingCount = 0;
 
                     $thirdPartyPayer->loadMissing('insuranceCompany');
                     $insuranceTrackingPayerBracketName = $thirdPartyPayer->insuranceCompany->name ?? $thirdPartyPayer->name;
-                    
+
                     foreach ($itemsCollectionForTracking as $index => $itemData) {
                         $itemId = $itemData['id'] ?? $itemData['item_id'] ?? null;
-                        if (!$itemId) {
+                        if (! $itemId) {
                             continue;
                         }
-                        
+
                         $item = \App\Models\Item::find($itemId);
-                        if (!$item) {
+                        if (! $item) {
                             continue;
                         }
-                        
+
                         $quantity = $itemData['quantity'] ?? 1;
                         $itemTotalAmount = $itemData['total_amount'] ?? ($itemData['price'] ?? $item->default_price ?? 0) * $quantity;
-                        
+
                         if ($itemTotalAmount <= 0) {
                             continue;
                         }
-                        
+
                         // Skip package adjustment items
                         $isPackageAdjustmentItem = false;
                         if ($invoice->package_adjustment > 0) {
@@ -1320,7 +1333,7 @@ class InvoiceController extends Controller
                                 ->where('status', 'active')
                                 ->where('remaining_quantity', '>', 0)
                                 ->get();
-                            
+
                             foreach ($validPackages as $packageTracking) {
                                 $packageItems = $packageTracking->packageItem->packageItems ?? collect();
                                 foreach ($packageItems as $packageItem) {
@@ -1331,22 +1344,22 @@ class InvoiceController extends Controller
                                 }
                             }
                         }
-                        
+
                         if ($isPackageAdjustmentItem) {
                             continue;
                         }
-                        
+
                         // Create tracking entry (no balance change - just for display)
                         $itemDisplayName = $item->name;
                         $trackingDescription = "{$itemDisplayName} (x{$quantity}) [Insurance]";
                         $trackingNotes = "Insurance payment - {$itemDisplayName} (x{$quantity}) - Invoice #{$invoiceNumber} - Paid by {$insuranceTrackingPayerBracketName}";
-                        
+
                         try {
                             // Get current balance (won't change, but needed for the record)
                             $currentBalance = \App\Models\BalanceHistory::where('client_id', $client->id)
                                 ->orderBy('created_at', 'desc')
                                 ->value('new_balance') ?? ($client->balance ?? 0);
-                            
+
                             // Create tracking entry with transaction_type='debit' but change_amount=0
                             // payment_method='insurance' and special notes identify it as tracking
                             $trackingEntry = \App\Models\BalanceHistory::create([
@@ -1365,17 +1378,17 @@ class InvoiceController extends Controller
                                 'payment_method' => 'insurance',
                                 'payment_status' => 'paid', // Insurance payments are considered paid
                             ]);
-                            
+
                             $trackingCount++;
-                            
-                            Log::info("Client tracking entry created for insurance payment", [
+
+                            Log::info('Client tracking entry created for insurance payment', [
                                 'invoice_id' => $invoice->id,
                                 'client_id' => $client->id,
                                 'item_id' => $itemId,
                                 'tracking_entry_id' => $trackingEntry->id,
                             ]);
                         } catch (\Exception $e) {
-                            Log::error("Error creating client tracking entry for insurance payment", [
+                            Log::error('Error creating client tracking entry for insurance payment', [
                                 'invoice_id' => $invoice->id,
                                 'client_id' => $client->id,
                                 'item_id' => $itemId,
@@ -1384,14 +1397,14 @@ class InvoiceController extends Controller
                             // Don't throw - tracking entries are not critical
                         }
                     }
-                    
+
                     // Create tracking entry for service charge if applicable
                     if ($invoice->service_charge > 0) {
                         try {
                             $currentBalance = \App\Models\BalanceHistory::where('client_id', $client->id)
                                 ->orderBy('created_at', 'desc')
                                 ->value('new_balance') ?? ($client->balance ?? 0);
-                            
+
                             $trackingEntry = \App\Models\BalanceHistory::create([
                                 'client_id' => $client->id,
                                 'business_id' => $client->business_id,
@@ -1402,59 +1415,59 @@ class InvoiceController extends Controller
                                 'change_amount' => 0, // No balance change
                                 'new_balance' => $currentBalance,
                                 'transaction_type' => 'debit',
-                                'description' => "Service Fee [Insurance]",
+                                'description' => 'Service Fee [Insurance]',
                                 'reference_number' => $invoiceNumber,
                                 'notes' => "Insurance payment - Service Fee - Invoice #{$invoiceNumber} - Paid by {$insuranceTrackingPayerBracketName}",
                                 'payment_method' => 'insurance',
                                 'payment_status' => 'paid',
                             ]);
-                            
+
                             $trackingCount++;
-                            
-                            Log::info("Client tracking entry created for service charge (insurance)", [
+
+                            Log::info('Client tracking entry created for service charge (insurance)', [
                                 'invoice_id' => $invoice->id,
                                 'client_id' => $client->id,
                                 'tracking_entry_id' => $trackingEntry->id,
                             ]);
                         } catch (\Exception $e) {
-                            Log::error("Error creating client tracking entry for service charge (insurance)", [
+                            Log::error('Error creating client tracking entry for service charge (insurance)', [
                                 'invoice_id' => $invoice->id,
                                 'client_id' => $client->id,
                                 'error' => $e->getMessage(),
                             ]);
                         }
                     }
-                    
-                    Log::info("=== CLIENT TRACKING ENTRIES CREATED FOR INSURANCE PAYMENT ===", [
+
+                    Log::info('=== CLIENT TRACKING ENTRIES CREATED FOR INSURANCE PAYMENT ===', [
                         'invoice_id' => $invoice->id,
                         'client_id' => $client->id,
                         'tracking_entries_created' => $trackingCount,
                     ]);
                 } else {
-                    Log::warning("Insurance payment selected but no active third-party payer found for client", [
+                    Log::warning('Insurance payment selected but no active third-party payer found for client', [
                         'invoice_id' => $invoice->id,
                         'client_id' => $client->id,
                     ]);
                 }
             }
-            
+
             // MONEY TRACKING: Step 1 - Process payment received
             // For credit clients and insurance payments with balance due, skip suspense account processing
             // For non-credit clients or fully paid invoices, process normally
-            if ($validated['amount_paid'] > 0 && !$isCreditTransaction && !$isInsuranceTransaction) {
+            if ($validated['amount_paid'] > 0 && ! $isCreditTransaction && ! $isInsuranceTransaction) {
                 $paymentMethods = $validated['payment_methods'] ?? [];
-                $primaryMethod = !empty($paymentMethods) ? $paymentMethods[0] : 'cash';
-                
+                $primaryMethod = ! empty($paymentMethods) ? $paymentMethods[0] : 'cash';
+
                 // Only process payment immediately for cash payments
                 // Mobile money payments will be processed by the cron job when payment is completed
                 if ($primaryMethod === 'cash') {
-                    Log::info("Processing cash payment immediately", [
+                    Log::info('Processing cash payment immediately', [
                         'client_id' => $client->id,
                         'amount_paid' => $validated['amount_paid'],
                         'invoice_number' => $invoiceNumber,
-                        'primary_method' => $primaryMethod
+                        'primary_method' => $primaryMethod,
                     ]);
-                    
+
                     // Process payment through money tracking system
                     $moneyTrackingService->processPaymentReceived(
                         $client,
@@ -1464,22 +1477,22 @@ class InvoiceController extends Controller
                         [
                             'invoice_id' => $invoice->id,
                             'payment_methods' => $paymentMethods,
-                            'payment_phone' => $validated['payment_phone']
+                            'payment_phone' => $validated['payment_phone'],
                         ]
                     );
-                    
-                    Log::info("Cash payment processed successfully", [
+
+                    Log::info('Cash payment processed successfully', [
                         'client_id' => $client->id,
-                        'amount_paid' => $validated['amount_paid']
+                        'amount_paid' => $validated['amount_paid'],
                     ]);
                 } else {
-                    Log::info("Mobile money payment detected - will be processed by cron job when payment is completed", [
+                    Log::info('Mobile money payment detected - will be processed by cron job when payment is completed', [
                         'client_id' => $client->id,
                         'amount_paid' => $validated['amount_paid'],
                         'invoice_number' => $invoiceNumber,
-                        'primary_method' => $primaryMethod
+                        'primary_method' => $primaryMethod,
                     ]);
-                    
+
                     // Update any existing mobile money transaction with the invoice_id
                     $existingMobileMoneyTransaction = \App\Models\Transaction::where('reference', $invoiceNumber)
                         ->where('client_id', $validated['client_id'])
@@ -1487,17 +1500,17 @@ class InvoiceController extends Controller
                         ->where('method', 'mobile_money')
                         ->whereNull('invoice_id')
                         ->first();
-                    
+
                     if ($existingMobileMoneyTransaction) {
                         $existingMobileMoneyTransaction->update(['invoice_id' => $invoice->id]);
-                        Log::info("Updated mobile money transaction with invoice_id", [
+                        Log::info('Updated mobile money transaction with invoice_id', [
                             'transaction_id' => $existingMobileMoneyTransaction->id,
                             'invoice_id' => $invoice->id,
-                            'invoice_number' => $invoiceNumber
+                            'invoice_number' => $invoiceNumber,
                         ]);
                     }
                 }
-                
+
                 // Create transaction record for cash payments (non-credit transactions)
                 // Mobile money transactions are created in processMobileMoneyPayment method
                 if ($primaryMethod === 'cash') {
@@ -1506,12 +1519,12 @@ class InvoiceController extends Controller
                         ->where('client_id', $validated['client_id'])
                         ->where('amount', $validated['amount_paid'])
                         ->first();
-                    
+
                     // Only create transaction record if one doesn't already exist
-                    if (!$existingTransaction) {
+                    if (! $existingTransaction) {
                         // Build description with purchased items, client, and business information
                         $itemsDescription = $this->buildItemsDescription($validated['items'], $client, $business, $invoiceNumber);
-                        
+
                         $cashTransaction = \App\Models\Transaction::create([
                             'business_id' => $validated['business_id'],
                             'branch_id' => $validated['branch_id'],
@@ -1539,35 +1552,35 @@ class InvoiceController extends Controller
                         InsuranceClientPortionThirdPartyNotifier::notifyIfApplicable($invoice, $cashTransaction);
                     } else {
                         // Update existing transaction with invoice_id if it doesn't have one
-                        if (!$existingTransaction->invoice_id) {
+                        if (! $existingTransaction->invoice_id) {
                             $existingTransaction->update(['invoice_id' => $invoice->id]);
                         }
                     }
                 }
             }
-            
+
             // MONEY TRACKING: Step 2 - Process order confirmation (includes service charge)
             if ($validated['status'] === 'confirmed' && $nonDepositItems->isNotEmpty()) {
-                Log::info("Processing order confirmation", [
+                Log::info('Processing order confirmation', [
                     'invoice_id' => $invoice->id,
                     'invoice_number' => $invoice->invoice_number,
-                    'items_count' => $nonDepositItems->count()
+                    'items_count' => $nonDepositItems->count(),
                 ]);
 
                 $orderConfirmationResult = $moneyTrackingService->processOrderConfirmed($invoice, $nonDepositItems->toArray());
-                
-                Log::info("Order confirmation processed", [
+
+                Log::info('Order confirmation processed', [
                     'invoice_id' => $invoice->id,
-                    'result' => $orderConfirmationResult
+                    'result' => $orderConfirmationResult,
                 ]);
             }
-            
-        // PACKAGE TRACKING: Package tracking records will be created after payment completion
-        // (handled in CheckPaymentStatus.php when payment is confirmed)
-            
+
+            // PACKAGE TRACKING: Package tracking records will be created after payment completion
+            // (handled in CheckPaymentStatus.php when payment is confirmed)
+
             // PACKAGE ADJUSTMENT: Log that package adjustments will be processed after payment completion
             if ($validated['package_adjustment'] > 0) {
-                Log::info("=== PACKAGE ADJUSTMENT DETECTED IN INVOICE CREATION ===", [
+                Log::info('=== PACKAGE ADJUSTMENT DETECTED IN INVOICE CREATION ===', [
                     'invoice_id' => $invoice->id,
                     'invoice_number' => $invoice->invoice_number,
                     'package_adjustment_amount' => $validated['package_adjustment'],
@@ -1584,15 +1597,15 @@ class InvoiceController extends Controller
                     'business_name' => $business->name ?? 'Unknown',
                     'branch_id' => $validated['branch_id'],
                     'timestamp' => now()->toISOString(),
-                    'note' => 'Package tracking will be updated after payment completion via Save & Exit'
+                    'note' => 'Package tracking will be updated after payment completion via Save & Exit',
                 ]);
             }
-            
+
             // BALANCE ADJUSTMENT: Update client balance if balance adjustment was used
             if ($validated['account_balance_adjustment'] > 0) {
                 $this->updateClientBalance($client, $validated['account_balance_adjustment']);
             }
-            
+
             // SERVICE POINT QUEUING: Items will be queued only after payment is completed
             // This is now handled by the CheckPaymentStatus cron job
             // EXCEPTIONS:
@@ -1601,17 +1614,17 @@ class InvoiceController extends Controller
             // 3. For insurance payments, queue immediately (regardless of third-party payer status)
             // 4. For fully paid cash transactions, queue immediately (payment is complete)
             // Zero-amount transactions should always be auto-completed regardless of payment method
-            
+
             // Determine if this is an insurance payment (check payment methods, not just third-party payer)
             $paymentMethods = $validated['payment_methods'] ?? [];
             $isInsurancePaymentMethod = in_array('insurance', $paymentMethods);
-            
+
             // Check if payment is fully completed (for cash payments)
             $isFullyPaid = ($validated['amount_paid'] ?? 0) >= $invoice->total_amount && $invoice->payment_status === 'paid';
-            $isCashPayment = in_array('cash', $paymentMethods) && !$isCreditTransaction && !$isInsurancePaymentMethod;
-            
+            $isCashPayment = in_array('cash', $paymentMethods) && ! $isCreditTransaction && ! $isInsurancePaymentMethod;
+
             // Queue items immediately for credit clients (they're approved for credit, items should be offered)
-            Log::info("=== STEP 15: CHECKING IF ITEMS SHOULD BE QUEUED ===", [
+            Log::info('=== STEP 15: CHECKING IF ITEMS SHOULD BE QUEUED ===', [
                 'invoice_id' => $invoice->id,
                 'is_credit_transaction' => $isCreditTransaction,
                 'is_insurance_transaction' => $isInsuranceTransaction,
@@ -1626,7 +1639,7 @@ class InvoiceController extends Controller
                 'amount_paid' => $validated['amount_paid'] ?? 0,
                 'total_amount' => $invoice->total_amount,
             ]);
-            
+
             // Queue items for:
             // 1. Credit clients (approved to receive services on credit)
             // 2. Insurance transactions (queue immediately so service points see client/items)
@@ -1636,7 +1649,7 @@ class InvoiceController extends Controller
                 $isInsurancePaymentMethod ||
                 ($isFullyPaid && $isCashPayment)
             ) && $nonDepositItems->isNotEmpty();
-            
+
             if ($shouldQueueItems) {
                 // Determine transaction type for logging
                 if ($isInsuranceTransaction || $isInsurancePaymentMethod) {
@@ -1648,7 +1661,7 @@ class InvoiceController extends Controller
                 } else {
                     $transactionType = 'OTHER';
                 }
-                
+
                 Log::info("=== STEP 16: {$transactionType} TRANSACTION - QUEUING ITEMS IMMEDIATELY ===", [
                     'invoice_id' => $invoice->id,
                     'invoice_number' => $invoice->invoice_number,
@@ -1659,22 +1672,22 @@ class InvoiceController extends Controller
                     'is_fully_paid_cash' => $isFullyPaid && $isCashPayment,
                     'balance_due' => $invoice->balance_due,
                     'items_count' => $nonDepositItems->count(),
-                    'items' => $nonDepositItems->toArray()
+                    'items' => $nonDepositItems->toArray(),
                 ]);
-                
+
                 try {
                     // Get insurance company ID if this is an insurance payment
                     $insuranceCompanyId = null;
                     if ($isInsuranceTransaction || $isInsurancePaymentMethod) {
                         $insuranceCompanyId = $client->insurance_company_id ?? null;
-                        if (!$insuranceCompanyId && $thirdPartyPayer) {
+                        if (! $insuranceCompanyId && $thirdPartyPayer) {
                             $insuranceCompanyId = $thirdPartyPayer->insurance_company_id ?? null;
                         }
                     }
-                    
+
                     // Queue items immediately for credit clients, insurance payments, or fully paid cash transactions
                     $this->queueItemsAtServicePoints($invoice, $nonDepositItems->toArray(), $insuranceCompanyId);
-                    
+
                     // For credit clients and insurance payments: Process suspense account movements even though no payment was received
                     // This ensures money moves to suspense accounts (general, package, kashtre) for proper tracking
                     // For fully paid cash transactions, suspense movements are already processed above
@@ -1683,21 +1696,21 @@ class InvoiceController extends Controller
                             'invoice_id' => $invoice->id,
                             'invoice_number' => $invoice->invoice_number,
                             'client_id' => $client->id,
-                            'items_count' => count($nonDepositItems)
+                            'items_count' => count($nonDepositItems),
                         ]);
-                        
+
                         $suspenseMovements = $moneyTrackingService->processSuspenseAccountMovements($invoice, $nonDepositItems->toArray());
-                        
+
                         Log::info("=== STEP 18: SUSPENSE ACCOUNT MOVEMENTS COMPLETED FOR {$transactionType} TRANSACTION ===", [
                             'invoice_id' => $invoice->id,
                             'movements_count' => count($suspenseMovements),
-                            'movements' => $suspenseMovements
+                            'movements' => $suspenseMovements,
                         ]);
                     }
-                    
+
                     // Verify items were queued
                     $queuedCount = \App\Models\ServiceDeliveryQueue::where('invoice_id', $invoice->id)->count();
-                    
+
                     Log::info("=== STEP 19: ITEMS QUEUED SUCCESSFULLY FOR {$transactionType} TRANSACTION ===", [
                         'invoice_id' => $invoice->id,
                         'items_queued' => $nonDepositItems->count(),
@@ -1705,56 +1718,56 @@ class InvoiceController extends Controller
                         'queue_verification_match' => $queuedCount === $nonDepositItems->count(),
                     ]);
                 } catch (\Exception $e) {
-                    Log::error("=== ERROR QUEUING ITEMS FOR CREDIT CLIENT ===", [
+                    Log::error('=== ERROR QUEUING ITEMS FOR CREDIT CLIENT ===', [
                         'invoice_id' => $invoice->id,
                         'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString()
+                        'trace' => $e->getTraceAsString(),
                     ]);
                     // Don't throw - we still want the invoice to be created
                 }
             } else {
-                Log::warning("=== STEP 16: CREDIT CLIENT QUEUING SKIPPED ===", [
+                Log::warning('=== STEP 16: CREDIT CLIENT QUEUING SKIPPED ===', [
                     'invoice_id' => $invoice->id,
                     'is_credit_transaction' => $isCreditTransaction,
                     'non_deposit_items_empty' => $nonDepositItems->isEmpty(),
                     'non_deposit_items_count' => $nonDepositItems->count(),
                     'is_credit_client' => $isCreditClient,
                     'has_balance_due' => $hasBalanceDue,
-                    'reason' => !$isCreditTransaction ? 'not_credit_transaction' : ($nonDepositItems->isEmpty() ? 'no_non_deposit_items' : 'unknown'),
+                    'reason' => ! $isCreditTransaction ? 'not_credit_transaction' : ($nonDepositItems->isEmpty() ? 'no_non_deposit_items' : 'unknown'),
                 ]);
             }
-            
-            Log::info("=== STEP 18: CREDIT CLIENT PROCESSING COMPLETE ===", [
+
+            Log::info('=== STEP 18: CREDIT CLIENT PROCESSING COMPLETE ===', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'client_id' => $client->id,
                 'is_credit_transaction' => $isCreditTransaction,
                 'items_queued' => $isCreditTransaction && $nonDepositItems->isNotEmpty(),
             ]);
-            
+
             // Queue items immediately for zero-amount transactions
             if ($validated['total_amount'] == 0 && $nonDepositItems->isNotEmpty()) {
-                Log::info("Zero-amount transaction detected - auto-completing and queuing items", [
+                Log::info('Zero-amount transaction detected - auto-completing and queuing items', [
                     'invoice_id' => $invoice->id,
                     'invoice_number' => $invoice->invoice_number,
                     'total_amount' => $validated['total_amount'],
                     'package_adjustment' => $validated['package_adjustment'] ?? 0,
                     'account_balance_adjustment' => $validated['account_balance_adjustment'] ?? 0,
-                    'payment_methods' => $validated['payment_methods'] ?? []
+                    'payment_methods' => $validated['payment_methods'] ?? [],
                 ]);
-                
+
                 // Auto-complete the transaction
                 $invoice->update([
                     'payment_status' => 'paid',
                     'status' => 'confirmed',
                     'amount_paid' => 0,
                     'balance_due' => 0,
-                    'confirmed_at' => now()
+                    'confirmed_at' => now(),
                 ]);
-                
+
                 // Create transaction record for zero-amount transactions
                 $itemsDescription = $this->buildItemsDescription($validated['items'], $client, $business, $invoiceNumber);
-                
+
                 \App\Models\Transaction::create([
                     'business_id' => $validated['business_id'],
                     'branch_id' => $validated['branch_id'],
@@ -1778,33 +1791,33 @@ class InvoiceController extends Controller
                     'method' => 'package_adjustment',
                     'transaction_for' => 'main',
                 ]);
-                
-                Log::info("Transaction record created for zero-amount transaction", [
+
+                Log::info('Transaction record created for zero-amount transaction', [
                     'invoice_id' => $invoice->id,
                     'invoice_number' => $invoiceNumber,
                     'amount' => 0,
-                    'description' => $itemsDescription
+                    'description' => $itemsDescription,
                 ]);
-                
+
                 // Get insurance company ID if this is an insurance payment
                 $insuranceCompanyId = null;
                 $paymentMethods = $validated['payment_methods'] ?? [];
                 if (in_array('insurance', $paymentMethods)) {
                     $insuranceCompanyId = $client->insurance_company_id ?? null;
                 }
-                
+
                 // Queue items immediately for zero-amount transactions
                 $this->queueItemsAtServicePoints($invoice, $nonDepositItems->toArray(), $insuranceCompanyId);
-                
-                Log::info("Zero-amount transaction auto-completed and items queued", [
+
+                Log::info('Zero-amount transaction auto-completed and items queued', [
                     'invoice_id' => $invoice->id,
-                    'items_queued' => count($validated['items'])
+                    'items_queued' => count($validated['items']),
                 ]);
             }
-            
+
             // Generate next invoice number (default to proforma type)
             $nextInvoiceNumber = Invoice::generateInvoiceNumber($business->id, 'proforma');
-            
+
             // Handle direct client deposits
             if ($depositTotalAmount > 0) {
                 $moneyTrackingService->processClientDeposit($client, $depositTotalAmount, $invoice, $depositItems->values()->toArray());
@@ -1819,21 +1832,21 @@ class InvoiceController extends Controller
             }
 
             DB::commit();
-            
+
             // Final verification: Check client balance one more time after commit
             if ($isCreditTransaction) {
                 $finalClientCheck = \App\Models\Client::find($client->id);
-                Log::info("=== FINAL CLIENT BALANCE VERIFICATION ===", [
+                Log::info('=== FINAL CLIENT BALANCE VERIFICATION ===', [
                     'invoice_id' => $invoice->id,
                     'client_id' => $client->id,
                     'client_balance_after_commit' => $finalClientCheck->balance ?? 0,
                     'expected_negative_balance' => $invoice->balance_due > 0,
                 ]);
-                
+
                 // If balance should be negative but isn't, fix it
                 if ($invoice->balance_due > 0 && ($finalClientCheck->balance ?? 0) >= 0) {
                     $expectedBalance = ($finalClientCheck->balance ?? 0) - $invoice->balance_due;
-                    Log::warning("=== BALANCE NOT NEGATIVE AFTER COMMIT - FIXING ===", [
+                    Log::warning('=== BALANCE NOT NEGATIVE AFTER COMMIT - FIXING ===', [
                         'invoice_id' => $invoice->id,
                         'client_id' => $client->id,
                         'current_balance' => $finalClientCheck->balance ?? 0,
@@ -1841,14 +1854,14 @@ class InvoiceController extends Controller
                         'balance_due' => $invoice->balance_due,
                     ]);
                     $finalClientCheck->update(['balance' => $expectedBalance]);
-                    Log::info("Balance fixed after commit", [
+                    Log::info('Balance fixed after commit', [
                         'client_id' => $client->id,
                         'new_balance' => $finalClientCheck->fresh()->balance,
                     ]);
                 }
             }
-            
-            Log::info("=== INVOICE CREATION COMPLETED SUCCESSFULLY ===", [
+
+            Log::info('=== INVOICE CREATION COMPLETED SUCCESSFULLY ===', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'client_id' => $invoice->client_id,
@@ -1878,7 +1891,7 @@ class InvoiceController extends Controller
             }
 
             // ── Legacy single-vendor ─────────────────────────────────────────────────
-            if (!$insuranceAuthorization && $client->insurance_company_id && $client->policy_number) {
+            if (! $insuranceAuthorization && $client->insurance_company_id && $client->policy_number) {
                 Log::info('[Kashtre] Insurance authorization: client is insurance', [
                     'invoice_id' => $invoice->id,
                     'invoice_number' => $invoice->invoice_number,
@@ -1898,6 +1911,7 @@ class InvoiceController extends Controller
                             'vendor_status' => $vendor->status,
                             'block_reason' => $vendor->block_reason,
                         ]);
+
                         return response()->json([
                             'success' => false,
                             'message' => "Cannot authorize invoice: Insurance vendor is {$vendor->status}. Reason: {$vendor->block_reason}",
@@ -1922,7 +1936,7 @@ class InvoiceController extends Controller
                             'total_amount' => $total,
                             'code' => $itemModel?->code,
                             'type' => $itemModel?->type,
-                            'kashtre_excluded' => !empty($item['kashtre_excluded']),
+                            'kashtre_excluded' => ! empty($item['kashtre_excluded']),
                         ];
                     })->values()->all();
                     $apiService = new \App\Services\ThirdPartyApiService();
@@ -1948,7 +1962,7 @@ class InvoiceController extends Controller
                         'coinsurance_contributes_to_deductible' => $authPayload['coinsurance_contributes_to_deductible'],
                     ]);
                     $insuranceAuthorization = $apiService->requestInvoiceAuthorization($authPayload);
-                    if ($insuranceAuthorization && !empty($insuranceAuthorization['success'])) {
+                    if ($insuranceAuthorization && ! empty($insuranceAuthorization['success'])) {
                         // Client portion must match invoice split: invoice_total = insurance_total + client_total (vendor ledger).
                         $insuranceAuthorization = $this->normalizeInsuranceAuthorizationClientTotals($invoice, $insuranceAuthorization);
                         // Persist policy flags on snapshot when insurer omits them (used by UI / refresh).
@@ -1991,7 +2005,7 @@ class InvoiceController extends Controller
                 'invoice' => $invoice,
                 'next_invoice_number' => $nextInvoiceNumber,
             ];
-            if ($insuranceAuthorization && !empty($insuranceAuthorization['success'])) {
+            if ($insuranceAuthorization && ! empty($insuranceAuthorization['success'])) {
                 $authStatus = $insuranceAuthorization['authorization_status'] ?? 'auto_approved';
 
                 // ── Third-party payer credit limit gate (conditional guarantee) ──
@@ -1999,8 +2013,8 @@ class InvoiceController extends Controller
                 // so we enforce Prudential's (third-party payer) limit here.
                 try {
                     $insurancePortion = (float) ($insuranceAuthorization['insurance_total'] ?? 0);
-                        $isGracePeriod = (bool) ($insuranceAuthorization['grace_period']['active'] ?? false);
-                        if (!$isGracePeriod && $authStatus !== 'auto_rejected' && $insurancePortion > 0) {
+                    $isGracePeriod = (bool) ($insuranceAuthorization['grace_period']['active'] ?? false);
+                    if (! $isGracePeriod && $authStatus !== 'auto_rejected' && $insurancePortion > 0) {
                         $thirdPartyPayer = \App\Models\ThirdPartyPayer::where('insurance_company_id', $client->insurance_company_id)
                             ->where('business_id', $business->id)
                             ->where('type', 'insurance_company')
@@ -2117,7 +2131,7 @@ class InvoiceController extends Controller
                 $responseData['authorization_status'] = $authStatus;
                 // For multi-vendor: client payment is the FINAL client_total (after all vendors cascade)
                 // For single-vendor: client payment is the standard client_total
-                $isMultiVendor = !empty($insuranceAuthorization['multi_vendor']);
+                $isMultiVendor = ! empty($insuranceAuthorization['multi_vendor']);
                 $responseData['is_multi_vendor'] = $isMultiVendor;
                 // Only show payment prompt if there's a client portion to collect
                 // For multi-vendor, this is the true final amount after cascade complete
@@ -2152,17 +2166,17 @@ class InvoiceController extends Controller
             }
 
             return response()->json($responseData);
-            
+
         } catch (\Exception $e) {
             DB::rollBack();
-            
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create invoice: ' . $e->getMessage(),
+                'message' => 'Failed to create invoice: '.$e->getMessage(),
             ], 500);
         }
     }
-    
+
     /**
      * Post insurer guarantee debits immediately for full-cover approvals (client_total ~= 0).
      * Duplicate-safe: checks existing invoice+description debit before creating.
@@ -2174,7 +2188,7 @@ class InvoiceController extends Controller
         $this->ensureClientInsuranceTrackingEntry($invoice, $client, $authorization);
 
         $vendors = [];
-        if (!empty($authorization['multi_vendor']) && !empty($authorization['vendors']) && is_array($authorization['vendors'])) {
+        if (! empty($authorization['multi_vendor']) && ! empty($authorization['vendors']) && is_array($authorization['vendors'])) {
             $vendors = $authorization['vendors'];
         } else {
             $vendors[] = [
@@ -2198,7 +2212,7 @@ class InvoiceController extends Controller
             $vendorName = $vendor['vendor_name'] ?? $vendor['insurance_company_name'] ?? null;
 
             $thirdPartyPayer = null;
-            if (!empty($vendorName)) {
+            if (! empty($vendorName)) {
                 $thirdPartyPayer = \App\Models\ThirdPartyPayer::where('name', $vendorName)
                     ->where('business_id', $business->id)
                     ->where('type', 'insurance_company')
@@ -2206,7 +2220,7 @@ class InvoiceController extends Controller
                     ->first();
             }
 
-            if (!$thirdPartyPayer && $client->insurance_company_id) {
+            if (! $thirdPartyPayer && $client->insurance_company_id) {
                 $thirdPartyPayer = \App\Models\ThirdPartyPayer::where('insurance_company_id', $client->insurance_company_id)
                     ->where('business_id', $business->id)
                     ->where('type', 'insurance_company')
@@ -2214,11 +2228,11 @@ class InvoiceController extends Controller
                     ->first();
             }
 
-            if (!$thirdPartyPayer) {
+            if (! $thirdPartyPayer) {
                 continue;
             }
 
-            $description = 'Insurance guarantee for invoice ' . $invoice->invoice_number;
+            $description = 'Insurance guarantee for invoice '.$invoice->invoice_number;
             $existingDebit = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
                 ->where('invoice_id', $invoice->id)
                 ->where('transaction_type', 'debit')
@@ -2330,12 +2344,12 @@ class InvoiceController extends Controller
         if ($invoiceNumber) {
             return "Proforma Invoice {$invoiceNumber}";
         }
-        
+
         // If no invoice number, use client name
         if ($client) {
             return $client->name;
         }
-        
+
         // Fallback
         return 'Services';
     }
@@ -2354,24 +2368,24 @@ class InvoiceController extends Controller
             ->where('upper_bound', '>=', $subtotal)
             ->orderBy('lower_bound', 'desc')
             ->first();
-        
-        if (!$serviceCharge) {
+
+        if (! $serviceCharge) {
             return 0; // No service charge configured for this amount range
         }
-        
+
         // For fixed charges, return the amount directly
         if ($serviceCharge->type === 'fixed') {
             return $serviceCharge->amount;
         }
-        
+
         // For percentage charges, calculate based on amount
         if ($serviceCharge->type === 'percentage') {
             return ($subtotal * $serviceCharge->amount) / 100;
         }
-        
+
         return 0;
     }
-    
+
     /**
      * Get service charge for AJAX request
      */
@@ -2379,15 +2393,15 @@ class InvoiceController extends Controller
     {
         $businessId = $request->input('business_id');
         $subtotal = $request->input('subtotal', 0);
-        
+
         $serviceCharge = $this->calculateServiceCharge($businessId, $subtotal);
-        
+
         return response()->json([
             'service_charge' => $serviceCharge,
-            'formatted_service_charge' => 'UGX ' . number_format($serviceCharge, 2),
+            'formatted_service_charge' => 'UGX '.number_format($serviceCharge, 2),
         ]);
     }
-    
+
     /**
      * Calculate service charge for AJAX request (new endpoint)
      */
@@ -2399,22 +2413,22 @@ class InvoiceController extends Controller
                 'business_id' => 'required|exists:businesses,id',
                 'branch_id' => 'nullable|exists:branches,id',
             ]);
-            
+
             $businessId = $validated['business_id'];
             $subtotal = $validated['subtotal'];
             $branchId = $validated['branch_id'] ?? null;
-            
+
             // Try to get service charge for branch first, then business
             $serviceCharge = null;
-            
+
             // Debug: Check what service charges exist
             $allServiceCharges = ServiceCharge::where('business_id', $businessId)->get();
             \Log::info('All service charges for business', [
                 'business_id' => $businessId,
                 'count' => $allServiceCharges->count(),
-                'charges' => $allServiceCharges->toArray()
+                'charges' => $allServiceCharges->toArray(),
             ]);
-            
+
             if ($branchId) {
                 $serviceCharge = ServiceCharge::where('business_id', $businessId)
                     ->where('entity_type', 'branch')
@@ -2423,16 +2437,16 @@ class InvoiceController extends Controller
                     ->where('lower_bound', '<=', $subtotal)
                     ->where('upper_bound', '>=', $subtotal)
                     ->first();
-                    
+
                 \Log::info('Branch service charge search', [
                     'branch_id' => $branchId,
                     'subtotal' => $subtotal,
-                    'found' => $serviceCharge ? 'yes' : 'no'
+                    'found' => $serviceCharge ? 'yes' : 'no',
                 ]);
             }
-            
+
             // If no branch service charge, try business level
-            if (!$serviceCharge) {
+            if (! $serviceCharge) {
                 $serviceCharge = ServiceCharge::where('business_id', $businessId)
                     ->where('entity_type', 'business')
                     ->where('is_active', true)
@@ -2440,18 +2454,18 @@ class InvoiceController extends Controller
                     ->where('upper_bound', '>=', $subtotal)
                     ->orderBy('lower_bound', 'desc')
                     ->first();
-                    
+
                 \Log::info('Business service charge search', [
                     'business_id' => $businessId,
                     'subtotal' => $subtotal,
-                    'found' => $serviceCharge ? 'yes' : 'no'
+                    'found' => $serviceCharge ? 'yes' : 'no',
                 ]);
             }
-            
-            if (!$serviceCharge) {
+
+            if (! $serviceCharge) {
                 // Check if any service charge ranges exist for this business/branch
                 $hasServiceChargeRanges = false;
-                
+
                 if ($branchId) {
                     // Check if branch has any service charge ranges
                     $hasServiceChargeRanges = ServiceCharge::where('business_id', $businessId)
@@ -2460,15 +2474,15 @@ class InvoiceController extends Controller
                         ->where('is_active', true)
                         ->exists();
                 }
-                
+
                 // If no branch ranges, check business level
-                if (!$hasServiceChargeRanges) {
+                if (! $hasServiceChargeRanges) {
                     $hasServiceChargeRanges = ServiceCharge::where('business_id', $businessId)
                         ->where('entity_type', 'business')
                         ->where('is_active', true)
                         ->exists();
                 }
-                
+
                 // Debug: Log what we're looking for
                 \Log::info('No service charge found', [
                     'business_id' => $businessId,
@@ -2476,35 +2490,35 @@ class InvoiceController extends Controller
                     'subtotal' => $subtotal,
                     'searched_branch' => $branchId ? 'yes' : 'no',
                     'searched_business' => 'yes',
-                    'has_service_charge_ranges' => $hasServiceChargeRanges
+                    'has_service_charge_ranges' => $hasServiceChargeRanges,
                 ]);
-                
+
                 return response()->json([
                     'success' => true,
                     'service_charge' => 0,
                     'has_service_charge_ranges' => $hasServiceChargeRanges,
-                    'message' => $hasServiceChargeRanges 
+                    'message' => $hasServiceChargeRanges
                         ? 'No service charge configured for this amount range. Please contact admin to set up service charges for this range.'
                         : 'No service charge configured. Please contact admin to set up service charges.',
                     'debug' => [
                         'business_id' => $businessId,
                         'branch_id' => $branchId,
                         'subtotal' => $subtotal,
-                        'has_service_charge_ranges' => $hasServiceChargeRanges
-                    ]
+                        'has_service_charge_ranges' => $hasServiceChargeRanges,
+                    ],
                 ]);
             }
-            
+
             // Calculate service charge based on type
             $calculatedCharge = 0;
-            
+
             if ($serviceCharge->type === 'percentage') {
                 $calculatedCharge = ($subtotal * $serviceCharge->amount) / 100;
             } else {
                 // For fixed charges, return the amount directly
                 $calculatedCharge = $serviceCharge->amount;
             }
-            
+
             return response()->json([
                 'success' => true,
                 'service_charge' => $calculatedCharge,
@@ -2514,18 +2528,18 @@ class InvoiceController extends Controller
                     'amount' => $serviceCharge->amount,
                     'lower_bound' => $serviceCharge->lower_bound,
                     'upper_bound' => $serviceCharge->upper_bound,
-                ]
+                ],
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error calculating service charge: ' . $e->getMessage(),
+                'message' => 'Error calculating service charge: '.$e->getMessage(),
                 'service_charge' => 0,
             ], 500);
         }
     }
-    
+
     /**
      * Calculate balance adjustment for a client
      */
@@ -2536,16 +2550,16 @@ class InvoiceController extends Controller
                 'client_id' => 'required|exists:clients,id',
                 'total_amount' => 'required|numeric|min:0',
             ]);
-            
+
             $client = Client::find($validated['client_id']);
             $availableBalance = $client->available_balance ?? 0;
             $totalBalance = $client->total_balance ?? 0;
             $suspenseBalance = $client->suspense_balance ?? 0;
             $totalAmount = $validated['total_amount'];
-            
+
             // Calculate how much balance can be used (only from available balance)
             $balanceAdjustment = min($availableBalance, $totalAmount);
-            
+
             return response()->json([
                 'success' => true,
                 'balance_adjustment' => $balanceAdjustment,
@@ -2554,13 +2568,13 @@ class InvoiceController extends Controller
                 'suspense_balance' => $suspenseBalance,
                 'client_balance' => $availableBalance, // For backward compatibility
                 'remaining_balance' => $availableBalance - $balanceAdjustment,
-                'message' => $balanceAdjustment > 0 ? 'Balance adjustment applied' : 'No balance available for adjustment'
+                'message' => $balanceAdjustment > 0 ? 'Balance adjustment applied' : 'No balance available for adjustment',
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error calculating balance adjustment: ' . $e->getMessage()
+                'message' => 'Error calculating balance adjustment: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -2572,12 +2586,12 @@ class InvoiceController extends Controller
     {
         $businessId = $request->input('business_id');
         $invoiceNumber = Invoice::generateInvoiceNumber($businessId, 'proforma');
-        
+
         return response()->json([
             'invoice_number' => $invoiceNumber,
         ]);
     }
-    
+
     /**
      * Process mobile money payment with comprehensive description
      */
@@ -2592,68 +2606,68 @@ class InvoiceController extends Controller
                 'items' => 'required|array',
                 'invoice_number' => 'nullable|string',
             ]);
-            
+
             $client = Client::find($validated['client_id']);
             $business = \App\Models\Business::find($validated['business_id']);
-            
+
             // CREDIT CLIENTS: Skip payment prompts - they don't need to pay upfront
             if ($client->is_credit_eligible) {
-                Log::info("=== CREDIT CLIENT - SKIPPING PAYMENT PROMPT ===", [
+                Log::info('=== CREDIT CLIENT - SKIPPING PAYMENT PROMPT ===', [
                     'client_id' => $client->id,
                     'client_name' => $client->name,
                     'is_credit_eligible' => $client->is_credit_eligible,
                     'amount' => $validated['amount'],
                     'invoice_number' => $validated['invoice_number'],
-                    'reason' => 'Credit clients do not receive payment prompts - items are offered on credit'
+                    'reason' => 'Credit clients do not receive payment prompts - items are offered on credit',
                 ]);
-                
+
                 return response()->json([
                     'success' => true,
-                    'transaction_id' => 'CREDIT-' . time(),
+                    'transaction_id' => 'CREDIT-'.time(),
                     'status' => 'credit_client',
                     'message' => 'Credit client - No payment prompt sent. Items will be offered on credit.',
                     'credit_client' => true,
-                    'skip_payment' => true
+                    'skip_payment' => true,
                 ]);
             }
-            
+
             // Find the invoice if invoice_number is provided
             $invoice = null;
-            if (!empty($validated['invoice_number'])) {
+            if (! empty($validated['invoice_number'])) {
                 $invoice = \App\Models\Invoice::where('invoice_number', $validated['invoice_number'])
                     ->where('client_id', $validated['client_id'])
                     ->where('business_id', $validated['business_id'])
                     ->first();
-                
+
                 if ($invoice) {
-                    Log::info("Found invoice for mobile money payment", [
+                    Log::info('Found invoice for mobile money payment', [
                         'invoice_id' => $invoice->id,
                         'invoice_number' => $invoice->invoice_number,
-                        'client_id' => $client->id
+                        'client_id' => $client->id,
                     ]);
                 } else {
-                    Log::warning("Invoice not found for mobile money payment", [
+                    Log::warning('Invoice not found for mobile money payment', [
                         'invoice_number' => $validated['invoice_number'],
                         'client_id' => $validated['client_id'],
-                        'business_id' => $validated['business_id']
+                        'business_id' => $validated['business_id'],
                     ]);
                 }
             }
-            
+
             // Build comprehensive payment description
             $description = $this->buildItemsDescription(
-                $validated['items'], 
-                $client, 
-                $business, 
+                $validated['items'],
+                $client,
+                $business,
                 $validated['invoice_number']
             );
-            
+
             // Format phone number for mobile money API
             $phone = $validated['phone_number'];
-            
+
             // Remove any non-numeric characters except + at the beginning
             $phone = preg_replace('/[^0-9+]/', '', $phone);
-            
+
             // Handle different phone number formats
             if (str_starts_with($phone, '+256')) {
                 // Remove the + prefix for YoAPI
@@ -2663,12 +2677,12 @@ class InvoiceController extends Controller
                 $phone = $phone;
             } elseif (str_starts_with($phone, '0')) {
                 // Convert from local format (0XXXXXXXXX) to international (256XXXXXXXXX)
-                $phone = '256' . substr($phone, 1);
+                $phone = '256'.substr($phone, 1);
             } else {
                 // Assume it's already in international format without +
                 $phone = $phone;
             }
-            
+
             $liveYo = YoDepositGate::useLiveYoDeposits();
 
             Log::info('Mobile money payment attempt', [
@@ -2682,10 +2696,10 @@ class InvoiceController extends Controller
                 'yo_live_deposits' => $liveYo,
             ]);
 
-            if (!$liveYo) {
+            if (! $liveYo) {
                 $result = [
                     'Status' => 'OK',
-                    'TransactionReference' => 'SIM-MM-' . strtoupper(Str::random(12)),
+                    'TransactionReference' => 'SIM-MM-'.strtoupper(Str::random(12)),
                     'StatusMessage' => 'Simulated (YO_LIVE_DEPOSITS_ENABLED is not true). No handset prompt.',
                 ];
                 Log::info('Mobile money: skipping Yo ac_deposit_funds — creating pending transaction for simulate-success', [
@@ -2694,7 +2708,7 @@ class InvoiceController extends Controller
             } else {
                 $yoPayments = new \App\Payments\YoAPI(config('payments.yo_username'), config('payments.yo_password'));
                 $webhook = config('payments.webhook_url');
-                if (!empty($webhook)) {
+                if (! empty($webhook)) {
                     $yoPayments->set_instant_notification_url($webhook);
                 }
                 $yoPayments->set_external_reference(YoExternalReference::make('MM'));
@@ -2706,7 +2720,7 @@ class InvoiceController extends Controller
                     'narrative_length' => strlen($description),
                     'webhook_url' => $webhook ?: 'not_set',
                     'credentials_configured' => [
-                        'username' => config('payments.yo_username') ? substr((string) config('payments.yo_username'), 0, 3) . '***' : 'MISSING',
+                        'username' => config('payments.yo_username') ? substr((string) config('payments.yo_username'), 0, 3).'***' : 'MISSING',
                         'password' => config('payments.yo_password') ? '***SET***' : 'MISSING',
                     ],
                 ]);
@@ -2714,24 +2728,24 @@ class InvoiceController extends Controller
                 $result = $yoPayments->ac_deposit_funds($phone, $validated['amount'], $description);
                 Log::info('YoAPI actual response', ['result' => $result]);
             }
-            
+
             // Check if payment request was initiated successfully
             if (isset($result['Status']) && $result['Status'] === 'OK' && isset($result['TransactionReference'])) {
-                
-                Log::info("Mobile money payment request initiated successfully", [
+
+                Log::info('Mobile money payment request initiated successfully', [
                     'transaction_reference' => $result['TransactionReference'],
                     'phone' => $phone,
                     'amount' => $validated['amount'],
                     'client_id' => $validated['client_id'],
-                    'invoice_number' => $validated['invoice_number']
+                    'invoice_number' => $validated['invoice_number'],
                 ]);
-                
+
                 // Determine payment status: PP for credit clients with balance due, otherwise Paid
                 $paymentStatus = 'Paid';
                 if ($invoice && $client->is_credit_eligible && $invoice->balance_due > 0) {
                     $paymentStatus = 'PP';
                 }
-                
+
                 // Create transaction record for tracking
                 $transaction = \App\Models\Transaction::create([
                     'business_id' => $validated['business_id'],
@@ -2758,54 +2772,55 @@ class InvoiceController extends Controller
                     'method' => 'mobile_money',
                     'transaction_for' => 'main',
                 ]);
-                
-                Log::info("Transaction record created for mobile money payment", [
+
+                Log::info('Transaction record created for mobile money payment', [
                     'transaction_id' => $transaction->id,
                     'invoice_id' => $invoice ? $invoice->id : null,
                     'external_reference' => $result['TransactionReference'],
-                    'status' => 'pending'
+                    'status' => 'pending',
                 ]);
-                
+
                 return response()->json([
                     'success' => true,
                     'transaction_id' => $result['TransactionReference'],
                     'status' => 'pending',
                     'message' => $liveYo
                         ? 'A payment prompt has been sent to your phone. Please complete the payment to proceed.'
-                        : 'Mobile money payment is pending (simulated — Yo live deposits disabled). Use: php artisan payments:simulate-success --transaction=' . $transaction->id,
+                        : 'Mobile money payment is pending (simulated — Yo live deposits disabled). Use: php artisan payments:simulate-success --transaction='.$transaction->id,
                     'description' => $description,
                     'yoapi_response' => $result,
                     'internal_transaction_id' => $transaction->id,
-                    'yo_simulated' => !$liveYo,
+                    'yo_simulated' => ! $liveYo,
                 ]);
             } else {
-                $errorMessage = isset($result['StatusMessage']) ? "Mobile Money payment failed: {$result['StatusMessage']}" : 
-                               (isset($result['ErrorMessage']) ? "Mobile Money payment failed: {$result['ErrorMessage']}" : 
+                $errorMessage = isset($result['StatusMessage']) ? "Mobile Money payment failed: {$result['StatusMessage']}" :
+                               (isset($result['ErrorMessage']) ? "Mobile Money payment failed: {$result['ErrorMessage']}" :
                                'Mobile Money payment failed: Unknown error.');
-                
+
                 Log::error('Mobile money payment failed', [
                     'result' => $result,
                     'phone' => $phone,
                     'amount' => $validated['amount'],
-                    'error_message' => $errorMessage
+                    'error_message' => $errorMessage,
                 ]);
-                
+
                 return response()->json([
                     'success' => false,
                     'message' => $errorMessage,
-                    'yoapi_response' => $result
+                    'yoapi_response' => $result,
                 ], 400);
             }
-            
+
         } catch (\Exception $e) {
-            Log::error('Mobile money payment error: ' . $e->getMessage());
+            Log::error('Mobile money payment error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error processing mobile money payment: ' . $e->getMessage()
+                'message' => 'Error processing mobile money payment: '.$e->getMessage(),
             ], 500);
         }
     }
-    
+
     /**
      * Reinitiate a failed mobile money transaction
      */
@@ -2816,19 +2831,19 @@ class InvoiceController extends Controller
                 'timestamp' => now()->toDateTimeString(),
                 'user_agent' => request()->userAgent(),
                 'ip_address' => request()->ip(),
-                'request_data' => $request->all()
+                'request_data' => $request->all(),
             ]);
-            
+
             $validated = $request->validate([
                 'transaction_id' => 'required|exists:transactions,id',
             ]);
-            
+
             Log::info('Request validation passed', [
-                'validated_transaction_id' => $validated['transaction_id']
+                'validated_transaction_id' => $validated['transaction_id'],
             ]);
-            
+
             $transaction = \App\Models\Transaction::find($validated['transaction_id']);
-            
+
             // Log transaction details
             Log::info('Transaction found for retry', [
                 'transaction_id' => $transaction->id,
@@ -2843,78 +2858,80 @@ class InvoiceController extends Controller
                 'business_id' => $transaction->business_id,
                 'invoice_id' => $transaction->invoice_id,
                 'created_at' => $transaction->created_at,
-                'updated_at' => $transaction->updated_at
+                'updated_at' => $transaction->updated_at,
             ]);
-            
+
             // Check if transaction is failed
             if ($transaction->status !== 'failed') {
                 Log::warning('Retry attempted on non-failed transaction', [
                     'transaction_id' => $transaction->id,
                     'current_status' => $transaction->status,
-                    'expected_status' => 'failed'
+                    'expected_status' => 'failed',
                 ]);
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'Transaction is not in failed status and cannot be reinitiated.'
+                    'message' => 'Transaction is not in failed status and cannot be reinitiated.',
                 ], 400);
             }
-            
+
             // Check if transaction is mobile money
             if ($transaction->method !== 'mobile_money' || $transaction->provider !== 'yo') {
                 Log::warning('Retry attempted on non-YoAPI mobile money transaction', [
                     'transaction_id' => $transaction->id,
                     'method' => $transaction->method,
-                    'provider' => $transaction->provider
+                    'provider' => $transaction->provider,
                 ]);
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only YoAPI mobile money transactions can be reinitiated.'
+                    'message' => 'Only YoAPI mobile money transactions can be reinitiated.',
                 ], 400);
             }
-            
-            Log::info("Reinitiating failed transaction", [
+
+            Log::info('Reinitiating failed transaction', [
                 'transaction_id' => $transaction->id,
                 'reference' => $transaction->reference,
                 'external_reference' => $transaction->external_reference,
                 'amount' => $transaction->amount,
-                'client_id' => $transaction->client_id
+                'client_id' => $transaction->client_id,
             ]);
-            
+
             // Get client and business
             $client = $transaction->client;
             $business = $transaction->business;
-            
+
             // CREDIT CLIENTS: Skip payment prompts - they don't need to pay upfront
             if ($client && $client->is_credit_eligible) {
-                Log::info("=== CREDIT CLIENT - SKIPPING PAYMENT PROMPT (REINITIATE) ===", [
+                Log::info('=== CREDIT CLIENT - SKIPPING PAYMENT PROMPT (REINITIATE) ===', [
                     'transaction_id' => $transaction->id,
                     'client_id' => $client->id,
                     'client_name' => $client->name,
                     'is_credit_eligible' => $client->is_credit_eligible,
-                    'reason' => 'Credit clients do not receive payment prompts - items are offered on credit'
+                    'reason' => 'Credit clients do not receive payment prompts - items are offered on credit',
                 ]);
-                
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Credit clients do not receive payment prompts. Items are offered on credit.',
                     'credit_client' => true,
-                    'skip_payment' => true
+                    'skip_payment' => true,
                 ], 400);
             }
-            
-            if (!$client || !$business) {
+
+            if (! $client || ! $business) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Client or business not found for this transaction.'
+                    'message' => 'Client or business not found for this transaction.',
                 ], 400);
             }
-            
+
             // Format phone number for mobile money API
             $phone = $transaction->phone_number;
-            
+
             // Remove any non-numeric characters except + at the beginning
             $phone = preg_replace('/[^0-9+]/', '', $phone);
-            
+
             // Handle different phone number formats
             if (str_starts_with($phone, '+256')) {
                 // Remove the + prefix for YoAPI
@@ -2924,12 +2941,12 @@ class InvoiceController extends Controller
                 $phone = $phone;
             } elseif (str_starts_with($phone, '0')) {
                 // Convert from local format (0XXXXXXXXX) to international (256XXXXXXXXX)
-                $phone = '256' . substr($phone, 1);
+                $phone = '256'.substr($phone, 1);
             } else {
                 // Assume it's already in international format without +
                 $phone = $phone;
             }
-            
+
             // Generate a new unique external reference for the retry
             // This prevents YoAPI duplicate transaction errors
             $newExternalReference = YoExternalReference::make('RTRY');
@@ -2949,17 +2966,17 @@ class InvoiceController extends Controller
                 'yo_live_deposits' => $liveYoRetry,
             ]);
 
-            if (!$liveYoRetry) {
+            if (! $liveYoRetry) {
                 $result = [
                     'Status' => 'OK',
-                    'TransactionReference' => 'SIM-RTRY-' . strtoupper(Str::random(10)),
+                    'TransactionReference' => 'SIM-RTRY-'.strtoupper(Str::random(10)),
                     'StatusMessage' => 'Simulated retry (Yo live deposits disabled).',
                 ];
                 Log::info('Retry: skipping Yo ac_deposit_funds (simulated)', ['result' => $result]);
             } else {
                 $yoPayments = new \App\Payments\YoAPI(config('payments.yo_username'), config('payments.yo_password'));
                 $webhookRetry = config('payments.webhook_url');
-                if (!empty($webhookRetry)) {
+                if (! empty($webhookRetry)) {
                     $yoPayments->set_instant_notification_url($webhookRetry);
                 }
                 $yoPayments->set_external_reference($newExternalReference);
@@ -2977,81 +2994,81 @@ class InvoiceController extends Controller
                     'response_size' => is_string($result) ? strlen($result) : (is_array($result) ? count($result) : 'unknown'),
                 ]);
             }
-            
+
             // Check if payment request was initiated successfully
             Log::info('Checking YoAPI response for success', [
                 'has_status' => isset($result['Status']),
                 'status_value' => $result['Status'] ?? 'not_set',
                 'has_transaction_reference' => isset($result['TransactionReference']),
                 'transaction_reference' => $result['TransactionReference'] ?? 'not_set',
-                'full_response' => $result
+                'full_response' => $result,
             ]);
-            
+
             if (isset($result['Status']) && $result['Status'] === 'OK' && isset($result['TransactionReference'])) {
-                
-                Log::info("✅ YoAPI retry SUCCESS - Failed transaction reinitiated successfully", [
+
+                Log::info('✅ YoAPI retry SUCCESS - Failed transaction reinitiated successfully', [
                     'old_transaction_id' => $transaction->id,
                     'new_transaction_reference' => $result['TransactionReference'],
                     'phone' => $phone,
                     'amount' => $transaction->amount,
                     'client_id' => $transaction->client_id,
-                    'business_id' => $transaction->business_id
+                    'business_id' => $transaction->business_id,
                 ]);
-                
+
                 // Update the existing transaction with new external reference and reset status
                 // This updates the SAME transaction, does NOT create a new one
                 $oldExternalReference = $transaction->external_reference;
-                
+
                 $transaction->update([
                     'external_reference' => $result['TransactionReference'],
                     'status' => 'pending',
-                    'updated_at' => now()
+                    'updated_at' => now(),
                 ]);
-                
-                Log::info("✅ Existing transaction updated (NOT creating new transaction)", [
+
+                Log::info('✅ Existing transaction updated (NOT creating new transaction)', [
                     'transaction_id' => $transaction->id,
                     'reference' => $transaction->reference,
                     'old_external_reference' => $oldExternalReference,
                     'our_new_external_reference' => $newExternalReference,
                     'yoapi_transaction_reference' => $result['TransactionReference'],
                     'status_changed_from' => 'failed',
-                    'status_changed_to' => 'pending'
+                    'status_changed_to' => 'pending',
                 ]);
-                
+
                 // Update related invoice if exists
                 if ($transaction->invoice_id) {
                     $invoice = \App\Models\Invoice::find($transaction->invoice_id);
                     if ($invoice) {
                         $invoice->update([
                             'status' => 'pending',
-                            'payment_status' => 'pending'
+                            'payment_status' => 'pending',
                         ]);
-                        
-                        Log::info("Invoice status updated to pending for reinitiated transaction", [
+
+                        Log::info('Invoice status updated to pending for reinitiated transaction', [
                             'invoice_id' => $invoice->id,
                             'invoice_number' => $invoice->invoice_number,
-                            'transaction_id' => $transaction->id
+                            'transaction_id' => $transaction->id,
                         ]);
                     }
                 }
-                
+
                 return response()->json([
                     'success' => true,
                     'transaction_id' => $result['TransactionReference'],
                     'status' => 'pending',
                     'message' => $liveYoRetry
                         ? 'Transaction reinitiated successfully. A payment prompt has been sent to your phone. Please complete the payment to proceed.'
-                        : 'Transaction reinitiated as pending (simulated). Run: php artisan payments:simulate-success --transaction=' . $transaction->id,
+                        : 'Transaction reinitiated as pending (simulated). Run: php artisan payments:simulate-success --transaction='.$transaction->id,
                     'description' => $transaction->description,
                     'yoapi_response' => $result,
                     'internal_transaction_id' => $transaction->id,
-                    'yo_simulated' => !$liveYoRetry,
+                    'yo_simulated' => ! $liveYoRetry,
                 ]);
             } else {
-                $errorMessage = isset($result['StatusMessage']) ? "Transaction reinitiation failed: {$result['StatusMessage']}" : 
-                               (isset($result['ErrorMessage']) ? "Transaction reinitiation failed: {$result['ErrorMessage']}" : 
+                $errorMessage = isset($result['StatusMessage']) ? "Transaction reinitiation failed: {$result['StatusMessage']}" :
+                               (isset($result['ErrorMessage']) ? "Transaction reinitiation failed: {$result['ErrorMessage']}" :
                                'Transaction reinitiation failed: Unknown error.');
-                
+
                 Log::error('❌ YoAPI retry FAILED - Failed transaction reinitiation failed', [
                     'result' => $result,
                     'phone' => $phone,
@@ -3061,31 +3078,32 @@ class InvoiceController extends Controller
                     'status_code' => $result['StatusCode'] ?? 'not_set',
                     'status_message' => $result['StatusMessage'] ?? 'not_set',
                     'transaction_status' => $result['TransactionStatus'] ?? 'not_set',
-                    'error_message_field' => $result['ErrorMessage'] ?? 'not_set'
+                    'error_message_field' => $result['ErrorMessage'] ?? 'not_set',
                 ]);
-                
+
                 return response()->json([
                     'success' => false,
                     'message' => $errorMessage,
-                    'yoapi_response' => $result
+                    'yoapi_response' => $result,
                 ], 400);
             }
-            
+
         } catch (\Exception $e) {
             Log::error('💥 EXCEPTION in retry transaction', [
                 'error_message' => $e->getMessage(),
                 'error_file' => $e->getFile(),
                 'error_line' => $e->getLine(),
                 'error_trace' => $e->getTraceAsString(),
-                'transaction_id' => $transactionId ?? 'unknown'
+                'transaction_id' => $transactionId ?? 'unknown',
             ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error reinitiating transaction: ' . $e->getMessage()
+                'message' => 'Error reinitiating transaction: '.$e->getMessage(),
             ], 500);
         }
     }
-    
+
     /**
      * Reinitiate a failed invoice (all failed transactions associated with it)
      */
@@ -3095,29 +3113,29 @@ class InvoiceController extends Controller
             $validated = $request->validate([
                 'invoice_id' => 'required|exists:invoices,id',
             ]);
-            
+
             $invoice = \App\Models\Invoice::find($validated['invoice_id']);
-            
+
             // Check if invoice has failed transactions
             $failedTransactions = $invoice->transactions()
                 ->where('status', 'failed')
                 ->where('method', 'mobile_money')
                 ->where('provider', 'yo')
                 ->get();
-            
+
             if ($failedTransactions->isEmpty()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No failed mobile money transactions found for this invoice.'
+                    'message' => 'No failed mobile money transactions found for this invoice.',
                 ], 400);
             }
-            
-            Log::info("Reinitiating failed invoice", [
+
+            Log::info('Reinitiating failed invoice', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
-                'failed_transactions_count' => $failedTransactions->count()
+                'failed_transactions_count' => $failedTransactions->count(),
             ]);
-            
+
             $reinitiatedCount = 0;
             $errors = [];
             $liveYoInvoice = YoDepositGate::useLiveYoDeposits();
@@ -3127,104 +3145,106 @@ class InvoiceController extends Controller
                     // Use the same logic as reinitiateFailedTransaction but without the validation
                     $client = $transaction->client;
                     $business = $transaction->business;
-                    
-                    if (!$client || !$business) {
+
+                    if (! $client || ! $business) {
                         $errors[] = "Client or business not found for transaction {$transaction->id}";
+
                         continue;
                     }
-                    
+
                     // Format phone number for mobile money API
                     $phone = $transaction->phone_number;
                     $phone = preg_replace('/[^0-9+]/', '', $phone);
-                    
+
                     if (str_starts_with($phone, '+256')) {
                         $phone = substr($phone, 1);
                     } elseif (str_starts_with($phone, '0')) {
-                        $phone = '256' . substr($phone, 1);
+                        $phone = '256'.substr($phone, 1);
                     }
 
-                    if (!$liveYoInvoice) {
+                    if (! $liveYoInvoice) {
                         $result = [
                             'Status' => 'OK',
-                            'TransactionReference' => 'SIM-INV-' . $transaction->id . '-' . strtoupper(Str::random(6)),
+                            'TransactionReference' => 'SIM-INV-'.$transaction->id.'-'.strtoupper(Str::random(6)),
                             'StatusMessage' => 'Simulated (Yo live deposits disabled).',
                         ];
                     } else {
                         $yoPayments = new \App\Payments\YoAPI(config('payments.yo_username'), config('payments.yo_password'));
                         $wh = config('payments.webhook_url');
-                        if (!empty($wh)) {
+                        if (! empty($wh)) {
                             $yoPayments->set_instant_notification_url($wh);
                         }
                         $yoPayments->set_external_reference(YoExternalReference::make('MM'));
                         $result = $yoPayments->ac_deposit_funds($phone, $transaction->amount, $transaction->description);
                     }
-                    
+
                     if (isset($result['Status']) && $result['Status'] === 'OK' && isset($result['TransactionReference'])) {
                         // Update the transaction with new external reference and reset status
                         $transaction->update([
                             'external_reference' => $result['TransactionReference'],
                             'status' => 'pending',
-                            'updated_at' => now()
+                            'updated_at' => now(),
                         ]);
-                        
+
                         $reinitiatedCount++;
-                        
-                        Log::info("Transaction reinitiated successfully in invoice reinitiation", [
+
+                        Log::info('Transaction reinitiated successfully in invoice reinitiation', [
                             'transaction_id' => $transaction->id,
-                            'new_external_reference' => $result['TransactionReference']
+                            'new_external_reference' => $result['TransactionReference'],
                         ]);
                     } else {
-                        $errorMessage = isset($result['StatusMessage']) ? $result['StatusMessage'] : 
+                        $errorMessage = isset($result['StatusMessage']) ? $result['StatusMessage'] :
                                        (isset($result['ErrorMessage']) ? $result['ErrorMessage'] : 'Unknown error');
                         $errors[] = "Transaction {$transaction->id}: {$errorMessage}";
                     }
-                    
+
                 } catch (\Exception $e) {
                     $errors[] = "Transaction {$transaction->id}: {$e->getMessage()}";
                     Log::error("Error reinitiating transaction {$transaction->id} in invoice reinitiation", [
-                        'error' => $e->getMessage()
+                        'error' => $e->getMessage(),
                     ]);
                 }
             }
-            
+
             // Update invoice status if at least one transaction was reinitiated
             if ($reinitiatedCount > 0) {
                 $invoice->update([
                     'status' => 'pending',
-                    'payment_status' => 'pending'
+                    'payment_status' => 'pending',
                 ]);
-                
-                Log::info("Invoice status updated to pending after reinitiation", [
+
+                Log::info('Invoice status updated to pending after reinitiation', [
                     'invoice_id' => $invoice->id,
                     'invoice_number' => $invoice->invoice_number,
-                    'reinitiated_transactions' => $reinitiatedCount
+                    'reinitiated_transactions' => $reinitiatedCount,
                 ]);
             }
-            
+
             $response = [
                 'success' => $reinitiatedCount > 0,
                 'reinitiated_count' => $reinitiatedCount,
                 'total_failed_transactions' => $failedTransactions->count(),
-                'message' => $reinitiatedCount > 0 ? 
+                'message' => $reinitiatedCount > 0 ?
                     "Successfully reinitiated {$reinitiatedCount} transaction(s) for invoice {$invoice->invoice_number}" :
-                    "Failed to reinitiate any transactions for invoice {$invoice->invoice_number}"
+                    "Failed to reinitiate any transactions for invoice {$invoice->invoice_number}",
             ];
-            
-            if (!empty($errors)) {
+
+            if (! empty($errors)) {
                 $response['errors'] = $errors;
             }
-            
+
             return response()->json($response, $reinitiatedCount > 0 ? 200 : 400);
-            
+
         } catch (\Exception $e) {
-            Log::error('Invoice reinitiation error: ' . $e->getMessage());
+            Log::error('Invoice reinitiation error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error reinitiating invoice: ' . $e->getMessage()
+                'message' => 'Error reinitiating invoice: '.$e->getMessage(),
             ], 500);
         }
     }
-    
+
     /**
      * Send receipts for an invoice (testing purposes)
      */
@@ -3232,13 +3252,13 @@ class InvoiceController extends Controller
     {
         try {
             $user = Auth::user();
-            
+
             // Check if user has access to this invoice
             if ($user->business_id !== 1 && $invoice->business_id !== $user->business_id) {
                 abort(403, 'Unauthorized access to invoice.');
             }
-            
-            Log::info("=== MANUAL RECEIPT SENDING TEST STARTED ===", [
+
+            Log::info('=== MANUAL RECEIPT SENDING TEST STARTED ===', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'user_id' => $user->id,
@@ -3251,38 +3271,38 @@ class InvoiceController extends Controller
                     'host' => config('mail.mailers.smtp.host'),
                     'port' => config('mail.mailers.smtp.port'),
                     'username' => config('mail.mailers.smtp.username'),
-                    'kashtre_email' => config('mail.kashtre_email')
-                ]
+                    'kashtre_email' => config('mail.kashtre_email'),
+                ],
             ]);
-            
+
             $receiptService = new \App\Services\ReceiptService();
             $result = $receiptService->sendElectronicReceipts($invoice);
-            
-            Log::info("=== MANUAL RECEIPT SENDING TEST COMPLETED ===", [
+
+            Log::info('=== MANUAL RECEIPT SENDING TEST COMPLETED ===', [
                 'invoice_id' => $invoice->id,
-                'result' => $result ? 'success' : 'failed'
+                'result' => $result ? 'success' : 'failed',
             ]);
-            
+
             return response()->json([
                 'success' => $result,
                 'message' => $result ? 'Receipts sent successfully' : 'Failed to send receipts',
                 'invoice_id' => $invoice->id,
-                'invoice_number' => $invoice->invoice_number
+                'invoice_number' => $invoice->invoice_number,
             ]);
-            
+
         } catch (\Exception $e) {
             Log::error('Error sending receipts manually', [
                 'invoice_id' => $invoice->id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error sending receipts: ' . $e->getMessage()
+                'message' => 'Error sending receipts: '.$e->getMessage(),
             ], 500);
         }
     }
-    
+
     /**
      * Display a listing of invoices
      */
@@ -3290,25 +3310,25 @@ class InvoiceController extends Controller
     {
         $user = Auth::user();
         $business = $user->business;
-        
+
         $query = Invoice::where('business_id', $business->id)
             ->with(['client', 'branch', 'createdBy']);
-        
+
         // Filter by client if specified
         if ($request->has('client_id')) {
             $query->where('client_id', $request->client_id);
         }
-        
+
         // Filter by status if specified
         if ($request->has('status') && $request->status !== '') {
             $query->where('status', $request->status);
         }
-        
+
         // Filter by payment status if specified
         if ($request->has('payment_status') && $request->payment_status !== '') {
             $query->where('payment_status', $request->payment_status);
         }
-        
+
         // Filter by date range if specified
         if ($request->has('date_filter') && $request->date_filter !== '') {
             switch ($request->date_filter) {
@@ -3326,70 +3346,70 @@ class InvoiceController extends Controller
                     break;
             }
         }
-        
+
         // Search functionality
         if ($request->has('search') && $request->search !== '') {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('invoice_number', 'like', "%{$search}%")
-                  ->orWhere('client_name', 'like', "%{$search}%")
-                  ->orWhere('client_phone', 'like', "%{$search}%");
+                    ->orWhere('client_name', 'like', "%{$search}%")
+                    ->orWhere('client_phone', 'like', "%{$search}%");
             });
         }
-        
+
         $invoices = $query->orderBy('created_at', 'desc')->paginate(20);
-        
+
         return view('invoices.index', compact('invoices'));
     }
-    
+
     /**
      * Display the specified invoice
      */
     public function show(Invoice $invoice)
     {
         $user = Auth::user();
-        
+
         // Check if user has access to this invoice
         if ($user->business_id !== 1 && $invoice->business_id !== $user->business_id) {
             abort(403, 'Unauthorized access to invoice.');
         }
-        
+
         // Fix existing credit client invoices that may be missing debit entries, accounts receivable, or have wrong payment_status
         $client = $invoice->client;
         if ($client) {
             // Refresh client to get latest data
             $client->refresh();
-            
+
             if ($client->is_credit_eligible && $invoice->balance_due > 0) {
-                Log::info("=== AUTO-FIXING CREDIT CLIENT INVOICE ===", [
+                Log::info('=== AUTO-FIXING CREDIT CLIENT INVOICE ===', [
                     'invoice_id' => $invoice->id,
                     'client_id' => $client->id,
                     'client_name' => $client->name,
                     'is_credit_eligible' => $client->is_credit_eligible,
                     'balance_due' => $invoice->balance_due,
                 ]);
-                
+
                 // Update payment_status if needed
                 if ($invoice->payment_status !== 'pending_payment') {
                     $invoice->update(['payment_status' => 'pending_payment']);
-                    Log::info("Fixed invoice payment_status for credit client", [
+                    Log::info('Fixed invoice payment_status for credit client', [
                         'invoice_id' => $invoice->id,
                         'old_payment_status' => $invoice->getOriginal('payment_status'),
-                        'new_payment_status' => 'pending_payment'
+                        'new_payment_status' => 'pending_payment',
                     ]);
                 }
-                
+
                 // Check if accounts receivable entry exists
                 $accountsReceivable = \App\Models\AccountsReceivable::where('invoice_id', $invoice->id)
                     ->where('client_id', $client->id)
                     ->first();
-                
-                if (!$accountsReceivable) {
-                    Log::info("Creating missing accounts receivable entry", [
+
+                if (! $accountsReceivable) {
+                    Log::info('Creating missing accounts receivable entry', [
                         'invoice_id' => $invoice->id,
                         'client_id' => $client->id,
                     ]);
-                    
+
                     $business = $invoice->business;
                     $accountsReceivable = \App\Models\AccountsReceivable::create([
                         'client_id' => $client->id,
@@ -3406,23 +3426,23 @@ class InvoiceController extends Controller
                         'payer_type' => 'first_party',
                         'notes' => "Credit transaction - Invoice #{$invoice->invoice_number} (Auto-fixed)",
                     ]);
-                    
-                    Log::info("Accounts receivable entry created", [
+
+                    Log::info('Accounts receivable entry created', [
                         'accounts_receivable_id' => $accountsReceivable->id,
                     ]);
                 }
-                
+
                 // Update client balance if needed (should be negative for credit clients with debt)
                 $expectedBalance = ($client->balance ?? 0);
                 $outstandingDebt = \App\Models\AccountsReceivable::where('client_id', $client->id)
                     ->where('status', '!=', 'paid')
                     ->sum('balance');
-                
+
                 // Calculate what the balance should be (negative = they owe)
                 $calculatedBalance = -$outstandingDebt;
-                
+
                 if (abs($expectedBalance - $calculatedBalance) > 0.01) {
-                    Log::info("Updating client balance to match outstanding debt", [
+                    Log::info('Updating client balance to match outstanding debt', [
                         'client_id' => $client->id,
                         'old_balance' => $expectedBalance,
                         'new_balance' => $calculatedBalance,
@@ -3430,39 +3450,45 @@ class InvoiceController extends Controller
                     ]);
                     $client->update(['balance' => $calculatedBalance]);
                 }
-                
+
                 // Check if debit entries exist for all items in balance history
                 $itemsCollection = collect($invoice->items ?? []);
                 $existingDebits = \App\Models\BalanceHistory::where('client_id', $client->id)
                     ->where('invoice_id', $invoice->id)
                     ->where('transaction_type', 'debit')
                     ->get();
-                
+
                 // Create separate debit entries for each item if they don't exist
                 $paymentMethods = $invoice->payment_methods ?? [];
-                $primaryMethod = !empty($paymentMethods) ? $paymentMethods[0] : 'credit';
+                $primaryMethod = ! empty($paymentMethods) ? $paymentMethods[0] : 'credit';
                 $debitCount = 0;
-                
+
                 foreach ($itemsCollection as $itemData) {
                     $itemId = $itemData['id'] ?? $itemData['item_id'] ?? null;
-                    if (!$itemId) continue;
-                    
+                    if (! $itemId) {
+                        continue;
+                    }
+
                     $item = \App\Models\Item::find($itemId);
-                    if (!$item) continue;
-                    
+                    if (! $item) {
+                        continue;
+                    }
+
                     $quantity = $itemData['quantity'] ?? 1;
                     $itemTotalAmount = $itemData['total_amount'] ?? ($itemData['price'] ?? $item->default_price ?? 0) * $quantity;
-                    
-                    if ($itemTotalAmount <= 0) continue;
-                    
+
+                    if ($itemTotalAmount <= 0) {
+                        continue;
+                    }
+
                     // Check if debit already exists for this specific item
                     $itemDisplayName = $item->name;
                     $itemDescription = "{$itemDisplayName} (x{$quantity})";
-                    $existingItemDebit = $existingDebits->first(function($debit) use ($itemDescription) {
+                    $existingItemDebit = $existingDebits->first(function ($debit) use ($itemDescription) {
                         return $debit->description === $itemDescription;
                     });
-                    
-                    if (!$existingItemDebit) {
+
+                    if (! $existingItemDebit) {
                         \App\Models\BalanceHistory::recordDebit(
                             $client,
                             $itemTotalAmount,
@@ -3475,18 +3501,18 @@ class InvoiceController extends Controller
                         $debitCount++;
                     }
                 }
-                
+
                 // Create service charge debit if applicable
                 if ($invoice->service_charge > 0) {
-                    $existingServiceDebit = $existingDebits->first(function($debit) {
+                    $existingServiceDebit = $existingDebits->first(function ($debit) {
                         return $debit->description === 'Service Fee';
                     });
-                    
-                    if (!$existingServiceDebit) {
+
+                    if (! $existingServiceDebit) {
                         \App\Models\BalanceHistory::recordDebit(
                             $client,
                             $invoice->service_charge,
-                            "Service Fee",
+                            'Service Fee',
                             $invoice->invoice_number,
                             "Credit purchase - Service Fee - Invoice #{$invoice->invoice_number}",
                             $primaryMethod,
@@ -3495,44 +3521,45 @@ class InvoiceController extends Controller
                         $debitCount++;
                     }
                 }
-                
+
                 if ($debitCount > 0) {
-                    Log::info("Created missing debit entries for credit client invoice", [
+                    Log::info('Created missing debit entries for credit client invoice', [
                         'invoice_id' => $invoice->id,
                         'client_id' => $client->id,
-                        'debit_entries_created' => $debitCount
+                        'debit_entries_created' => $debitCount,
                     ]);
                 }
-                
+
                 // Check if items were queued at service points
                 $queuedItemsCount = \App\Models\ServiceDeliveryQueue::where('invoice_id', $invoice->id)->count();
-                $nonDepositItems = $itemsCollection->reject(function($item) {
+                $nonDepositItems = $itemsCollection->reject(function ($item) {
                     $itemModel = \App\Models\Item::find($item['id'] ?? $item['item_id'] ?? null);
+
                     return $itemModel && $itemModel->type === 'deposit';
                 })->values();
-                
+
                 if ($queuedItemsCount === 0 && $nonDepositItems->isNotEmpty()) {
-                    Log::info("Items were not queued for credit client invoice - queuing now", [
+                    Log::info('Items were not queued for credit client invoice - queuing now', [
                         'invoice_id' => $invoice->id,
                         'items_to_queue' => $nonDepositItems->count(),
                     ]);
-                    
+
                     try {
                         $this->queueItemsAtServicePoints($invoice, $nonDepositItems->toArray());
-                        Log::info("Items queued successfully for credit client invoice (auto-fixed)", [
+                        Log::info('Items queued successfully for credit client invoice (auto-fixed)', [
                             'invoice_id' => $invoice->id,
                             'items_queued' => $nonDepositItems->count(),
                         ]);
                     } catch (\Exception $e) {
-                        Log::error("Error queuing items for credit client invoice (auto-fix)", [
+                        Log::error('Error queuing items for credit client invoice (auto-fix)', [
                             'invoice_id' => $invoice->id,
                             'error' => $e->getMessage(),
                             'trace' => $e->getTraceAsString(),
                         ]);
                     }
                 }
-                
-                Log::info("=== AUTO-FIX COMPLETED FOR CREDIT CLIENT INVOICE ===", [
+
+                Log::info('=== AUTO-FIX COMPLETED FOR CREDIT CLIENT INVOICE ===', [
                     'invoice_id' => $invoice->id,
                     'debit_entries_created' => $debitCount,
                     'accounts_receivable_created' => $accountsReceivable ? 'yes' : 'no',
@@ -3540,62 +3567,62 @@ class InvoiceController extends Controller
                 ]);
             }
         }
-        
+
         // Load the invoice with quotations relationship
         $invoice->load('quotations');
-        
+
         return view('invoices.show', compact('invoice'));
     }
-    
+
     /**
      * Print invoice
      */
     public function print(Invoice $invoice)
     {
         $user = Auth::user();
-        
+
         // Check if user has access to this invoice
         if ($user->business_id !== 1 && $invoice->business_id !== $user->business_id) {
             abort(403, 'Unauthorized access to invoice.');
         }
-        
+
         // Mark as printed
         $invoice->markAsPrinted();
-        
+
         return view('invoices.print', compact('invoice'));
     }
-    
+
     /**
      * Cancel invoice
      */
     public function cancel(Invoice $invoice)
     {
         $user = Auth::user();
-        
+
         // Check if user has access to this invoice
         if ($user->business_id !== 1 && $invoice->business_id !== $user->business_id) {
             abort(403, 'Unauthorized access to invoice.');
         }
-        
+
         // Check if invoice can be cancelled
         if ($invoice->status === 'cancelled') {
             return response()->json([
                 'success' => false,
-                'message' => 'Invoice is already cancelled.'
+                'message' => 'Invoice is already cancelled.',
             ], 400);
         }
-        
+
         try {
             $invoice->cancel();
-            
+
             return response()->json([
                 'success' => true,
-                'message' => 'Invoice cancelled successfully.'
+                'message' => 'Invoice cancelled successfully.',
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to cancel invoice: ' . $e->getMessage()
+                'message' => 'Failed to cancel invoice: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -3610,13 +3637,14 @@ class InvoiceController extends Controller
             abort(403, 'Unauthorized access to invoice.');
         }
         $snapshot = $invoice->insurance_authorization_snapshot;
-        if (!$snapshot || !is_array($snapshot)) {
+        if (! $snapshot || ! is_array($snapshot)) {
             return response()->json([
                 'success' => false,
                 'message' => 'No insurance authorization data for this invoice.',
             ], 404);
         }
         $clientTotal = $this->normalizedInsuranceClientTotalFromSnapshot($invoice, $snapshot);
+
         return response()->json([
             'success' => true,
             'invoice' => ['id' => $invoice->id, 'total_amount' => $invoice->total_amount],
@@ -3636,76 +3664,83 @@ class InvoiceController extends Controller
      */
     private function createPackageTrackingRecords($invoice, $items)
     {
-        Log::info("=== STARTING PACKAGE TRACKING CREATION ===", [
+        Log::info('=== STARTING PACKAGE TRACKING CREATION ===', [
             'invoice_id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
-            'total_items' => count($items)
+            'total_items' => count($items),
         ]);
-        
+
         // Use static variable to prevent multiple calls within same request
         static $processedInvoices = [];
         if (in_array($invoice->id, $processedInvoices)) {
-            Log::info("⚠️ PACKAGE TRACKING ALREADY PROCESSED FOR THIS INVOICE IN THIS REQUEST", [
+            Log::info('⚠️ PACKAGE TRACKING ALREADY PROCESSED FOR THIS INVOICE IN THIS REQUEST', [
                 'invoice_id' => $invoice->id,
-                'processed_invoices' => $processedInvoices
+                'processed_invoices' => $processedInvoices,
             ]);
+
             return;
         }
-        
+
         // Check if package tracking records already exist for this invoice
         $existingRecords = \App\Models\PackageTracking::where('invoice_id', $invoice->id)->count();
         if ($existingRecords > 0) {
-            Log::info("⚠️ PACKAGE TRACKING RECORDS ALREADY EXIST IN DATABASE", [
+            Log::info('⚠️ PACKAGE TRACKING RECORDS ALREADY EXIST IN DATABASE', [
                 'invoice_id' => $invoice->id,
-                'existing_count' => $existingRecords
+                'existing_count' => $existingRecords,
             ]);
             $processedInvoices[] = $invoice->id;
+
             return;
         }
-        
+
         // Mark this invoice as being processed
         $processedInvoices[] = $invoice->id;
-        
+
         $packageTrackingCount = 0;
-        
+
         foreach ($items as $index => $item) {
             Log::info("🔍 PROCESSING ITEM {$index} FOR PACKAGE TRACKING", [
                 'item_id' => $item['id'] ?? $item['item_id'] ?? 'null',
                 'item_data' => $item,
-                'item_name' => $item['name'] ?? 'unknown'
+                'item_name' => $item['name'] ?? 'unknown',
             ]);
-            
+
             $itemId = $item['id'] ?? $item['item_id'] ?? null;
-            if (!$itemId) {
-                Log::info("❌ SKIPPING ITEM - NO ID", ['item' => $item]);
+            if (! $itemId) {
+                Log::info('❌ SKIPPING ITEM - NO ID', ['item' => $item]);
+
                 continue;
             }
 
             // Get the item from database to check if it's a package
             $itemModel = \App\Models\Item::find($itemId);
-            if (!$itemModel) {
-                Log::info("❌ SKIPPING ITEM - NOT FOUND IN DATABASE", ['item_id' => $itemId]);
+            if (! $itemModel) {
+                Log::info('❌ SKIPPING ITEM - NOT FOUND IN DATABASE', ['item_id' => $itemId]);
+
                 continue;
             }
-            
+
             if ($itemModel->type !== 'package') {
-                Log::info("❌ SKIPPING ITEM - NOT A PACKAGE", [
+                Log::info('❌ SKIPPING ITEM - NOT A PACKAGE', [
                     'item_id' => $itemId,
                     'item_type' => $itemModel->type,
-                    'item_name' => $itemModel->name
+                    'item_name' => $itemModel->name,
                 ]);
+
                 continue;
             }
-            
-            Log::info("✅ FOUND PACKAGE ITEM", [
+
+            Log::info('✅ FOUND PACKAGE ITEM', [
                 'item_id' => $itemId,
                 'item_name' => $itemModel->name,
-                'item_type' => $itemModel->type
+                'item_type' => $itemModel->type,
             ]);
 
             // Get included items for this package from package_items table
             $packageItems = $itemModel->packageItems()->with('includedItem')->get();
-            if ($packageItems->isEmpty()) continue;
+            if ($packageItems->isEmpty()) {
+                continue;
+            }
 
             $quantity = $item['quantity'] ?? 1;
             $packagePrice = $item['price'] ?? 0;
@@ -3724,9 +3759,9 @@ class InvoiceController extends Controller
                 'status' => 'active',
                 'package_price' => $packagePrice,
                 'notes' => "Package: {$itemModel->name}, Invoice: {$invoice->invoice_number}",
-                'tracking_number' => 'PKG-' . $packageTrackingCount . '-' . now()->format('YmdHis')
+                'tracking_number' => 'PKG-'.$packageTrackingCount.'-'.now()->format('YmdHis'),
             ]);
-            
+
             // Create package tracking items for each included item in the package
             foreach ($packageItems as $packageItem) {
                 $includedItem = $packageItem->includedItem;
@@ -3747,39 +3782,40 @@ class InvoiceController extends Controller
                     'total_quantity' => $totalQuantity,
                     'used_quantity' => 0,
                     'remaining_quantity' => $totalQuantity,
-                    'status' => 'active'
+                    'status' => 'active',
                 ]);
             }
-            
+
             $packageTrackingCount++;
         }
-        
-        Log::info("=== PACKAGE TRACKING CREATION COMPLETED ===", [
+
+        Log::info('=== PACKAGE TRACKING CREATION COMPLETED ===', [
             'invoice_id' => $invoice->id,
-            'package_tracking_count' => $packageTrackingCount
+            'package_tracking_count' => $packageTrackingCount,
         ]);
     }
 
     /**
      * Queue items at their respective service points
-     * 
-     * @param \App\Models\Invoice $invoice
-     * @param array $items
-     * @param int|null $insuranceCompanyId Optional insurance company ID to mark items as insurance items
+     *
+     * @param  \App\Models\Invoice  $invoice
+     * @param  array  $items
+     * @param  int|null  $insuranceCompanyId  Optional insurance company ID to mark items as insurance items
      */
     private function queueItemsAtServicePoints($invoice, $items, $insuranceCompanyId = null)
     {
         $filteredItems = collect($items)->reject(function ($item) {
-            $name = Str::lower(trim((string)($item['displayName'] ?? $item['name'] ?? $item['item_name'] ?? '')));
+            $name = Str::lower(trim((string) ($item['displayName'] ?? $item['name'] ?? $item['item_name'] ?? '')));
+
             return $name === 'deposit';
         })->values();
 
-        Log::info("=== QUEUEING ITEMS AT SERVICE POINTS STARTED ===", [
+        Log::info('=== QUEUEING ITEMS AT SERVICE POINTS STARTED ===', [
             'invoice_id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
             'items_count' => $filteredItems->count(),
             'insurance_company_id' => $insuranceCompanyId,
-            'items' => $filteredItems->toArray()
+            'items' => $filteredItems->toArray(),
         ]);
 
         if ($filteredItems->isEmpty()) {
@@ -3787,31 +3823,34 @@ class InvoiceController extends Controller
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
             ]);
+
             return;
         }
-        
+
         foreach ($filteredItems as $item) {
             $itemId = $item['id'] ?? $item['item_id'] ?? null;
-            if (!$itemId) {
-                Log::warning("Skipping item - no item ID", ['item' => $item]);
+            if (! $itemId) {
+                Log::warning('Skipping item - no item ID', ['item' => $item]);
+
                 continue;
             }
 
             // Get the item from database
             $itemModel = \App\Models\Item::find($itemId);
-            if (!$itemModel) {
-                Log::warning("Skipping item - item model not found", ['item_id' => $itemId]);
+            if (! $itemModel) {
+                Log::warning('Skipping item - item model not found', ['item_id' => $itemId]);
+
                 continue;
             }
 
             $quantity = $item['quantity'] ?? 1;
-            
-            Log::info("Processing item for service point queuing", [
+
+            Log::info('Processing item for service point queuing', [
                 'item_id' => $itemId,
                 'item_name' => $itemModel->name,
                 'item_type' => $itemModel->type,
                 'service_point_id' => $itemModel->service_point_id,
-                'quantity' => $quantity
+                'quantity' => $quantity,
             ]);
 
             // Get service point through BranchServicePoint relationship (same logic as cron job)
@@ -3820,25 +3859,25 @@ class InvoiceController extends Controller
                 ->where('branch_id', $invoice->branch_id)
                 ->first();
 
-            Log::info("Found item model and branch service point", [
+            Log::info('Found item model and branch service point', [
                 'item_id' => $itemModel->id,
                 'item_name' => $itemModel->name,
                 'item_type' => $itemModel->type,
                 'business_id' => $invoice->business_id,
                 'branch_id' => $invoice->branch_id,
                 'branch_service_point_found' => $branchServicePoint ? 'yes' : 'no',
-                'service_point_id' => $branchServicePoint ? $branchServicePoint->service_point_id : null
+                'service_point_id' => $branchServicePoint ? $branchServicePoint->service_point_id : null,
             ]);
 
             // Handle package items FIRST - packages use their own tracking system, not service point queuing
             if ($itemModel->type === 'package') {
-                Log::info("Package item detected - using package tracking system instead of service point queuing", [
+                Log::info('Package item detected - using package tracking system instead of service point queuing', [
                     'package_item_id' => $itemId,
                     'package_name' => $itemModel->name,
                     'invoice_id' => $invoice->id,
-                    'client_id' => $invoice->client_id
+                    'client_id' => $invoice->client_id,
                 ]);
-                
+
                 // Packages are handled by package tracking logic, not service point queuing
                 // No queuing action needed here
                 continue; // Skip to next item
@@ -3846,31 +3885,31 @@ class InvoiceController extends Controller
 
             // Handle bulk items - bulk items don't have service points, use service point from one of their included items
             if ($itemModel->type === 'bulk') {
-                Log::info("Processing bulk item", [
+                Log::info('Processing bulk item', [
                     'bulk_item_id' => $itemId,
-                    'bulk_name' => $itemModel->name
+                    'bulk_name' => $itemModel->name,
                 ]);
 
                 // Get service point from one of the bulk item's contained items
                 Log::info("Bulk items don't have service points, checking contained items for service point", [
                     'bulk_item_id' => $itemId,
-                    'bulk_name' => $itemModel->name
+                    'bulk_name' => $itemModel->name,
                 ]);
 
                 $bulkItems = $itemModel->bulkItems()->with('includedItem')->get();
-                
-                Log::info("Found bulk items for service point lookup", [
+
+                Log::info('Found bulk items for service point lookup', [
                     'bulk_item_id' => $itemId,
-                    'included_items_count' => $bulkItems->count()
+                    'included_items_count' => $bulkItems->count(),
                 ]);
 
                 $servicePointId = null;
                 $selectedIncludedItem = null;
-                
+
                 // Find the first included item that has a service point for this business/branch
                 foreach ($bulkItems as $bulkItem) {
                     $includedItem = $bulkItem->includedItem;
-                    
+
                     $includedItemBranchServicePoint = $includedItem->branchServicePoints()
                         ->where('business_id', $invoice->business_id)
                         ->where('branch_id', $invoice->branch_id)
@@ -3879,10 +3918,10 @@ class InvoiceController extends Controller
                     if ($includedItemBranchServicePoint && $includedItemBranchServicePoint->service_point_id) {
                         $servicePointId = $includedItemBranchServicePoint->service_point_id;
                         $selectedIncludedItem = $includedItem;
-                        Log::info("Found service point from included item", [
+                        Log::info('Found service point from included item', [
                             'included_item_id' => $includedItem->id,
                             'included_item_name' => $includedItem->name,
-                            'service_point_id' => $servicePointId
+                            'service_point_id' => $servicePointId,
                         ]);
                         break;
                     }
@@ -3894,7 +3933,7 @@ class InvoiceController extends Controller
                         'bulk_item_id' => $itemId,
                         'service_point_id' => $servicePointId,
                         'selected_included_item' => $selectedIncludedItem ? $selectedIncludedItem->name : 'Unknown',
-                        'quantity' => $quantity
+                        'quantity' => $quantity,
                     ]);
 
                     $queueRecord = \App\Models\ServiceDeliveryQueue::create([
@@ -3919,25 +3958,26 @@ class InvoiceController extends Controller
                         'queue_id' => $queueRecord->id,
                         'bulk_item_id' => $itemId,
                         'service_point_id' => $servicePointId,
-                        'selected_included_item' => $selectedIncludedItem ? $selectedIncludedItem->name : 'Unknown'
+                        'selected_included_item' => $selectedIncludedItem ? $selectedIncludedItem->name : 'Unknown',
                     ]);
                 } else {
-                    Log::info("No service point found for bulk item or any of its contained items, skipping queuing", [
+                    Log::info('No service point found for bulk item or any of its contained items, skipping queuing', [
                         'bulk_item_id' => $itemId,
                         'bulk_name' => $itemModel->name,
                         'business_id' => $invoice->business_id,
-                        'branch_id' => $invoice->branch_id
+                        'branch_id' => $invoice->branch_id,
                     ]);
                 }
+
                 continue; // Skip to next item after handling bulk
             }
 
             // Handle regular items with service points (only for non-package, non-bulk items)
             if ($branchServicePoint && $branchServicePoint->service_point_id) {
-                Log::info("Creating service delivery queue for regular item", [
+                Log::info('Creating service delivery queue for regular item', [
                     'item_id' => $itemId,
                     'service_point_id' => $branchServicePoint->service_point_id,
-                    'quantity' => $quantity
+                    'quantity' => $quantity,
                 ]);
 
                 // Create service delivery queue record for the main item
@@ -3958,31 +3998,31 @@ class InvoiceController extends Controller
                     'queued_at' => now(),
                     'estimated_delivery_time' => now()->addHours(2), // Default 2 hours
                 ]);
-                
-                Log::info("Service delivery queue created for regular item", [
+
+                Log::info('Service delivery queue created for regular item', [
                     'queue_id' => $queueRecord->id,
                     'item_id' => $itemId,
-                    'service_point_id' => $branchServicePoint->service_point_id
+                    'service_point_id' => $branchServicePoint->service_point_id,
                 ]);
             } else {
-                Log::info("Regular item has no service point for this business/branch, skipping queuing", [
+                Log::info('Regular item has no service point for this business/branch, skipping queuing', [
                     'item_id' => $itemId,
                     'item_name' => $itemModel->name,
                     'business_id' => $invoice->business_id,
                     'branch_id' => $invoice->branch_id,
-                    'branch_service_point_found' => $branchServicePoint ? 'yes' : 'no'
+                    'branch_service_point_found' => $branchServicePoint ? 'yes' : 'no',
                 ]);
             }
 
             // Handle package items - queue each included item at its respective service point
             if ($itemModel->type === 'package') {
-                Log::info("Processing package item", [
+                Log::info('Processing package item', [
                     'package_item_id' => $itemId,
-                    'package_name' => $itemModel->name
+                    'package_name' => $itemModel->name,
                 ]);
 
                 $packageItems = $itemModel->packageItems()->with('includedItem')->get();
-                
+
                 foreach ($packageItems as $packageItem) {
                     $includedItem = $packageItem->includedItem;
                     $maxQuantity = $packageItem->max_quantity ?? 1;
@@ -3994,21 +4034,21 @@ class InvoiceController extends Controller
                         ->where('branch_id', $invoice->branch_id)
                         ->first();
 
-                    Log::info("Found included item service point", [
+                    Log::info('Found included item service point', [
                         'included_item_id' => $includedItem->id,
                         'included_item_name' => $includedItem->name,
                         'business_id' => $invoice->business_id,
                         'branch_id' => $invoice->branch_id,
                         'branch_service_point_found' => $includedBranchServicePoint ? 'yes' : 'no',
-                        'service_point_id' => $includedBranchServicePoint ? $includedBranchServicePoint->service_point_id : null
+                        'service_point_id' => $includedBranchServicePoint ? $includedBranchServicePoint->service_point_id : null,
                     ]);
 
                     // Only queue if the included item has a service point for this business/branch
                     if ($includedBranchServicePoint && $includedBranchServicePoint->service_point_id) {
-                        Log::info("Creating service delivery queue for included item", [
+                        Log::info('Creating service delivery queue for included item', [
                             'included_item_id' => $includedItem->id,
                             'service_point_id' => $includedBranchServicePoint->service_point_id,
-                            'quantity' => $totalQuantity
+                            'quantity' => $totalQuantity,
                         ]);
 
                         $queueRecord = \App\Models\ServiceDeliveryQueue::create([
@@ -4029,28 +4069,28 @@ class InvoiceController extends Controller
                             'estimated_delivery_time' => now()->addHours(2), // Default 2 hours
                         ]);
 
-                        Log::info("Service delivery queue created for included item", [
+                        Log::info('Service delivery queue created for included item', [
                             'queue_id' => $queueRecord->id,
                             'included_item_id' => $includedItem->id,
-                            'service_point_id' => $includedBranchServicePoint->service_point_id
+                            'service_point_id' => $includedBranchServicePoint->service_point_id,
                         ]);
                     } else {
-                        Log::info("Included item has no service point for this business/branch, skipping queuing", [
+                        Log::info('Included item has no service point for this business/branch, skipping queuing', [
                             'included_item_id' => $includedItem->id,
                             'included_item_name' => $includedItem->name,
                             'business_id' => $invoice->business_id,
                             'branch_id' => $invoice->branch_id,
-                            'branch_service_point_found' => $includedBranchServicePoint ? 'yes' : 'no'
+                            'branch_service_point_found' => $includedBranchServicePoint ? 'yes' : 'no',
                         ]);
                     }
                 }
             }
         }
-        
-        Log::info("=== QUEUEING ITEMS AT SERVICE POINTS COMPLETED ===", [
+
+        Log::info('=== QUEUEING ITEMS AT SERVICE POINTS COMPLETED ===', [
             'invoice_id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
-            'total_items_processed' => count($items)
+            'total_items_processed' => count($items),
         ]);
     }
 
@@ -4078,20 +4118,22 @@ class InvoiceController extends Controller
 
             // Check if this item is included in any valid packages
             foreach ($validPackages as $packageTracking) {
-                if ($remainingQuantity <= 0) break;
+                if ($remainingQuantity <= 0) {
+                    break;
+                }
 
                 // Check if the current item is included in this package
                 $packageItems = $packageTracking->packageItem->packageItems;
-                
+
                 foreach ($packageItems as $packageItem) {
                     if ($packageItem->included_item_id == $itemId) {
                         // Check max quantity constraint from package_items table
                         $maxQuantity = $packageItem->max_quantity ?? null;
                         $fixedQuantity = $packageItem->fixed_quantity ?? null;
-                        
+
                         // Determine how much quantity can be used from this package
                         $availableFromPackage = $packageTracking->remaining_quantity;
-                        
+
                         if ($maxQuantity !== null) {
                             // If max_quantity is set, limit by that
                             $availableFromPackage = min($availableFromPackage, $maxQuantity);
@@ -4099,25 +4141,27 @@ class InvoiceController extends Controller
                             // If fixed_quantity is set, use that
                             $availableFromPackage = min($availableFromPackage, $fixedQuantity);
                         }
-                        
+
                         // Calculate how much we can actually use
                         $quantityToUse = min($remainingQuantity, $availableFromPackage);
-                        
+
                         if ($quantityToUse > 0) {
                             // Update package tracking record
                             $packageTracking->useQuantity($quantityToUse);
-                            
+
                             $remainingQuantity -= $quantityToUse;
-                            
+
                             // If we've used all available quantity from this package, break
-                            if ($remainingQuantity <= 0) break;
+                            if ($remainingQuantity <= 0) {
+                                break;
+                            }
                         }
                     }
                 }
             }
         }
     }
-    
+
     /**
      * Update client balance when balance adjustment is used
      */
@@ -4126,23 +4170,23 @@ class InvoiceController extends Controller
         try {
             $currentBalance = $client->balance ?? 0;
             $newBalance = $currentBalance - $balanceAdjustment;
-            
+
             // Ensure balance doesn't go negative
             $newBalance = max(0, $newBalance);
-            
+
             $client->update(['balance' => $newBalance]);
-            
+
             // DO NOT create balance statement immediately - will be created after payment completion
-            Log::info("Balance adjustment used - balance statement will be created after payment completion", [
+            Log::info('Balance adjustment used - balance statement will be created after payment completion', [
                 'client_id' => $client->id,
                 'balance_adjustment' => $balanceAdjustment,
-                'invoice_id' => $this->currentInvoice->id ?? null
+                'invoice_id' => $this->currentInvoice->id ?? null,
             ]);
-            
+
             Log::info("Client balance updated: Client ID {$client->id}, Adjustment: {$balanceAdjustment}, Old Balance: {$currentBalance}, New Balance: {$newBalance}");
-            
+
         } catch (\Exception $e) {
-            Log::error('Error updating client balance: ' . $e->getMessage());
+            Log::error('Error updating client balance: '.$e->getMessage());
         }
     }
 
@@ -4153,57 +4197,57 @@ class InvoiceController extends Controller
     {
         try {
             $user = Auth::user();
-            
+
             // Check if user has access to this invoice
             if ($user->business_id !== 1 && $invoice->business_id !== $user->business_id) {
                 abort(403, 'Unauthorized access to invoice.');
             }
-            
-            Log::info("=== MANUAL TRANSACTION COMPLETION STARTED ===", [
+
+            Log::info('=== MANUAL TRANSACTION COMPLETION STARTED ===', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'user_id' => $user->id,
                 'current_invoice_status' => $invoice->status,
-                'current_payment_status' => $invoice->payment_status
+                'current_payment_status' => $invoice->payment_status,
             ]);
 
             // Update invoice status to paid
             $invoice->update([
                 'status' => 'paid',
-                'payment_status' => 'paid'
+                'payment_status' => 'paid',
             ]);
 
-            Log::info("Invoice status updated to paid manually", [
+            Log::info('Invoice status updated to paid manually', [
                 'invoice_id' => $invoice->id,
-                'invoice_number' => $invoice->invoice_number
+                'invoice_number' => $invoice->invoice_number,
             ]);
 
             // Update related transaction if exists
             $transaction = \App\Models\Transaction::where('invoice_id', $invoice->id)->first();
             if ($transaction) {
                 $transaction->update([
-                    'status' => 'completed'
+                    'status' => 'completed',
                 ]);
-                
-                Log::info("Transaction status updated to completed manually", [
+
+                Log::info('Transaction status updated to completed manually', [
                     'transaction_id' => $transaction->id,
-                    'invoice_id' => $invoice->id
+                    'invoice_id' => $invoice->id,
                 ]);
             }
 
             // Process payment completion (this will trigger receipts)
             $moneyTrackingService = new \App\Services\MoneyTrackingService();
-            
-            Log::info("=== PROCESSING PAYMENT COMPLETION MANUALLY ===", [
+
+            Log::info('=== PROCESSING PAYMENT COMPLETION MANUALLY ===', [
                 'invoice_id' => $invoice->id,
-                'items_count' => count($invoice->items ?? [])
+                'items_count' => count($invoice->items ?? []),
             ]);
-            
+
             $balanceStatements = $moneyTrackingService->processPaymentCompleted($invoice, $invoice->items);
-            
-            Log::info("=== MANUAL PAYMENT COMPLETION FINISHED ===", [
+
+            Log::info('=== MANUAL PAYMENT COMPLETION FINISHED ===', [
                 'invoice_id' => $invoice->id,
-                'balance_statements_count' => count($balanceStatements)
+                'balance_statements_count' => count($balanceStatements),
             ]);
 
             return response()->json([
@@ -4211,20 +4255,20 @@ class InvoiceController extends Controller
                 'message' => 'Transaction completed manually and receipts sent',
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
-                'balance_statements_count' => count($balanceStatements)
+                'balance_statements_count' => count($balanceStatements),
             ]);
-            
+
         } catch (\Exception $e) {
-            Log::error("Error completing transaction manually", [
+            Log::error('Error completing transaction manually', [
                 'invoice_id' => $invoice->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error completing transaction: ' . $e->getMessage(),
-                'invoice_id' => $invoice->id
+                'message' => 'Error completing transaction: '.$e->getMessage(),
+                'invoice_id' => $invoice->id,
             ], 500);
         }
     }
@@ -4235,21 +4279,21 @@ class InvoiceController extends Controller
     public function testMail()
     {
         try {
-            \Log::info("=== MAIL CONFIGURATION TEST ===", [
+            \Log::info('=== MAIL CONFIGURATION TEST ===', [
                 'driver' => config('mail.default'),
                 'host' => config('mail.mailers.smtp.host'),
                 'port' => config('mail.mailers.smtp.port'),
                 'username' => config('mail.mailers.smtp.username'),
-                'password_set' => !empty(config('mail.mailers.smtp.password')),
+                'password_set' => ! empty(config('mail.mailers.smtp.password')),
                 'kashtre_email' => config('mail.kashtre_email'),
                 'from_address' => config('mail.from.address'),
-                'from_name' => config('mail.from.name')
+                'from_name' => config('mail.from.name'),
             ]);
 
             // Send a simple test email
             \Mail::raw('This is a test email from KashTre system to verify mail configuration.', function ($message) {
                 $message->to('test@example.com')
-                        ->subject('KashTre Mail Test');
+                    ->subject('KashTre Mail Test');
             });
 
             return response()->json([
@@ -4260,20 +4304,20 @@ class InvoiceController extends Controller
                     'host' => config('mail.mailers.smtp.host'),
                     'port' => config('mail.mailers.smtp.port'),
                     'username' => config('mail.mailers.smtp.username'),
-                    'kashtre_email' => config('mail.kashtre_email')
-                ]
+                    'kashtre_email' => config('mail.kashtre_email'),
+                ],
             ]);
 
         } catch (\Exception $e) {
-            \Log::error("Mail configuration test failed", [
+            \Log::error('Mail configuration test failed', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Mail test failed: ' . $e->getMessage(),
-                'error' => $e->getMessage()
+                'message' => 'Mail test failed: '.$e->getMessage(),
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -4296,70 +4340,74 @@ class InvoiceController extends Controller
 
         // Build items payload once — same for every vendor in the cascade
         $itemsForAuthorization = collect($invoice->items ?? [])->map(function (array $item) {
-            $itemId    = $item['id'] ?? $item['item_id'] ?? null;
+            $itemId = $item['id'] ?? $item['item_id'] ?? null;
             $itemModel = $itemId ? \App\Models\Item::find($itemId) : null;
-            $quantity  = (float) ($item['quantity'] ?? 1);
-            $price     = (float) ($item['price'] ?? 0);
-            $total     = (float) ($item['total_amount'] ?? ($price * $quantity));
+            $quantity = (float) ($item['quantity'] ?? 1);
+            $price = (float) ($item['price'] ?? 0);
+            $total = (float) ($item['total_amount'] ?? ($price * $quantity));
+
             return [
-                'id'              => $itemId,
-                'name'            => $item['name'] ?? $item['displayName'] ?? null,
-                'quantity'        => $quantity,
-                'price'           => $price,
-                'total_amount'    => $total,
-                'code'            => $itemModel?->code,
-                'type'            => $itemModel?->type,
-                'kashtre_excluded' => !empty($item['kashtre_excluded']),
+                'id' => $itemId,
+                'name' => $item['name'] ?? $item['displayName'] ?? null,
+                'quantity' => $quantity,
+                'price' => $price,
+                'total_amount' => $total,
+                'code' => $itemModel?->code,
+                'type' => $itemModel?->type,
+                'kashtre_excluded' => ! empty($item['kashtre_excluded']),
             ];
         })->values()->all();
 
-        $vendorResults       = [];
+        $vendorResults = [];
         $amountForNextVendor = (float) $invoice->total_amount;
         $totalInsuranceTotal = 0.0;
-        $finalClientTotal    = 0.0;
-        $allWarnings         = [];
-        $cascadeBlocked      = false;
+        $finalClientTotal = 0.0;
+        $allWarnings = [];
+        $cascadeBlocked = false;
 
         foreach ($clientVendors as $clientVendor) {
-            $thirdPartyPayer  = $clientVendor->vendor; // ThirdPartyPayer
+            $thirdPartyPayer = $clientVendor->vendor; // ThirdPartyPayer
             $insuranceCompany = $thirdPartyPayer?->insuranceCompany;
 
             if ($cascadeBlocked) {
                 $vendorResults[] = [
-                    'vendor_id'               => $clientVendor->third_party_payer_id,
-                    'vendor_name'             => $insuranceCompany?->name ?? 'Unknown Insurance',
-                    'priority'                => $clientVendor->priority,
-                    'is_open_enrollment'      => $clientVendor->is_open_enrollment,
-                    'amount_submitted'        => 0.0,
+                    'vendor_id' => $clientVendor->third_party_payer_id,
+                    'vendor_name' => $insuranceCompany?->name ?? 'Unknown Insurance',
+                    'priority' => $clientVendor->priority,
+                    'is_open_enrollment' => $clientVendor->is_open_enrollment,
+                    'amount_submitted' => 0.0,
                     'authorization_reference' => null,
-                    'client_total'            => 0.0,
-                    'insurance_total'         => 0.0,
-                    'authorization_status'    => 'skipped',
-                    'error'                   => 'Cascade stopped because a higher-priority insurer authorization failed.',
+                    'client_total' => 0.0,
+                    'insurance_total' => 0.0,
+                    'authorization_status' => 'skipped',
+                    'error' => 'Cascade stopped because a higher-priority insurer authorization failed.',
                 ];
+
                 continue;
             }
 
             if ($amountForNextVendor <= 0) {
                 $vendorResults[] = [
-                    'vendor_id'               => $clientVendor->third_party_payer_id,
-                    'vendor_name'             => $insuranceCompany?->name ?? 'Unknown Insurance',
-                    'priority'                => $clientVendor->priority,
-                    'is_open_enrollment'      => $clientVendor->is_open_enrollment,
-                    'amount_submitted'        => 0.0,
+                    'vendor_id' => $clientVendor->third_party_payer_id,
+                    'vendor_name' => $insuranceCompany?->name ?? 'Unknown Insurance',
+                    'priority' => $clientVendor->priority,
+                    'is_open_enrollment' => $clientVendor->is_open_enrollment,
+                    'amount_submitted' => 0.0,
                     'authorization_reference' => null,
-                    'client_total'            => 0.0,
-                    'insurance_total'         => 0.0,
-                    'authorization_status'    => 'skipped',
-                    'error'                   => 'No remaining amount to cascade.',
+                    'client_total' => 0.0,
+                    'insurance_total' => 0.0,
+                    'authorization_status' => 'skipped',
+                    'error' => 'No remaining amount to cascade.',
                 ];
+
                 continue;
             }
 
-            if (!$insuranceCompany || !$insuranceCompany->third_party_business_id) {
+            if (! $insuranceCompany || ! $insuranceCompany->third_party_business_id) {
                 Log::warning('[Kashtre] Multi-vendor cascade: skipping vendor — no third_party_business_id', [
                     'client_vendor_id' => $clientVendor->id,
                 ]);
+
                 continue;
             }
 
@@ -4369,20 +4417,21 @@ class InvoiceController extends Controller
             if ($thirdPartyPayer->isSuspended() || $thirdPartyPayer->isBlocked()) {
                 Log::warning('[Kashtre] Multi-vendor cascade: skipping suspended/blocked vendor', [
                     'vendor_id' => $thirdPartyPayer->id,
-                    'status'    => $thirdPartyPayer->status,
+                    'status' => $thirdPartyPayer->status,
                 ]);
                 $vendorResults[] = [
-                    'vendor_id'              => $clientVendor->third_party_payer_id,
-                    'vendor_name'            => $insuranceCompany->name,
-                    'priority'               => $clientVendor->priority,
-                    'is_open_enrollment'     => $clientVendor->is_open_enrollment,
-                    'amount_submitted'       => $amountForNextVendor,
+                    'vendor_id' => $clientVendor->third_party_payer_id,
+                    'vendor_name' => $insuranceCompany->name,
+                    'priority' => $clientVendor->priority,
+                    'is_open_enrollment' => $clientVendor->is_open_enrollment,
+                    'amount_submitted' => $amountForNextVendor,
                     'authorization_reference' => null,
-                    'client_total'           => $amountForNextVendor,
-                    'insurance_total'        => 0.0,
-                    'authorization_status'   => 'skipped',
-                    'error'                  => "Vendor is {$thirdPartyPayer->status}",
+                    'client_total' => $amountForNextVendor,
+                    'insurance_total' => 0.0,
+                    'authorization_status' => 'skipped',
+                    'error' => "Vendor is {$thirdPartyPayer->status}",
                 ];
+
                 continue;
             }
 
@@ -4390,9 +4439,10 @@ class InvoiceController extends Controller
             $vendorExcludedItemIds = is_array($clientVendor->excluded_items) ? $clientVendor->excluded_items : [];
             $vendorItems = array_values(array_map(function (array $item) use ($vendorExcludedItemIds) {
                 // Mark items as excluded for this vendor if they're in the vendor's excluded list
-                if (!empty($vendorExcludedItemIds) && in_array($item['id'], $vendorExcludedItemIds, true)) {
+                if (! empty($vendorExcludedItemIds) && in_array($item['id'], $vendorExcludedItemIds, true)) {
                     $item['kashtre_excluded'] = true;
                 }
+
                 return $item;
             }, $itemsForAuthorization));
 
@@ -4430,7 +4480,7 @@ class InvoiceController extends Controller
                     (string) ($client->other_names ?? ''),
                 ])));
 
-                if ($fullName !== '' && !empty($client->date_of_birth)) {
+                if ($fullName !== '' && ! empty($client->date_of_birth)) {
                     try {
                         $altVerification = $apiService->verifyAlternativeIdentity($thirdPartyBusinessId, [
                             'name' => $fullName,
@@ -4438,7 +4488,7 @@ class InvoiceController extends Controller
                             'services_category' => $client->services_category,
                         ]);
 
-                        if (!empty($altVerification['success']) && !empty($altVerification['exists'])) {
+                        if (! empty($altVerification['success']) && ! empty($altVerification['exists'])) {
                             $recoveredPolicy = trim((string) (
                                 $altVerification['data']['policy_number']
                                 ?? $altVerification['policy_number']
@@ -4476,51 +4526,52 @@ class InvoiceController extends Controller
                     'client_vendor_id' => $clientVendor->id,
                 ]);
                 $vendorResults[] = [
-                    'vendor_id'               => $clientVendor->third_party_payer_id,
-                    'vendor_name'             => $insuranceCompany->name,
-                    'priority'                => $clientVendor->priority,
-                    'is_open_enrollment'      => $clientVendor->is_open_enrollment,
-                    'amount_submitted'        => $amountForNextVendor,
+                    'vendor_id' => $clientVendor->third_party_payer_id,
+                    'vendor_name' => $insuranceCompany->name,
+                    'priority' => $clientVendor->priority,
+                    'is_open_enrollment' => $clientVendor->is_open_enrollment,
+                    'amount_submitted' => $amountForNextVendor,
                     'authorization_reference' => null,
-                    'client_total'            => $amountForNextVendor,
-                    'insurance_total'         => 0.0,
-                    'authorization_status'    => 'failed',
-                    'error'                   => 'Missing policy number for this vendor on client profile.',
+                    'client_total' => $amountForNextVendor,
+                    'insurance_total' => 0.0,
+                    'authorization_status' => 'failed',
+                    'error' => 'Missing policy number for this vendor on client profile.',
                 ];
                 $allWarnings[] = "{$insuranceCompany->name}: Missing policy number for this vendor on client profile.";
+
                 continue;
             }
 
             $authPayload = [
-                'kashtre_invoice_id'                  => (string) $invoice->id,
-                'invoice_number'                      => $invoice->invoice_number,
-                'insurance_company_id'                => $thirdPartyBusinessId,
-                'policy_number'                       => $policyNumber,
-                'services_category'                   => $client->services_category ?? null,
-                'total_amount'                        => $amountForNextVendor,
-                'deductible_remaining'                => $deductibleRemaining,
-                'copay_contributes_to_deductible'     => (bool) $clientVendor->copay_contributes_to_deductible,
+                'kashtre_invoice_id' => (string) $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'insurance_company_id' => $thirdPartyBusinessId,
+                'policy_number' => $policyNumber,
+                'services_category' => $client->services_category ?? null,
+                'total_amount' => $amountForNextVendor,
+                'deductible_remaining' => $deductibleRemaining,
+                'copay_contributes_to_deductible' => (bool) $clientVendor->copay_contributes_to_deductible,
                 'coinsurance_contributes_to_deductible' => (bool) $clientVendor->coinsurance_contributes_to_deductible,
-                'items'                               => $vendorItems,
-                'connected_business_id'               => $business->id,
+                'items' => $vendorItems,
+                'connected_business_id' => $business->id,
             ];
 
             Log::info('[Kashtre] Multi-vendor cascade: authorizing vendor', [
-                'invoice_id'              => $invoice->id,
-                'vendor_name'             => $insuranceCompany->name,
-                'priority'                => $clientVendor->priority,
-                'amount_submitted'        => $amountForNextVendor,
+                'invoice_id' => $invoice->id,
+                'vendor_name' => $insuranceCompany->name,
+                'priority' => $clientVendor->priority,
+                'amount_submitted' => $amountForNextVendor,
                 'third_party_business_id' => $thirdPartyBusinessId,
             ]);
 
             $authResult = $apiService->requestInvoiceAuthorization($authPayload);
 
-            if ($authResult && !empty($authResult['success'])) {
-                $vendorClientTotal    = (float) ($authResult['client_total'] ?? $amountForNextVendor);
+            if ($authResult && ! empty($authResult['success'])) {
+                $vendorClientTotal = (float) ($authResult['client_total'] ?? $amountForNextVendor);
                 $vendorInsuranceTotal = (float) ($authResult['insurance_total'] ?? 0);
 
                 // Ensure vendor totals are internally consistent
-                $expectedClientTotal  = round(max(0, $amountForNextVendor - $vendorInsuranceTotal), 2);
+                $expectedClientTotal = round(max(0, $amountForNextVendor - $vendorInsuranceTotal), 2);
                 if (abs($vendorClientTotal - $expectedClientTotal) > 0.02) {
                     $vendorClientTotal = $expectedClientTotal;
                 }
@@ -4530,7 +4581,7 @@ class InvoiceController extends Controller
                 $breakdown = is_array($authResult['breakdown'] ?? null) ? $authResult['breakdown'] : [];
                 $excludedFromBreakdown = (float) ($breakdown['excluded'] ?? 0);
                 $excludedItemsTotal = 0.0;
-                if (!empty($breakdown['excluded_items']) && is_array($breakdown['excluded_items'])) {
+                if (! empty($breakdown['excluded_items']) && is_array($breakdown['excluded_items'])) {
                     foreach ($breakdown['excluded_items'] as $exRow) {
                         $excludedItemsTotal += (float) ($exRow['amount'] ?? 0);
                     }
@@ -4540,26 +4591,26 @@ class InvoiceController extends Controller
                 $nonCascadeClient = round(max(0, $vendorClientTotal - $cascadeEligible), 2);
 
                 $vendorResults[] = [
-                    'vendor_id'               => $clientVendor->third_party_payer_id,
-                    'vendor_name'             => $insuranceCompany->name,
-                    'priority'                => $clientVendor->priority,
-                    'is_open_enrollment'      => $clientVendor->is_open_enrollment,
-                    'policy_number'           => $clientVendor->policy_number,
-                    'amount_submitted'        => $amountForNextVendor,
+                    'vendor_id' => $clientVendor->third_party_payer_id,
+                    'vendor_name' => $insuranceCompany->name,
+                    'priority' => $clientVendor->priority,
+                    'is_open_enrollment' => $clientVendor->is_open_enrollment,
+                    'policy_number' => $clientVendor->policy_number,
+                    'amount_submitted' => $amountForNextVendor,
                     'authorization_reference' => $authResult['authorization_reference'] ?? null,
-                    'client_total'            => $vendorClientTotal,
-                    'insurance_total'         => $vendorInsuranceTotal,
-                    'breakdown'               => $breakdown,
+                    'client_total' => $vendorClientTotal,
+                    'insurance_total' => $vendorInsuranceTotal,
+                    'breakdown' => $breakdown,
                     'client_total_cascade_eligible' => $cascadeEligible,
                     'client_total_non_cascade' => $nonCascadeClient,
-                    'authorization_status'    => $authResult['authorization_status'] ?? 'auto_approved',
-                    'warnings'                => $authResult['warnings'] ?? [],
+                    'authorization_status' => $authResult['authorization_status'] ?? 'auto_approved',
+                    'warnings' => $authResult['warnings'] ?? [],
                 ];
 
-                $totalInsuranceTotal  += $vendorInsuranceTotal;
-                $finalClientTotal      += $nonCascadeClient;
-                $amountForNextVendor   = $cascadeEligible; // only rejected/excluded amount goes to next vendor
-                $allWarnings           = array_merge($allWarnings, $authResult['warnings'] ?? []);
+                $totalInsuranceTotal += $vendorInsuranceTotal;
+                $finalClientTotal += $nonCascadeClient;
+                $amountForNextVendor = $cascadeEligible; // only rejected/excluded amount goes to next vendor
+                $allWarnings = array_merge($allWarnings, $authResult['warnings'] ?? []);
 
                 // Reset deductible_remaining for subsequent vendors (they track their own)
                 $deductibleRemaining = 0;
@@ -4568,21 +4619,21 @@ class InvoiceController extends Controller
                 // Multi-insurance should only pass remainders after a successful higher-priority authorization.
                 $errorMessage = is_array($authResult) ? ($authResult['message'] ?? 'Authorization failed') : 'No response';
                 Log::warning('[Kashtre] Multi-vendor cascade: authorization failed for vendor', [
-                    'invoice_id'  => $invoice->id,
+                    'invoice_id' => $invoice->id,
                     'vendor_name' => $insuranceCompany->name,
-                    'error'       => $errorMessage,
+                    'error' => $errorMessage,
                 ]);
                 $vendorResults[] = [
-                    'vendor_id'               => $clientVendor->third_party_payer_id,
-                    'vendor_name'             => $insuranceCompany->name,
-                    'priority'                => $clientVendor->priority,
-                    'is_open_enrollment'      => $clientVendor->is_open_enrollment,
-                    'amount_submitted'        => $amountForNextVendor,
+                    'vendor_id' => $clientVendor->third_party_payer_id,
+                    'vendor_name' => $insuranceCompany->name,
+                    'priority' => $clientVendor->priority,
+                    'is_open_enrollment' => $clientVendor->is_open_enrollment,
+                    'amount_submitted' => $amountForNextVendor,
                     'authorization_reference' => null,
-                    'client_total'            => $amountForNextVendor,
-                    'insurance_total'         => 0.0,
-                    'authorization_status'    => 'failed',
-                    'error'                   => $errorMessage,
+                    'client_total' => $amountForNextVendor,
+                    'insurance_total' => 0.0,
+                    'authorization_status' => 'failed',
+                    'error' => $errorMessage,
                 ];
                 $allWarnings[] = "{$insuranceCompany->name}: {$errorMessage}";
                 $cascadeBlocked = true;
@@ -4635,7 +4686,7 @@ class InvoiceController extends Controller
             $remainingAllocation = round(max(0.0, $remainingAllocation - $alloc), 2);
         }
         foreach ($vendorResults as $idx => $row) {
-            if (!isset($vendorResults[$idx]['client_portion_allocated'])) {
+            if (! isset($vendorResults[$idx]['client_portion_allocated'])) {
                 $vendorResults[$idx]['client_portion_allocated'] = 0.0;
             }
         }
@@ -4646,34 +4697,110 @@ class InvoiceController extends Controller
         // Add any remaining unresolved cascaded amount to final client responsibility.
         $finalClientTotal = round($finalClientTotal + max(0, $amountForNextVendor), 2);
 
+        $cascadeLineItems = $this->buildCascadeLineItemRowsForSnapshot($itemsForAuthorization, $vendorResults);
+
         $snapshot = [
-            'success'                  => true,
-            'multi_vendor'             => true,
-            'vendors'                  => $vendorResults,
-            'client_total'             => $finalClientTotal,
+            'success' => true,
+            'multi_vendor' => true,
+            'vendors' => $vendorResults,
+            'cascade_line_items' => $cascadeLineItems,
+            'client_total' => $finalClientTotal,
             'client_portion_allocated_total' => (float) collect($vendorResults)->sum('client_portion_allocated'),
-            'insurance_total'          => $totalInsuranceTotal,
-            'authorization_reference'  => $authRefs,
-            'authorization_status'     => collect($vendorResults)->contains('authorization_status', 'auto_rejected') ? 'auto_rejected' : 'auto_approved',
-            'warnings'                 => array_values(array_unique($allWarnings)),
+            'insurance_total' => $totalInsuranceTotal,
+            'authorization_reference' => $authRefs,
+            'authorization_status' => collect($vendorResults)->contains('authorization_status', 'auto_rejected') ? 'auto_rejected' : 'auto_approved',
+            'warnings' => array_values(array_unique($allWarnings)),
         ];
 
         $invoice->update([
-            'insurance_client_total'           => $finalClientTotal,
-            'insurance_insurance_total'        => $totalInsuranceTotal,
-            'insurance_authorized_at'          => now(),
+            'insurance_client_total' => $finalClientTotal,
+            'insurance_insurance_total' => $totalInsuranceTotal,
+            'insurance_authorized_at' => now(),
             'insurance_authorization_reference' => $authRefs ?: null,
             'insurance_authorization_snapshot' => $snapshot,
         ]);
 
         Log::info('[Kashtre] Multi-vendor cascade: complete', [
-            'invoice_id'          => $invoice->id,
-            'vendor_count'        => count($vendorResults),
-            'total_insurance'     => $totalInsuranceTotal,
-            'final_client_total'  => $finalClientTotal,
+            'invoice_id' => $invoice->id,
+            'vendor_count' => count($vendorResults),
+            'total_insurance' => $totalInsuranceTotal,
+            'final_client_total' => $finalClientTotal,
         ]);
 
         return $snapshot;
+    }
+
+    /**
+     * Per invoice line: primary insurer in cascade order (first eligible vendor that did not list the line
+     * in authorization excluded_items). Matches BalanceHistory statement labeling. Insurer "pays" amounts
+     * remain invoice-level totals from the third-party API unless the API sends itemized breakdown.
+     *
+     * @param  array<int, array<string, mixed>>  $invoiceItems
+     * @param  array<int, array<string, mixed>>  $vendorResults
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildCascadeLineItemRowsForSnapshot(array $invoiceItems, array $vendorResults): array
+    {
+        $eligible = [];
+        foreach ($vendorResults as $v) {
+            $status = (string) ($v['authorization_status'] ?? '');
+            if (in_array($status, ['failed', 'skipped'], true)) {
+                continue;
+            }
+            $eligible[] = $v;
+        }
+        usort($eligible, fn ($a, $b) => ((float) ($a['priority'] ?? 0)) <=> ((float) ($b['priority'] ?? 0)));
+
+        $rows = [];
+        foreach ($invoiceItems as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $name = trim((string) ($item['name'] ?? $item['displayName'] ?? ''));
+            if ($name === '') {
+                $name = 'Line item';
+            }
+            $qty = (float) ($item['quantity'] ?? 1);
+            $lineTotal = (float) ($item['total_amount'] ?? ((float) ($item['price'] ?? 0) * $qty));
+            $itemId = $item['id'] ?? $item['item_id'] ?? null;
+
+            if (! empty($item['kashtre_excluded'])) {
+                $rows[] = [
+                    'item_id' => $itemId,
+                    'name' => $name,
+                    'code' => $item['code'] ?? null,
+                    'quantity' => $qty,
+                    'line_total' => round($lineTotal, 2),
+                    'primary_insurer' => null,
+                    'attribution_label' => 'Client (excluded from insurance billing)',
+                ];
+
+                continue;
+            }
+
+            $primaryName = null;
+            foreach ($eligible as $v) {
+                $breakdown = is_array($v['breakdown'] ?? null) ? $v['breakdown'] : [];
+                $excludedItems = is_array($breakdown['excluded_items'] ?? null) ? $breakdown['excluded_items'] : [];
+                if (BalanceHistory::invoiceRowExcludedByInsuranceBreakdown($item, $excludedItems)) {
+                    continue;
+                }
+                $primaryName = trim((string) ($v['vendor_name'] ?? ''));
+                break;
+            }
+
+            $rows[] = [
+                'item_id' => $itemId,
+                'name' => $name,
+                'code' => $item['code'] ?? null,
+                'quantity' => $qty,
+                'line_total' => round($lineTotal, 2),
+                'primary_insurer' => $primaryName !== '' ? $primaryName : null,
+                'attribution_label' => ($primaryName !== null && $primaryName !== '') ? $primaryName : 'Client',
+            ];
+        }
+
+        return $rows;
     }
 
     /**

@@ -2493,24 +2493,7 @@
 
                     if (isInsuranceAuth) {
                         // Insurance client: show authorization success then collect client portion
-                        const vendorBreakdown = data.insurance_authorization?.vendors ? data.insurance_authorization.vendors : [];
-                        const vendorBreakdownHtml = vendorBreakdown.length ? `
-                            <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                                <p class="text-xs font-semibold tracking-wide text-slate-700 uppercase mb-2">Insurance Cascade Summary</p>
-                                <div class="space-y-2">
-                                    ${vendorBreakdown.map(v => `
-                                        <div class="bg-white rounded p-2 text-sm">
-                                            <p class="font-medium text-slate-700">${v.vendor_name}</p>
-                                            <div class="text-xs text-slate-600 grid grid-cols-2 gap-1 mt-1">
-                                                <span>Submitted: UGX ${fmt(v.amount_submitted)}</span>
-                                                <span>Insurer pays: UGX ${fmt(v.insurance_total)}</span>
-                                                <span>Client allocation: UGX ${fmt(v.client_portion_allocated ?? 0)}</span>
-                                            </div>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
-                        ` : '';
+                        const vendorBreakdownHtml = buildVendorCascadeSummaryHtml(data.insurance_authorization);
 
                         // If client portion > 0 and payment method is available: collect now
                         if (clientTotalDue > 0) {
@@ -2596,7 +2579,53 @@
                 }
             }
         }
-        
+
+        function escapeHtmlInsuranceUi(str) {
+            if (str == null) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        /** Brief multi-vendor summary: one small table + one-line payer totals. */
+        function buildVendorCascadeSummaryHtml(insuranceAuth) {
+            const fmt = (n) => (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const vendorBreakdown = insuranceAuth?.vendors ? insuranceAuth.vendors : [];
+            const lineRows = Array.isArray(insuranceAuth?.cascade_line_items) ? insuranceAuth.cascade_line_items : [];
+            let html = '';
+
+            if (lineRows.length) {
+                html += `<div class="mt-2 rounded border border-slate-200 overflow-hidden">
+                    <div class="max-h-40 overflow-y-auto">
+                    <table class="w-full text-[11px]">
+                    <thead><tr class="bg-slate-50 text-slate-600"><th class="px-2 py-1 text-left font-medium">Item</th><th class="px-2 py-1 text-right font-medium">Qty</th><th class="px-2 py-1 text-right font-medium">Line</th><th class="px-2 py-1 text-left font-medium">Insurer</th></tr></thead>
+                    <tbody>`;
+                lineRows.forEach((row) => {
+                    const label = escapeHtmlInsuranceUi(row.attribution_label || row.primary_insurer || 'Client');
+                    const nm = escapeHtmlInsuranceUi(row.name || 'Line');
+                    const cd = row.code ? ` <span class="text-slate-400">(${escapeHtmlInsuranceUi(row.code)})</span>` : '';
+                    const qtyDisp = escapeHtmlInsuranceUi(row.quantity != null ? String(row.quantity) : '');
+                    html += `<tr class="border-t border-slate-100"><td class="px-2 py-1 text-slate-700">${nm}${cd}</td><td class="px-2 py-1 text-right text-slate-600">${qtyDisp}</td><td class="px-2 py-1 text-right text-slate-800">UGX ${fmt(row.line_total)}</td><td class="px-2 py-1 text-slate-700">${label}</td></tr>`;
+                });
+                html += `</tbody></table></div></div>`;
+            }
+
+            if (vendorBreakdown.length) {
+                const payerLine = vendorBreakdown.map((v) => {
+                    const name = escapeHtmlInsuranceUi(v.vendor_name || 'Vendor');
+                    const pays = fmt(v.insurance_total);
+                    const clientAlloc = parseFloat(v.client_portion_allocated);
+                    const allocPart = !isNaN(clientAlloc) && clientAlloc > 0.01 ? ` · client UGX ${fmt(clientAlloc)}` : '';
+                    return `${name}: UGX ${pays}${allocPart}`;
+                }).join(' · ');
+                html += `<p class="mt-2 text-[11px] text-slate-600 leading-snug">${payerLine}</p>`;
+            }
+
+            return html;
+        }
+
         /**
          * Client amount to collect after insurance authorization.
          * Uses invoice_total - insurance_total when both exist (matches vendor ledger and backend normalization).

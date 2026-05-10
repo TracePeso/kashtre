@@ -300,46 +300,53 @@
                     </div>
 
                     @if($isMultiVendor && !empty($authSnap['vendors']))
-                        <!-- Multi-Vendor Breakdown -->
-                        <div class="mb-4">
-                            <p class="text-sm font-semibold text-gray-700 mb-2">Vendor Breakdown (Cascade Order):</p>
-                            <div class="space-y-2">
-                                @php
-                                    $runningTotal = (float) $invoice->total_amount;
-                                @endphp
-                                @foreach($authSnap['vendors'] as $vendorIdx => $vendor)
-                                    @php
-                                        $vendorAmountSubmitted = (float) ($vendor['amount_submitted'] ?? 0);
-                                        $vendorInsuranceAmount = (float) ($vendor['insurance_total'] ?? 0);
-                                        $vendorClientAmount = (float) ($vendor['client_total'] ?? 0);
-                                    @endphp
-                                    <div class="bg-white rounded p-3 border border-gray-200">
-                                        <div class="flex justify-between items-start mb-2">
-                                            <div>
-                                                <p class="font-medium text-gray-900">{{ $vendor['vendor_name'] ?? "Vendor " . ($vendorIdx + 1) }}</p>
-                                                <p class="text-xs text-gray-600">Priority: {{ $vendor['priority'] ?? 'N/A' }}</p>
-                                            </div>
-                                            <span class="text-xs px-2 py-1 rounded-full {{ $vendor['authorization_status'] === 'approved' ? 'bg-green-100 text-green-800' : ($vendor['authorization_status'] === 'skipped' ? 'bg-gray-100 text-gray-800' : 'bg-orange-100 text-orange-800') }}">
-                                                {{ ucfirst($vendor['authorization_status'] ?? 'unknown') }}
-                                            </span>
-                                        </div>
-                                        <div class="grid grid-cols-3 gap-2 text-sm">
-                                            <div>
-                                                <p class="text-gray-600">Amount Submitted</p>
-                                                <p class="font-semibold text-gray-900">UGX {{ $fmtDecimal($vendorAmountSubmitted) }}</p>
-                                            </div>
-                                            <div>
-                                                <p class="text-gray-600">Insurance Paid</p>
-                                                <p class="font-semibold text-green-700">UGX {{ $fmtDecimal($vendorInsuranceAmount) }}</p>
-                                            </div>
-                                            <div>
-                                                <p class="text-gray-600">Client Portion</p>
-                                                <p class="font-semibold text-blue-700">UGX {{ $fmtDecimal($vendorClientAmount) }}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                @endforeach
+                        @if(!empty($authSnap['cascade_line_items']) && is_array($authSnap['cascade_line_items']))
+                            <div class="mb-3 rounded border border-gray-200 bg-white overflow-hidden">
+                                <div class="overflow-x-auto max-h-52 overflow-y-auto">
+                                    <table class="min-w-full text-xs">
+                                        <thead>
+                                            <tr class="bg-gray-50 text-left text-gray-600">
+                                                <th class="px-2 py-1 font-medium">Item</th>
+                                                <th class="px-2 py-1 text-right font-medium">Qty</th>
+                                                <th class="px-2 py-1 text-right font-medium">Line</th>
+                                                <th class="px-2 py-1 font-medium">Insurer</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach($authSnap['cascade_line_items'] as $lineRow)
+                                                <tr class="border-t border-gray-100">
+                                                    <td class="px-2 py-1 text-gray-800">
+                                                        {{ $lineRow['name'] ?? 'Line item' }}
+                                                        @if(!empty($lineRow['code']))
+                                                            <span class="text-gray-400">({{ $lineRow['code'] }})</span>
+                                                        @endif
+                                                    </td>
+                                                    <td class="px-2 py-1 text-right text-gray-600">{{ $lineRow['quantity'] ?? '' }}</td>
+                                                    <td class="px-2 py-1 text-right text-gray-900">UGX {{ $fmtDecimal($lineRow['line_total'] ?? 0) }}</td>
+                                                    <td class="px-2 py-1 text-gray-800">{{ $lineRow['attribution_label'] ?? ($lineRow['primary_insurer'] ?? 'Client') }}</td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
+                        @endif
+                        <div class="mb-4 space-y-1 text-xs text-gray-700">
+                            @foreach($authSnap['vendors'] as $vendorIdx => $vendor)
+                                @php
+                                    $vendorAmountSubmitted = (float) ($vendor['amount_submitted'] ?? 0);
+                                    $vendorInsuranceAmount = (float) ($vendor['insurance_total'] ?? 0);
+                                    $clientAlloc = (float) ($vendor['client_portion_allocated'] ?? 0);
+                                @endphp
+                                <p>
+                                    <span class="font-medium text-gray-900">{{ $vendor['vendor_name'] ?? 'Vendor '.($vendorIdx + 1) }}</span>
+                                    — pays UGX {{ $fmtDecimal($vendorInsuranceAmount) }}, submitted UGX {{ $fmtDecimal($vendorAmountSubmitted) }}
+                                    @if($clientAlloc > 0.01)
+                                        , client alloc. UGX {{ $fmtDecimal($clientAlloc) }}
+                                    @endif
+                                    <span class="text-gray-500">({{ ucfirst($vendor['authorization_status'] ?? 'unknown') }})</span>
+                                </p>
+                            @endforeach
                         </div>
                     @endif
 
