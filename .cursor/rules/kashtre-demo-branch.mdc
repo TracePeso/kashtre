@@ -1,0 +1,11 @@
+---
+description: Kashtre repo uses demo as the primary integration branch
+alwaysApply: true
+---
+
+# Branch workflow (Kashtre)
+
+- **Default branch for day-to-day work:** `demo`. Assume the user is on `demo` unless they say otherwise.
+- **Before coding:** ensure the working branch is `demo` (`git checkout demo` and pull when starting substantive work).
+- **Commits and pushes:** target `demo` unless the user explicitly asks to work on `main`, `staging`, or another branch.
+- **Do not** merge or push to `main` unless the user explicitly requests it.
