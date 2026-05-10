@@ -126,6 +126,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::post('/dashboard/yo-payment-test', [DashboardController::class, 'testYoPayment'])->name('dashboard.yo-payment-test');
+    Route::post('/dashboard/testing-environment-reset', [DashboardController::class, 'clearTestingEnvironment'])
+        ->name('dashboard.testing-environment-reset')
+        ->middleware('throttle:5,1');
 
     // Automated Tests
     Route::get('/automated-tests', [AutomatedTestController::class, 'index'])->name('automated-tests.index');
