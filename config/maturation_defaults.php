@@ -21,4 +21,5 @@ return [
         'bank_transfer' => 2,
         'cash' => 0,
     ],
+    
 ];
