@@ -2060,13 +2060,27 @@ class MoneyTrackingService
     /**
      * Resolve a readable insurance counterparty label for transfer source/destination.
      */
-    private function resolveInsuranceCounterpartyLabel(Invoice $invoice): string
+    public function resolveInsuranceCounterpartyLabel(Invoice $invoice): string
     {
         $snapshot = is_array($invoice->insurance_authorization_snapshot ?? null)
             ? $invoice->insurance_authorization_snapshot
             : json_decode($invoice->insurance_authorization_snapshot ?? '[]', true);
+        if (!is_array($snapshot)) {
+            $snapshot = [];
+        }
 
-        $vendors = is_array($snapshot['vendors'] ?? null) ? $snapshot['vendors'] : [];
+        $vendorRows = [];
+        foreach (['vendors', 'vendor_results'] as $key) {
+            if (!empty($snapshot[$key]) && is_array($snapshot[$key])) {
+                foreach ($snapshot[$key] as $row) {
+                    if (is_array($row)) {
+                        $vendorRows[] = $row;
+                    }
+                }
+            }
+        }
+
+        $vendors = $vendorRows;
         if (!empty($vendors)) {
             $names = collect($vendors)
                 ->filter(function ($vendor) {
@@ -2147,6 +2161,19 @@ class MoneyTrackingService
         $client = $invoice->client;
         if (!$client && $invoice->client_id) {
             $client = \App\Models\Client::with('insuranceCompany')->find($invoice->client_id);
+        }
+
+        // Third-party payer record (per business + insurer) often has the display name used at POS.
+        if ($client && $client->insurance_company_id && $invoice->business_id) {
+            $payer = \App\Models\ThirdPartyPayer::query()
+                ->where('business_id', $invoice->business_id)
+                ->where('insurance_company_id', $client->insurance_company_id)
+                ->where('type', 'insurance_company')
+                ->whereNull('client_id')
+                ->first();
+            if ($payer && trim((string) $payer->name) !== '') {
+                return trim((string) $payer->name);
+            }
         }
 
         // Direct client insurer lookup (works even when relation isn't eagerly loaded).

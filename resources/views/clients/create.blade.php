@@ -336,7 +336,7 @@
                                                 <h3 class="text-sm font-medium text-yellow-800">No Payment Methods Configured</h3>
                                                 <p class="mt-1 text-sm text-yellow-700">
                                                     No payment methods have been set up for your business. Please contact the administrator to configure payment methods in 
-                                                    <a href="{{ route('maturation-periods.index') }}" class="font-medium underline hover:text-yellow-900">Maturation Periods</a>.
+                                                    <a href="{{ route('maturation-periods.index', ['tab' => 'entities']) }}" class="font-medium underline hover:text-yellow-900">Maturation Periods</a>.
                                                 </p>
                                             </div>
                                         </div>
@@ -849,7 +849,7 @@
                                                     <h3 class="text-sm font-medium text-yellow-800">No Payment Methods Configured</h3>
                                                     <p class="mt-1 text-sm text-yellow-700">
                                                         No payment methods have been set up for your business. Please contact the administrator to configure payment methods in 
-                                                        <a href="{{ route('maturation-periods.index') }}" class="font-medium underline hover:text-yellow-900">Maturation Periods</a>.
+                                                        <a href="{{ route('maturation-periods.index', ['tab' => 'entities']) }}" class="font-medium underline hover:text-yellow-900">Maturation Periods</a>.
                                                     </p>
                                                 </div>
                                             </div>
@@ -985,7 +985,7 @@
                                                     <h3 class="text-sm font-medium text-yellow-800">No Payment Methods Configured</h3>
                                                     <p class="mt-1 text-sm text-yellow-700">
                                                         No payment methods have been set up for your business. Please contact the administrator to configure payment methods in 
-                                                        <a href="{{ route('maturation-periods.index') }}" class="font-medium underline hover:text-yellow-900">Maturation Periods</a>.
+                                                        <a href="{{ route('maturation-periods.index', ['tab' => 'entities']) }}" class="font-medium underline hover:text-yellow-900">Maturation Periods</a>.
                                                     </p>
                                                 </div>
                                             </div>

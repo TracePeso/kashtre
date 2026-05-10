@@ -221,16 +221,16 @@
                                 </thead>
                                 <tbody class="bg-white divide-y divide-gray-200">
                                     @foreach($balanceHistories as $history)
+                                        @php
+                                            $isInsuranceTracking = $history->payment_method === 'insurance';
+                                            $insurancePayerLabel = $isInsuranceTracking ? $history->insurancePayerDisplayName() : null;
+                                        @endphp
                                         <tr>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                                 {{ $history->created_at->format('Y-m-d H:i:s') }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
-                                                @php
-                                                    // Insurance entries are informational rows and should be labeled consistently.
-                                                    $isInsuranceTracking = $history->payment_method === 'insurance';
-                                                @endphp
-                                                <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full 
+                                                <span title="{{ $isInsuranceTracking ? ($insurancePayerLabel ?? 'Insurance') : ucfirst($history->transaction_type) }}" class="inline-flex max-w-[14rem] min-w-0 overflow-hidden truncate px-2 py-1 text-xs font-semibold rounded-full 
                                                     @if($isInsuranceTracking) bg-purple-100 text-purple-800
                                                     @elseif($history->transaction_type === 'credit') bg-green-100 text-green-800
                                                     @elseif($history->transaction_type === 'debit') bg-red-100 text-red-800
@@ -238,7 +238,7 @@
                                                     @elseif($history->transaction_type === 'package') bg-blue-100 text-blue-800
                                                     @else bg-yellow-100 text-yellow-800 @endif">
                                                     @if($isInsuranceTracking)
-                                                        Insurance
+                                                        {{ $insurancePayerLabel ?? 'Insurance' }}
                                                     @else
                                                         {{ ucfirst($history->transaction_type) }}
                                                     @endif
@@ -286,13 +286,15 @@
                                                     } elseif (str_contains($description, 'Service Charge')) {
                                                         $description = 'Service Fee';
                                                     }
+
+                                                    if ($isInsuranceTracking && $insurancePayerLabel) {
+                                                        $description = str_replace('[Insurance]', '[' . $insurancePayerLabel . ']', $description);
+                                                    }
                                                 @endphp
                                                 {{ $description }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                                 @php
-                                                    $isInsuranceTracking = $history->payment_method === 'insurance';
-                                                    
                                                     // For insurance tracking entries, prefer the stored change_amount.
                                                     $displayAmount = 0;
                                                     if ($isInsuranceTracking) {

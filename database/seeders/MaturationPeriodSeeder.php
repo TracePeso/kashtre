@@ -30,16 +30,14 @@ class MaturationPeriodSeeder extends Seeder
             return;
         }
 
-        // Define payment methods and their default maturation periods (in days)
-        $paymentMethodDefaults = [
-            'insurance' => 30,           // Insurance claims typically take 30 days
-            'credit_arrangement' => 7,   // Credit arrangements usually 7 days
-            'mobile_money' => 1,         // Mobile money is usually instant or 1 day
-            'v_card' => 3,               // Virtual cards typically 3 days
-            'p_card' => 5,               // Physical cards usually 5 days
-            'bank_transfer' => 2,        // Bank transfers typically 2 days
-            'cash' => 0,                 // Cash is immediate
-        ];
+        /** @var array<string, int> $paymentMethodDefaults */
+        $paymentMethodDefaults = config('maturation_defaults.entity', []);
+
+        if ($paymentMethodDefaults === []) {
+            $this->command->warn('config/maturation_defaults.php entity map is empty; skipping MaturationPeriodSeeder.');
+
+            return;
+        }
 
         $this->command->info('Creating maturation periods for ' . $businesses->count() . ' businesses...');
 

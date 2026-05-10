@@ -2,16 +2,13 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class MaturationPeriod extends Model
+class ServiceChargeMaturationPeriod extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
         'business_id',
-        'payment_method_account_id',
         'payment_method',
         'maturation_days',
         'description',
@@ -25,46 +22,27 @@ class MaturationPeriod extends Model
         'maturation_days' => 'integer',
     ];
 
-    // Relationships
-    public function business()
+    public function business(): BelongsTo
     {
         return $this->belongsTo(Business::class);
     }
 
-    public function paymentMethodAccount()
-    {
-        return $this->belongsTo(PaymentMethodAccount::class, 'payment_method_account_id');
-    }
-
-
-    public function createdBy()
+    public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function updatedBy()
+    public function updatedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by');
     }
 
-    // Scopes
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
     }
 
-    public function scopeForBusiness($query, $businessId)
-    {
-        return $query->where('business_id', $businessId);
-    }
-
-    public function scopeForPaymentMethod($query, $paymentMethod)
-    {
-        return $query->where('payment_method', $paymentMethod);
-    }
-
-    // Accessors
-    public function getPaymentMethodNameAttribute()
+    public function getPaymentMethodNameAttribute(): string
     {
         $methodNames = [
             'insurance' => 'Insurance',
@@ -79,22 +57,16 @@ class MaturationPeriod extends Model
         return $methodNames[$this->payment_method] ?? ucfirst(str_replace('_', ' ', $this->payment_method));
     }
 
-    public function getFormattedMaturationPeriodAttribute()
+    public function getFormattedMaturationPeriodAttribute(): string
     {
-        return $this->maturation_days . ' day' . ($this->maturation_days > 1 ? 's' : '');
+        return $this->maturation_days.' day'.($this->maturation_days > 1 ? 's' : '');
     }
 
-    /**
-     * Default maturation days for a payment method (when no active DB row applies).
-     */
     public static function defaultMaturationDays(string $paymentMethod): int
     {
-        return MaturationSystemDefault::resolveEntityDays($paymentMethod);
+        return MaturationSystemDefault::resolveServiceChargeDays($paymentMethod);
     }
 
-    /**
-     * Effective days: active configured row wins; otherwise config default.
-     */
     public static function resolveMaturationDays(int $businessId, string $paymentMethod): int
     {
         $period = static::query()
@@ -110,9 +82,6 @@ class MaturationPeriod extends Model
     }
 
     /**
-     * Payment methods available for a business: defaults apply when no row exists (implicit active);
-     * explicit inactive rows exclude that method. Methods only in DB (legacy) stay available if active.
-     *
      * @return list<string>
      */
     public static function activePaymentMethodsForBusiness(int $businessId): array

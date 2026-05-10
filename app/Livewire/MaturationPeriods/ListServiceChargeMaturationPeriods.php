@@ -2,43 +2,38 @@
 
 namespace App\Livewire\MaturationPeriods;
 
-use App\Models\MaturationPeriod;
 use App\Models\Business;
-use App\Models\PaymentMethodAccount;
-use Filament\Forms;
+use App\Models\ServiceChargeMaturationPeriod;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
-use Filament\Tables;
-use Filament\Tables\Actions\CreateAction;
-use Filament\Tables\Actions\EditAction;
-use Filament\Tables\Actions\ViewAction;
-use Filament\Tables\Actions\DeleteAction;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Actions\BulkActionGroup;
+use Filament\Tables\Actions\CreateAction;
+use Filament\Tables\Actions\DeleteAction;
 use Filament\Tables\Actions\DeleteBulkAction;
-use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Actions\EditAction;
+use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Support\Contracts\TranslatableContentDriver;
 use Filament\Tables\Contracts\HasTable;
-use Filament\Tables\Table;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Table;
 use Filament\Notifications\Notification;
-use Livewire\Component;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Database\Eloquent\Builder;
+use Livewire\Component;
 
-class ListMaturationPeriods extends Component implements HasForms, HasTable
+class ListServiceChargeMaturationPeriods extends Component implements HasForms, HasTable
 {
     use InteractsWithForms;
     use InteractsWithTable;
 
     public function table(Table $table): Table
     {
-        $query = MaturationPeriod::query()
-            ->with(['business', 'paymentMethodAccount', 'createdBy', 'updatedBy'])
+        $query = ServiceChargeMaturationPeriod::query()
+            ->with(['business', 'createdBy', 'updatedBy'])
             ->where('business_id', '!=', 1)
             ->latest();
 
@@ -55,7 +50,7 @@ class ListMaturationPeriods extends Component implements HasForms, HasTable
                     ->searchable(),
                 TextColumn::make('payment_method')
                     ->label('Payment Method')
-                    ->formatStateUsing(fn (string $state): string => match($state) {
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
                         'insurance' => 'Insurance',
                         'credit_arrangement' => 'Credit Arrangement',
                         'mobile_money' => 'Mobile Money',
@@ -69,26 +64,7 @@ class ListMaturationPeriods extends Component implements HasForms, HasTable
                     ->searchable(),
                 TextColumn::make('maturation_days')
                     ->label('Maturation Days')
-                    ->formatStateUsing(fn (int $state): string => $state . ' day' . ($state > 1 ? 's' : ''))
-                    ->sortable(),
-                TextColumn::make('paymentMethodAccount.name')
-                    ->label('Account')
-                    ->formatStateUsing(function ($state, $record) {
-                        if (!$state) return '—';
-                        $account = $record->paymentMethodAccount;
-                        $text = $account->name;
-                        if ($account->provider) {
-                            $text .= ' (' . $account->provider . ')';
-                        }
-                        return $text;
-                    })
-                    ->searchable(),
-                TextColumn::make('paymentMethodAccount.balance')
-                    ->label('Account Balance')
-                    ->formatStateUsing(function ($state, $record) {
-                        if (!$record->paymentMethodAccount || $state == 0) return '—';
-                        return number_format($state, 2) . ' ' . ($record->paymentMethodAccount->currency ?? 'UGX');
-                    })
+                    ->formatStateUsing(fn (int $state): string => $state.' day'.($state > 1 ? 's' : ''))
                     ->sortable(),
                 IconColumn::make('is_active')
                     ->label('Status')
@@ -103,13 +79,9 @@ class ListMaturationPeriods extends Component implements HasForms, HasTable
                     ->limit(50)
                     ->tooltip(fn ($record) => $record->description)
                     ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('created_at')
-                    ->label('Created')
+                TextColumn::make('updated_at')
+                    ->label('Updated')
                     ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('createdBy.name')
-                    ->label('Created By')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
@@ -142,48 +114,37 @@ class ListMaturationPeriods extends Component implements HasForms, HasTable
             ])
             ->actions([
                 ViewAction::make()
-                    ->visible(fn() => in_array('View Maturation Periods', auth()->user()->permissions ?? []))
-                    ->url(fn (MaturationPeriod $record): string => route('maturation-periods.show', $record)),
+                    ->visible(fn () => in_array('View Maturation Periods', auth()->user()->permissions ?? []))
+                    ->url(fn (ServiceChargeMaturationPeriod $record): string => route('service-charge-maturation-periods.show', $record)),
                 EditAction::make()
-                    ->visible(fn() => in_array('Edit Maturation Periods', auth()->user()->permissions ?? []))
-                    ->url(fn (MaturationPeriod $record): string => route('maturation-periods.edit', $record))
+                    ->visible(fn () => in_array('Edit Maturation Periods', auth()->user()->permissions ?? []))
+                    ->url(fn (ServiceChargeMaturationPeriod $record): string => route('service-charge-maturation-periods.edit', $record))
                     ->color('warning'),
                 Action::make('toggleStatus')
-                    ->label(fn (MaturationPeriod $record): string => $record->is_active ? 'Deactivate' : 'Activate')
-                    ->icon(fn (MaturationPeriod $record): string => $record->is_active ? 'heroicon-o-x-circle' : 'heroicon-o-check-circle')
-                    ->color(fn (MaturationPeriod $record): string => $record->is_active ? 'danger' : 'success')
-                    ->visible(fn() => in_array('Manage Maturation Periods', auth()->user()->permissions ?? []))
+                    ->label(fn (ServiceChargeMaturationPeriod $record): string => $record->is_active ? 'Deactivate' : 'Activate')
+                    ->icon(fn (ServiceChargeMaturationPeriod $record): string => $record->is_active ? 'heroicon-o-x-circle' : 'heroicon-o-check-circle')
+                    ->color(fn (ServiceChargeMaturationPeriod $record): string => $record->is_active ? 'danger' : 'success')
+                    ->visible(fn () => in_array('Manage Maturation Periods', auth()->user()->permissions ?? []))
                     ->requiresConfirmation()
-                    ->modalHeading(fn (MaturationPeriod $record): string => $record->is_active ? 'Deactivate Payment Method' : 'Activate Payment Method')
-                    ->modalDescription(fn (MaturationPeriod $record): string => 
-                        $record->is_active 
-                            ? "Are you sure you want to deactivate this payment method? It will no longer be available for client registration until reactivated."
-                            : "Are you sure you want to activate this payment method? It will be available for client registration."
-                    )
-                    ->modalSubmitActionLabel(fn (MaturationPeriod $record): string => $record->is_active ? 'Deactivate' : 'Activate')
-                    ->action(function (MaturationPeriod $record) {
+                    ->action(function (ServiceChargeMaturationPeriod $record) {
                         $record->update([
-                            'is_active' => !$record->is_active,
+                            'is_active' => ! $record->is_active,
                             'updated_by' => Auth::id(),
                         ]);
-                        
                         $status = $record->is_active ? 'activated' : 'deactivated';
-                        
                         Notification::make()
-                            ->title("Payment method {$status} successfully")
+                            ->title("Service charge maturation {$status}")
                             ->success()
                             ->send();
                     }),
                 DeleteAction::make()
-                    ->visible(fn() => in_array('Delete Maturation Periods', auth()->user()->permissions ?? []))
+                    ->visible(fn () => in_array('Delete Maturation Periods', auth()->user()->permissions ?? []))
                     ->requiresConfirmation()
-                    ->modalHeading('Delete Payment Method')
-                    ->modalDescription('Are you sure you want to delete this payment method? This action cannot be undone and will remove it from all client registration options.')
-                    ->successNotificationTitle('Payment method deleted successfully.')
-                    ->action(function (MaturationPeriod $record) {
+                    ->successNotificationTitle('Deleted.')
+                    ->action(function (ServiceChargeMaturationPeriod $record) {
                         $record->delete();
                         Notification::make()
-                            ->title('Payment method deleted successfully')
+                            ->title('Service charge maturation period deleted')
                             ->success()
                             ->send();
                     }),
@@ -191,14 +152,14 @@ class ListMaturationPeriods extends Component implements HasForms, HasTable
             ->bulkActions([
                 BulkActionGroup::make([
                     DeleteBulkAction::make()
-                        ->visible(fn() => in_array('Delete Maturation Periods', auth()->user()->permissions ?? [])),
+                        ->visible(fn () => in_array('Delete Maturation Periods', auth()->user()->permissions ?? [])),
                 ]),
             ])
             ->headerActions([
                 CreateAction::make()
-                    ->visible(fn() => in_array('Add Maturation Periods', auth()->user()->permissions ?? []))
-                    ->label('Create Maturation Period')
-                    ->url(route('maturation-periods.create'))
+                    ->visible(fn () => in_array('Add Maturation Periods', auth()->user()->permissions ?? []))
+                    ->label('Create service charge maturation')
+                    ->url(route('service-charge-maturation-periods.create'))
                     ->color('success'),
             ])
             ->defaultSort('business_id')
@@ -212,6 +173,6 @@ class ListMaturationPeriods extends Component implements HasForms, HasTable
 
     public function render(): View
     {
-        return view('livewire.maturation-periods.list-maturation-periods');
+        return view('livewire.maturation-periods.list-service-charge-maturation-periods');
     }
 }

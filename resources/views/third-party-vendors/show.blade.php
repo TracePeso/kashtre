@@ -116,7 +116,7 @@
                                     </div>
                                 </dl>
                                 <div class="mt-2">
-                                    <a href="{{ route('third-party-vendors.balance-statement', $vendor['id']) }}"
+                                    <a href="{{ route('third-party-vendors.balance-statement', ['vendorId' => $vendor['id'], 'view' => 'items']) }}"
                                        class="inline-flex items-center px-4 py-2 bg-blue-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                                         Open financial summary
                                     </a>
@@ -142,33 +142,123 @@
                 </div>
             </div>
 
-            <!-- Tabs Section -->
+            <!-- Tabs: Items (statement by line) + Transactions -->
             @if($thirdPartyPayer)
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mt-6">
                 <div class="border-b border-gray-200">
                     <nav class="-mb-px flex" aria-label="Tabs">
-                        <button onclick="showTab('transactions')" id="tab-transactions" class="tab-button active w-1/3 py-4 px-6 text-center border-b-2 font-medium text-sm transition-colors">
-                            <span class="border-b-2 border-blue-500 pb-4 px-1 text-blue-600">Transactions</span>
+                        <button type="button" onclick="showTab('items')" id="tab-items" class="tab-button active w-1/2 py-4 px-6 text-center border-b-2 font-medium text-sm transition-colors">
+                            <span class="border-b-2 border-blue-500 pb-4 px-1 text-blue-600">Items</span>
                         </button>
-                        <button onclick="showTab('invoices')" id="tab-invoices" class="tab-button w-1/3 py-4 px-6 text-center border-b-2 font-medium text-sm transition-colors">
-                            <span class="border-b-2 border-transparent pb-4 px-1 text-gray-500 hover:text-gray-700">Invoices</span>
-                        </button>
-                        <button onclick="showTab('exclusions')" id="tab-exclusions" class="tab-button w-1/3 py-4 px-6 text-center border-b-2 font-medium text-sm transition-colors">
-                            <span class="border-b-2 border-transparent pb-4 px-1 text-gray-500 hover:text-gray-700">Service Exclusions</span>
+                        <button type="button" onclick="showTab('transactions')" id="tab-transactions" class="tab-button w-1/2 py-4 px-6 text-center border-b-2 font-medium text-sm transition-colors">
+                            <span class="border-b-2 border-transparent pb-4 px-1 text-gray-500 hover:text-gray-700">Transactions</span>
                         </button>
                     </nav>
                 </div>
 
-                <!-- Transactions Tab Content -->
-                <div id="content-transactions" class="tab-content p-6">
+                <!-- Items Tab (itemized / line-oriented ledger rows) -->
+                <div id="content-items" class="tab-content p-6">
                     <div class="flex justify-between items-center mb-4">
                         <div>
-                            <h3 class="text-lg font-medium text-gray-900">Recent Transactions</h3>
-                            <p class="text-sm text-gray-500">Showing last 10 transactions</p>
+                            <h3 class="text-lg font-medium text-gray-900">Recent activity by item</h3>
+                            <p class="text-sm text-gray-500">Each debit is split across invoice line items by line totals when the invoice has item rows; credits stay one row each.</p>
                         </div>
-                        <a href="{{ route('third-party-vendors.balance-statement', $vendor['id']) }}" 
+                        <a href="{{ route('third-party-vendors.balance-statement', ['vendorId' => $vendor['id'], 'view' => 'items']) }}"
                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-                            View Full Statement
+                            View full statement (by item)
+                        </a>
+                    </div>
+
+                    @if($itemStatementRows->count() > 0)
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item / line</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                @foreach($itemStatementRows as $row)
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        {{ $row['created_at']->format('Y-m-d H:i:s') }}
+                                    </td>
+                                    <td class="px-6 py-4 text-sm text-gray-900">
+                                        <div class="font-medium">{{ $row['line_label'] }}</div>
+                                        @if(!empty($row['detail_description']) && $row['detail_description'] !== $row['line_label'])
+                                            <div class="text-xs text-gray-500 mt-0.5">{{ $row['detail_description'] }}</div>
+                                        @endif
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        @if($row['client'] ?? null)
+                                            <span class="font-medium">{{ $row['client']->name }}</span>
+                                            @if($row['client']->client_id)
+                                                <br><span class="text-xs text-gray-500">ID: {{ $row['client']->client_id }}</span>
+                                            @endif
+                                        @else
+                                            <span class="text-gray-400">N/A</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        @if(!empty($row['invoice']))
+                                            <a href="{{ route('invoices.show', $row['invoice']->id) }}" class="text-blue-600 hover:text-blue-800 font-medium">
+                                                {{ $row['invoice']->invoice_number ?? 'N/A' }}
+                                            </a>
+                                        @else
+                                            <span class="text-gray-400">N/A</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span class="px-2 py-1 text-xs rounded-full {{ ($row['transaction_type'] ?? '') === 'credit' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}">
+                                            {{ ucfirst($row['transaction_type'] ?? '') }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium {{ ($row['transaction_type'] ?? '') === 'credit' ? 'text-green-600' : 'text-red-600' }}">
+                                        {{ ($row['transaction_type'] ?? '') === 'credit' ? '+' : '-' }}{{ number_format((float) ($row['amount'] ?? 0), 2) }} UGX
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        @if(!empty($row['payment_status']))
+                                        <span class="px-2 py-1 text-xs rounded-full {{ $row['payment_status'] === 'paid' ? 'bg-green-100 text-green-800' : ($row['payment_status'] === 'pending_payment' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800') }}">
+                                            {{ ucfirst(str_replace('_', ' ', $row['payment_status'])) }}
+                                        </span>
+                                        @else
+                                        <span class="text-gray-400">N/A</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-4 text-center">
+                        <a href="{{ route('third-party-vendors.balance-statement', ['vendorId' => $vendor['id'], 'view' => 'items']) }}"
+                           class="text-blue-600 hover:text-blue-800 font-medium">
+                            View full statement (by item) →
+                        </a>
+                    </div>
+                    @else
+                    <div class="text-center py-8">
+                        <p class="text-gray-500">No activity yet. Entries appear when invoices post to this vendor.</p>
+                    </div>
+                    @endif
+                </div>
+
+                <!-- Transactions Tab Content -->
+                <div id="content-transactions" class="tab-content p-6 hidden">
+                    <div class="flex justify-between items-center mb-4">
+                        <div>
+                            <h3 class="text-lg font-medium text-gray-900">Recent transactions</h3>
+                            <p class="text-sm text-gray-500">Showing last 10 ledger rows</p>
+                        </div>
+                        <a href="{{ route('third-party-vendors.balance-statement', ['vendorId' => $vendor['id'], 'view' => 'transactions']) }}"
+                           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                            View full statement (by transaction)
                         </a>
                     </div>
                     
@@ -242,9 +332,9 @@
                     </div>
                     
                     <div class="mt-4 text-center">
-                        <a href="{{ route('third-party-vendors.balance-statement', $vendor['id']) }}" 
+                        <a href="{{ route('third-party-vendors.balance-statement', ['vendorId' => $vendor['id'], 'view' => 'transactions']) }}"
                            class="text-blue-600 hover:text-blue-800 font-medium">
-                            View all transactions →
+                            View full statement (by transaction) →
                         </a>
                     </div>
                     @else
@@ -253,190 +343,6 @@
                     </div>
                     @endif
 
-                </div>
-
-                <!-- Invoices Tab Content -->
-                <div id="content-invoices" class="tab-content p-6 hidden">
-                    <div class="flex justify-between items-center mb-4">
-                        <div>
-                            <h3 class="text-lg font-medium text-gray-900">Invoices</h3>
-                            <p class="text-sm text-gray-500">All invoices for this vendor</p>
-                        </div>
-                    </div>
-                    
-                    @if($invoices->count() > 0)
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice #</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Business</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Amount</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount Paid</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance Due</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Status</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                @foreach($invoices as $invoice)
-                                <tr class="hover:bg-gray-50">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                        {{ $invoice['invoice_number'] }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        <div>{{ $invoice['client_name'] }}</div>
-                                        @if($invoice['client_id'])
-                                            <div class="text-xs text-gray-500">ID: {{ $invoice['client_id'] }}</div>
-                                        @endif
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        <div>{{ $invoice['business_name'] ?? 'N/A' }}</div>
-                                        @if($invoice['branch_name'])
-                                            <div class="text-xs text-gray-500">{{ $invoice['branch_name'] }}</div>
-                                        @endif
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                        UGX {{ number_format($invoice['total_amount'], 2) }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600">
-                                        UGX {{ number_format($invoice['amount_paid'], 2) }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium {{ $invoice['balance_due'] > 0 ? 'text-red-600' : 'text-green-600' }}">
-                                        UGX {{ number_format($invoice['balance_due'], 2) }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        @php
-                                            $statusColors = [
-                                                'paid' => 'bg-green-100 text-green-800',
-                                                'pending_payment' => 'bg-yellow-100 text-yellow-800',
-                                                'partial' => 'bg-blue-100 text-blue-800',
-                                            ];
-                                            $paymentStatus = $invoice['payment_status'] ?? 'pending_payment';
-                                            $statusColor = $statusColors[$paymentStatus] ?? 'bg-gray-100 text-gray-800';
-                                        @endphp
-                                        <span class="px-2 py-1 text-xs rounded-full {{ $statusColor }}">
-                                            {{ ucfirst(str_replace('_', ' ', $paymentStatus)) }}
-                                        </span>
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {{ \Carbon\Carbon::parse($invoice['created_at'])->format('M d, Y') }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <a href="{{ route('invoices.show', $invoice['id']) }}" class="text-blue-600 hover:text-blue-900">
-                                            View
-                                        </a>
-                                    </td>
-                                </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                    @else
-                    <div class="text-center py-8">
-                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2zM10 8.5a.5.5 0 11-1 0 .5.5 0 011 0zm5 5a.5.5 0 11-1 0 .5.5 0 011 0z"></path>
-                        </svg>
-                        <h3 class="mt-2 text-sm font-medium text-gray-900">No invoices found</h3>
-                        <p class="mt-1 text-sm text-gray-500">Invoices will appear here when clients make purchases with this vendor's insurance.</p>
-                    </div>
-                    @endif
-                </div>
-
-                <!-- Service Exclusions Tab Content -->
-                <div id="content-exclusions" class="tab-content p-6 hidden">
-                    <div class="flex justify-between items-center mb-4">
-                        <div>
-                            <h3 class="text-lg font-medium text-gray-900">Service Exclusions for this Third Party</h3>
-                            <p class="text-sm text-gray-500">
-                                These exclusions apply to <span class="font-semibold">{{ $vendor['name'] }}</span> for all invoices paid by this third party.
-                            </p>
-                        </div>
-                        <a href="{{ route('third-party-payers.show', $thirdPartyPayer) }}"
-                           class="hidden md:inline-flex items-center text-xs font-medium text-blue-600 hover:text-blue-800">
-                            Open third party payer page
-                            <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                      d="M9 5l7 7-7 7" />
-                            </svg>
-                        </a>
-                    </div>
-
-                    @if(in_array('Edit Third Party Payers', (array) (auth()->user()->permissions ?? [])))
-                        <div class="max-w-4xl">
-                            <div class="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-4">
-                                <p class="text-xs text-blue-800">
-                                    Select items from your price list that should be excluded from this third party's terms.
-                                    Invoices containing excluded items will not be saved when payment method is insurance / third party.
-                                    Business-level defaults from Business Settings still apply on top of these.
-                                </p>
-                            </div>
-
-                            <form action="{{ route('third-party-payers.update-excluded-items', $thirdPartyPayer) }}" method="POST" class="space-y-4">
-                            @csrf
-                            @method('POST')
-                            <input type="hidden" name="from_vendor_page" value="1">
-
-                            <div class="mb-4">
-                                <label for="excluded_items_vendor" class="block text-sm font-medium text-gray-700 mb-2">
-                                    Excluded Items
-                                </label>
-
-                                <!-- Quick Filter Buttons (same UX as Third Party Payers page) -->
-                                <div class="mb-3 flex flex-wrap gap-2">
-                                    <button type="button" class="filter-btn-tpp px-3 py-1 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 active" data-filter="all">
-                                        All Items
-                                    </button>
-                                    <button type="button" class="filter-btn-tpp px-3 py-1 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50" data-filter="service">
-                                        Services
-                                    </button>
-                                    <button type="button" class="filter-btn-tpp px-3 py-1 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50" data-filter="good">
-                                        Goods
-                                    </button>
-                                    <button type="button" class="filter-btn-tpp px-3 py-1 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50" data-filter="package">
-                                        Packages
-                                    </button>
-                                    <button type="button" class="filter-btn-tpp px-3 py-1 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50" data-filter="bulk">
-                                        Bulk Items
-                                    </button>
-                                </div>
-
-                                <select
-                                    name="excluded_items[]"
-                                    id="excluded_items_vendor"
-                                    multiple
-                                    style="width: 100%;"
-                                >
-                                    @foreach($items as $item)
-                                        <option
-                                            value="{{ $item->id }}"
-                                            data-type="{{ $item->type }}"
-                                            {{ in_array($item->id, old('excluded_items', (array) ($thirdPartyPayer->excluded_items ?? []))) ? 'selected' : '' }}
-                                        >
-                                            {{ $item->name }}@if($item->code) ({{ $item->code }})@endif
-                                        </option>
-                                    @endforeach
-                                </select>
-                                <p class="mt-2 text-xs text-gray-500">
-                                    Tip: Use quick filters to narrow down items by type, then search and select multiple items.
-                                </p>
-                            </div>
-
-                            <div class="flex justify-end">
-                                <button type="submit"
-                                        class="inline-flex items-center px-4 py-2 bg-blue-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-blue-700">
-                                    Update Exclusions
-                                </button>
-                            </div>
-                            </form>
-                        </div>
-                    @else
-                        <p class="text-sm text-gray-500">
-                            You do not have permission to edit third party payer exclusions. Contact an administrator if you need this changed.
-                        </p>
-                    @endif
                 </div>
             </div>
 
@@ -519,14 +425,6 @@
             </div>
             @endif
 
-{{-- Select2 CSS for exclusions tab --}}
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/css/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
-
-{{-- jQuery + Select2 JS (only used for the exclusions tab) --}}
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
 <script>
 function showTab(tabName) {
     // Hide all tab contents
@@ -550,45 +448,6 @@ function showTab(tabName) {
     activeSpan.classList.remove('border-transparent', 'text-gray-500');
     activeSpan.classList.add('border-blue-500', 'text-blue-600');
 }
-
-// Select2 + filter behaviour for exclusions tab (mirrors Third Party Payer page)
-$(document).ready(function () {
-    const $select = $('#excluded_items_vendor');
-    if (!$select.length) return;
-
-    $select.select2({
-        theme: 'bootstrap-5',
-        placeholder: 'Select items to exclude from third-party payer terms',
-        allowClear: true,
-        width: '100%'
-    });
-
-    $('.filter-btn-tpp').on('click', function() {
-        const filter = $(this).data('filter');
-
-        // Update active button
-        $('.filter-btn-tpp').removeClass('active bg-blue-600 text-white').addClass('bg-white text-gray-700');
-        $(this).removeClass('bg-white text-gray-700').addClass('active bg-blue-600 text-white');
-
-        // Filter options
-        if (filter === 'all') {
-            $select.find('option').prop('disabled', false);
-        } else {
-            $select.find('option').each(function() {
-                const $option = $(this);
-                if ($option.data('type') === filter) {
-                    $option.prop('disabled', false);
-                } else {
-                    $option.prop('disabled', true);
-                }
-            });
-        }
-
-        // Refresh Select2 and open dropdown to show filtered results
-        $select.trigger('change.select2');
-        $select.select2('open');
-    });
-});
 </script>
 
 <style>
@@ -601,38 +460,6 @@ $(document).ready(function () {
 .tab-button.active span {
     border-bottom-color: #3b82f6;
     color: #3b82f6;
-}
-
-/* Select2 styling for exclusions tab */
-.select2-container--bootstrap-5 .select2-selection--multiple {
-    min-height: 3rem;
-    border-radius: 0.5rem;
-    border-color: #e5e7eb;
-    padding: 0.25rem 0.5rem;
-}
-
-.select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice {
-    background-color: #eff6ff;
-    border-color: #bfdbfe;
-    color: #1e3a8a;
-    border-radius: 9999px;
-    padding: 0.1rem 0.5rem;
-    font-size: 0.75rem;
-}
-
-.select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice__remove {
-    color: #1d4ed8;
-    margin-right: 0.25rem;
-}
-
-.select2-container--bootstrap-5 .select2-results__option {
-    font-size: 0.85rem;
-    padding-top: 0.35rem;
-    padding-bottom: 0.35rem;
-}
-
-.select2-container--bootstrap-5 .select2-results__options {
-    max-height: 260px;
 }
 </style>
         </div>

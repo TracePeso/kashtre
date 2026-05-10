@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\MaturationPeriod;
+use App\Models\MaturationSystemDefault;
 use App\Models\Business;
 use App\Models\PaymentMethodAccount;
 use Illuminate\Http\Request;
@@ -26,6 +27,66 @@ class MaturationPeriodController extends Controller
             
             return $next($request);
         });
+    }
+
+    /**
+     * Payment methods index (Livewire tables + system defaults summary).
+     */
+    public function indexLivewire()
+    {
+        return view('settings.maturation-periods.index-livewire', [
+            'entityDefaultsMap' => MaturationSystemDefault::entityDefaultsMap(),
+            'serviceChargeDefaultsMap' => MaturationSystemDefault::serviceChargeDefaultsMap(),
+            'maturationDefaultLabels' => self::maturationPaymentMethodLabelMap(),
+        ]);
+    }
+
+    public function editSystemDefaults()
+    {
+        if (! in_array('Edit Maturation Periods', auth()->user()->permissions ?? [])) {
+            abort(403, 'Access denied. You do not have permission to edit maturation periods.');
+        }
+
+        return view('settings.maturation-periods.system-defaults.edit', [
+            'methods' => MaturationSystemDefault::orderedPaymentMethods(),
+            'entityMap' => MaturationSystemDefault::entityDefaultsMap(),
+            'serviceChargeMap' => MaturationSystemDefault::serviceChargeDefaultsMap(),
+            'labels' => self::maturationPaymentMethodLabelMap(),
+        ]);
+    }
+
+    public function updateSystemDefaults(Request $request)
+    {
+        if (! in_array('Edit Maturation Periods', auth()->user()->permissions ?? [])) {
+            abort(403, 'Access denied. You do not have permission to edit maturation periods.');
+        }
+
+        $allowed = MaturationSystemDefault::allowedPaymentMethods();
+        $rules = [];
+        foreach ($allowed as $method) {
+            $rules["entity.$method"] = 'required|integer|min:0|max:365';
+            $rules["service_charge.$method"] = 'required|integer|min:0|max:365';
+        }
+
+        $validated = $request->validate($rules);
+
+        MaturationSystemDefault::syncFromArrays($validated['entity'], $validated['service_charge']);
+
+        return redirect()->route('maturation-periods.index', ['tab' => 'system-defaults'])
+            ->with('success', 'System default maturation periods saved. They apply to all businesses until overridden per entity.');
+    }
+
+    protected static function maturationPaymentMethodLabelMap(): array
+    {
+        return [
+            'insurance' => 'Insurance',
+            'credit_arrangement' => 'Credit Arrangement',
+            'mobile_money' => 'Mobile Money',
+            'v_card' => 'V Card (Virtual Card)',
+            'p_card' => 'P Card (Physical Card)',
+            'bank_transfer' => 'Bank Transfer',
+            'cash' => 'Cash',
+        ];
     }
 
     public function index()
@@ -193,7 +254,7 @@ class MaturationPeriodController extends Controller
                 ->with('error', 'Failed to create maturation period: ' . $e->getMessage());
         }
 
-        return redirect()->route('maturation-periods.index')
+        return redirect()->route('maturation-periods.index', ['tab' => 'entities'])
             ->with('success', 'Maturation period created successfully.');
     }
 
@@ -322,7 +383,7 @@ class MaturationPeriodController extends Controller
                 ->with('error', 'Failed to update maturation period: ' . $e->getMessage());
         }
 
-        return redirect()->route('maturation-periods.index')
+        return redirect()->route('maturation-periods.index', ['tab' => 'entities'])
             ->with('success', 'Maturation period updated successfully.');
     }
 
@@ -335,7 +396,7 @@ class MaturationPeriodController extends Controller
 
         $maturationPeriod->delete();
 
-        return redirect()->route('maturation-periods.index')
+        return redirect()->route('maturation-periods.index', ['tab' => 'entities'])
             ->with('success', 'Maturation period deleted successfully.');
     }
 
@@ -353,7 +414,7 @@ class MaturationPeriodController extends Controller
 
         $status = $maturationPeriod->is_active ? 'activated' : 'deactivated';
 
-        return redirect()->route('maturation-periods.index')
+        return redirect()->route('maturation-periods.index', ['tab' => 'entities'])
             ->with('success', "Maturation period {$status} successfully.");
     }
 }

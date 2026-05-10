@@ -63,7 +63,7 @@ class BalanceHistoryController extends Controller
         }
         
         $balanceHistories = BalanceHistory::where('client_id', $clientId)
-            ->with(['user', 'invoice', 'business', 'branch'])
+            ->with(['user', 'invoice', 'business', 'branch', 'client.insuranceCompany'])
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
@@ -137,15 +137,9 @@ class BalanceHistoryController extends Controller
 
         $totalOutstanding = $ppEntries->sum('amount');
 
-        // Get available payment methods from maturation periods for this business
+        // Includes config defaults when no MaturationPeriod row exists
         $business = $client->business;
-        $availablePaymentMethods = \App\Models\MaturationPeriod::where('business_id', $business->id)
-            ->where('is_active', true)
-            ->get()
-            ->pluck('payment_method')
-            ->unique()
-            ->values()
-            ->toArray();
+        $availablePaymentMethods = \App\Models\MaturationPeriod::activePaymentMethodsForBusiness($business->id);
         
         // Define the order for payment methods
         $paymentMethodOrder = [
@@ -185,15 +179,20 @@ class BalanceHistoryController extends Controller
         $client = Client::findOrFail($clientId);
         
         $balanceHistories = BalanceHistory::where('client_id', $clientId)
-            ->with(['user', 'invoice', 'business', 'branch'])
+            ->with(['user', 'invoice', 'business', 'branch', 'client.insuranceCompany'])
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($history) {
+                $description = $history->description;
+                if ($history->payment_method === 'insurance' && ($label = $history->insurancePayerDisplayName())) {
+                    $description = str_replace('[Insurance]', '[' . $label . ']', $description);
+                }
+
                 return [
                     'id' => $history->id,
                     'date' => $history->created_at->format('Y-m-d H:i:s'),
                     'transaction_type' => $history->transaction_type,
-                    'description' => $history->description,
+                    'description' => $description,
                     'previous_balance' => number_format($history->previous_balance, 2),
                     'change_amount' => $history->getFormattedChangeAmount(),
                     'new_balance' => number_format($history->new_balance, 2),
@@ -631,14 +630,8 @@ class BalanceHistoryController extends Controller
         $client = Client::findOrFail($clientId);
         $business = $client->business;
         
-        // Get available payment methods from maturation periods for this business
-        $availablePaymentMethods = \App\Models\MaturationPeriod::where('business_id', $business->id)
-            ->where('is_active', true)
-            ->get()
-            ->pluck('payment_method')
-            ->unique()
-            ->values()
-            ->toArray();
+        // Includes config defaults when no MaturationPeriod row exists
+        $availablePaymentMethods = \App\Models\MaturationPeriod::activePaymentMethodsForBusiness($business->id);
         
         // Validate payment methods - check if business has any set up
         if (empty($availablePaymentMethods)) {

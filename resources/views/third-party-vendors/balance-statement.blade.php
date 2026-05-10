@@ -91,15 +91,113 @@
             <!-- Balance Statement Table -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="text-lg font-medium text-gray-900">Transaction History</h3>
-                        <div class="text-sm text-gray-500">
-                            Showing {{ $balanceHistories->firstItem() ?? 0 }} to {{ $balanceHistories->lastItem() ?? 0 }} of {{ $balanceHistories->total() }} transactions
+                    <div class="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-4">
+                        <div>
+                            <h3 class="text-lg font-medium text-gray-900">
+                                {{ ($statementView ?? 'items') === 'items' ? 'Statement by item' : 'Statement by transaction' }}
+                            </h3>
+                            <p class="text-sm text-gray-500 mt-1">
+                                Default view itemizes ledger lines against invoice items where possible; switch to transactions for raw ledger rows.
+                            </p>
+                        </div>
+                        <div class="flex rounded-lg border border-gray-200 p-1 bg-gray-50 shrink-0">
+                            <a href="{{ route('third-party-vendors.balance-statement', ['vendorId' => $vendor['id'], 'view' => 'items']) }}"
+                               class="px-4 py-2 text-sm font-medium rounded-md {{ ($statementView ?? 'items') === 'items' ? 'bg-white shadow text-blue-700' : 'text-gray-600 hover:text-gray-900' }}">
+                                By item
+                            </a>
+                            <a href="{{ route('third-party-vendors.balance-statement', ['vendorId' => $vendor['id'], 'view' => 'transactions']) }}"
+                               class="px-4 py-2 text-sm font-medium rounded-md {{ ($statementView ?? '') === 'transactions' ? 'bg-white shadow text-blue-700' : 'text-gray-600 hover:text-gray-900' }}">
+                                By transaction
+                            </a>
                         </div>
                     </div>
-                    
+                    <div class="text-sm text-gray-500 mb-4">
+                        @if(($statementView ?? 'items') === 'items')
+                            Ledger entries {{ $balanceHistories->firstItem() ?? 0 }}–{{ $balanceHistories->lastItem() ?? 0 }} of {{ $balanceHistories->total() }}
+                            ({{ $itemStatementRows->count() }} line{{ $itemStatementRows->count() === 1 ? '' : 's' }} on this page — debits split per invoice item).
+                        @else
+                            Showing {{ $balanceHistories->firstItem() ?? 0 }} to {{ $balanceHistories->lastItem() ?? 0 }} of {{ $balanceHistories->total() }} transactions
+                        @endif
+                    </div>
+
                     @if($balanceHistories->count() > 0)
                     <div class="overflow-x-auto">
+                        @if(($statementView ?? 'items') === 'items')
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item / line</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reference</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Method</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                @foreach($itemStatementRows as $row)
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <div>{{ $row['created_at']->format('M d, Y') }}</div>
+                                        <div class="text-xs text-gray-500">{{ $row['created_at']->format('H:i:s') }}</div>
+                                    </td>
+                                    <td class="px-6 py-4 text-sm text-gray-900">
+                                        <div class="font-medium">{{ $row['line_label'] }}</div>
+                                        @if(!empty($row['detail_description']) && $row['detail_description'] !== $row['line_label'])
+                                            <div class="text-xs text-gray-500 mt-0.5">{{ $row['detail_description'] }}</div>
+                                        @endif
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        @if($row['client'] ?? null)
+                                            <div class="font-medium">{{ $row['client']->name }}</div>
+                                            @if($row['client']->client_id)
+                                                <div class="text-xs text-gray-500">ID: {{ $row['client']->client_id }}</div>
+                                            @endif
+                                        @else
+                                            <span class="text-gray-400">N/A</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        @if(!empty($row['invoice']))
+                                            <a href="{{ route('invoices.show', $row['invoice']->id) }}"
+                                               class="text-blue-600 hover:text-blue-800 font-medium underline">
+                                                {{ $row['invoice']->invoice_number ?? 'N/A' }}
+                                            </a>
+                                        @else
+                                            <span class="text-gray-400">N/A</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {{ $row['reference'] ?? 'N/A' }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span class="px-2 py-1 text-xs rounded-full {{ ($row['transaction_type'] ?? '') === 'credit' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}">
+                                            {{ ucfirst($row['transaction_type'] ?? '') }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium {{ ($row['transaction_type'] ?? '') === 'credit' ? 'text-green-600' : 'text-red-600' }}">
+                                        {{ ($row['transaction_type'] ?? '') === 'credit' ? '+' : '-' }}{{ number_format((float) ($row['amount'] ?? 0), 2) }} UGX
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {{ !empty($row['payment_method']) ? ucwords(str_replace('_', ' ', $row['payment_method'])) : 'N/A' }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        @if(!empty($row['payment_status']))
+                                        <span class="px-2 py-1 text-xs rounded-full {{ $row['payment_status'] === 'paid' ? 'bg-green-100 text-green-800' : ($row['payment_status'] === 'pending_payment' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800') }}">
+                                            {{ ucfirst(str_replace('_', ' ', $row['payment_status'])) }}
+                                        </span>
+                                        @else
+                                        <span class="text-gray-400">N/A</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                        @else
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
                                 <tr>
@@ -179,6 +277,7 @@
                                 @endforeach
                             </tbody>
                         </table>
+                        @endif
                     </div>
                     
                     <!-- Pagination -->

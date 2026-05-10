@@ -188,6 +188,34 @@ class MoneyTransfer extends Model
         ]);
     }
 
+    /**
+     * Source / destination shown in suspense UIs; replaces generic "Insurance Company" using invoice payer resolution.
+     */
+    public function resolvedInsuranceSourceDestinationLabel(): string
+    {
+        $raw = $this->type === 'credit'
+            ? ($this->source ?? $this->fromAccount?->name ?? 'N/A')
+            : ($this->destination ?? $this->toAccount?->name ?? 'N/A');
+
+        $raw = (string) $raw;
+
+        if (!$this->invoice_id || !str_contains($raw, 'Insurance Company')) {
+            return $raw;
+        }
+
+        $invoice = $this->invoice;
+        if (!$invoice) {
+            return $raw;
+        }
+
+        $resolved = app(\App\Services\MoneyTrackingService::class)->resolveInsuranceCounterpartyLabel($invoice);
+        if ($resolved === '' || $resolved === 'Insurance Company') {
+            return $raw;
+        }
+
+        return str_replace('Insurance Company', $resolved, $raw);
+    }
+
     public function getFormattedAmountAttribute()
     {
         return number_format($this->amount, 2) . ' ' . $this->currency;

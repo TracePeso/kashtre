@@ -56,6 +56,7 @@ use App\Http\Controllers\ServiceDeliveryQueueController;
 use App\Http\Controllers\TestingController;
 use App\Http\Controllers\AutomatedTestController;
 use App\Http\Controllers\MaturationPeriodController;
+use App\Http\Controllers\ServiceChargeMaturationPeriodController;
 use App\Http\Controllers\PaymentMethodAccountController;
 use App\Http\Controllers\BankScheduleController;
 use App\Http\Controllers\WithdrawalSettingController;
@@ -232,12 +233,16 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     Route::resource("admins", AdminController::class);
     
     // Maturation Periods Settings (Kashtre only)
-    Route::get("maturation-periods", function () {
-        return view('settings.maturation-periods.index-livewire');
-    })->name('maturation-periods.index');
-    Route::get("maturation-periods/check-account", [MaturationPeriodController::class, 'checkAccount'])->name('maturation-periods.check-account');
+    Route::get('maturation-periods', [MaturationPeriodController::class, 'indexLivewire'])->name('maturation-periods.index');
+    Route::get('maturation-periods/check-account', [MaturationPeriodController::class, 'checkAccount'])->name('maturation-periods.check-account');
+    Route::get('maturation-periods/system-defaults/edit', [MaturationPeriodController::class, 'editSystemDefaults'])->name('maturation-periods.system-defaults.edit');
+    Route::put('maturation-periods/system-defaults', [MaturationPeriodController::class, 'updateSystemDefaults'])->name('maturation-periods.system-defaults.update');
     Route::resource("maturation-periods", MaturationPeriodController::class)->except(['index']);
     Route::post("maturation-periods/{maturationPeriod}/toggle-status", [MaturationPeriodController::class, 'toggleStatus'])->name('maturation-periods.toggle-status');
+
+    Route::resource('service-charge-maturation-periods', ServiceChargeMaturationPeriodController::class)->except(['index']);
+    Route::post('service-charge-maturation-periods/{service_charge_maturation_period}/toggle-status', [ServiceChargeMaturationPeriodController::class, 'toggleStatus'])
+        ->name('service-charge-maturation-periods.toggle-status');
     
     // Payment Method Account Transactions
     Route::get("payment-method-accounts/{paymentMethodAccount}/transactions", [PaymentMethodAccountController::class, 'transactions'])->name('payment-method-accounts.transactions');

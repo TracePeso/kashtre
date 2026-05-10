@@ -8,7 +8,7 @@
                     <ol class="flex items-center space-x-4">
                         <li>
                             <div>
-                                <a href="{{ route('maturation-periods.index') }}" class="text-gray-400 hover:text-gray-500">
+                                <a href="{{ route('maturation-periods.index', ['tab' => 'entities']) }}" class="text-gray-400 hover:text-gray-500">
                                     <svg class="flex-shrink-0 h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
                                         <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"></path>
                                     </svg>
@@ -197,7 +197,7 @@
 
                     <!-- Form Actions -->
                     <div class="mt-6 flex items-center justify-end space-x-3">
-                        <a href="{{ route('maturation-periods.index') }}" 
+                        <a href="{{ route('maturation-periods.index', ['tab' => 'entities']) }}" 
                            class="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                             Cancel
                         </a>

@@ -2,7 +2,7 @@
     <x-slot name="header">
         <div class="flex justify-between items-center">
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                {{ __('Pay ') }}{{ ucfirst($type) }} - {{ $client->name }}
+                {{ __('Pay ') }}{{ ucfirst($type) }}
             </h2>
             <a href="{{ route('pos.item-selection', $client) }}" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition duration-150">
                 ← Back to Client

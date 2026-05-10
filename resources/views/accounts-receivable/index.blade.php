@@ -140,11 +140,120 @@
 
                             <!-- Accounts Receivable Table -->
                             <div class="bg-white rounded-lg shadow-md border border-gray-200">
-                                <div class="px-6 py-4 border-b border-gray-200">
-                                    <h2 class="text-xl font-semibold text-gray-900">Pending Payments</h2>
+                                <div class="px-6 py-4 border-b border-gray-200 flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-center">
+                                    <div>
+                                        <h2 class="text-xl font-semibold text-gray-900">
+                                            {{ ($statementView ?? 'items') === 'items' ? 'Pending payments by item' : 'Pending payments by transaction' }}
+                                        </h2>
+                                        <p class="text-sm text-gray-500 mt-1">
+                                            By item splits each invoice's outstanding balance across line items. By transaction matches one row per receivable record.
+                                        </p>
+                                    </div>
+                                    <div class="flex rounded-lg border border-gray-200 p-1 bg-gray-50 shrink-0">
+                                        <a href="{{ route('accounts-receivable.index', ['view' => 'items']) }}"
+                                           class="px-4 py-2 text-sm font-medium rounded-md {{ ($statementView ?? 'items') === 'items' ? 'bg-white shadow text-blue-700' : 'text-gray-600 hover:text-gray-900' }}">
+                                            By item
+                                        </a>
+                                        <a href="{{ route('accounts-receivable.index', ['view' => 'transactions']) }}"
+                                           class="px-4 py-2 text-sm font-medium rounded-md {{ ($statementView ?? '') === 'transactions' ? 'bg-white shadow text-blue-700' : 'text-gray-600 hover:text-gray-900' }}">
+                                            By transaction
+                                        </a>
+                                    </div>
                                 </div>
                                 
                                 <div class="overflow-x-auto">
+                                    @if(($statementView ?? 'items') === 'items')
+                                    <table class="min-w-full divide-y divide-gray-200">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                @if(auth()->user()->business_id == 1)
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Business</th>
+                                                @endif
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice #</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Outstanding on line</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Days Past Due</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aging</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="bg-white divide-y divide-gray-200">
+                                            @forelse($arItemLines as $line)
+                                                <tr class="hover:bg-gray-50">
+                                                    @if(auth()->user()->business_id == 1)
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                        {{ $line['business']->name ?? 'N/A' }}
+                                                    </td>
+                                                    @endif
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                        {{ $line['client']->name ?? 'N/A' }}
+                                                    </td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                        @if($line['invoice'] ?? null)
+                                                            <a href="{{ route('invoices.show', $line['invoice']->id) }}" class="text-blue-600 hover:text-blue-900">
+                                                                {{ $line['invoice']->invoice_number ?? 'N/A' }}
+                                                            </a>
+                                                        @else
+                                                            N/A
+                                                        @endif
+                                                    </td>
+                                                    <td class="px-6 py-4 text-sm text-gray-900">{{ $line['item_name'] }}</td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                        @if(($line['qty'] ?? null) === null)
+                                                            —
+                                                        @else
+                                                            {{ (floor($line['qty']) == $line['qty']) ? (int) $line['qty'] : $line['qty'] }}
+                                                        @endif
+                                                    </td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                                                        UGX {{ number_format($line['allocated_balance'], 2) }}
+                                                    </td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                        {{ !empty($line['due_date']) ? \Carbon\Carbon::parse($line['due_date'])->format('M d, Y') : 'N/A' }}
+                                                    </td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                        @if(($line['days_past_due'] ?? 0) > 0)
+                                                            <span class="text-red-600 font-semibold">{{ $line['days_past_due'] }} days</span>
+                                                        @else
+                                                            <span class="text-green-600">{{ $line['days_past_due'] ?? 0 }} days</span>
+                                                        @endif
+                                                    </td>
+                                                    <td class="px-6 py-4 whitespace-nowrap">
+                                                        @if(($line['status'] ?? '') === 'paid')
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Paid</span>
+                                                        @elseif(($line['status'] ?? '') === 'overdue')
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Overdue</span>
+                                                        @elseif(($line['status'] ?? '') === 'partial')
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Partial</span>
+                                                        @else
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Current</span>
+                                                        @endif
+                                                    </td>
+                                                    <td class="px-6 py-4 whitespace-nowrap">
+                                                        @if(($line['aging_bucket'] ?? '') === 'current')
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Current</span>
+                                                        @elseif(($line['aging_bucket'] ?? '') === 'days_30_60')
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">30-60</span>
+                                                        @elseif(($line['aging_bucket'] ?? '') === 'days_60_90')
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">60-90</span>
+                                                        @else
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Over 90</span>
+                                                        @endif
+                                                    </td>
+                                                </tr>
+                                            @empty
+                                                <tr>
+                                                    <td colspan="{{ auth()->user()->business_id == 1 ? '10' : '9' }}" class="px-6 py-8 text-center text-gray-500">
+                                                        No pending payments found.
+                                                    </td>
+                                                </tr>
+                                            @endforelse
+                                        </tbody>
+                                    </table>
+                                    @else
                                     <table class="min-w-full divide-y divide-gray-200">
                                         <thead class="bg-gray-50">
                                             <tr>
@@ -253,6 +362,7 @@
                                             @endforelse
                                         </tbody>
                                     </table>
+                                    @endif
                                 </div>
                                 
                                 <!-- Pagination -->

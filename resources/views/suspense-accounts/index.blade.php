@@ -122,11 +122,7 @@
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
                                                 <div class="text-sm text-gray-900">
-                                                    @if($movement->type === 'credit')
-                                                        {{ $movement->source ?? ($movement->fromAccount->name ?? 'N/A') }}
-                                                    @else
-                                                        {{ $movement->destination ?? ($movement->toAccount->name ?? 'N/A') }}
-                                                    @endif
+                                                    {{ $movement->resolvedInsuranceSourceDestinationLabel() }}
                                                 </div>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">

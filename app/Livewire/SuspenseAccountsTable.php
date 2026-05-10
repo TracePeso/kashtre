@@ -107,7 +107,7 @@ class SuspenseAccountsTable extends Component implements HasTable, HasForms
                               ->orWhere('description', 'like', '%Withdrawal%')
                               ->orWhere('description', 'like', '%Bank Schedule%');
                     })
-                    ->with(['fromAccount.client', 'fromAccount.business', 'toAccount.client', 'toAccount.business', 'invoice.client', 'client', 'business'])
+                    ->with(['fromAccount.client', 'fromAccount.business', 'toAccount.client', 'toAccount.business', 'invoice.client.insuranceCompany', 'client', 'business'])
                     ->orderBy('created_at', 'desc');
             } else {
                 // For regular businesses, only show their own withdrawal transfers
@@ -128,7 +128,7 @@ class SuspenseAccountsTable extends Component implements HasTable, HasForms
                               ->orWhere('description', 'like', '%Withdrawal%')
                               ->orWhere('description', 'like', '%Bank Schedule%');
                     })
-                    ->with(['fromAccount.client', 'fromAccount.business', 'toAccount.client', 'toAccount.business', 'invoice.client', 'client', 'business'])
+                    ->with(['fromAccount.client', 'fromAccount.business', 'toAccount.client', 'toAccount.business', 'invoice.client.insuranceCompany', 'client', 'business'])
                     ->orderBy('created_at', 'desc');
             }
         } else {
@@ -142,7 +142,7 @@ class SuspenseAccountsTable extends Component implements HasTable, HasForms
                             $q->where('type', $accountType);
                         });
                     })
-                    ->with(['fromAccount.client', 'fromAccount.business', 'toAccount.client', 'toAccount.business', 'invoice.client', 'client', 'business'])
+                    ->with(['fromAccount.client', 'fromAccount.business', 'toAccount.client', 'toAccount.business', 'invoice.client.insuranceCompany', 'client', 'business'])
                     ->orderBy('created_at', 'desc');
             } else {
                 // For regular businesses, only show their own transfers
@@ -156,7 +156,7 @@ class SuspenseAccountsTable extends Component implements HasTable, HasForms
                               ->where('type', $accountType);
                         });
                     })
-                    ->with(['fromAccount.client', 'fromAccount.business', 'toAccount.client', 'toAccount.business', 'invoice.client', 'client', 'business'])
+                    ->with(['fromAccount.client', 'fromAccount.business', 'toAccount.client', 'toAccount.business', 'invoice.client.insuranceCompany', 'client', 'business'])
                     ->orderBy('created_at', 'desc');
             }
         }
@@ -225,17 +225,7 @@ class SuspenseAccountsTable extends Component implements HasTable, HasForms
                 
                 TextColumn::make('source_destination')
                     ->label('Source / Destination')
-                    ->state(function (MoneyTransfer $record): string {
-                        if ($record->type === 'credit') {
-                            return $record->source
-                                ?? $record->fromAccount->name
-                                ?? 'N/A';
-                        }
-
-                        return $record->destination
-                            ?? $record->toAccount->name
-                            ?? 'N/A';
-                    })
+                    ->state(fn (MoneyTransfer $record): string => $record->resolvedInsuranceSourceDestinationLabel())
                     ->limit(50),
                 
                 TextColumn::make('amount')

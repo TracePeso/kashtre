@@ -331,14 +331,8 @@ class TransactionController extends Controller
                 ->with('error', 'This client does not have a co-pay requirement.');
         }
 
-        // Get available payment methods from maturation periods
-        $availablePaymentMethods = \App\Models\MaturationPeriod::where('business_id', $client->business_id)
-            ->where('is_active', true)
-            ->get()
-            ->pluck('payment_method')
-            ->unique()
-            ->values()
-            ->toArray();
+        // Includes config defaults when no MaturationPeriod row exists
+        $availablePaymentMethods = \App\Models\MaturationPeriod::activePaymentMethodsForBusiness((int) $client->business_id);
 
         // Filter out insurance as a payment method for deductible/co-pay
         $availablePaymentMethods = array_filter($availablePaymentMethods, function($method) {

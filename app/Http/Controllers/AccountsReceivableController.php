@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AccountsReceivable;
 use App\Models\Business;
+use App\Services\AccountsReceivableStatementPresenter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -12,6 +13,11 @@ class AccountsReceivableController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
+
+        $statementView = $request->query('view', 'items');
+        if (! in_array($statementView, ['items', 'transactions'], true)) {
+            $statementView = 'items';
+        }
         
         // Check permission
         if (!in_array('View Accounts Receivable', $user->permissions ?? [])) {
@@ -25,7 +31,8 @@ class AccountsReceivableController extends Controller
                 ->where('status', '!=', 'paid')
                 ->orderBy('invoice_date', 'desc')
                 ->orderBy('due_date', 'asc')
-                ->paginate(50);
+                ->paginate(50)
+                ->withQueryString();
             
             $businesses = Business::all();
         } else {
@@ -34,10 +41,15 @@ class AccountsReceivableController extends Controller
                 ->where('status', '!=', 'paid')
                 ->orderBy('invoice_date', 'desc')
                 ->orderBy('due_date', 'asc')
-                ->paginate(50);
+                ->paginate(50)
+                ->withQueryString();
             
             $businesses = Business::where('id', $user->business_id)->get();
         }
+
+        $arItemLines = $statementView === 'items'
+            ? AccountsReceivableStatementPresenter::flattenedLines(collect($accountsReceivable->items()))
+            : collect();
         
         // Calculate summary statistics
         $totalOutstanding = AccountsReceivable::where('status', '!=', 'paid')
@@ -89,6 +101,8 @@ class AccountsReceivableController extends Controller
         
         return view('accounts-receivable.index', compact(
             'accountsReceivable',
+            'arItemLines',
+            'statementView',
             'businesses',
             'totalOutstanding',
             'totalCurrent',

@@ -217,6 +217,7 @@ class InsurerPortalVendorSummaryService
             'invoice' => $history->invoice ? [
                 'id' => $history->invoice->id,
                 'invoice_number' => $history->invoice->invoice_number,
+                'items' => is_array($history->invoice->items) ? $history->invoice->items : [],
             ] : null,
             'transaction_type' => $history->transaction_type,
             'change_amount' => (float) $history->change_amount,

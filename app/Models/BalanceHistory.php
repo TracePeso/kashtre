@@ -95,6 +95,85 @@ class BalanceHistory extends Model
         });
     }
 
+    /**
+     * Third-party / insurer label for insurance informational statement rows.
+     * Prefer explicit "Paid by …" in notes, then invoice authorization snapshot, then client's insurer.
+     */
+    public function insurancePayerDisplayName(): ?string
+    {
+        if ($this->payment_method !== 'insurance') {
+            return null;
+        }
+
+        $notes = (string) ($this->notes ?? '');
+        if (preg_match('/\bPaid by\s+(.+)/', $notes, $m)) {
+            $name = trim($m[1]);
+            if ($name !== '') {
+                return $name;
+            }
+        }
+
+        $invoice = $this->invoice;
+        if ($invoice) {
+            $snap = $invoice->insurance_authorization_snapshot;
+            if (is_array($snap)) {
+                $fromSnap = self::payerNameFromInsuranceSnapshot($snap);
+                if ($fromSnap !== null && $fromSnap !== '') {
+                    return $fromSnap;
+                }
+            }
+        }
+
+        $client = $this->relationLoaded('client') ? $this->client : null;
+        if (!$client && $this->client_id) {
+            $client = Client::query()->with('insuranceCompany')->find($this->client_id);
+        } elseif ($client && !$client->relationLoaded('insuranceCompany')) {
+            $client->load('insuranceCompany');
+        }
+
+        if ($client && $client->insuranceCompany) {
+            return $client->insuranceCompany->name;
+        }
+
+        return null;
+    }
+
+    private static function payerNameFromInsuranceSnapshot(array $snap): ?string
+    {
+        $collectNames = static function ($rows): array {
+            $names = [];
+            foreach ($rows as $v) {
+                if (!is_array($v)) {
+                    continue;
+                }
+                $n = trim((string) ($v['vendor_name'] ?? $v['insurance_company_name'] ?? ''));
+                if ($n !== '') {
+                    $names[] = $n;
+                }
+            }
+
+            return array_values(array_unique($names));
+        };
+
+        if (!empty($snap['multi_vendor']) && !empty($snap['vendors']) && is_array($snap['vendors'])) {
+            $names = $collectNames($snap['vendors']);
+            if ($names !== []) {
+                return implode(', ', $names);
+            }
+        }
+
+        if (!empty($snap['vendor_results']) && is_array($snap['vendor_results'])) {
+            $names = $collectNames($snap['vendor_results']);
+            if ($names !== []) {
+                return implode(', ', $names);
+            }
+        }
+
+        $single = trim((string) ($snap['vendor_name'] ?? $snap['insurance_company_name'] ?? ''));
+
+        return $single !== '' ? $single : null;
+    }
+
     // Helper methods
     public function isCredit()
     {

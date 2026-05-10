@@ -89,14 +89,8 @@ class ClientController extends Controller
             return redirect()->route('dashboard')->with('error', 'No branch assigned. Please contact administrator.');
         }
             
-            // Get available payment methods from maturation periods for this business
-            $availablePaymentMethods = MaturationPeriod::where('business_id', $business->id)
-                ->where('is_active', true)
-                ->get()
-                ->pluck('payment_method')
-                ->unique()
-                ->values()
-                ->toArray();
+            // Includes config defaults when no MaturationPeriod row exists
+            $availablePaymentMethods = MaturationPeriod::activePaymentMethodsForBusiness($business->id);
             
             // Define the order for payment methods
             $paymentMethodOrder = [
@@ -459,13 +453,8 @@ class ClientController extends Controller
         // Validate NIN for new clients
         $ninValidation = 'nullable|string|max:255';
         
-        // Get available payment methods from maturation periods for this business
-        $availablePaymentMethods = MaturationPeriod::where('business_id', $business->id)
-            ->where('is_active', true)
-            ->pluck('payment_method')
-            ->unique()
-            ->values()
-            ->toArray();
+        // Includes config defaults when no MaturationPeriod row exists
+        $availablePaymentMethods = MaturationPeriod::activePaymentMethodsForBusiness($business->id);
         
         // Validate payment methods - check if business has any set up
         if (empty($availablePaymentMethods)) {
@@ -1083,13 +1072,8 @@ class ClientController extends Controller
                     ->withInput();
             }
         }
-        // Get available payment methods from maturation periods for this business
-        $availablePaymentMethods = MaturationPeriod::where('business_id', $business->id)
-            ->where('is_active', true)
-            ->pluck('payment_method')
-            ->unique()
-            ->values()
-            ->toArray();
+        // Includes config defaults when no MaturationPeriod row exists
+        $availablePaymentMethods = MaturationPeriod::activePaymentMethodsForBusiness($business->id);
         
         // Validate payment methods - check if business has any set up
         if (empty($availablePaymentMethods)) {
@@ -1438,13 +1422,8 @@ class ClientController extends Controller
                     ->withInput();
             }
         }
-        // Get available payment methods from maturation periods for this business
-        $availablePaymentMethods = MaturationPeriod::where('business_id', $business->id)
-            ->where('is_active', true)
-            ->pluck('payment_method')
-            ->unique()
-            ->values()
-            ->toArray();
+        // Includes config defaults when no MaturationPeriod row exists
+        $availablePaymentMethods = MaturationPeriod::activePaymentMethodsForBusiness($business->id);
         
         // Validate payment methods - check if business has any set up
         if (empty($availablePaymentMethods)) {

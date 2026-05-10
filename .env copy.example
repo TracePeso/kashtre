@@ -1,8 +1,30 @@
-APP_NAME=eSave
-APP_ENV=local
-APP_KEY=
+APP_NAME= "Kashtre"
+APP_COMPANY_NAME ="Kashtre Innovations Limited"
+APP_ENV=production
+APP_KEY=base64:04D7R5MdOvHHIEt6hBt0uoBZ3p4gmdm+Zz1QL4M2g+o=
 APP_DEBUG=true
-APP_URL=http://localhost
+APP_URL=https://staging.kashtre.com
+
+BROADCAST_DRIVER=reverb
+
+REVERB_APP_ID=kashtre
+REVERB_APP_KEY=kashtre-reverb-key
+REVERB_APP_SECRET=7c4b4e2f6e5f28f3d8c1a96bb4a8f6f2c3b7e1d94f8a2c6e5d1b7a9c3e4f2d6
+
+CALLING_SERVICE_URL=https://seagreen-mink-868371.hostingersite.com
+CALLING_SERVICE_SYNC_SECRET=1f8b7d6a4c93e25f9a1d7c6b3e8f4a2c5d9e7b1a6f3c8d2e4b7a9c1d5e6f8a0b
+
+VITE_WEBRTC_STUN_URLS=stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302
+VITE_WEBRTC_TURN_URL=turn:187.124.117.169:3478?transport=tcp
+VITE_WEBRTC_TURN_USERNAME=kashtre_turn_user
+VITE_WEBRTC_TURN_CREDENTIAL=KashtreTurnStrongPass2026!
+VITE_WEBRTC_ICE_TRANSPORT_POLICY=all
+
+
+REVERB_HOST=reverb.kashtre.com
+REVERB_PORT=443
+REVERB_SCHEME=https
+REVERB_VERIFY_TLS=false
 
 LOG_CHANNEL=stack
 LOG_DEPRECATIONS_CHANNEL=null
@@ -11,11 +33,10 @@ LOG_LEVEL=debug
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
-DB_DATABASE=u854451300_esafe_prod
-DB_USERNAME=root
-DB_PASSWORD=password
+DB_DATABASE=kashtre_staging
+DB_USERNAME=kashtre_user
+DB_PASSWORD=!Log19tan88
 
-BROADCAST_DRIVER=log
 CACHE_DRIVER=file
 FILESYSTEM_DISK=local
 QUEUE_CONNECTION=sync
@@ -28,13 +49,15 @@ REDIS_HOST=127.0.0.1
 REDIS_PASSWORD=null
 REDIS_PORT=6379
 
+
+
 MAIL_MAILER=smtp
-MAIL_HOST=mailpit
-MAIL_PORT=1025
-MAIL_USERNAME=null
-MAIL_PASSWORD=null
-MAIL_ENCRYPTION=null
-MAIL_FROM_ADDRESS="hello@example.com"
+MAIL_HOST=smtp.hostinger.com
+MAIL_PORT=465
+MAIL_USERNAME=biz@kashtre.com
+MAIL_PASSWORD=rF&irymgNVD0
+MAIL_ENCRYPTION=ssl
+MAIL_FROM_ADDRESS=biz@kashtre.com
 MAIL_FROM_NAME="${APP_NAME}"
 
 AWS_ACCESS_KEY_ID=
@@ -42,13 +65,6 @@ AWS_SECRET_ACCESS_KEY=
 AWS_DEFAULT_REGION=us-east-1
 AWS_BUCKET=
 AWS_USE_PATH_STYLE_ENDPOINT=false
-
-# Third Party API Configuration
-# For production, use: https://vendor.kashtre.com
-# For local development, use: http://127.0.0.1:8001
-# If not set, will auto-detect based on APP_ENV (production = https://vendor.kashtre.com, others = http://127.0.0.1:8001)
-THIRD_PARTY_API_URL=http://127.0.0.1:8001
-THIRD_PARTY_API_TIMEOUT=30
 
 PUSHER_APP_ID=
 PUSHER_APP_KEY=
@@ -64,3 +80,11 @@ VITE_PUSHER_HOST="${PUSHER_HOST}"
 VITE_PUSHER_PORT="${PUSHER_PORT}"
 VITE_PUSHER_SCHEME="${PUSHER_SCHEME}"
 VITE_PUSHER_APP_CLUSTER="${PUSHER_APP_CLUSTER}"
+
+
+YO_PAYMENTS_URL=https://paymentsapi1.yo.co.ug/ybs/task.php
+YO_PAYMENTS_TEST_URL=https://paymentsdev1.yo.co.ug/yopaytest/task.php
+
+YO_PAYMENTS_USERNAME="100589248779"
+YO_PAYMENTS_PASSWORD="bVXo-BDBw-KF5x-JSAS-9tm0-jORW-rYqX-7EGn"
+HR_MODULE_API_KEY=kashtre-hr-secret-2026

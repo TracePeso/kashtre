@@ -1,17 +1,15 @@
 <x-app-layout>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <x-slot name="header">
-        <div class="flex justify-between items-center">
-            <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                {{ __('Client Page - ') }}{{ $client->name }}
+        <div class="flex flex-wrap justify-between items-center gap-3">
+            <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-100 leading-tight">
+                {{ __('Point of sale') }}
             </h2>
-            <div class="flex items-center space-x-4">
-                <span class="text-sm text-gray-600">Client ID: {{ $client->client_id }}</span>
-                <span class="text-sm text-gray-600">Visit ID: {{ $client->visit_id }}</span>
-                <span class="px-3 py-1 text-sm font-medium rounded-full bg-green-100 text-green-800">
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="px-3 py-1 text-sm font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">
                     Active
                 </span>
-                <a href="/invoices" class="px-3 py-1 text-sm font-medium rounded-full bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors">
+                <a href="/invoices" class="px-3 py-1 text-sm font-medium rounded-full bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-800/50 transition-colors">
                     View All Proforma Invoices
                 </a>
             </div>
@@ -61,41 +59,52 @@
             </div>
             @endif
             
-            <!-- Section 1: Client Summary Details -->
-            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6" x-data="{ expanded: true }">
-                <div class="p-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="text-lg font-medium text-gray-900">Client Summary Details</h3>
-                        <button @click="expanded = !expanded" class="text-gray-500 hover:text-gray-700 transition-colors">
-                            <svg x-show="expanded" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <!-- Section 1: compact Client ID / Visit ID + optional extra details -->
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6 border border-gray-100 dark:border-gray-700" x-data="{ expanded: false }">
+                <div class="p-4">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="bg-gray-50 border border-gray-200 dark:bg-gray-800/80 dark:border-gray-600 px-2.5 py-2 rounded-md min-w-[7rem]">
+                            <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5 leading-none">Client ID</p>
+                            <p class="text-sm font-semibold text-gray-900 dark:text-gray-100 font-mono leading-tight">{{ $client->client_id }}</p>
+                        </div>
+                        <div class="bg-gray-50 border border-gray-200 dark:bg-gray-800/80 dark:border-gray-600 px-2.5 py-2 rounded-md min-w-[7rem]">
+                            <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5 leading-none">Visit ID</p>
+                            <p class="text-sm font-semibold text-gray-900 dark:text-gray-100 font-mono leading-tight">{{ $client->visit_id }}</p>
+                        </div>
+                        <div class="bg-gray-50 border border-gray-200 dark:bg-gray-800/80 dark:border-gray-600 px-2.5 py-2 rounded-md min-w-[7rem] max-w-[min(100%,14rem)] sm:max-w-xs">
+                            <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5 leading-none">Names</p>
+                            <p class="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-tight break-words">{{ $client->name }}</p>
+                        </div>
+                        <div class="bg-gray-50 border border-gray-200 dark:bg-gray-800/80 dark:border-gray-600 px-2.5 py-2 rounded-md min-w-[7rem]">
+                            <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5 leading-none">Age</p>
+                            <p class="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-tight tabular-nums">{{ $client->age !== null && $client->age !== '' ? $client->age . ' years' : 'N/A' }}</p>
+                        </div>
+                        <button type="button"
+                                @click="expanded = !expanded"
+                                :aria-expanded="expanded"
+                                aria-controls="client-summary-details-expanded"
+                                id="client-summary-details-toggle"
+                                class="ml-auto shrink-0 inline-flex items-center justify-center rounded-md border border-gray-200 bg-gray-50 p-1.5 text-gray-600 hover:bg-gray-100 hover:border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors"
+                                :title="expanded ? 'Hide extra details' : 'Show extra details'">
+                            <span class="sr-only" x-text="expanded ? 'Hide extra client details' : 'Show extra client details'"></span>
+                            <svg x-show="expanded" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
                             </svg>
-                            <svg x-show="!expanded" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg x-show="!expanded" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                             </svg>
                         </button>
                     </div>
-                    <div x-show="expanded" x-transition>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div class="bg-gray-50 p-4 rounded-lg">
-                            <p class="text-sm text-gray-500 mb-1">Names</p>
-                            <p class="text-lg font-semibold text-gray-900">{{ $client->name }}</p>
-                        </div>
-                        <div class="bg-gray-50 p-4 rounded-lg">
-                            <p class="text-sm text-gray-500 mb-1">Age</p>
-                            <p class="text-lg font-semibold text-gray-900">{{ $client->age ?? 'N/A' }} years</p>
-                        </div>
+                    <div id="client-summary-details-expanded"
+                         x-show="expanded"
+                         x-transition
+                         x-cloak
+                         role="region"
+                         aria-label="Additional client details">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 border-t border-gray-100">
                         <div class="bg-gray-50 p-4 rounded-lg">
                             <p class="text-sm text-gray-500 mb-1">Sex</p>
                             <p class="text-lg font-semibold text-gray-900">{{ ucfirst($client->sex) }}</p>
-                        </div>
-                        <div class="bg-gray-50 p-4 rounded-lg">
-                            <p class="text-sm text-gray-500 mb-1">Client ID</p>
-                            <p class="text-lg font-semibold text-gray-900">{{ $client->client_id }}</p>
-                        </div>
-                        <div class="bg-gray-50 p-4 rounded-lg">
-                            <p class="text-sm text-gray-500 mb-1">Visit ID</p>
-                            <p class="text-lg font-semibold text-gray-900">{{ $client->visit_id }}</p>
                         </div>
                         <div class="bg-gray-50 p-4 rounded-lg">
                             <p class="text-sm text-gray-500 mb-1">Payment Methods</p>
@@ -116,7 +125,7 @@
                         </div>
                         @if($client->vendors && $client->vendors->count() > 0)
                         <div class="bg-green-50 p-4 rounded-lg border-2 border-green-200">
-                            <p class="text-sm text-green-700 font-medium mb-3">Insurance Companies</p>
+                            <p class="text-sm text-green-700 font-medium mb-3">Third-party payment methods</p>
                             <div class="space-y-2">
                                 @foreach($client->vendors->sortBy('priority')->values() as $index => $vendor)
                                     @if($vendor->vendor && $vendor->vendor->insuranceCompany)

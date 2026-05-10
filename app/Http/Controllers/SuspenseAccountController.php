@@ -93,7 +93,7 @@ class SuspenseAccountController extends Controller
                     ->orWhereHas('toAccount', function($query) {
                         $query->whereIn('type', ['package_suspense_account', 'general_suspense_account', 'kashtre_suspense_account', 'withdrawal_suspense_account']);
                     })
-                    ->with(['fromAccount', 'toAccount'])
+                    ->with(['fromAccount', 'toAccount', 'invoice.client.insuranceCompany'])
                     ->orderBy('created_at', 'desc')
                     ->limit(20)
                     ->get();
@@ -105,7 +105,7 @@ class SuspenseAccountController extends Controller
                     ->orWhereHas('toAccount', function($query) use ($businessId) {
                         $query->where('business_id', $businessId);
                     })
-                    ->with(['fromAccount', 'toAccount'])
+                    ->with(['fromAccount', 'toAccount', 'invoice.client.insuranceCompany'])
                     ->orderBy('created_at', 'desc')
                     ->limit(20)
                     ->get();

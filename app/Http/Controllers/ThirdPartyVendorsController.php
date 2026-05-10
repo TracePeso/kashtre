@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Services\ThirdPartyApiService;
+use App\Services\ThirdPartyPayerStatementPresenter;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class ThirdPartyVendorsController extends Controller
@@ -203,14 +204,11 @@ class ThirdPartyVendorsController extends Controller
             }
 
             $balanceHistories = collect();
+            $itemStatementRows = collect();
             $totalCredits = 0;
             $totalDebits = 0;
             $currentBalance = 0;
 
-            $invoices = collect();
-            $excludedItemsForPayer = collect();
-            $items = collect();
-            
             if ($thirdPartyPayer) {
                 // Get recent balance history (last 10 for summary on details page)
                 $balanceHistories = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
@@ -218,6 +216,8 @@ class ThirdPartyVendorsController extends Controller
                     ->orderBy('created_at', 'desc')
                     ->limit(10)
                     ->get();
+
+                $itemStatementRows = ThirdPartyPayerStatementPresenter::rowsFromHistories($balanceHistories);
 
                 // Calculate totals
                 $totalCredits = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
@@ -229,107 +229,6 @@ class ThirdPartyVendorsController extends Controller
                     ->sum('change_amount'));
 
                 $currentBalance = $totalCredits - $totalDebits;
-
-                // Resolve excluded items for this third-party payer (service exclusions on Kashtre side)
-                $excludedItemIds = (array) ($thirdPartyPayer->excluded_items ?? []);
-                if (!empty($excludedItemIds)) {
-                    $excludedItemsForPayer = \App\Models\Item::where('business_id', $business->id)
-                        ->whereIn('id', $excludedItemIds)
-                        ->orderBy('name')
-                        ->get(['id', 'name', 'code', 'type']);
-                }
-
-                // Load all items for this business so exclusions can be managed from this page
-                $items = \App\Models\Item::where('business_id', $business->id)
-                    ->orderBy('name')
-                    ->get(['id', 'name', 'code', 'type']);
-
-                // Build invoice tracking from actual invoices that include this vendor in
-                // insurance authorization snapshot (even when vendor debit is zero),
-                // then overlay payer ledger amounts for paid/remaining figures.
-                $candidateInvoices = \App\Models\Invoice::where('business_id', $business->id)
-                    ->whereNotNull('insurance_authorization_snapshot')
-                    ->with(['client', 'business', 'branch'])
-                    ->orderBy('created_at', 'desc')
-                    ->get();
-
-                $vendorNameNormalized = strtolower(trim((string) ($thirdPartyPayer->name ?? $vendor['name'] ?? '')));
-                $localInsuranceIdStrings = $localInsuranceCompanyIds->map(fn ($id) => (string) $id)->all();
-                $vendorIdString = (string) $vendorId;
-
-                foreach ($candidateInvoices as $invoiceModel) {
-                    $snapshot = is_array($invoiceModel->insurance_authorization_snapshot)
-                        ? $invoiceModel->insurance_authorization_snapshot
-                        : json_decode($invoiceModel->insurance_authorization_snapshot ?? '[]', true);
-
-                    $vendorsSnap = is_array($snapshot['vendors'] ?? null) ? $snapshot['vendors'] : [];
-                    if (empty($vendorsSnap)) {
-                        continue;
-                    }
-
-                    $matchedVendorSnap = null;
-                    foreach ($vendorsSnap as $vSnap) {
-                        $snapVendorName = strtolower(trim((string) ($vSnap['vendor_name'] ?? $vSnap['insurance_company_name'] ?? '')));
-                        $snapVendorId = (string) ($vSnap['vendor_id'] ?? '');
-                        $snapInsuranceCompanyId = (string) ($vSnap['insurance_company_id'] ?? '');
-
-                        $matchesByName = $vendorNameNormalized !== '' && $snapVendorName === $vendorNameNormalized;
-                        $matchesByThirdPartyId = $snapVendorId !== '' && $snapVendorId === $vendorIdString;
-                        $matchesByLocalInsuranceId = $snapInsuranceCompanyId !== '' && in_array($snapInsuranceCompanyId, $localInsuranceIdStrings, true);
-
-                        if ($matchesByName || $matchesByThirdPartyId || $matchesByLocalInsuranceId) {
-                            $matchedVendorSnap = $vSnap;
-                            break;
-                        }
-                    }
-
-                    if (!$matchedVendorSnap) {
-                        continue;
-                    }
-
-                    $invoiceLedgerEntries = \App\Models\ThirdPartyPayerBalanceHistory::where('invoice_id', $invoiceModel->id)
-                        ->where('third_party_payer_id', $thirdPartyPayer->id)
-                        ->get();
-
-                    $debits = abs($invoiceLedgerEntries->where('transaction_type', 'debit')->sum('change_amount'));
-                    $credits = $invoiceLedgerEntries->where('transaction_type', 'credit')->sum('change_amount');
-
-                    $snapClient = (float) ($matchedVendorSnap['client_portion_allocated']
-                        ?? $matchedVendorSnap['client_total']
-                        ?? $matchedVendorSnap['client_portion']
-                        ?? 0);
-                    $snapInsurance = (float) ($matchedVendorSnap['insurance_total']
-                        ?? $matchedVendorSnap['insurance_portion']
-                        ?? 0);
-                    $snapshotTotal = round($snapClient + $snapInsurance, 2);
-
-                    $totalAmount = $debits > 0 ? $debits : $snapshotTotal;
-                    $amountPaid = $credits;
-                    $balanceDue = max(0, $totalAmount - $amountPaid);
-
-                    if ($balanceDue <= 0 && $amountPaid > 0) {
-                        $paymentStatus = 'paid';
-                    } elseif ($amountPaid > 0) {
-                        $paymentStatus = 'partial';
-                    } else {
-                        $paymentStatus = 'pending_payment';
-                    }
-
-                    $invoices->push([
-                        'id' => $invoiceModel->id,
-                        'invoice_number' => $invoiceModel->invoice_number ?? 'N/A',
-                        'client_name' => $invoiceModel->client?->name ?? $invoiceModel->client_name ?? 'N/A',
-                        'client_id' => $invoiceModel->client?->client_id,
-                        'total_amount' => $totalAmount,
-                        'amount_paid' => $amountPaid,
-                        'balance_due' => $balanceDue,
-                        'payment_status' => $paymentStatus,
-                        'status' => $invoiceModel->status ?? 'confirmed',
-                        'created_at' => $invoiceModel->created_at,
-                        'business_name' => $invoiceModel->business?->name,
-                        'branch_name' => $invoiceModel->branch?->name,
-                    ]);
-                }
             }
 
             return view('third-party-vendors.show', compact(
@@ -338,12 +237,10 @@ class ThirdPartyVendorsController extends Controller
                 'insuranceCompany',
                 'thirdPartyPayer',
                 'balanceHistories',
+                'itemStatementRows',
                 'totalCredits',
                 'totalDebits',
-                'currentBalance',
-                'invoices',
-                'excludedItemsForPayer',
-                'items'
+                'currentBalance'
             ));
         } catch (\Exception $e) {
             Log::error('Exception while fetching vendor details', [
@@ -360,7 +257,7 @@ class ThirdPartyVendorsController extends Controller
     /**
      * Display dedicated balance statement page for a third party vendor
      */
-    public function balanceStatement($vendorId)
+    public function balanceStatement(Request $request, $vendorId)
     {
         $business = auth()->user()->business;
         
@@ -420,11 +317,19 @@ class ThirdPartyVendorsController extends Controller
                     ->with('error', 'No third-party payer account found for this vendor. Balance history will appear here once invoices are created with this vendor.');
             }
 
+            $statementView = $request->query('view', 'items');
+            if (! in_array($statementView, ['items', 'transactions'], true)) {
+                $statementView = 'items';
+            }
+
             // Get all balance history records with all relationships
             $balanceHistories = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
                 ->orderBy('created_at', 'desc')
                 ->with(['invoice', 'client', 'business', 'branch', 'user'])
-                ->paginate(50);
+                ->paginate(50)
+                ->withQueryString();
+
+            $itemStatementRows = ThirdPartyPayerStatementPresenter::rowsFromHistories($balanceHistories->getCollection());
 
             // Calculate totals
             $totalCredits = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
@@ -444,6 +349,8 @@ class ThirdPartyVendorsController extends Controller
                 'business',
                 'thirdPartyPayer',
                 'balanceHistories',
+                'itemStatementRows',
+                'statementView',
                 'totalCredits',
                 'totalDebits',
                 'currentBalance'

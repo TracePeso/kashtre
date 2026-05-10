@@ -1,17 +1,15 @@
 <x-app-layout>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <x-slot name="header">
-        <div class="flex justify-between items-center">
-            <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                {{ __('Client Page - ') }}{{ $client->name }}
+        <div class="flex flex-wrap justify-between items-center gap-3">
+            <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-100 leading-tight">
+                {{ __('Service point') }}
             </h2>
-            <div class="flex items-center space-x-4">
-                <span class="text-sm text-gray-600">Client ID: {{ $client->client_id }}</span>
-                <span class="text-sm text-gray-600">Visit ID: {{ $client->visit_id }}</span>
-                <span class="px-3 py-1 text-sm font-medium rounded-full bg-green-100 text-green-800">
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="px-3 py-1 text-sm font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">
                     Active
                 </span>
-                <a href="/invoices" class="px-3 py-1 text-sm font-medium rounded-full bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors">
+                <a href="/invoices" class="px-3 py-1 text-sm font-medium rounded-full bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-800/50 transition-colors">
                     View All Proforma Invoices
                 </a>
             </div>
