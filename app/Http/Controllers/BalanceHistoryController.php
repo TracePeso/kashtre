@@ -184,7 +184,7 @@ class BalanceHistoryController extends Controller
             ->get()
             ->map(function ($history) {
                 $description = $history->description;
-                if ($history->payment_method === 'insurance' && ($label = $history->insurancePayerDisplayName())) {
+                if ($history->payment_method === 'insurance' && ($label = $history->statementInsuranceBracketLabel())) {
                     $description = str_replace('[Insurance]', '[' . $label . ']', $description);
                 }
 

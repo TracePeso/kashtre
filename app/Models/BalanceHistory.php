@@ -106,11 +106,9 @@ class BalanceHistory extends Model
         }
 
         $notes = (string) ($this->notes ?? '');
-        if (preg_match('/\bPaid by\s+(.+)/', $notes, $m)) {
-            $name = trim($m[1]);
-            if ($name !== '') {
-                return $name;
-            }
+        $fromNotes = self::extractPaidByFromInsuranceNotes($notes);
+        if ($fromNotes !== null) {
+            return $fromNotes;
         }
 
         $invoice = $this->invoice;
@@ -136,6 +134,269 @@ class BalanceHistory extends Model
         }
 
         return null;
+    }
+
+    /**
+     * Label shown in "[…]" on statements: insurer covering this line when snapshot / notes allow
+     * (multi-vendor cascade uses per-item excluded_items; falls back to Paid-by notes then aggregate payer).
+     */
+    public function statementInsuranceBracketLabel(): ?string
+    {
+        if ($this->payment_method !== 'insurance') {
+            return null;
+        }
+
+        $invoice = $this->invoice;
+        if (!$invoice && $this->invoice_id) {
+            $invoice = Invoice::query()->find($this->invoice_id);
+        }
+
+        $parsed = self::parseInsuranceStatementDescriptionLine((string) $this->description);
+
+        if ($invoice && is_array($invoice->insurance_authorization_snapshot)) {
+            $fromSnap = self::resolveInsuranceVendorNameFromSnapshotForLine(
+                $invoice->insurance_authorization_snapshot,
+                $invoice,
+                $parsed
+            );
+            if ($fromSnap !== null && $fromSnap !== '') {
+                return self::preferInsuranceCompanyRegisteredName($fromSnap, $invoice);
+            }
+        }
+
+        $fromNotes = self::extractPaidByFromInsuranceNotes((string) ($this->notes ?? ''));
+        if ($fromNotes !== null && $fromNotes !== '') {
+            return self::preferInsuranceCompanyRegisteredName($fromNotes, $invoice);
+        }
+
+        $fallback = $this->insurancePayerDisplayName();
+
+        return self::preferInsuranceCompanyRegisteredName($fallback, $invoice);
+    }
+
+    private static function extractPaidByFromInsuranceNotes(string $notes): ?string
+    {
+        if (preg_match('/\bPaid by\s+(.+)/', $notes, $m)) {
+            $name = trim($m[1]);
+
+            return $name !== '' ? $name : null;
+        }
+
+        return null;
+    }
+
+    private static function parseInsuranceStatementDescriptionLine(string $description): ?array
+    {
+        $description = trim($description);
+        if ($description === '') {
+            return null;
+        }
+
+        $core = preg_replace('/\s*\[[^\]]+\]\s*$/', '', $description);
+        $core = trim((string) $core);
+        if ($core === '') {
+            return null;
+        }
+
+        if (preg_match('/^(.+?)\s*\(x([\d.]+)\)\s*$/u', $core, $m)) {
+            return [
+                'name' => trim($m[1]),
+                'quantity' => $m[2],
+                'is_service_fee' => false,
+            ];
+        }
+
+        if (preg_match('/service\s+fee/i', $core)) {
+            return ['is_service_fee' => true];
+        }
+
+        return null;
+    }
+
+    private static function findInvoiceItemRowByDisplayName(Invoice $invoice, string $displayName): ?array
+    {
+        $target = mb_strtolower(trim($displayName));
+        if ($target === '') {
+            return null;
+        }
+
+        foreach ($invoice->items ?? [] as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $name = mb_strtolower(trim((string) ($row['name'] ?? $row['displayName'] ?? '')));
+            if ($name !== '' && $name === $target) {
+                return self::invoiceItemRowWithResolvedCode($row);
+            }
+        }
+
+        return null;
+    }
+
+    private static function invoiceItemRowWithResolvedCode(array $row): array
+    {
+        $code = trim((string) ($row['code'] ?? ''));
+        if ($code === '' && !empty($row['id'] ?? $row['item_id'] ?? null)) {
+            $id = $row['id'] ?? $row['item_id'];
+            $item = Item::query()->find($id);
+            if ($item && !empty($item->code)) {
+                $row['code'] = $item->code;
+            }
+        }
+
+        return $row;
+    }
+
+    private static function invoiceRowExcludedByInsuranceBreakdown(array $invoiceItem, array $excludedRows): bool
+    {
+        foreach ($excludedRows as $ex) {
+            if (!is_array($ex)) {
+                continue;
+            }
+
+            $exItemId = $ex['item_id'] ?? $ex['kashtre_item_id'] ?? null;
+            $invItemId = $invoiceItem['id'] ?? $invoiceItem['item_id'] ?? null;
+            if ($exItemId !== null && $invItemId !== null && (string) $exItemId === (string) $invItemId) {
+                return true;
+            }
+
+            $itemName = mb_strtolower(trim((string) ($invoiceItem['name'] ?? $invoiceItem['displayName'] ?? '')));
+            $itemCode = trim((string) ($invoiceItem['code'] ?? ''));
+            $exName = mb_strtolower(trim((string) ($ex['name'] ?? '')));
+            $exCode = trim((string) ($ex['code'] ?? ''));
+
+            if ($exCode !== '' && $itemCode !== '' && strcasecmp($exCode, $itemCode) === 0) {
+                return true;
+            }
+
+            if ($exName !== '' && $itemName !== '' && $exName === $itemName) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function vendorCascadeRowEligible(array $v): bool
+    {
+        $status = strtolower((string) ($v['authorization_status'] ?? ''));
+
+        return !in_array($status, ['failed', 'skipped'], true);
+    }
+
+    private static function firstEligibleVendorName(array $sorted): ?string
+    {
+        foreach ($sorted as $v) {
+            if (!self::vendorCascadeRowEligible($v)) {
+                continue;
+            }
+            $vendorName = trim((string) ($v['vendor_name'] ?? $v['insurance_company_name'] ?? ''));
+            if ($vendorName !== '') {
+                return $vendorName;
+            }
+        }
+
+        return null;
+    }
+
+    private static function pickHighestInsuranceVendorName(array $sorted): ?string
+    {
+        $best = null;
+        $bestAmt = -1.0;
+        foreach ($sorted as $v) {
+            if (!self::vendorCascadeRowEligible($v)) {
+                continue;
+            }
+            $amt = (float) ($v['insurance_total'] ?? $v['insurance_portion'] ?? 0);
+            $vendorName = trim((string) ($v['vendor_name'] ?? $v['insurance_company_name'] ?? ''));
+            if ($vendorName === '') {
+                continue;
+            }
+            if ($amt > $bestAmt) {
+                $bestAmt = $amt;
+                $best = $vendorName;
+            }
+        }
+
+        return $best ?? self::firstEligibleVendorName($sorted);
+    }
+
+    private static function resolveInsuranceVendorNameFromSnapshotForLine(array $snap, Invoice $invoice, ?array $parsedLine): ?string
+    {
+        $multiRows = null;
+        if (!empty($snap['multi_vendor']) && !empty($snap['vendors']) && is_array($snap['vendors'])) {
+            $multiRows = $snap['vendors'];
+        } elseif (!empty($snap['vendor_results']) && is_array($snap['vendor_results'])) {
+            $multiRows = $snap['vendor_results'];
+        }
+
+        if ($multiRows !== null && $multiRows !== []) {
+            $sorted = $multiRows;
+            usort($sorted, fn ($a, $b) => ((float) ($a['priority'] ?? 0)) <=> ((float) ($b['priority'] ?? 0)));
+
+            $isServiceFee = ($parsedLine['is_service_fee'] ?? false) === true;
+            if ($isServiceFee) {
+                return self::pickHighestInsuranceVendorName($sorted);
+            }
+
+            $invoiceItem = null;
+            if ($parsedLine && empty($parsedLine['is_service_fee'])) {
+                $invoiceItem = self::findInvoiceItemRowByDisplayName($invoice, (string) ($parsedLine['name'] ?? ''));
+            }
+
+            foreach ($sorted as $v) {
+                if (!self::vendorCascadeRowEligible($v)) {
+                    continue;
+                }
+                $vendorName = trim((string) ($v['vendor_name'] ?? $v['insurance_company_name'] ?? ''));
+                if ($vendorName === '') {
+                    continue;
+                }
+                $breakdown = is_array($v['breakdown'] ?? null) ? $v['breakdown'] : [];
+                $excludedItems = is_array($breakdown['excluded_items'] ?? null) ? $breakdown['excluded_items'] : [];
+
+                if ($invoiceItem !== null && self::invoiceRowExcludedByInsuranceBreakdown($invoiceItem, $excludedItems)) {
+                    continue;
+                }
+
+                return $vendorName;
+            }
+
+            return null;
+        }
+
+        $single = trim((string) ($snap['vendor_name'] ?? $snap['insurance_company_name'] ?? ''));
+
+        return $single !== '' ? $single : null;
+    }
+
+    private static function preferInsuranceCompanyRegisteredName(?string $label, ?Invoice $invoice): ?string
+    {
+        if ($label === null || trim($label) === '') {
+            return null;
+        }
+
+        $trimmed = trim($label);
+        if (!$invoice?->business_id) {
+            return $trimmed;
+        }
+
+        $payer = ThirdPartyPayer::query()
+            ->where('business_id', $invoice->business_id)
+            ->where('type', 'insurance_company')
+            ->whereNull('client_id')
+            ->where(function ($q) use ($trimmed) {
+                $q->where('name', $trimmed)
+                    ->orWhereHas('insuranceCompany', fn ($ic) => $ic->where('name', $trimmed));
+            })
+            ->with('insuranceCompany')
+            ->first();
+
+        if ($payer?->insuranceCompany?->name) {
+            return trim((string) $payer->insuranceCompany->name);
+        }
+
+        return $trimmed;
     }
 
     private static function payerNameFromInsuranceSnapshot(array $snap): ?string

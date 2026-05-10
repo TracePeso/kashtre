@@ -181,6 +181,9 @@ class ProcessInsuranceInvoiceEntries extends Command
                     $primaryMethod = 'insurance';
                     $invoiceNumber = $invoice->invoice_number;
 
+                    $thirdPartyPayer->loadMissing('insuranceCompany');
+                    $insuranceTrackingPayerBracketName = $thirdPartyPayer->insuranceCompany->name ?? $thirdPartyPayer->name;
+
                     foreach ($itemsCollection as $itemData) {
                         $itemId = $itemData['id'] ?? $itemData['item_id'] ?? null;
                         if (!$itemId) {
@@ -319,7 +322,7 @@ class ProcessInsuranceInvoiceEntries extends Command
                         // Create tracking entry (no balance change - just for display)
                         $itemDisplayName = $item->name;
                         $trackingDescription = "{$itemDisplayName} (x{$quantity}) [Insurance]";
-                        $trackingNotes = "Insurance payment - {$itemDisplayName} (x{$quantity}) - Invoice #{$invoiceNumber} - Paid by {$thirdPartyPayer->name}";
+                        $trackingNotes = "Insurance payment - {$itemDisplayName} (x{$quantity}) - Invoice #{$invoiceNumber} - Paid by {$insuranceTrackingPayerBracketName}";
 
                         $currentBalance = BalanceHistory::where('client_id', $client->id)
                             ->orderBy('created_at', 'desc')
@@ -371,7 +374,7 @@ class ProcessInsuranceInvoiceEntries extends Command
                                 'transaction_type' => 'debit',
                                 'description' => "Service Fee [Insurance]",
                                 'reference_number' => $invoiceNumber,
-                                'notes' => "Insurance payment - Service Fee - Invoice #{$invoiceNumber} - Paid by {$thirdPartyPayer->name}",
+                                'notes' => "Insurance payment - Service Fee - Invoice #{$invoiceNumber} - Paid by {$insuranceTrackingPayerBracketName}",
                                 'payment_method' => 'insurance',
                                 'payment_status' => 'paid',
                             ]);

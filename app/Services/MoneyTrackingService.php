@@ -840,6 +840,10 @@ class MoneyTrackingService
                 
             }
 
+            $insuranceCounterpartyLabelForNotes = $isInsuranceInvoice
+                ? $this->resolveInsuranceCounterpartyLabel($invoice)
+                : '';
+
             foreach ($itemsToProcess as $index => $itemData) {
                 $itemId = $itemData['item_id'] ?? $itemData['id'] ?? null;
                 if (!$itemId) continue;
@@ -890,6 +894,8 @@ class MoneyTrackingService
                         ->orderBy('created_at', 'desc')
                         ->value('new_balance') ?? 0;
 
+                    $itemInsuranceNotes = "{$itemDisplayName} (x{$quantity}) - Invoice #{$invoice->invoice_number} - Paid by {$insuranceCounterpartyLabelForNotes}";
+
                     $debitRecord = BalanceHistory::create([
                         'client_id' => $client->id,
                         'business_id' => $business->id,
@@ -903,7 +909,7 @@ class MoneyTrackingService
                         'change_amount' => $totalAmount,
                         'new_balance' => $currentBalance,
                         'reference_number' => $invoice->invoice_number,
-                        'notes' => "{$itemDisplayName} (x{$quantity})",
+                        'notes' => $itemInsuranceNotes,
                         'payment_status' => 'Paid',
                     ]);
                 } else {

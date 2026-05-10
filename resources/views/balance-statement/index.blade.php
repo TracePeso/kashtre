@@ -104,7 +104,21 @@
                                     {{ $history->client->name ?? 'N/A' }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
-                                    @if($history->transaction_type === 'credit')
+                                    @php
+                                        $isInsuranceRow = $history->payment_method === 'insurance';
+                                        $ledgerTypeLabel = ucfirst($history->transaction_type);
+                                        $insurancePayer = $isInsuranceRow ? $history->statementInsuranceBracketLabel() : null;
+                                        $insuranceTitle = $isInsuranceRow
+                                            ? ($insurancePayer
+                                                ? 'Insurance · Ledger: '.$ledgerTypeLabel.' · Payer: '.$insurancePayer
+                                                : 'Insurance · Ledger: '.$ledgerTypeLabel)
+                                            : '';
+                                    @endphp
+                                    @if($isInsuranceRow)
+                                        <span title="{{ $insuranceTitle }}" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 ring-1 ring-purple-200">
+                                            Insurance
+                                        </span>
+                                    @elseif($history->transaction_type === 'credit')
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                                             Credit
                                         </span>
@@ -118,7 +132,7 @@
                                         </span>
                                     @else
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                            {{ ucfirst($history->transaction_type) }}
+                                            {{ $ledgerTypeLabel }}
                                         </span>
                                     @endif
                                 </td>

@@ -1290,6 +1290,9 @@ class InvoiceController extends Controller
                     
                     $itemsCollectionForTracking = collect($invoice->items ?? []);
                     $trackingCount = 0;
+
+                    $thirdPartyPayer->loadMissing('insuranceCompany');
+                    $insuranceTrackingPayerBracketName = $thirdPartyPayer->insuranceCompany->name ?? $thirdPartyPayer->name;
                     
                     foreach ($itemsCollectionForTracking as $index => $itemData) {
                         $itemId = $itemData['id'] ?? $itemData['item_id'] ?? null;
@@ -1336,7 +1339,7 @@ class InvoiceController extends Controller
                         // Create tracking entry (no balance change - just for display)
                         $itemDisplayName = $item->name;
                         $trackingDescription = "{$itemDisplayName} (x{$quantity}) [Insurance]";
-                        $trackingNotes = "Insurance payment - {$itemDisplayName} (x{$quantity}) - Invoice #{$invoiceNumber} - Paid by {$thirdPartyPayer->name}";
+                        $trackingNotes = "Insurance payment - {$itemDisplayName} (x{$quantity}) - Invoice #{$invoiceNumber} - Paid by {$insuranceTrackingPayerBracketName}";
                         
                         try {
                             // Get current balance (won't change, but needed for the record)
@@ -1401,7 +1404,7 @@ class InvoiceController extends Controller
                                 'transaction_type' => 'debit',
                                 'description' => "Service Fee [Insurance]",
                                 'reference_number' => $invoiceNumber,
-                                'notes' => "Insurance payment - Service Fee - Invoice #{$invoiceNumber} - Paid by {$thirdPartyPayer->name}",
+                                'notes' => "Insurance payment - Service Fee - Invoice #{$invoiceNumber} - Paid by {$insuranceTrackingPayerBracketName}",
                                 'payment_method' => 'insurance',
                                 'payment_status' => 'paid',
                             ]);
@@ -2264,6 +2267,9 @@ class InvoiceController extends Controller
             ->orderBy('created_at', 'desc')
             ->value('new_balance') ?? ($client->balance ?? 0);
 
+        $moneyTracking = app(\App\Services\MoneyTrackingService::class);
+        $payerBracketName = $moneyTracking->resolveInsuranceCounterpartyLabel($invoice);
+
         $items = collect($invoice->items ?? []);
         foreach ($items as $itemData) {
             $itemName = trim((string) ($itemData['name'] ?? $itemData['displayName'] ?? ''));
@@ -2288,7 +2294,7 @@ class InvoiceController extends Controller
                 'transaction_type' => 'debit',
                 'description' => "{$itemName} (x{$quantity}) [Insurance]",
                 'reference_number' => $invoice->invoice_number,
-                'notes' => "Insurance payment - {$itemName} (x{$quantity}) - Invoice #{$invoice->invoice_number}",
+                'notes' => "Insurance payment - {$itemName} (x{$quantity}) - Invoice #{$invoice->invoice_number} - Paid by {$payerBracketName}",
                 'payment_method' => 'insurance',
                 'payment_status' => 'paid',
             ]);
@@ -2307,7 +2313,7 @@ class InvoiceController extends Controller
                 'transaction_type' => 'debit',
                 'description' => 'Service Fee [Insurance]',
                 'reference_number' => $invoice->invoice_number,
-                'notes' => "Insurance payment - Service Fee - Invoice #{$invoice->invoice_number}",
+                'notes' => "Insurance payment - Service Fee - Invoice #{$invoice->invoice_number} - Paid by {$payerBracketName}",
                 'payment_method' => 'insurance',
                 'payment_status' => 'paid',
             ]);
