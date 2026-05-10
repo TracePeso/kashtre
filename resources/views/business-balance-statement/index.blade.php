@@ -271,6 +271,8 @@
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Days to mature</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Method</th>
                         </tr>
                     </thead>
@@ -298,6 +300,14 @@
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     {{ $history->created_at->format('M d, Y H:i') }}
                                 </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ $history->businessStatementPaymentStatusBadgeClass() }}">
+                                        {{ $history->businessStatementPaymentStatusDisplay() }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {{ $history->businessStatementCreditMaturityLabel() }}
+                                </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                     @if($history->payment_method)
                                         {{ ucwords(str_replace('_', ' ', $history->payment_method)) }}
@@ -308,7 +318,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ auth()->user()->business_id == 1 ? '6' : '5' }}" class="px-6 py-8 text-center text-gray-500">
+                                <td colspan="{{ auth()->user()->business_id == 1 ? '8' : '7' }}" class="px-6 py-8 text-center text-gray-500">
                                     No pending payments found.
                                 </td>
                             </tr>
@@ -349,6 +359,7 @@
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Days to mature</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Method</th>
                         </tr>
                     </thead>
@@ -398,11 +409,12 @@
                                     {{ $history->created_at->format('M d, Y H:i') }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
-                                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full 
-                                        @if($history->payment_status === 'paid') bg-green-100 text-green-800
-                                        @else bg-yellow-100 text-yellow-800 @endif">
-                                        {{ ucfirst(str_replace('_', ' ', $history->payment_status ?? 'pending_payment')) }}
+                                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ $history->businessStatementPaymentStatusBadgeClass() }}">
+                                        {{ $history->businessStatementPaymentStatusDisplay() }}
                                     </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {{ $history->businessStatementCreditMaturityLabel() }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                     @if($history->payment_method)
@@ -414,7 +426,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                                <td colspan="8" class="px-6 py-8 text-center text-gray-500">
                                     No transactions found.
                                 </td>
                             </tr>

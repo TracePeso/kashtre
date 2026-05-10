@@ -18,6 +18,7 @@ use App\Models\BusinessBalanceHistory;
 use App\Models\ContractorBalanceHistory;
 use App\Models\PaymentMethodAccount;
 use App\Models\ServiceChargeMaturationPeriod;
+use App\Models\MaturationPeriod;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -1967,28 +1968,28 @@ class MoneyTrackingService
         // Determine payment_status and payment_method based on client type and transfer type
         $paymentStatus = 'paid'; // Default to paid
         $paymentMethod = null;
+        $insuranceEntityMeta = [];
         
         // Allowed DB enum values for business_balance_histories.payment_method
         $futureValidMethods = ['account_balance', 'mobile_money', 'bank_transfer', 'v_card', 'p_card', 'insurance', 'credit_arrangement'];
-        
-        if ($invoice && $invoice->client) {
-            $client = $invoice->client;
-            $paymentMethods = $invoice->payment_methods ?? [];
-            
-            // Ensure payment_methods is an array (handle JSON string case)
-            if (is_string($paymentMethods)) {
-                $paymentMethods = json_decode($paymentMethods, true) ?? [];
-            }
-            
-            // Check for insurance payments
-            if (in_array('insurance', $paymentMethods)) {
+
+        $invoicePaymentMethods = $this->normalizedInvoicePaymentMethodStrings($invoice);
+
+        // Insurance is invoice-scoped; do not require client relation (maturation metadata must still apply).
+        if ($invoice && in_array('insurance', $invoicePaymentMethods, true)) {
+            $paymentMethod = 'insurance'; // Will be validated below
+            if ($toAccount->type === 'business_account') {
+                $insuranceEntityMeta = $this->insuranceBusinessCreditMaturationMeta($invoice);
+                $paymentStatus = $insuranceEntityMeta !== [] ? 'pending_payment' : 'paid';
+            } else {
                 $paymentStatus = 'paid';
-                // Try to use 'insurance' if enum supports it, otherwise fallback to 'mobile_money'
-                // Check if enum has been updated by trying to determine current enum values
-                $paymentMethod = 'insurance'; // Will be validated below
             }
+        } elseif ($invoice && $invoice->client) {
+            $client = $invoice->client;
+            $paymentMethods = $invoicePaymentMethods;
+
             // Check for credit arrangements
-            elseif (in_array('credit_arrangement', $paymentMethods) || $client->is_credit_eligible) {
+            if (in_array('credit_arrangement', $paymentMethods, true) || $client->is_credit_eligible) {
                 // If this is a suspense_to_final transfer (services being delivered) and client is credit-eligible
                 if ($transferType === 'suspense_to_final') {
                     $paymentStatus = 'pending_payment';
@@ -2001,7 +2002,7 @@ class MoneyTrackingService
             // For other payment methods, use invoice payment status
             else {
                 $paymentStatus = $invoice->payment_status ?? 'paid';
-                if (!empty($paymentMethods)) {
+                if ($paymentMethods !== []) {
                     $paymentMethod = $paymentMethods[0] ?? null;
                 }
             }
@@ -2049,13 +2050,13 @@ class MoneyTrackingService
                 $description,
                 $invoice ? 'invoice' : 'MoneyTransfer',
                 $invoice ? $invoice->id : $transfer->id,
-                [
+                array_merge([
                     'from_account' => $fromAccount->name,
                     'to_account' => $toAccount->name,
                     'transfer_type' => $transferType,
                     'invoice_id' => $invoice ? $invoice->id : null,
                     'invoice_number' => $invoice ? $invoice->invoice_number : null
-                ],
+                ], $insuranceEntityMeta),
                 auth()->id(),
                 $paymentStatus,
                 $paymentMethod
@@ -2296,6 +2297,54 @@ class MoneyTrackingService
     }
 
     /**
+     * Metadata for business-account credits funded via insurance (entity revenue maturation).
+     *
+     * @return array<string, mixed>
+     */
+    private function insuranceBusinessCreditMaturationMeta(Invoice $invoice): array
+    {
+        $days = MaturationPeriod::resolveMaturationDays((int) $invoice->business_id, 'insurance');
+        if ($days <= 0) {
+            return [];
+        }
+
+        return [
+            'credit_maturation_days' => $days,
+            'credit_matures_at' => now()->addDays($days)->toIso8601String(),
+            'credit_maturation_payment_method' => 'insurance',
+        ];
+    }
+
+    /**
+     * Lowercased payment method tokens from invoice (handles JSON string values and mixed casing).
+     *
+     * @return list<string>
+     */
+    private function normalizedInvoicePaymentMethodStrings(?Invoice $invoice): array
+    {
+        if ($invoice === null) {
+            return [];
+        }
+
+        $raw = $invoice->payment_methods ?? [];
+        if (is_string($raw)) {
+            $raw = json_decode($raw, true) ?? [];
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($raw as $m) {
+            if (is_string($m) && trim($m) !== '') {
+                $out[] = strtolower(trim($m));
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
      * Calculate business available balance from BusinessBalanceHistory (source of truth)
      * This method ensures consistent calculation across all controllers
      * 
@@ -2314,14 +2363,14 @@ class MoneyTrackingService
         $totalBalance = 0;
 
         if ($businessAccount) {
-            // Calculate total credits - exclude pending payments (they haven't been paid yet)
-            $totalCredits = BusinessBalanceHistory::where('business_id', $business->id)
+            // Credits count toward balance only when effectively paid (includes matured insurance / service-fee pendings)
+            $creditHistories = BusinessBalanceHistory::where('business_id', $business->id)
                 ->where('money_account_id', $businessAccount->id)
                 ->where('type', 'credit')
-                ->where(function($query) {
-                    $query->where('payment_status', 'paid')
-                        ->orWhereNull('payment_status'); // Include records without payment_status (legacy data)
-                })
+                ->get();
+
+            $totalCredits = (float) $creditHistories
+                ->filter(fn (BusinessBalanceHistory $h): bool => $h->effectiveCreditPaymentStatus() === 'paid')
                 ->sum('amount');
 
             // Calculate total debits - include all debits
@@ -2458,20 +2507,20 @@ class MoneyTrackingService
             // Determine payment status and method from invoice
             $paymentStatus = 'paid'; // Default to paid for service delivery
             $paymentMethod = null;
+            $insuranceEntityMeta = [];
             
             if ($invoice) {
-                // Check invoice payment methods
-                $paymentMethods = $invoice->payment_methods ?? [];
-                if (in_array('insurance', $paymentMethods)) {
+                $paymentMethods = $this->normalizedInvoicePaymentMethodStrings($invoice);
+                if (in_array('insurance', $paymentMethods, true)) {
                     $paymentMethod = 'insurance';
-                    $paymentStatus = 'paid'; // Insurance payments are considered paid
-                } elseif (in_array('credit_arrangement', $paymentMethods) || $invoice->client->is_credit_eligible ?? false) {
+                    $insuranceEntityMeta = $this->insuranceBusinessCreditMaturationMeta($invoice);
+                    $paymentStatus = $insuranceEntityMeta !== [] ? 'pending_payment' : 'paid';
+                } elseif (in_array('credit_arrangement', $paymentMethods, true) || ($invoice->client?->is_credit_eligible ?? false)) {
                     $paymentStatus = 'pending_payment';
                     $paymentMethod = 'credit_arrangement';
                 } else {
                     $paymentStatus = $invoice->payment_status ?? 'paid';
-                    // Try to get payment method from invoice
-                    if (!empty($paymentMethods)) {
+                    if ($paymentMethods !== []) {
                         $paymentMethod = $paymentMethods[0] ?? null;
                     }
                 }
@@ -2486,11 +2535,11 @@ class MoneyTrackingService
                 "Service delivery payment for {$item->name} ({$serviceDeliveryQueue->quantity}) - Business share",
                 'service_delivery_queue',
                 $serviceDeliveryQueue->id,
-                [
+                array_merge([
                     'invoice_id' => $invoice->id,
                     'item_id' => $item->id,
                     'client_id' => $invoice->client_id
-                ],
+                ], $insuranceEntityMeta),
                 $user ? $user->id : null,
                 $paymentStatus,
                 $paymentMethod
@@ -2508,7 +2557,7 @@ class MoneyTrackingService
                     "Service charge for invoice #{$invoice->invoice_number}"
                 );
                 
-                // Record Kashtre balance statement
+                // Record Kashtre balance statement (avoid copying insurance pending onto Kashtre; transferMoney already recorded maturation)
                 BusinessBalanceHistory::recordChange(
                     1, // Kashtre business_id
                     $kashtreAccount->id,
@@ -2524,8 +2573,8 @@ class MoneyTrackingService
                         'business_id' => $business->id
                     ],
                     $user ? $user->id : null,
-                    $paymentStatus,
-                    $paymentMethod
+                    'paid',
+                    $paymentMethod === 'insurance' ? 'mobile_money' : ($paymentMethod ?? 'mobile_money')
                 );
             }
             
@@ -3208,18 +3257,20 @@ class MoneyTrackingService
             // Determine payment status and method from invoice
             $paymentStatus = 'paid'; // Default to paid for service delivery
             $paymentMethod = null;
+            $insuranceEntityMeta = [];
             
             if ($invoice) {
-                $paymentMethods = $invoice->payment_methods ?? [];
-                if (in_array('insurance', $paymentMethods)) {
+                $paymentMethods = $this->normalizedInvoicePaymentMethodStrings($invoice);
+                if (in_array('insurance', $paymentMethods, true)) {
                     $paymentMethod = 'insurance';
-                    $paymentStatus = 'paid';
-                } elseif (in_array('credit_arrangement', $paymentMethods) || $invoice->client->is_credit_eligible ?? false) {
+                    $insuranceEntityMeta = $this->insuranceBusinessCreditMaturationMeta($invoice);
+                    $paymentStatus = $insuranceEntityMeta !== [] ? 'pending_payment' : 'paid';
+                } elseif (in_array('credit_arrangement', $paymentMethods, true) || ($invoice->client?->is_credit_eligible ?? false)) {
                     $paymentStatus = 'pending_payment';
                     $paymentMethod = 'credit_arrangement';
                 } else {
                     $paymentStatus = $invoice->payment_status ?? 'paid';
-                    if (!empty($paymentMethods)) {
+                    if ($paymentMethods !== []) {
                         $paymentMethod = $paymentMethods[0] ?? null;
                     }
                 }
@@ -3233,11 +3284,11 @@ class MoneyTrackingService
                 "{$bulkItem->name} ({$quantity})",
                 'invoice',
                 $invoice->id,
-                [
+                array_merge([
                     'invoice_number' => $invoice->invoice_number,
                     'bulk_item_name' => $bulkItem->name,
                     'description' => "Service delivery completed - Bulk: {$bulkItem->name}"
-                ],
+                ], $insuranceEntityMeta),
                 auth()->id(),
                 $paymentStatus,
                 $paymentMethod
@@ -3712,18 +3763,20 @@ class MoneyTrackingService
         // Determine payment status and method from invoice
         $paymentStatus = 'paid'; // Default to paid for package adjustments
         $paymentMethod = null;
+        $insuranceEntityMeta = [];
         
         if ($invoice) {
-            $paymentMethods = $invoice->payment_methods ?? [];
-            if (in_array('insurance', $paymentMethods)) {
+            $paymentMethods = $this->normalizedInvoicePaymentMethodStrings($invoice);
+            if (in_array('insurance', $paymentMethods, true)) {
                 $paymentMethod = 'insurance';
-                $paymentStatus = 'paid';
-            } elseif (in_array('credit_arrangement', $paymentMethods) || $invoice->client->is_credit_eligible ?? false) {
+                $insuranceEntityMeta = $this->insuranceBusinessCreditMaturationMeta($invoice);
+                $paymentStatus = $insuranceEntityMeta !== [] ? 'pending_payment' : 'paid';
+            } elseif (in_array('credit_arrangement', $paymentMethods, true) || ($invoice->client?->is_credit_eligible ?? false)) {
                 $paymentStatus = 'pending_payment';
                 $paymentMethod = 'credit_arrangement';
             } else {
                 $paymentStatus = $invoice->payment_status ?? 'paid';
-                if (!empty($paymentMethods)) {
+                if ($paymentMethods !== []) {
                     $paymentMethod = $paymentMethods[0] ?? null;
                 }
             }
@@ -3737,13 +3790,13 @@ class MoneyTrackingService
             $transfer->description,
             'MoneyTransfer',
             $transfer->id,
-            [
+            array_merge([
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'package_adjustment_amount' => $packageAdjustmentAmount,
                 'from_account' => $clientSuspenseAccount->name,
                 'to_account' => $businessAccount->name
-            ],
+            ], $insuranceEntityMeta),
             auth()->id(),
             $paymentStatus,
             $paymentMethod

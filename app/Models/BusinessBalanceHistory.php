@@ -112,7 +112,7 @@ class BusinessBalanceHistory extends Model
             return 'paid';
         }
 
-        $maturesAt = $this->metadata['service_charge_matures_at'] ?? null;
+        $maturesAt = $this->metadata['service_charge_matures_at'] ?? $this->metadata['credit_matures_at'] ?? null;
         if (is_string($maturesAt) && $maturesAt !== '') {
             try {
                 if (Carbon::parse($maturesAt)->lte(now())) {
@@ -124,6 +124,98 @@ class BusinessBalanceHistory extends Model
         }
 
         return 'pending_payment';
+    }
+
+    /**
+     * Credit maturation instant (service charge on Kashtre, or entity revenue e.g. insurance on business account).
+     */
+    public function creditMaturityAt(): ?Carbon
+    {
+        if ($this->type !== 'credit') {
+            return null;
+        }
+
+        $raw = $this->metadata['service_charge_matures_at'] ?? $this->metadata['credit_matures_at'] ?? null;
+        if (! is_string($raw) || $raw === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($raw);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Full calendar days remaining until credit_matures_at / service_charge_matures_at (0 = matures today or earlier).
+     */
+    public function creditDaysRemainingUntilMaturity(): ?int
+    {
+        $at = $this->creditMaturityAt();
+        if ($at === null) {
+            return null;
+        }
+
+        $today = Carbon::today();
+        $end = $at->copy()->startOfDay();
+
+        if ($end->lte($today)) {
+            return 0;
+        }
+
+        return (int) $today->diffInDays($end);
+    }
+
+    /**
+     * Short label for business balance statement "Days to mature" column.
+     *
+     * Em dash (—): no countdown applies (e.g. cash/mobile money, legacy credits without stored maturity).
+     * "Available": matured / released hold (metadata still shows a maturity timestamp).
+     * "Immediate": insurance treated as paid with zero-day entity maturation or rows created before hold tracking.
+     */
+    public function businessStatementCreditMaturityLabel(): string
+    {
+        if ($this->type !== 'credit') {
+            return '—';
+        }
+
+        if ($this->effectiveCreditPaymentStatus() === 'paid') {
+            if ($this->creditMaturityAt()) {
+                return 'Available';
+            }
+
+            return ($this->payment_method ?? '') === 'insurance'
+                ? 'Immediate'
+                : '—';
+        }
+
+        $days = $this->creditDaysRemainingUntilMaturity();
+        if ($days === null) {
+            return '—';
+        }
+
+        return $days === 0 ? 'Matures today' : $days.' days';
+    }
+
+    public function businessStatementPaymentStatusDisplay(): string
+    {
+        if ($this->type !== 'credit') {
+            return '—';
+        }
+
+        return $this->effectiveCreditPaymentStatus() === 'paid' ? 'Paid' : 'Pending';
+    }
+
+    public function businessStatementPaymentStatusBadgeClass(): string
+    {
+        if ($this->type !== 'credit') {
+            return 'bg-gray-100 text-gray-600';
+        }
+
+        return $this->effectiveCreditPaymentStatus() === 'paid'
+            ? 'bg-green-100 text-green-800'
+            : 'bg-yellow-100 text-yellow-800';
     }
 
     public function countsTowardKashtreAvailableCredits(): bool
@@ -190,6 +282,14 @@ class BusinessBalanceHistory extends Model
         return $method !== ''
             ? ucwords(str_replace('_', ' ', $method))
             : '—';
+    }
+
+    /**
+     * Kashtre statement column: days until service-fee / credit maturation (same rules as business credits).
+     */
+    public function kashtreStatementCreditMaturityLabel(): string
+    {
+        return $this->businessStatementCreditMaturityLabel();
     }
 
     /**

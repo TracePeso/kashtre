@@ -215,7 +215,7 @@ class ThirdPartyVendorBalanceStatementTable extends Component implements HasForm
                 TextColumn::make('payment_status')
                     ->label('Status')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst(str_replace('_', ' ', $state)) : 'N/A')
+                    ->formatStateUsing(fn (?string $state): string => ThirdPartyPayerBalanceHistory::normalizePaymentStatusLabel($state))
                     ->color(fn (?string $state): string => match ($state) {
                         'paid' => 'success',
                         'pending_payment' => 'warning',
@@ -295,7 +295,7 @@ class ThirdPartyVendorBalanceStatementTable extends Component implements HasForm
                 TextColumn::make('payment_status')
                     ->label('Status')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst(str_replace('_', ' ', $state)) : 'N/A')
+                    ->formatStateUsing(fn (?string $state): string => ThirdPartyPayerBalanceHistory::normalizePaymentStatusLabel($state))
                     ->color(fn (?string $state): string => match ($state) {
                         'paid' => 'success',
                         'pending_payment' => 'warning',
