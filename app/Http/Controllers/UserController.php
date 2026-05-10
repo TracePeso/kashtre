@@ -2,33 +2,69 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Business;
-use App\Models\User;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Password;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Str;
-use App\Models\Qualification;
-use App\Models\Department;
-use App\Models\Section;
-use App\Models\Title;
-use App\Models\ServicePoint;
-use Illuminate\Support\Facades\Auth;
-use App\Traits\AccessTrait;
-use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\StaffTemplateExport;
 use App\Imports\StaffTemplateImport;
+use App\Models\Business;
+use App\Models\User;
+use App\Traits\AccessTrait;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
+use Illuminate\Support\Str;
+use Maatwebsite\Excel\Facades\Excel;
 
 class UserController extends Controller
 {
     use AccessTrait;
+
+    /**
+     * Normalize empty strings to null so nullable rules and FK checks behave consistently.
+     */
+    protected function normalizeNullableUserEnrollment(Request $request): void
+    {
+        foreach ([
+            'branch_id', 'qualification_id', 'department_id', 'title_id',
+            'phone', 'nin', 'gender', 'birth_date', 'marital_status',
+            'surname', 'first_name', 'middle_name', 'status',
+        ] as $key) {
+            if ($request->input($key) === '') {
+                $request->merge([$key => null]);
+            }
+        }
+    }
+
+    /**
+     * Display name from optional HR name parts; falls back to email local-part then "User".
+     */
+    protected function resolveUserDisplayName(array $validated): string
+    {
+        $parts = array_filter(array_map('trim', [
+            (string) ($validated['surname'] ?? ''),
+            (string) ($validated['first_name'] ?? ''),
+            (string) ($validated['middle_name'] ?? ''),
+        ]));
+        $fromParts = trim(implode(' ', $parts));
+        if ($fromParts !== '') {
+            return $fromParts;
+        }
+        $email = (string) ($validated['email'] ?? '');
+        if ($email !== '') {
+            $local = Str::before($email, '@');
+
+            return $local !== '' ? $local : 'User';
+        }
+
+        return 'User';
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index()
     {
         //
-        #fecth all users
+        //fecth all users
         $users = User::all();
         // Pass businesses to populate select dropdown (optional: only if admin)
         $businesses = Business::all();
@@ -36,16 +72,11 @@ class UserController extends Controller
         return view('users.index', compact('users', 'businesses'));
     }
 
-
-
-
-
     /**
      * Show the form for creating a new resource.
      */
     public function create()
     {
-    
 
         $businesses = Business::all();
         // $permissions = $this->getAllPermissions();
@@ -61,29 +92,33 @@ class UserController extends Controller
      */
     public function store(Request $request)
     {
+        $this->normalizeNullableUserEnrollment($request);
+
         // Determine if business_id should be required based on current user's business
         $isSuperBusiness = Auth::user()->business_id == 1;
         $businessIdRule = $isSuperBusiness ? 'required|exists:businesses,id' : 'nullable|exists:businesses,id';
-        
+
         $validated = $request->validate([
-            'surname' => 'required|string|max:255',
-            'first_name' => 'required|string|max:255',
+            'surname' => 'nullable|string|max:255',
+            'first_name' => 'nullable|string|max:255',
             'middle_name' => 'nullable|string|max:255',
             'email' => 'required|email|unique:users,email',
-            'status' => 'required|in:active,inactive,suspended',
+            'status' => 'nullable|in:active,inactive,suspended',
             'business_id' => $businessIdRule,
-            'branch_id' => 'required|exists:branches,id',
+            'branch_id' => 'nullable|exists:branches,id',
             'profile_photo_path' => 'nullable|image|max:2048',
-            'phone' => 'required|string|max:255',
-            'nin' => 'required|string|max:255',
-            'gender' => 'required|in:male,female,other',
-            'qualification_id' => 'required|exists:qualifications,id',
-            'department_id' => 'required|exists:departments,id',
-            'title_id' => 'required|exists:titles,id',
+            'phone' => 'nullable|string|max:255',
+            'nin' => 'nullable|string|max:255',
+            'gender' => 'nullable|in:male,female,other',
+            'birth_date' => 'nullable|date',
+            'marital_status' => 'nullable|in:single,married,divorced,widowed,separated,other',
+            'qualification_id' => 'nullable|exists:qualifications,id',
+            'department_id' => 'nullable|exists:departments,id',
+            'title_id' => 'nullable|exists:titles,id',
             'service_points' => 'nullable|array',
             'service_points.*' => 'exists:service_points,id',
             'allowed_branches' => 'nullable|array',
-            'permissions_menu' => 'required|array',
+            'permissions_menu' => 'required|array|min:1',
             // Contractor profile fields (conditionally required)
             'bank_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
             'account_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
@@ -91,8 +126,8 @@ class UserController extends Controller
         ]);
 
         try {
-            // Concatenate name fields
-            $validated['name'] = trim($validated['surname'] . ' ' . $validated['first_name'] . ' ' . ($validated['middle_name'] ?? ''));
+            $validated['name'] = $this->resolveUserDisplayName($validated);
+            $validated['status'] = $validated['status'] ?? 'active';
 
             // Upload profile photo if provided
             if ($request->hasFile('profile_photo_path')) {
@@ -101,8 +136,12 @@ class UserController extends Controller
             }
 
             // For non-super business users, use their business_id if business_id is not provided
-            if (!$isSuperBusiness && empty($validated['business_id'])) {
+            if (! $isSuperBusiness && empty($validated['business_id'])) {
                 $validated['business_id'] = Auth::user()->business_id;
+            }
+
+            if (empty($validated['branch_id']) && ! $isSuperBusiness) {
+                $validated['branch_id'] = Auth::user()->branch_id;
             }
 
             // Check if user is a cashier (has Cashier permission)
@@ -116,12 +155,14 @@ class UserController extends Controller
                 'business_id' => $validated['business_id'],
                 'branch_id' => $validated['branch_id'],
                 'profile_photo_path' => $validated['profile_photo_path'] ?? null,
-                'phone' => $validated['phone'],
-                'nin' => $validated['nin'],
-                'gender' => $validated['gender'],
-                'qualification_id' => $validated['qualification_id'],
-                'department_id' => $validated['department_id'],
-                'title_id' => $validated['title_id'],
+                'phone' => $validated['phone'] ?? null,
+                'nin' => $validated['nin'] ?? null,
+                'gender' => $validated['gender'] ?? null,
+                'birth_date' => $validated['birth_date'] ?? null,
+                'marital_status' => $validated['marital_status'] ?? null,
+                'qualification_id' => $validated['qualification_id'] ?? null,
+                'department_id' => $validated['department_id'] ?? null,
+                'title_id' => $validated['title_id'] ?? null,
                 'service_points' => $validated['service_points'] ?? [],
                 'allowed_branches' => $validated['allowed_branches'] ?? [],
                 'permissions' => $validated['permissions_menu'],
@@ -137,7 +178,7 @@ class UserController extends Controller
             if (in_array('Contractor', $validated['permissions_menu'])) {
                 // Check if contractor profile already exists for this user
                 $existingProfile = \App\Models\ContractorProfile::where('user_id', $user->id)->first();
-                if (!$existingProfile) {
+                if (! $existingProfile) {
                     \App\Models\ContractorProfile::create([
                         'business_id' => $validated['business_id'],
                         'bank_name' => $validated['bank_name'],
@@ -148,14 +189,11 @@ class UserController extends Controller
                 }
             }
 
-
             return redirect()->route('users.index')->with('success', 'User created successfully.');
         } catch (\Exception $e) {
-            dd($e);
-            return redirect()->back()->with('error', 'Failed to create user: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Failed to create user: '.$e->getMessage());
         }
     }
-
 
     /**
      * Display the specified resource.
@@ -172,6 +210,7 @@ class UserController extends Controller
         $businesses = Business::all();
         // $permissions = $this->getAllPermissions();
         $app_permissions = $this->getAccessControl(['Masters']);
+
         return view('users.show', compact('user', 'contractorProfile', 'businesses', 'app_permissions'));
     }
 
@@ -198,67 +237,79 @@ class UserController extends Controller
         $middle_name = $nameParts[2] ?? '';
 
         $app_permissions = $this->getAccessControl(['Masters']);
+
         return view('users.edit', compact('user', 'businesses', 'qualifications', 'departments', 'sections', 'titles', 'servicePoints', 'contractorProfile', 'surname', 'first_name', 'middle_name', 'app_permissions'));
     }
 
     public function update(Request $request, $id)
     {
         $user = User::findOrFail($id);
-        
+
+        $this->normalizeNullableUserEnrollment($request);
+
         // Determine if business_id should be required based on current user's business
         $isSuperBusiness = Auth::user()->business_id == 1;
         $businessIdRule = $isSuperBusiness ? 'required|exists:businesses,id' : 'nullable|exists:businesses,id';
-        
+
         $validated = $request->validate([
-            'surname' => 'required|string|max:255',
-            'first_name' => 'required|string|max:255',
+            'surname' => 'nullable|string|max:255',
+            'first_name' => 'nullable|string|max:255',
             'middle_name' => 'nullable|string|max:255',
-            'email' => 'required|email|unique:users,email,' . $user->id,
-            'status' => 'required|in:active,inactive,suspended',
+            'email' => 'required|email|unique:users,email,'.$user->id,
+            'status' => 'nullable|in:active,inactive,suspended',
             'business_id' => $businessIdRule,
-            'branch_id' => 'required|exists:branches,id',
+            'branch_id' => 'nullable|exists:branches,id',
             'profile_photo_path' => 'nullable|image|max:2048',
-            'phone' => 'required|string|max:255',
-            'nin' => 'required|string|max:255',
-            'gender' => 'required|in:male,female,other',
-            'qualification_id' => 'required|exists:qualifications,id',
-            'department_id' => 'required|exists:departments,id',
-            'title_id' => 'required|exists:titles,id',
+            'phone' => 'nullable|string|max:255',
+            'nin' => 'nullable|string|max:255',
+            'gender' => 'nullable|in:male,female,other',
+            'birth_date' => 'nullable|date',
+            'marital_status' => 'nullable|in:single,married,divorced,widowed,separated,other',
+            'qualification_id' => 'nullable|exists:qualifications,id',
+            'department_id' => 'nullable|exists:departments,id',
+            'title_id' => 'nullable|exists:titles,id',
             'service_points' => 'nullable|array',
             'service_points.*' => 'exists:service_points,id',
             'allowed_branches' => 'nullable|array',
             'allowed_branches.*' => 'exists:branches,id',
-            'permissions_menu' => 'required|array',
+            'permissions_menu' => 'required|array|min:1',
             // Contractor profile fields (conditionally required)
             'bank_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
             'account_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
             'account_number' => 'required_if:permissions_menu.*,Contractor|string|nullable',
         ]);
         try {
-            $validated['name'] = trim($validated['surname'] . ' ' . $validated['first_name'] . ' ' . ($validated['middle_name'] ?? ''));
+            $validated['name'] = $this->resolveUserDisplayName($validated);
+            $validated['status'] = $validated['status'] ?? $user->status ?? 'active';
             if ($request->hasFile('profile_photo_path')) {
                 $path = $request->file('profile_photo_path')->store('profile_photos', 'public');
                 $validated['profile_photo_path'] = $path;
             }
-            
+
             // For non-super business users, use their business_id if business_id is not provided
-            if (!$isSuperBusiness && empty($validated['business_id'])) {
+            if (! $isSuperBusiness && empty($validated['business_id'])) {
                 $validated['business_id'] = Auth::user()->business_id;
             }
-            
+
+            if (empty($validated['branch_id']) && ! $isSuperBusiness) {
+                $validated['branch_id'] = Auth::user()->branch_id;
+            }
+
             $user->update([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
                 'status' => $validated['status'],
                 'business_id' => $validated['business_id'],
-                'branch_id' => $validated['branch_id'],
+                'branch_id' => $validated['branch_id'] ?? $user->branch_id,
                 'profile_photo_path' => $validated['profile_photo_path'] ?? $user->profile_photo_path,
-                'phone' => $validated['phone'],
-                'nin' => $validated['nin'],
-                'gender' => $validated['gender'],
-                'qualification_id' => $validated['qualification_id'],
-                'department_id' => $validated['department_id'],
-                'title_id' => $validated['title_id'],
+                'phone' => $validated['phone'] ?? null,
+                'nin' => $validated['nin'] ?? null,
+                'gender' => $validated['gender'] ?? null,
+                'birth_date' => $validated['birth_date'] ?? null,
+                'marital_status' => $validated['marital_status'] ?? null,
+                'qualification_id' => $validated['qualification_id'] ?? null,
+                'department_id' => $validated['department_id'] ?? null,
+                'title_id' => $validated['title_id'] ?? null,
                 'service_points' => $validated['service_points'] ?? [],
                 'allowed_branches' => $validated['allowed_branches'] ?? [],
                 'permissions' => $validated['permissions_menu'],
@@ -280,9 +331,10 @@ class UserController extends Controller
                 // Contractor profiles should remain active even if user permissions change
                 // This prevents breaking item-contractor relationships
             }
+
             return redirect()->route('users.index')->with('success', 'User updated successfully.');
         } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'Failed to update user: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Failed to update user: '.$e->getMessage());
         }
     }
 
@@ -302,31 +354,31 @@ class UserController extends Controller
         try {
             $businessId = $request->get('business_id');
             $branchId = $request->get('branch_id');
-            
+
             // Validate business and branch
-            if (!$businessId || !$branchId) {
+            if (! $businessId || ! $branchId) {
                 return redirect()->back()->with('error', 'Business and Branch are required.');
             }
-            
+
             // Check if user has permission to access this business
             if (Auth::user()->business_id !== 1 && Auth::user()->business_id != $businessId) {
                 return redirect()->back()->with('error', 'You can only access your own business.');
             }
-            
+
             $business = \App\Models\Business::find($businessId);
             $branch = \App\Models\Branch::find($branchId);
-            
+
             $businessName = str_replace(' ', '_', $business->name);
             $branchName = str_replace(' ', '_', $branch->name);
-            
-            $filename = 'staff_template_' . $businessName . '_' . $branchName . '.xlsx';
-            
+
+            $filename = 'staff_template_'.$businessName.'_'.$branchName.'.xlsx';
+
             return Excel::download(
                 new StaffTemplateExport($businessId, $branchId),
                 $filename
             );
         } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'An error occurred while generating the template: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'An error occurred while generating the template: '.$e->getMessage());
         }
     }
 
@@ -346,7 +398,7 @@ class UserController extends Controller
             if (Auth::user()->business_id !== 1 && Auth::user()->business_id != $validated['business_id']) {
                 return redirect()->back()->with('error', 'You can only upload staff for your own business.');
             }
-            
+
             // Import the data
             Excel::import(new StaffTemplateImport($validated['business_id'], $validated['branch_id']), $request->file('template'));
 
@@ -358,7 +410,7 @@ class UserController extends Controller
 
             return redirect()->route('users.index')->with('success', 'Staff data uploaded and processed successfully! Password reset emails have been sent to new users.');
         } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'An error occurred during import: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'An error occurred during import: '.$e->getMessage());
         }
     }
 }

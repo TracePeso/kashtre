@@ -35,13 +35,29 @@
                             <div class="form-input w-full bg-gray-100">{{ $user->phone }}</div>
                         </div>
                         <div>
-                            <label>NIN</label>
-                            <div class="form-input w-full bg-gray-100">{{ $user->nin }}</div>
+                            <label>National ID (NIN)</label>
+                            <div class="form-input w-full bg-gray-100">{{ $user->nin ?: '—' }}</div>
                         </div>
                     </div>
-                    <div>
-                        <label>Gender</label>
-                        <div class="form-input w-full bg-gray-100">{{ ucfirst($user->gender) }}</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label>Gender</label>
+                            <div class="form-input w-full bg-gray-100">{{ $user->gender ? ucfirst($user->gender) : '—' }}</div>
+                        </div>
+                        <div>
+                            <label>Marital status</label>
+                            <div class="form-input w-full bg-gray-100">{{ $user->marital_status ? ucfirst(str_replace('_', ' ', $user->marital_status)) : '—' }}</div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label>Date of birth</label>
+                            <div class="form-input w-full bg-gray-100">{{ $user->birth_date ? $user->birth_date->format('M j, Y') : '—' }}</div>
+                        </div>
+                        <div>
+                            <label>Age (from date of birth)</label>
+                            <div class="form-input w-full bg-gray-100">{{ $user->hrAge() !== null ? $user->hrAge().' years' : '—' }}</div>
+                        </div>
                     </div>
                     <div>
                         <label>Profile Photo</label>
