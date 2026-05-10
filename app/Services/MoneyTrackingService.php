@@ -17,6 +17,7 @@ use App\Models\CreditNote;
 use App\Models\BusinessBalanceHistory;
 use App\Models\ContractorBalanceHistory;
 use App\Models\PaymentMethodAccount;
+use App\Models\ServiceChargeMaturationPeriod;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -1813,6 +1814,31 @@ class MoneyTrackingService
     }
 
     /**
+     * Payment method key used with {@see ServiceChargeMaturationPeriod} for an invoice (vendor entity).
+     */
+    private function resolveInvoicePaymentMethodForServiceChargeMaturation(Invoice $invoice): ?string
+    {
+        $methods = $invoice->payment_methods ?? [];
+        if (is_string($methods)) {
+            $methods = json_decode($methods, true) ?? [];
+        }
+        $methods = array_values(array_unique(array_filter((array) $methods)));
+
+        if ($methods === []) {
+            return null;
+        }
+
+        $priority = ['insurance', 'credit_arrangement', 'mobile_money', 'v_card', 'p_card', 'bank_transfer', 'cash'];
+        foreach ($priority as $method) {
+            if (in_array($method, $methods, true)) {
+                return $method;
+            }
+        }
+
+        return $methods[0];
+    }
+
+    /**
      * Helper method to transfer money between accounts
      */
     private function transferMoney($fromAccount, $toAccount, $amount, $transferType, $invoice = null, $item = null, $description = '', $packageTrackingNumber = null, $type = 'credit')
@@ -1936,9 +1962,7 @@ class MoneyTrackingService
         $paymentStatus = 'paid'; // Default to paid
         $paymentMethod = null;
         
-        // Current valid enum values (before migration adds insurance/credit_arrangement)
-        $currentValidMethods = ['account_balance', 'mobile_money', 'bank_transfer', 'v_card', 'p_card'];
-        // Future valid enum values (after migration)
+        // Allowed DB enum values for business_balance_histories.payment_method
         $futureValidMethods = ['account_balance', 'mobile_money', 'bank_transfer', 'v_card', 'p_card', 'insurance', 'credit_arrangement'];
         
         if ($invoice && $invoice->client) {
@@ -1977,28 +2001,36 @@ class MoneyTrackingService
             }
         }
         
-        // Validate and fix payment_method to ensure it's a valid enum value
-        // IMPORTANT: The database enum currently only supports: account_balance, mobile_money, bank_transfer, v_card, p_card
-        // Until the migration is run, we must use one of these values
-        if ($paymentMethod) {
-            if (!in_array($paymentMethod, $currentValidMethods)) {
-                // The enum doesn't support this value yet - use fallback and log
-                $originalMethod = $paymentMethod;
-                $paymentMethod = 'mobile_money'; // Safe fallback that's always valid
-                
-                Log::warning("Payment method enum not updated - using fallback", [
-                    'invoice_id' => $invoice->id ?? null,
-                    'invoice_number' => $invoice->invoice_number ?? null,
-                    'attempted_method' => $originalMethod,
-                    'fallback_method' => $paymentMethod,
-                    'action_required' => 'URGENT: Run migration or visit http://127.0.0.1:8000/fix-payment-method-enum to add insurance and credit_arrangement to enum',
-                    'migration_file' => '2026_02_15_183500_add_insurance_to_business_balance_histories_payment_method_enum.php',
-                    'fix_url' => 'http://127.0.0.1:8000/fix-payment-method-enum'
-                ]);
-            }
-        } else {
-            // If payment_method is null, set a default
+        // Normalize payment_method to DB enum
+        if ($paymentMethod && ! in_array($paymentMethod, $futureValidMethods, true)) {
+            Log::warning('business_balance_histories payment_method not in enum, using mobile_money fallback', [
+                'invoice_id' => $invoice->id ?? null,
+                'attempted_method' => $paymentMethod,
+            ]);
             $paymentMethod = 'mobile_money';
+        }
+        if (! $paymentMethod) {
+            $paymentMethod = 'mobile_money';
+        }
+
+        // Kashtre service fee credits: pending until service-charge maturation period elapses
+        $maturationExtraMeta = [];
+        if ($toAccount->type === 'kashtre_account' && $invoice && str_contains((string) $description, 'Service Fee Transfer')) {
+            $matMethod = $this->resolveInvoicePaymentMethodForServiceChargeMaturation($invoice);
+            if ($matMethod !== null) {
+                $matDays = ServiceChargeMaturationPeriod::resolveMaturationDays((int) $invoice->business_id, $matMethod);
+                if ($matDays > 0) {
+                    $paymentStatus = 'pending_payment';
+                    $maturationExtraMeta = [
+                        'service_charge_maturation_days' => $matDays,
+                        'service_charge_matures_at' => now()->addDays($matDays)->toIso8601String(),
+                        'service_charge_maturation_payment_method' => $matMethod,
+                    ];
+                    if (in_array($matMethod, $futureValidMethods, true)) {
+                        $paymentMethod = $matMethod;
+                    }
+                }
+            }
         }
 
         // Create BusinessBalanceHistory records for business accounts
@@ -2034,13 +2066,13 @@ class MoneyTrackingService
                 $description,
                 $invoice ? 'invoice' : 'MoneyTransfer',
                 $invoice ? $invoice->id : $transfer->id,
-                [
+                array_merge([
                     'from_account' => $fromAccount->name,
                     'to_account' => $toAccount->name,
                     'transfer_type' => $transferType,
                     'invoice_id' => $invoice ? $invoice->id : null,
-                    'invoice_number' => $invoice ? $invoice->invoice_number : null
-                ],
+                    'invoice_number' => $invoice ? $invoice->invoice_number : null,
+                ], $maturationExtraMeta),
                 auth()->id(),
                 $paymentStatus,
                 $paymentMethod

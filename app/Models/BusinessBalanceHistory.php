@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 class BusinessBalanceHistory extends Model
 {
@@ -95,6 +96,100 @@ class BusinessBalanceHistory extends Model
     public function scopeDateRange($query, $startDate, $endDate)
     {
         return $query->whereBetween('created_at', [$startDate, $endDate]);
+    }
+
+    /**
+     * For Kashtre credits: paid vs pending, treating matured service-fee pendings as paid for totals/display.
+     */
+    public function effectiveCreditPaymentStatus(): string
+    {
+        if ($this->type !== 'credit') {
+            return 'paid';
+        }
+
+        $status = $this->payment_status ?? 'paid';
+        if ($status !== 'pending_payment') {
+            return 'paid';
+        }
+
+        $maturesAt = $this->metadata['service_charge_matures_at'] ?? null;
+        if (is_string($maturesAt) && $maturesAt !== '') {
+            try {
+                if (Carbon::parse($maturesAt)->lte(now())) {
+                    return 'paid';
+                }
+            } catch (\Throwable) {
+                // keep pending
+            }
+        }
+
+        return 'pending_payment';
+    }
+
+    public function countsTowardKashtreAvailableCredits(): bool
+    {
+        return $this->business_id === 1
+            && $this->type === 'credit'
+            && $this->effectiveCreditPaymentStatus() === 'paid';
+    }
+
+    public function countsTowardKashtrePendingCredits(): bool
+    {
+        return $this->business_id === 1
+            && $this->type === 'credit'
+            && $this->effectiveCreditPaymentStatus() === 'pending_payment';
+    }
+
+    public static function sumKashtreCreditAvailableAmount(): float
+    {
+        return (float) static::query()
+            ->where('business_id', 1)
+            ->where('type', 'credit')
+            ->get()
+            ->filter(fn (self $h): bool => $h->countsTowardKashtreAvailableCredits())
+            ->sum('amount');
+    }
+
+    public static function sumKashtreCreditPendingAmount(): float
+    {
+        return (float) static::query()
+            ->where('business_id', 1)
+            ->where('type', 'credit')
+            ->get()
+            ->filter(fn (self $h): bool => $h->countsTowardKashtrePendingCredits())
+            ->sum('amount');
+    }
+
+    public function kashtreStatementPaymentStatusDisplay(): string
+    {
+        if ($this->type !== 'credit') {
+            return '—';
+        }
+
+        return $this->effectiveCreditPaymentStatus() === 'paid' ? 'Paid' : 'Pending';
+    }
+
+    public function kashtreStatementPaymentStatusBadgeClass(): string
+    {
+        if ($this->type !== 'credit') {
+            return 'bg-gray-100 text-gray-600';
+        }
+
+        return $this->effectiveCreditPaymentStatus() === 'paid'
+            ? 'bg-green-100 text-green-800'
+            : 'bg-yellow-100 text-yellow-800';
+    }
+
+    public function kashtreStatementPaymentMethodLabel(): string
+    {
+        $metaMethod = $this->metadata['service_charge_maturation_payment_method'] ?? null;
+        $method = is_string($metaMethod) && $metaMethod !== ''
+            ? $metaMethod
+            : ($this->payment_method ?? '');
+
+        return $method !== ''
+            ? ucwords(str_replace('_', ' ', $method))
+            : '—';
     }
 
     /**
