@@ -2213,8 +2213,8 @@
                     total_amount: parseFloat(item.price || 0) * parseInt(item.quantity || 0)
                 }));
                 
-                // Get the invoice number from the display
-                const invoiceNumber = document.getElementById('invoice-number-display').textContent;
+                // Get the invoice number from the display (preview); server may assign a different number if stale.
+                let invoiceNumber = document.getElementById('invoice-number-display').textContent;
                 
                 // Validate invoice number
                 if (!invoiceNumber || invoiceNumber === 'Generating...' || invoiceNumber === 'Error generating invoice number') {
@@ -2308,6 +2308,14 @@
                 });
                 
                 if (data.success) {
+                    if (data.invoice && data.invoice.invoice_number) {
+                        invoiceNumber = data.invoice.invoice_number;
+                    }
+                    const previewNumEl = document.getElementById('invoice-number-display');
+                    if (previewNumEl && data.next_invoice_number) {
+                        previewNumEl.textContent = data.next_invoice_number;
+                    }
+
                     // If insurance authorization failed (HTTP error from third-party)
                     if (data.insurance_authorization_failed && data.insurance_authorization_error) {
                         await Swal.fire({
@@ -2493,7 +2501,7 @@
 
                     if (isInsuranceAuth) {
                         // Insurance client: show authorization success then collect client portion
-                        const vendorBreakdownHtml = buildVendorCascadeSummaryHtml(data.insurance_authorization);
+                        const vendorBreakdownHtml = buildVendorCascadeSummaryHtml(data.insurance_authorization, data.invoice, data);
 
                         // If client portion > 0 and payment method is available: collect now
                         if (clientTotalDue > 0) {
@@ -2589,8 +2597,8 @@
                 .replace(/"/g, '&quot;');
         }
 
-        /** Brief multi-vendor summary: one small table + one-line payer totals. */
-        function buildVendorCascadeSummaryHtml(insuranceAuth) {
+        /** Brief multi-vendor summary: one small table + one-line payer totals + invoice/service fee. */
+        function buildVendorCascadeSummaryHtml(insuranceAuth, invoice, responseExtra) {
             const fmt = (n) => (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const vendorBreakdown = insuranceAuth?.vendors ? insuranceAuth.vendors : [];
             const lineRows = Array.isArray(insuranceAuth?.cascade_line_items) ? insuranceAuth.cascade_line_items : [];
@@ -2612,18 +2620,111 @@
                 html += `</tbody></table></div></div>`;
             }
 
+            html += buildInsuranceAuthorizationPricingHtml(insuranceAuth, invoice, vendorBreakdown);
+
             if (vendorBreakdown.length) {
                 const payerLine = vendorBreakdown.map((v) => {
                     const name = escapeHtmlInsuranceUi(v.vendor_name || 'Vendor');
+                    const lbl = v.portion_label ? ` <span class="text-slate-500 font-semibold">[${escapeHtmlInsuranceUi(String(v.portion_label))}]</span>` : '';
                     const pays = fmt(v.insurance_total);
                     const clientAlloc = parseFloat(v.client_portion_allocated);
                     const allocPart = !isNaN(clientAlloc) && clientAlloc > 0.01 ? ` · client UGX ${fmt(clientAlloc)}` : '';
-                    return `${name}: UGX ${pays}${allocPart}`;
+                    return `${name}${lbl}: UGX ${pays}${allocPart}`;
                 }).join(' · ');
                 html += `<p class="mt-2 text-[11px] text-slate-600 leading-snug">${payerLine}</p>`;
             }
 
+            const portions = responseExtra?.vendor_portion_invoices;
+            if (Array.isArray(portions) && portions.length) {
+                const lines = portions.map((p) => {
+                    const lab = escapeHtmlInsuranceUi(p.vendor_portion_label || '');
+                    const num = escapeHtmlInsuranceUi(p.invoice_number || '');
+                    const amt = fmt(p.total_amount);
+                    return `<li class="flex justify-between gap-2"><span><span class="font-bold text-slate-700">${lab}</span> ${num}</span><span class="font-mono">UGX ${amt}</span></li>`;
+                }).join('');
+                html += `<div class="mt-3 rounded border border-slate-200 bg-white p-2.5 text-[11px] text-slate-800"><p class="font-semibold text-slate-700 mb-1.5">Trace invoices</p><ul class="space-y-1">${lines}</ul><p class="text-slate-500 mt-1 text-[10px]">Follow-up copies only.</p></div>`;
+            }
+
             return html;
+        }
+
+        /** Split clinic service charge across insurers by their authorized insurance totals (fallback: amount submitted). */
+        function allocateServiceChargeAmongVendors(vendors, serviceCharge) {
+            const sc = parseFloat(serviceCharge) || 0;
+            if (!Array.isArray(vendors) || vendors.length === 0 || sc <= 0.001) {
+                return [];
+            }
+            const eligible = vendors.filter((v) => {
+                const st = String(v.authorization_status || '').toLowerCase();
+                return !['failed', 'skipped'].includes(st);
+            });
+            if (!eligible.length) {
+                return [];
+            }
+            const weights = eligible.map((v) => {
+                let w = parseFloat(v.insurance_total);
+                if (!isFinite(w) || w <= 0) {
+                    w = parseFloat(v.amount_submitted) || 0;
+                }
+                return Math.max(0, w);
+            });
+            let sumW = weights.reduce((a, b) => a + b, 0);
+            const wts = sumW <= 0 ? eligible.map(() => 1) : weights;
+            sumW = wts.reduce((a, b) => a + b, 0);
+            const out = [];
+            let allocated = 0;
+            eligible.forEach((v, i) => {
+                let share;
+                if (i === eligible.length - 1) {
+                    share = Math.round((sc - allocated) * 100) / 100;
+                } else {
+                    share = Math.round((sc * (wts[i] / sumW)) * 100) / 100;
+                    allocated += share;
+                }
+                out.push({ vendor: v, share });
+            });
+            return out;
+        }
+
+        /** Subtotal, clinic service fee (who pays which share), invoice total. */
+        function buildInsuranceAuthorizationPricingHtml(insuranceAuth, invoice, vendorsForSc) {
+            const fmt = (n) => (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const sub = parseFloat(insuranceAuth?.subtotal ?? invoice?.subtotal ?? NaN);
+            const sc = parseFloat(insuranceAuth?.service_charge ?? invoice?.service_charge ?? NaN);
+            const tot = parseFloat(insuranceAuth?.total_amount ?? invoice?.total_amount ?? NaN);
+            const hasSub = !isNaN(sub) && sub > 0;
+            const hasSc = !isNaN(sc) && sc > 0;
+            const hasTot = !isNaN(tot) && tot > 0;
+            if (!hasSub && !hasSc && !hasTot) {
+                return '';
+            }
+            const vendorList = Array.isArray(vendorsForSc) && vendorsForSc.length ? vendorsForSc : (insuranceAuth?.vendors || []);
+            const scShares = hasSc ? allocateServiceChargeAmongVendors(vendorList, sc) : [];
+
+            let out = '<div class="mt-3 rounded border border-slate-200 bg-slate-50 p-2.5 text-[11px] text-slate-800">';
+            out += '<p class="font-semibold text-slate-800 mb-1.5 text-xs">Invoice summary</p>';
+            if (hasSub) {
+                out += `<p class="flex justify-between gap-2"><span>Clinical subtotal</span><span class="font-mono whitespace-nowrap">UGX ${fmt(sub)}</span></p>`;
+            }
+            if (hasSc) {
+                out += `<p class="flex justify-between gap-2"><span>Service charge</span><span class="font-mono whitespace-nowrap">UGX ${fmt(sc)}</span></p>`;
+                if (scShares.length) {
+                    const parts = scShares.map(({ vendor: v, share }) => {
+                        const name = escapeHtmlInsuranceUi(v.vendor_name || 'Insurer');
+                        const lbl = v.portion_label ? ` [${escapeHtmlInsuranceUi(String(v.portion_label))}]` : '';
+                        return `${name}${lbl}: UGX ${fmt(share)}`;
+                    });
+                    out += `<p class="text-slate-900 mt-1.5 font-medium leading-snug">By insurer: ${parts.join(' · ')}</p>`;
+                    out += '<p class="text-slate-500 mt-1 text-[10px] leading-snug">Proportional to each insurer’s authorized payment; rounded so the amounts sum to the service charge.</p>';
+                } else {
+                    out += '<p class="text-slate-600 mt-1 text-[10px]">Included in the invoice total.</p>';
+                }
+            }
+            if (hasTot) {
+                out += `<p class="flex justify-between gap-2 font-semibold border-t border-slate-200 mt-1.5 pt-1.5"><span>Invoice total</span><span class="font-mono whitespace-nowrap">UGX ${fmt(tot)}</span></p>`;
+            }
+            out += '</div>';
+            return out;
         }
 
         /**

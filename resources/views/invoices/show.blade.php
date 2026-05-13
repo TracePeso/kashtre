@@ -35,6 +35,33 @@
                     </div>
                 </div>
             </div>
+
+            @if($invoice->parent_invoice_id && $invoice->parentInvoice)
+                <div class="bg-amber-50 border border-amber-200 rounded-lg shadow-sm mb-6 p-4">
+                    <p class="text-sm font-medium text-amber-900">Vendor portion invoice (label {{ $invoice->vendor_portion_label ?? '—' }})</p>
+                    <p class="text-xs text-amber-800 mt-1">This row is a trace copy for a single insurer submission in a multi-insurer cascade. Balances and settlement follow the primary invoice.</p>
+                    <a href="{{ route('invoices.show', $invoice->parentInvoice) }}" class="inline-block mt-2 text-sm font-semibold text-amber-900 underline hover:text-amber-950">
+                        Open primary invoice {{ $invoice->parentInvoice->invoice_number }}
+                    </a>
+                </div>
+            @elseif($invoice->vendorPortionInvoices->isNotEmpty())
+                <div class="bg-slate-50 border border-slate-200 rounded-lg shadow-sm mb-6 p-4">
+                    <h3 class="text-sm font-semibold text-slate-800 mb-2">Insurer cascade trace (labeled portions)</h3>
+                    <p class="text-xs text-slate-600 mb-3">Each letter matches the order amounts were submitted to primary (A), secondary (B), tertiary (C), and so on. These invoices are for follow-up only; the primary invoice above is unchanged.</p>
+                    <ul class="space-y-2 text-sm">
+                        @foreach($invoice->vendorPortionInvoices as $portion)
+                            <li class="flex flex-wrap items-center justify-between gap-2">
+                                <span class="font-mono text-slate-900">
+                                    <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-200 text-xs font-bold text-slate-700 mr-2">{{ $portion->vendor_portion_label }}</span>
+                                    {{ $portion->invoice_number }}
+                                </span>
+                                <span class="text-slate-700">UGX {{ number_format($portion->total_amount, 2) }}</span>
+                                <a href="{{ route('invoices.show', $portion) }}" class="text-blue-600 hover:text-blue-800 font-medium">View</a>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
             <!-- Invoice Header -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
                 <div class="p-6">
@@ -331,6 +358,78 @@
                                 </div>
                             </div>
                         @endif
+                    @endif
+
+                    @php
+                        $snapSub = (float) ($authSnap['subtotal'] ?? $invoice->subtotal ?? 0);
+                        $snapSc = (float) ($authSnap['service_charge'] ?? $invoice->service_charge ?? 0);
+                        $snapTot = (float) ($authSnap['total_amount'] ?? $invoice->total_amount ?? 0);
+                        $scVendorShares = [];
+                        if ($snapSc > 0.001 && ! empty($authSnap['vendors']) && is_array($authSnap['vendors'])) {
+                            $eligibleV = [];
+                            foreach ($authSnap['vendors'] as $v) {
+                                if (! is_array($v)) {
+                                    continue;
+                                }
+                                $st = strtolower((string) ($v['authorization_status'] ?? ''));
+                                if (in_array($st, ['failed', 'skipped'], true)) {
+                                    continue;
+                                }
+                                $eligibleV[] = $v;
+                            }
+                            $wts = [];
+                            foreach ($eligibleV as $v) {
+                                $w = (float) ($v['insurance_total'] ?? 0);
+                                if ($w <= 0) {
+                                    $w = (float) ($v['amount_submitted'] ?? 0);
+                                }
+                                $wts[] = max(0.0, $w);
+                            }
+                            $wSum = array_sum($wts);
+                            if ($wSum <= 0) {
+                                $wts = array_fill(0, count($eligibleV), 1.0);
+                                $wSum = count($eligibleV) > 0 ? (float) count($eligibleV) : 1.0;
+                            }
+                            $acc = 0.0;
+                            $nv = count($eligibleV);
+                            foreach ($eligibleV as $idx => $v) {
+                                if ($idx === $nv - 1) {
+                                    $scVendorShares[] = ['v' => $v, 'amt' => round($snapSc - $acc, 2)];
+                                } else {
+                                    $part = round($snapSc * ($wts[$idx] / $wSum), 2);
+                                    $acc += $part;
+                                    $scVendorShares[] = ['v' => $v, 'amt' => $part];
+                                }
+                            }
+                        }
+                    @endphp
+                    @if($snapSub > 0 || $snapSc > 0 || $snapTot > 0)
+                        <div class="mb-3 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-800">
+                            <p class="font-semibold text-gray-900 mb-2">Invoice summary</p>
+                            @if($snapSub > 0)
+                                <p class="flex justify-between gap-2"><span>Clinical subtotal</span><span class="font-mono">UGX {{ $fmtDecimal($snapSub) }}</span></p>
+                            @endif
+                            @if($snapSc > 0)
+                                <p class="flex justify-between gap-2 mt-1"><span>Service charge</span><span class="font-mono">UGX {{ $fmtDecimal($snapSc) }}</span></p>
+                                @if(count($scVendorShares))
+                                    <p class="text-gray-900 mt-1.5 font-medium leading-snug">
+                                        By insurer:
+                                        @foreach($scVendorShares as $si => $row)
+                                            {{ $row['v']['vendor_name'] ?? 'Insurer' }}@if(! empty($row['v']['portion_label'])) [{{ $row['v']['portion_label'] }}]@endif UGX {{ $fmtDecimal($row['amt']) }}@if($si < count($scVendorShares) - 1) · @endif
+                                        @endforeach
+                                    </p>
+                                    <p class="text-gray-500 mt-1 text-[10px] leading-snug">Proportional to each insurer’s authorized payment; rounded so the amounts sum to the service charge.</p>
+                                @else
+                                    <p class="text-gray-600 mt-1 text-[10px]">Included in the invoice total.</p>
+                                @endif
+                            @endif
+                            @if($snapTot > 0)
+                                <p class="flex justify-between gap-2 font-semibold border-t border-gray-200 mt-2 pt-2"><span>Invoice total</span><span class="font-mono">UGX {{ $fmtDecimal($snapTot) }}</span></p>
+                            @endif
+                        </div>
+                    @endif
+
+                    @if($isMultiVendor && !empty($authSnap['vendors']))
                         <div class="mb-4 space-y-1 text-xs text-gray-700">
                             @foreach($authSnap['vendors'] as $vendorIdx => $vendor)
                                 @php
@@ -339,6 +438,9 @@
                                     $clientAlloc = (float) ($vendor['client_portion_allocated'] ?? 0);
                                 @endphp
                                 <p>
+                                    @if(!empty($vendor['portion_label']))
+                                        <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-bold text-gray-700 mr-1 align-middle" title="Cascade portion label">{{ $vendor['portion_label'] }}</span>
+                                    @endif
                                     <span class="font-medium text-gray-900">{{ $vendor['vendor_name'] ?? 'Vendor '.($vendorIdx + 1) }}</span>
                                     — pays UGX {{ $fmtDecimal($vendorInsuranceAmount) }}, submitted UGX {{ $fmtDecimal($vendorAmountSubmitted) }}
                                     @if($clientAlloc > 0.01)

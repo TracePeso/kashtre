@@ -22,8 +22,9 @@ class CashierDashboardController extends Controller
             return redirect()->route('cashier.login');
         }
 
-        // Get today's invoices created by this cashier
+        // Get today's invoices created by this cashier (exclude insurer cascade trace copies)
         $todayInvoices = Invoice::where('created_by', $user->id)
+            ->whereNull('parent_invoice_id')
             ->whereDate('created_at', today())
             ->get();
 
@@ -35,6 +36,7 @@ class CashierDashboardController extends Controller
 
         // Get recent invoices (last 10) created by this cashier
         $recentInvoices = Invoice::where('created_by', $user->id)
+            ->whereNull('parent_invoice_id')
             ->orderBy('created_at', 'desc')
             ->limit(10)
             ->with(['client'])

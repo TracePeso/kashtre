@@ -35,6 +35,7 @@ class ProcessInsuranceInvoiceEntries extends Command
         } else {
             // Find all invoices with insurance payment method that don't have third-party payer balance history entries
             $invoices = Invoice::whereJsonContains('payment_methods', 'insurance')
+                ->whereNull('parent_invoice_id')
                 ->whereDoesntHave('thirdPartyPayerBalanceHistories')
                 ->get();
         }

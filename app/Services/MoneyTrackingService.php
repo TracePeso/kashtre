@@ -669,6 +669,17 @@ class MoneyTrackingService
         try {
             DB::beginTransaction();
 
+            if ($invoice->parent_invoice_id !== null) {
+                DB::commit();
+                Log::info('Skipping processPaymentCompleted for vendor portion trace invoice', [
+                    'invoice_id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'parent_invoice_id' => $invoice->parent_invoice_id,
+                ]);
+
+                return [];
+            }
+
             $client = $invoice->client;
             $business = $invoice->business;
             $debitRecords = [];
@@ -723,7 +734,7 @@ class MoneyTrackingService
             $authSnapshotForGuard = is_array($invoice->insurance_authorization_snapshot)
                 ? $invoice->insurance_authorization_snapshot
                 : json_decode($invoice->insurance_authorization_snapshot, true);
-            $isInsuranceInvoice = !empty($authSnapshotForGuard) && (
+            $isInsuranceInvoice = $invoice->parent_invoice_id === null && ! empty($authSnapshotForGuard) && (
                 isset($authSnapshotForGuard['vendors']) || isset($authSnapshotForGuard['insurance_total'])
             ) && (float) ($authSnapshotForGuard['insurance_total'] ?? 0) > 0;
 
@@ -770,7 +781,7 @@ class MoneyTrackingService
             $authSnapshot = is_array($invoice->insurance_authorization_snapshot) 
                 ? $invoice->insurance_authorization_snapshot 
                 : json_decode($invoice->insurance_authorization_snapshot, true);
-            $isMultiVendorInsurance = $authSnapshot && ($authSnapshot['multi_vendor'] ?? false);
+            $isMultiVendorInsurance = $invoice->parent_invoice_id === null && $authSnapshot && ($authSnapshot['multi_vendor'] ?? false);
             
             if ($isMultiVendorInsurance && isset($authSnapshot['vendors'])) {
                 // For multi-vendor insurance, keep vendor-side ledger updates.
@@ -945,8 +956,9 @@ class MoneyTrackingService
             }
 
             // Create debit record for service charge if applicable.
-            // For insurance invoices, service fee is part of insurance/client-allocation tracking
-            // and must not hit client balance as a standalone debit.
+            // Non-insurance: normal debit (affects running client balance).
+            // Insurance: same informational pattern as clinical lines above — show service fee on the
+            // statement without changing balance (insurance_total / client_total already split the visit).
             if ($invoice->service_charge > 0 && !$isInsuranceInvoice) {
                 $serviceChargeRecord = BalanceHistory::recordDebit(
                     $client,
@@ -970,6 +982,53 @@ class MoneyTrackingService
                     'service_charge' => $invoice->service_charge,
                     'balance_history_id' => $serviceChargeRecord->id ?? null
                 ]);
+            } elseif ($invoice->service_charge > 0 && $isInsuranceInvoice) {
+                $scDescription = 'Service Fee [Insurance]';
+                $existingSc = BalanceHistory::where('client_id', $client->id)
+                    ->where('invoice_id', $invoice->id)
+                    ->where('transaction_type', 'debit')
+                    ->where('description', $scDescription)
+                    ->first();
+
+                if (! $existingSc) {
+                    $currentBalanceForSc = BalanceHistory::where('client_id', $client->id)
+                        ->orderBy('created_at', 'desc')
+                        ->value('new_balance') ?? 0;
+
+                    $scNotes = "Service Fee - Invoice #{$invoice->invoice_number} - Paid by {$insuranceCounterpartyLabelForNotes}";
+
+                    $serviceChargeRecord = BalanceHistory::create([
+                        'client_id' => $client->id,
+                        'business_id' => $business->id,
+                        'branch_id' => $client->branch_id,
+                        'invoice_id' => $invoice->id,
+                        'user_id' => auth()->id() ?? 1,
+                        'transaction_type' => 'debit',
+                        'payment_method' => 'insurance',
+                        'description' => $scDescription,
+                        'previous_balance' => $currentBalanceForSc,
+                        'change_amount' => $invoice->service_charge,
+                        'new_balance' => $currentBalanceForSc,
+                        'reference_number' => $invoice->invoice_number,
+                        'notes' => $scNotes,
+                        'payment_status' => 'Paid',
+                    ]);
+
+                    $debitRecords[] = [
+                        'item_name' => 'Service Charge',
+                        'quantity' => 1,
+                        'amount' => $invoice->service_charge,
+                        'type' => 'service_charge_insurance_statement',
+                        'status' => 'completed',
+                        'balance_history_id' => $serviceChargeRecord->id ?? null
+                    ];
+
+                    Log::info('Balance statement created for service charge (insurance informational)', [
+                        'invoice_id' => $invoice->id,
+                        'service_charge' => $invoice->service_charge,
+                        'balance_history_id' => $serviceChargeRecord->id ?? null,
+                    ]);
+                }
             }
 
             DB::commit();

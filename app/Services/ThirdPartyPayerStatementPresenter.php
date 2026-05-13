@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\Invoice;
+use App\Models\ThirdPartyPayer;
 use App\Models\ThirdPartyPayerBalanceHistory;
+use App\Support\InsurerStatementInvoiceItems;
 use Illuminate\Support\Collection;
 
 /**
@@ -30,7 +32,9 @@ class ThirdPartyPayerStatementPresenter
     private static function rowsForHistory(ThirdPartyPayerBalanceHistory $h): Collection
     {
         $invoice = $h->invoice;
-        $lines = self::normalizedInvoiceLines($invoice);
+        $h->loadMissing('thirdPartyPayer');
+        $payer = $h->thirdPartyPayer;
+        $lines = self::normalizedInvoiceLines($invoice, $payer);
 
         if ($h->transaction_type === 'debit' && $lines->isNotEmpty()) {
             $totalDebit = abs((float) $h->change_amount);
@@ -128,13 +132,18 @@ class ThirdPartyPayerStatementPresenter
         ];
     }
 
-    private static function normalizedInvoiceLines(?Invoice $invoice): Collection
+    private static function normalizedInvoiceLines(?Invoice $invoice, ?ThirdPartyPayer $payer = null): Collection
     {
         if ($invoice === null) {
             return collect();
         }
 
-        $items = $invoice->items ?? [];
+        if ($payer !== null) {
+            $items = InsurerStatementInvoiceItems::linesPayableByPayer($invoice, $payer);
+        } else {
+            $items = $invoice->items ?? [];
+        }
+
         if (! is_array($items)) {
             return collect();
         }

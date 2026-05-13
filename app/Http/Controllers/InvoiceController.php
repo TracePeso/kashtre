@@ -15,6 +15,7 @@ use App\Support\YoDepositGate;
 use App\Support\YoExternalReference;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -321,7 +322,7 @@ class InvoiceController extends Controller
 
             // Validate request
             $validated = $request->validate([
-                'invoice_number' => 'nullable|string|unique:invoices,invoice_number',
+                'invoice_number' => 'nullable|string|max:64',
                 'client_id' => 'required|exists:clients,id',
                 'business_id' => 'required|exists:businesses,id',
                 'branch_id' => 'required|exists:branches,id',
@@ -551,9 +552,20 @@ class InvoiceController extends Controller
                 }
             }
 
-            // Use provided invoice number or generate one
-            // Always start as proforma invoice (P prefix)
-            $invoiceNumber = $validated['invoice_number'] ?? Invoice::generateInvoiceNumber($business->id, 'proforma');
+            // Proforma number: the POS shows a "next number" preview; it can be stale after a prior save (duplicate).
+            // Always assign a free number server-side so repeat submissions never fail validation.
+            $requestedNumber = isset($validated['invoice_number']) ? trim((string) $validated['invoice_number']) : '';
+            if ($requestedNumber !== '' && ! Invoice::where('invoice_number', $requestedNumber)->exists()) {
+                $invoiceNumber = $requestedNumber;
+            } else {
+                if ($requestedNumber !== '') {
+                    Log::info('[Kashtre] Invoice create: generating new proforma number (preview empty, duplicate, or race)', [
+                        'requested' => $requestedNumber,
+                        'business_id' => $business->id,
+                    ]);
+                }
+                $invoiceNumber = Invoice::generateInvoiceNumber($business->id, 'proforma');
+            }
 
             // Check if this is a credit client BEFORE creating invoice
             // Refresh client to ensure we have the latest is_credit_eligible status
@@ -583,9 +595,8 @@ class InvoiceController extends Controller
                 ]);
             }
 
-            // Create invoice
-            $invoice = Invoice::create([
-                'invoice_number' => $invoiceNumber,
+            // Create invoice (retry on rare duplicate key if two requests race the same second)
+            $invoicePayload = [
                 'client_id' => $validated['client_id'],
                 'business_id' => $validated['business_id'],
                 'branch_id' => $validated['branch_id'],
@@ -608,7 +619,36 @@ class InvoiceController extends Controller
                 'status' => $validated['status'],
                 'notes' => $validated['notes'] ?? '',
                 'confirmed_at' => $validated['status'] === 'confirmed' ? now() : null,
-            ]);
+            ];
+
+            $invoice = null;
+            for ($createAttempt = 0; $createAttempt < 12; $createAttempt++) {
+                try {
+                    $invoice = Invoice::create(array_merge($invoicePayload, [
+                        'invoice_number' => $invoiceNumber,
+                    ]));
+                    break;
+                } catch (QueryException $e) {
+                    $sqlState = $e->errorInfo[0] ?? '';
+                    $driverCode = (int) ($e->errorInfo[1] ?? 0);
+                    $isDuplicate = ($sqlState === '23000' || $driverCode === 1062)
+                        || str_contains($e->getMessage(), 'Duplicate entry')
+                        || str_contains($e->getMessage(), '1062');
+                    if (! $isDuplicate || $createAttempt >= 11) {
+                        throw $e;
+                    }
+                    Log::warning('[Kashtre] Invoice create: duplicate invoice_number on insert, retrying', [
+                        'attempt' => $createAttempt + 1,
+                        'invoice_number' => $invoiceNumber,
+                        'business_id' => $business->id,
+                    ]);
+                    $invoiceNumber = Invoice::generateInvoiceNumber($business->id, 'proforma');
+                }
+            }
+
+            if (! $invoice) {
+                throw new \RuntimeException('Could not allocate a unique invoice number after repeated attempts.');
+            }
 
             Log::info('Invoice created successfully', [
                 'invoice_id' => $invoice->id,
@@ -1965,6 +2005,21 @@ class InvoiceController extends Controller
                     if ($insuranceAuthorization && ! empty($insuranceAuthorization['success'])) {
                         // Client portion must match invoice split: invoice_total = insurance_total + client_total (vendor ledger).
                         $insuranceAuthorization = $this->normalizeInsuranceAuthorizationClientTotals($invoice, $insuranceAuthorization);
+                        // Persist clinical vs fee breakdown for receipts / POS confirmation UI.
+                        $insuranceAuthorization = $this->withInvoicePricingOnAuthorizationSnapshot($invoice, $insuranceAuthorization);
+                        // Same per-line insurer attribution as multi-vendor (POS / invoice show immediately on confirm).
+                        $vendorSnapshotRow = [
+                            'vendor_name' => trim((string) ($insuranceCompany->name ?? '')) !== '' ? trim((string) $insuranceCompany->name) : 'Insurer',
+                            'priority' => 1,
+                            'authorization_status' => $insuranceAuthorization['authorization_status'] ?? 'auto_approved',
+                            'breakdown' => is_array($insuranceAuthorization['breakdown'] ?? null)
+                                ? $insuranceAuthorization['breakdown']
+                                : [],
+                        ];
+                        $insuranceAuthorization['cascade_line_items'] = $this->buildCascadeLineItemRowsForSnapshot(
+                            $itemsForAuthorization,
+                            [$vendorSnapshotRow]
+                        );
                         // Persist policy flags on snapshot when insurer omits them (used by UI / refresh).
                         $insuranceAuthorization['copay_contributes_to_deductible'] = $insuranceAuthorization['copay_contributes_to_deductible'] ?? (bool) $client->copay_contributes_to_deductible;
                         $insuranceAuthorization['coinsurance_contributes_to_deductible'] = $insuranceAuthorization['coinsurance_contributes_to_deductible'] ?? (bool) $client->coinsurance_contributes_to_deductible;
@@ -2158,6 +2213,22 @@ class InvoiceController extends Controller
                 }
                 if (isset($insuranceAuthorization['policy_options'])) {
                     $responseData['policy_options'] = $insuranceAuthorization['policy_options'];
+                }
+
+                $invoice->refresh();
+                if (is_array($invoice->insurance_authorization_snapshot)) {
+                    $responseData['insurance_authorization'] = $invoice->insurance_authorization_snapshot;
+                }
+                $invoice->load('vendorPortionInvoices');
+                if ($invoice->vendorPortionInvoices->isNotEmpty()) {
+                    $responseData['vendor_portion_invoices'] = $invoice->vendorPortionInvoices->map(static function ($p) {
+                        return [
+                            'id' => $p->id,
+                            'invoice_number' => $p->invoice_number,
+                            'vendor_portion_label' => $p->vendor_portion_label,
+                            'total_amount' => (float) $p->total_amount,
+                        ];
+                    })->values();
                 }
             } elseif ($insuranceAuthorization && empty($insuranceAuthorization['success']) && isset($insuranceAuthorization['message'])) {
                 // Surface authorization failure reason to the frontend (e.g. "Policy is not active.")
@@ -3312,6 +3383,7 @@ class InvoiceController extends Controller
         $business = $user->business;
 
         $query = Invoice::where('business_id', $business->id)
+            ->whereNull('parent_invoice_id')
             ->with(['client', 'branch', 'createdBy']);
 
         // Filter by client if specified
@@ -3380,7 +3452,7 @@ class InvoiceController extends Controller
             // Refresh client to get latest data
             $client->refresh();
 
-            if ($client->is_credit_eligible && $invoice->balance_due > 0) {
+            if (! $invoice->parent_invoice_id && $client->is_credit_eligible && $invoice->balance_due > 0) {
                 Log::info('=== AUTO-FIXING CREDIT CLIENT INVOICE ===', [
                     'invoice_id' => $invoice->id,
                     'client_id' => $client->id,
@@ -3569,7 +3641,7 @@ class InvoiceController extends Controller
         }
 
         // Load the invoice with quotations relationship
-        $invoice->load('quotations');
+        $invoice->load(['quotations', 'vendorPortionInvoices', 'parentInvoice']);
 
         return view('invoices.show', compact('invoice'));
     }
@@ -4712,6 +4784,9 @@ class InvoiceController extends Controller
             'warnings' => array_values(array_unique($allWarnings)),
         ];
 
+        $snapshot = $this->withInvoicePricingOnAuthorizationSnapshot($invoice, $snapshot);
+        $snapshot = $this->syncVendorPortionTraceInvoices($invoice, $snapshot);
+
         $invoice->update([
             'insurance_client_total' => $finalClientTotal,
             'insurance_insurance_total' => $totalInsuranceTotal,
@@ -4801,6 +4876,189 @@ class InvoiceController extends Controller
         }
 
         return $rows;
+    }
+
+    /**
+     * When multiple insurers participate in a cascade, create labeled child invoices (A, B, C, …)
+     * for traceability. The primary invoice row is unchanged; children reference it via parent_invoice_id.
+     *
+     * @param  array<string, mixed>  $snapshot
+     * @return array<string, mixed>
+     */
+    private function syncVendorPortionTraceInvoices(Invoice $parent, array $snapshot): array
+    {
+        if (empty($snapshot['multi_vendor']) || empty($snapshot['vendors']) || ! is_array($snapshot['vendors'])) {
+            return $snapshot;
+        }
+
+        $metaRows = [];
+        foreach ($snapshot['vendors'] as $idx => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $status = (string) ($row['authorization_status'] ?? '');
+            if (in_array($status, ['failed', 'skipped'], true)) {
+                continue;
+            }
+            $submitted = (float) ($row['amount_submitted'] ?? 0);
+            if ($submitted <= 0.001) {
+                continue;
+            }
+            $metaRows[] = [
+                'idx' => $idx,
+                'priority' => (float) ($row['priority'] ?? 0),
+                'row' => $row,
+            ];
+        }
+
+        usort($metaRows, fn ($a, $b) => $a['priority'] <=> $b['priority']);
+
+        if (count($metaRows) < 2) {
+            return $snapshot;
+        }
+
+        try {
+            DB::transaction(function () use ($parent, &$snapshot, $metaRows) {
+                Invoice::where('parent_invoice_id', $parent->id)->delete();
+
+                foreach ($metaRows as $order => $meta) {
+                    $letter = chr(65 + min($order, 25));
+                    $vendorRow = $meta['row'];
+                    $idx = $meta['idx'];
+                    $priorityInt = (int) round((float) ($vendorRow['priority'] ?? ($order + 1)));
+
+                    $child = $this->createVendorPortionTraceInvoice($parent, $vendorRow, $letter, $priorityInt);
+
+                    $snapshot['vendors'][$idx]['portion_label'] = $letter;
+                    $snapshot['vendors'][$idx]['kashtre_portion_invoice_id'] = $child->id;
+                }
+            });
+        } catch (\Throwable $e) {
+            Log::error('[Kashtre] Vendor portion trace invoices failed (non-blocking)', [
+                'invoice_id' => $parent->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $snapshot;
+    }
+
+    /**
+     * @param  array<string, mixed>  $vendorRow
+     */
+    private function createVendorPortionTraceInvoice(Invoice $parent, array $vendorRow, string $letter, int $cascadePriority): Invoice
+    {
+        $parent->refresh();
+        $amountSubmitted = round(max(0.0, (float) ($vendorRow['amount_submitted'] ?? 0)), 2);
+        $parentTotal = (float) ($parent->total_amount ?? 0);
+        $ratio = $parentTotal > 0 ? min(1.0, $amountSubmitted / $parentTotal) : 0.0;
+        $portionSubtotal = round((float) ($parent->subtotal ?? 0) * $ratio, 2);
+        $portionSc = round($amountSubmitted - $portionSubtotal, 2);
+        if ($portionSc < 0) {
+            $portionSc = 0.0;
+            $portionSubtotal = $amountSubmitted;
+        }
+
+        $invoiceNumber = Invoice::generateInvoiceNumber((int) $parent->business_id, 'proforma');
+
+        $insuranceTotal = round((float) ($vendorRow['insurance_total'] ?? 0), 2);
+        $clientTotal = round((float) ($vendorRow['client_total'] ?? 0), 2);
+
+        $portionSnap = [
+            'success' => true,
+            'multi_vendor' => false,
+            'vendor_portion_trace' => true,
+            'parent_invoice_id' => $parent->id,
+            'parent_invoice_number' => $parent->invoice_number,
+            'vendor_portion_label' => $letter,
+            'insurance_total' => $insuranceTotal,
+            'client_total' => $clientTotal,
+            'authorization_reference' => $vendorRow['authorization_reference'] ?? null,
+            'authorization_status' => $vendorRow['authorization_status'] ?? 'auto_approved',
+            'amount_submitted' => $amountSubmitted,
+            'vendor_name' => $vendorRow['vendor_name'] ?? null,
+        ];
+
+        $vendorName = trim((string) ($vendorRow['vendor_name'] ?? 'insurer'));
+
+        $childPayload = [
+            'parent_invoice_id' => $parent->id,
+            'vendor_portion_label' => $letter,
+            'vendor_portion_priority' => $cascadePriority,
+            'client_id' => $parent->client_id,
+            'business_id' => $parent->business_id,
+            'branch_id' => $parent->branch_id,
+            'created_by' => $parent->created_by,
+            'currency' => $parent->currency,
+            'client_name' => $parent->client_name,
+            'client_phone' => $parent->client_phone,
+            'payment_phone' => $parent->payment_phone,
+            'visit_id' => $parent->visit_id,
+            'items' => $parent->items,
+            'subtotal' => $portionSubtotal,
+            'package_adjustment' => 0,
+            'account_balance_adjustment' => 0,
+            'service_charge' => $portionSc,
+            'total_amount' => $amountSubmitted,
+            'amount_paid' => $amountSubmitted,
+            'balance_due' => 0,
+            'payment_methods' => ['vendor_portion'],
+            'payment_status' => 'paid',
+            'insurance_authorization_reference' => $vendorRow['authorization_reference'] ?? null,
+            'insurance_client_total' => $clientTotal,
+            'insurance_insurance_total' => $insuranceTotal,
+            'insurance_confirmation_code' => null,
+            'insurance_authorized_at' => $parent->insurance_authorized_at ?? now(),
+            'insurance_authorization_snapshot' => $portionSnap,
+            'status' => $parent->status ?? 'confirmed',
+            'confirmed_at' => $parent->confirmed_at ?? now(),
+        ];
+
+        $child = null;
+        for ($attempt = 0; $attempt < 12; $attempt++) {
+            $traceNote = "Vendor cascade portion {$letter} (priority {$cascadePriority}), new proforma number {$invoiceNumber}. Trace copy for follow-up with {$vendorName}. "
+                ."Settlement and balances apply to primary invoice {$parent->invoice_number}.";
+            try {
+                $child = Invoice::create(array_merge($childPayload, [
+                    'invoice_number' => $invoiceNumber,
+                    'notes' => $traceNote,
+                ]));
+                break;
+            } catch (QueryException $e) {
+                $sqlState = $e->errorInfo[0] ?? '';
+                $driverCode = (int) ($e->errorInfo[1] ?? 0);
+                $isDuplicate = ($sqlState === '23000' || $driverCode === 1062)
+                    || str_contains($e->getMessage(), 'Duplicate entry')
+                    || str_contains($e->getMessage(), '1062');
+                if (! $isDuplicate || $attempt >= 11) {
+                    throw $e;
+                }
+                $invoiceNumber = Invoice::generateInvoiceNumber((int) $parent->business_id, 'proforma');
+            }
+        }
+
+        if (! $child) {
+            throw new \RuntimeException('Could not allocate a unique invoice number for vendor portion trace.');
+        }
+
+        return $child;
+    }
+
+    /**
+     * Attach invoice subtotal, clinic service charge, and total so UIs can show fee breakdown.
+     * For insurance invoices the fee is included in total_amount and allocated with the insurer/client split
+     * (it is not duplicated on each clinical line in cascade_line_items).
+     *
+     * @param  array<string, mixed>  $snapshot
+     * @return array<string, mixed>
+     */
+    private function withInvoicePricingOnAuthorizationSnapshot(Invoice $invoice, array $snapshot): array
+    {
+        $snapshot['subtotal'] = round((float) ($invoice->subtotal ?? 0), 2);
+        $snapshot['service_charge'] = round((float) ($invoice->service_charge ?? 0), 2);
+        $snapshot['total_amount'] = round((float) ($invoice->total_amount ?? 0), 2);
+
+        return $snapshot;
     }
 
     /**

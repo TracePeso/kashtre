@@ -28,6 +28,7 @@
                                     if ($hasInsuranceInvoices) {
                                         // If client has insurance invoices, check if all recent invoices are insurance
                                         $recentInvoices = \App\Models\Invoice::where('client_id', $client->id)
+                                            ->whereNull('parent_invoice_id')
                                             ->where('status', 'confirmed')
                                             ->orderBy('created_at', 'desc')
                                             ->limit(10)

@@ -91,6 +91,7 @@ class ClientController extends Controller
             // already counted via MoneyTransfer above — do not also attribute invoice client payments or we double-count.
             if (! $client->copay_contributes_to_deductible) {
                 $invoices = Invoice::where('client_id', $client->id)
+                    ->whereNull('parent_invoice_id')
                     ->whereIn('payment_status', ['paid', 'partial'])
                     ->get();
 

@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\Item;
 use App\Models\ThirdPartyPayer;
 use App\Models\ThirdPartyPayerBalanceHistory;
+use App\Support\InsurerStatementInvoiceItems;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 
@@ -206,6 +207,15 @@ class InsurerPortalVendorSummaryService
 
     protected function serializeBalanceHistory(ThirdPartyPayerBalanceHistory $history): array
     {
+        $invoice = $history->invoice;
+        $payer = $history->relationLoaded('thirdPartyPayer')
+            ? $history->thirdPartyPayer
+            : ThirdPartyPayer::find($history->third_party_payer_id);
+
+        $statementItems = ($invoice && $payer)
+            ? InsurerStatementInvoiceItems::linesPayableByPayer($invoice, $payer)
+            : (is_array($invoice?->items) ? $invoice->items : []);
+
         return [
             'id' => $history->id,
             'created_at' => $history->created_at?->toIso8601String(),
@@ -214,10 +224,10 @@ class InsurerPortalVendorSummaryService
                 'name' => $history->client->name,
                 'client_id' => $history->client->client_id,
             ] : null,
-            'invoice' => $history->invoice ? [
-                'id' => $history->invoice->id,
-                'invoice_number' => $history->invoice->invoice_number,
-                'items' => is_array($history->invoice->items) ? $history->invoice->items : [],
+            'invoice' => $invoice ? [
+                'id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'items' => $statementItems,
             ] : null,
             'transaction_type' => $history->transaction_type,
             'change_amount' => (float) $history->change_amount,
@@ -241,6 +251,7 @@ class InsurerPortalVendorSummaryService
         $vendorIdString = (string) $thirdPartyVendorId;
 
         $candidateInvoices = Invoice::where('business_id', $businessId)
+            ->whereNull('parent_invoice_id')
             ->whereNotNull('insurance_authorization_snapshot')
             ->with(['client', 'business', 'branch'])
             ->orderBy('created_at', 'desc')

@@ -11,6 +11,9 @@ class Invoice extends Model
     use HasFactory;
 
     protected $fillable = [
+        'parent_invoice_id',
+        'vendor_portion_label',
+        'vendor_portion_priority',
         'invoice_number',
         'client_id',
         'business_id',
@@ -92,6 +95,32 @@ class Invoice extends Model
         return $this->hasMany(Quotation::class);
     }
 
+    /**
+     * Primary POS invoice when this row is a vendor-portion trace copy (multi-insurer cascade).
+     */
+    public function parentInvoice()
+    {
+        return $this->belongsTo(self::class, 'parent_invoice_id');
+    }
+
+    /**
+     * Labeled subset invoices (A, B, C, …) created for each insurer submission in a cascade.
+     */
+    public function vendorPortionInvoices()
+    {
+        return $this->hasMany(self::class, 'parent_invoice_id')->orderBy('vendor_portion_priority');
+    }
+
+    public function thirdPartyPayerBalanceHistories()
+    {
+        return $this->hasMany(ThirdPartyPayerBalanceHistory::class, 'invoice_id');
+    }
+
+    public function isVendorPortionInvoice(): bool
+    {
+        return $this->parent_invoice_id !== null;
+    }
+
     // Scopes
     public function scopeForBusiness($query, $businessId)
     {
@@ -113,34 +142,48 @@ class Invoice extends Model
         return $query->where('payment_status', $paymentStatus);
     }
 
+    /** Exclude insurer cascade trace rows (children of a primary invoice). */
+    public function scopeRootInvoices($query)
+    {
+        return $query->whereNull('parent_invoice_id');
+    }
+
     // Methods
     
     public function isServiceChargeProcessed()
     {
         return $this->is_service_charge_processed === true;
     }
+    /**
+     * Next invoice number for the current calendar month.
+     * $businessId is kept for callers' convenience; invoice_number is unique across all businesses,
+     * so the sequence must be global for a given prefix + YYYYMM (not per-business).
+     */
     public static function generateInvoiceNumber($businessId, $type = 'invoice')
     {
-        // Use 'P' prefix for proforma invoices, 'INV' for regular invoices
         $prefix = ($type === 'proforma') ? 'P' : 'INV';
         $year = date('Y');
         $month = date('m');
-        
-        // Get the last invoice number for this business and month with the same prefix
-        $lastInvoice = self::where('business_id', $businessId)
-            ->where('invoice_number', 'like', "{$prefix}{$year}{$month}%")
-            ->orderBy('invoice_number', 'desc')
-            ->first();
-        
-        if ($lastInvoice) {
-            // Extract the sequence number and increment
-            $lastNumber = (int) substr($lastInvoice->invoice_number, -4);
-            $newNumber = $lastNumber + 1;
-        } else {
-            $newNumber = 1;
+        $base = $prefix . $year . $month;
+        $expectedLength = strlen($base) + 4;
+
+        // Only strict P2026051234 / INV2026051234 rows (excludes legacy suffixes like P2026050009-PA).
+        $maxSeq = (int) self::query()
+            ->where('invoice_number', 'like', $base.'%')
+            ->whereRaw('LENGTH(invoice_number) = ?', [$expectedLength])
+            ->pluck('invoice_number')
+            ->map(static fn ($num) => (int) substr((string) $num, -4))
+            ->max();
+
+        $newNumber = $maxSeq > 0 ? $maxSeq + 1 : 1;
+
+        if ($newNumber > 9999) {
+            Log::critical('Invoice number monthly sequence overflow', ['base' => $base, 'max' => $maxSeq]);
+
+            throw new \RuntimeException("Invoice number sequence overflow for {$base}; contact support.");
         }
-        
-        return $prefix . $year . $month . str_pad($newNumber, 4, '0', STR_PAD_LEFT);
+
+        return $base.str_pad((string) $newNumber, 4, '0', STR_PAD_LEFT);
     }
 
     public function confirm()
