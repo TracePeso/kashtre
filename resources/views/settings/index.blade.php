@@ -135,23 +135,17 @@
                     {{-- Tab: Vendor service charges (global tiers per clinic — same idea as Entity Service Charges; Kashtre DB only) --}}
                     @if($canViewVendorChargesTab ?? false)
                         <div class="{{ ($activeTab ?? '') === 'vendor-service-charges' ? '' : 'hidden' }}">
-                            <div class="mb-6 space-y-2">
-                                <p class="text-sm text-gray-600 dark:text-gray-300">
-                                    Configure <strong>global tiered charges</strong> for all third-party (insurance) vendors per clinic business.
-                                    This is stored in Kashtre only—no insurer portal API calls—similar to
-                                    <a href="{{ route('service-charges.index') }}" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 font-medium">Entity service charges</a>.
-                                </p>
-                            </div>
+                            @include('settings.partials.vendor-service-charge-defaults-editor')
 
-                            @if((int)(Auth::user()->business_id ?? 0) === 1 || in_array('Manage Service Charges', Auth::user()->permissions ?? []))
-                                <div class="flex flex-wrap gap-3 mb-6">
+                            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Per clinic</h3>
+                                @if((int)(Auth::user()->business_id ?? 0) === 1 || in_array('Manage Service Charges', Auth::user()->permissions ?? []))
                                     <a href="{{ route('third-party-vendor-service-charges.create') }}"
-                                       class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700">
-                                        Add / configure tiers
+                                       class="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400">
+                                        + Configure clinic
                                     </a>
-                                    <span class="text-xs text-gray-500 dark:text-gray-400 self-center">Use recommended defaults on the form, or edit an existing business schedule from the table.</span>
-                                </div>
-                            @endif
+                                @endif
+                            </div>
 
                             @livewire('third-party-vendor-service-charges-table')
                         </div>

@@ -26,9 +26,17 @@ Route::prefix('v1')->group(function () {
     // Third-party payer service exclusions (for insurer portal)
     Route::get('/businesses/{businessId}/third-party-payers/{insuranceCompanyId}/excluded-items', [\App\Http\Controllers\API\ThirdPartyPayerController::class, 'getExcludedItems']);
 
+    // Third-party vendor service charge tiers (clinic + per-vendor; includes recommended defaults)
+    Route::get('/businesses/{businessId}/third-party-vendor-service-charges/recommended-defaults', [\App\Http\Controllers\API\ThirdPartyVendorServiceChargeController::class, 'recommendedDefaults']);
+    Route::post('/businesses/{businessId}/third-party-vendor-service-charges/calculate', [\App\Http\Controllers\API\ThirdPartyVendorServiceChargeController::class, 'calculate']);
+    Route::get('/businesses/{businessId}/third-party-vendors/{thirdPartyVendorId}/service-charges', [\App\Http\Controllers\API\ThirdPartyVendorServiceChargeController::class, 'forVendor']);
+    Route::get('/businesses/{businessId}/third-party-vendor-service-charges', [\App\Http\Controllers\API\ThirdPartyVendorServiceChargeController::class, 'index']);
+
     // Insurer portal: mirror Kashtre third-party vendor financial view (ledger, invoices, exclusions)
     Route::get('/businesses/{businessId}/third-party-vendors/{thirdPartyVendorId}/insurer-portal-summary', [\App\Http\Controllers\API\InsurerPortalVendorController::class, 'summary']);
     Route::get('/businesses/{businessId}/third-party-vendors/{thirdPartyVendorId}/insurer-portal-balance-history', [\App\Http\Controllers\API\InsurerPortalVendorController::class, 'balanceHistory']);
+    Route::post('/businesses/{businessId}/third-party-vendors/{thirdPartyVendorId}/insurer-portal-payment/preview', [\App\Http\Controllers\API\InsurerPortalVendorController::class, 'previewPayment']);
+    Route::post('/businesses/{businessId}/third-party-vendors/{thirdPartyVendorId}/insurer-portal-payment', [\App\Http\Controllers\API\InsurerPortalVendorController::class, 'recordPayment']);
 
     // Client deductible tracking
     Route::get('/clients/{client}/deductible-used', [\App\Http\Controllers\API\ClientController::class, 'getDeductibleUsed']);

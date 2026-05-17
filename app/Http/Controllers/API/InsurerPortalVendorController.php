@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Business;
+use App\Services\InsurerPortalVendorPaymentService;
 use App\Services\InsurerPortalVendorSummaryService;
 use Illuminate\Http\Request;
 
@@ -53,6 +54,55 @@ class InsurerPortalVendorController extends Controller
         return response()->json([
             'success' => true,
             'data' => $service->formatBalanceHistoryPage($paginator),
+        ]);
+    }
+
+    public function previewPayment(Request $request, int $businessId, int $thirdPartyVendorId, InsurerPortalVendorPaymentService $payments)
+    {
+        if (! Business::whereKey($businessId)->exists()) {
+            return response()->json(['success' => false, 'message' => 'Business not found.'], 404);
+        }
+
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+        ]);
+
+        $preview = $payments->previewCharge($businessId, $thirdPartyVendorId, (float) $validated['amount']);
+
+        return response()->json([
+            'success' => true,
+            'data' => array_merge($preview, [
+                'formatted_service_charge' => 'UGX '.number_format($preview['service_charge'], 2),
+                'formatted_total' => 'UGX '.number_format($preview['total'], 2),
+            ]),
+        ]);
+    }
+
+    public function recordPayment(Request $request, int $businessId, int $thirdPartyVendorId, InsurerPortalVendorPaymentService $payments)
+    {
+        if (! Business::whereKey($businessId)->exists()) {
+            return response()->json(['success' => false, 'message' => 'Business not found.'], 404);
+        }
+
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'payment_method' => 'required|string|max:50',
+            'reference' => 'nullable|string|max:100',
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        $result = $payments->recordPayment($businessId, $thirdPartyVendorId, $validated);
+
+        if (! ($result['success'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => $result['message'] ?? 'Payment could not be recorded.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $result,
         ]);
     }
 }

@@ -5,9 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\Country;
 use App\Models\Currency;
 use App\Models\InsuranceCompany;
+use App\Models\ThirdPartyVendorServiceCharge;
+use App\Services\ThirdPartyVendorServiceChargeService;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
 
 class SettingsController extends Controller
 {
@@ -35,6 +38,13 @@ class SettingsController extends Controller
             || in_array('Manage Service Charges', $user->permissions ?? [])
             || in_array('View Insurance Companies', $user->permissions ?? []);
 
+        $canManageVendorChargeDefaults = (int) ($user->business_id ?? 0) === 1
+            || in_array('Manage Service Charges', $user->permissions ?? []);
+
+        if ($request->query('tab') === 'vendor-service-charge-defaults') {
+            return redirect()->route('settings.index', ['tab' => 'vendor-service-charges']);
+        }
+
         $allowedTabs = ['insurance-companies', 'vendor-service-charges'];
         $activeTab = $request->query('tab', 'insurance-companies');
         if (! in_array($activeTab, $allowedTabs, true)) {
@@ -43,6 +53,8 @@ class SettingsController extends Controller
         if ($activeTab === 'vendor-service-charges' && ! $canViewVendorChargesTab) {
             $activeTab = 'insurance-companies';
         }
+
+        $vendorChargeDefaultsService = app(ThirdPartyVendorServiceChargeService::class);
 
         $insuranceCompanies = $activeTab === 'insurance-companies'
             ? InsuranceCompany::with('business')
@@ -55,7 +67,85 @@ class SettingsController extends Controller
                 'pageName' => 'page',
             ]);
 
-        return view('settings.index', compact('insuranceCompanies', 'activeTab', 'canViewVendorChargesTab'));
+        $recommendedVendorChargeTiers = $vendorChargeDefaultsService->recommendedDefaults();
+        $vendorChargeBusinessId = (int) ($user->business_id ?? 0) === 1 ? null : (int) $user->business_id;
+        $hasSavedVendorChargeTiers = false;
+        if ($vendorChargeBusinessId !== null && $vendorChargeBusinessId > 1) {
+            $hasSavedVendorChargeTiers = ThirdPartyVendorServiceCharge::query()
+                ->where('business_id', $vendorChargeBusinessId)
+                ->where('is_active', true)
+                ->exists();
+        }
+
+        return view('settings.index', compact(
+            'insuranceCompanies',
+            'activeTab',
+            'canViewVendorChargesTab',
+            'canManageVendorChargeDefaults',
+            'recommendedVendorChargeTiers',
+            'hasSavedVendorChargeTiers',
+            'vendorChargeBusinessId'
+        ));
+    }
+
+    /**
+     * Save system-wide vendor service charge default tiers (Kashtre admin).
+     */
+    public function updateVendorServiceChargeDefaults(Request $request, ThirdPartyVendorServiceChargeService $serviceCharges)
+    {
+        $user = Auth::user();
+        $canManage = (int) ($user->business_id ?? 0) === 1
+            || in_array('Manage Service Charges', $user->permissions ?? []);
+
+        if (! $canManage) {
+            abort(403, 'You need permission to manage vendor service charge defaults.');
+        }
+
+        $validator = Validator::make($request->all(), [
+            'service_charges' => 'required|array|min:1',
+            'service_charges.*.lower_bound' => 'required|numeric|min:0',
+            'service_charges.*.upper_bound' => 'nullable|numeric|min:0',
+            'service_charges.*.amount' => 'required|numeric|min:0',
+            'service_charges.*.type' => 'required|in:fixed,percentage',
+        ]);
+
+        $validator->after(function ($validator) use ($request): void {
+            foreach ($request->service_charges ?? [] as $index => $chargeData) {
+                $upper = $chargeData['upper_bound'] ?? null;
+                $lower = $chargeData['lower_bound'] ?? null;
+                if ($upper !== null && $upper !== '' && $lower !== null && $lower !== '') {
+                    if ((float) $upper <= (float) $lower) {
+                        $validator->errors()->add(
+                            "service_charges.{$index}.upper_bound",
+                            'Upper bound must be greater than lower bound.'
+                        );
+                    }
+                }
+
+                if (($chargeData['type'] ?? '') === 'percentage' && isset($chargeData['amount'])) {
+                    if ((float) $chargeData['amount'] > 100) {
+                        $validator->errors()->add(
+                            "service_charges.{$index}.amount",
+                            'Percentage cannot exceed 100%.'
+                        );
+                    }
+                }
+            }
+        });
+
+        if ($validator->fails()) {
+            return redirect()
+                ->route('settings.index', ['tab' => 'vendor-service-charges'])
+                ->withErrors($validator)
+                ->withInput();
+        }
+
+        $rows = $serviceCharges->normalizeTierRowsFromRequest($request->input('service_charges', []));
+        $serviceCharges->saveRecommendedDefaults($rows, (int) $user->id);
+
+        return redirect()
+            ->route('settings.index', ['tab' => 'vendor-service-charges'])
+            ->with('success', 'Defaults saved.');
     }
 
     /**

@@ -66,6 +66,19 @@ class ThirdPartyVendorServiceCharge extends Model
         return 'UGX '.number_format((float) $this->amount, 2);
     }
 
+    public function amountForSubtotal(float $subtotal): float
+    {
+        if ($this->type === 'fixed') {
+            return (float) $this->amount;
+        }
+
+        if ($this->type === 'percentage') {
+            return ($subtotal * (float) $this->amount) / 100;
+        }
+
+        return 0.0;
+    }
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);

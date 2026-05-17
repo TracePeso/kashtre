@@ -218,6 +218,8 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     Route::post('/settings/countries', [SettingsController::class, 'storeCountry'])->name('settings.countries.store');
     Route::put('/settings/countries/{country}', [SettingsController::class, 'updateCountry'])->name('settings.countries.update');
     Route::delete('/settings/countries/{country}', [SettingsController::class, 'destroyCountry'])->name('settings.countries.destroy');
+    Route::post('/settings/vendor-service-charge-defaults', [SettingsController::class, 'updateVendorServiceChargeDefaults'])
+        ->name('settings.vendor-service-charge-defaults.update');
 
     // Insurance Companies routes (redirect index to settings)
     Route::get('/insurance-companies', function() {
