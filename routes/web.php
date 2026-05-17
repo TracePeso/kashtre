@@ -411,6 +411,7 @@ Route::post('/invoices/generate-invoice-number', [InvoiceController::class, 'gen
 Route::post('/invoices/{invoice}/generate-quotation', [QuotationController::class, 'generateFromInvoice'])->name('invoices.generate-quotation');
 Route::get('/invoices/{invoice}/print', [InvoiceController::class, 'print'])->name('invoices.print');
 Route::get('/invoices/{invoice}/insurance-authorization', [InvoiceController::class, 'getInsuranceAuthorization'])->name('invoices.insurance-authorization');
+Route::post('/invoices/{invoice}/complete-insurance-service-delivery', [InvoiceController::class, 'completeInsuranceServiceDelivery'])->name('invoices.complete-insurance-service-delivery');
 Route::patch('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])->name('invoices.cancel');
 Route::resource('invoices', InvoiceController::class);
 

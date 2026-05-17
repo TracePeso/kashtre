@@ -48,6 +48,7 @@
                 <div class="bg-slate-50 border border-slate-200 rounded-lg shadow-sm mb-6 p-4">
                     <h3 class="text-sm font-semibold text-slate-800 mb-2">Insurer cascade trace (labeled portions)</h3>
                     <p class="text-xs text-slate-600 mb-3">Each letter matches the order amounts were submitted to primary (A), secondary (B), tertiary (C), and so on. These invoices are for follow-up only; the primary invoice above is unchanged.</p>
+                    @php $traceSum = $invoice->vendorPortionInvoices->sum('total_amount'); @endphp
                     <ul class="space-y-2 text-sm">
                         @foreach($invoice->vendorPortionInvoices as $portion)
                             <li class="flex flex-wrap items-center justify-between gap-2">
@@ -60,6 +61,10 @@
                             </li>
                         @endforeach
                     </ul>
+                    <p class="flex justify-between gap-2 mt-2 pt-2 border-t border-slate-200 text-sm font-medium text-slate-800">
+                        <span>Trace total</span>
+                        <span class="font-mono">UGX {{ number_format($traceSum, 2) }}</span>
+                    </p>
                 </div>
             @endif
             <!-- Invoice Header -->
@@ -335,8 +340,8 @@
                                             <tr class="bg-gray-50 text-left text-gray-600">
                                                 <th class="px-2 py-1 font-medium">Item</th>
                                                 <th class="px-2 py-1 text-right font-medium">Qty</th>
-                                                <th class="px-2 py-1 text-right font-medium">Line</th>
-                                                <th class="px-2 py-1 font-medium">Insurer</th>
+                                                <th class="px-2 py-1 text-right font-medium">Amount</th>
+                                                <th class="px-2 py-1 font-medium">Paid by</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -349,8 +354,37 @@
                                                         @endif
                                                     </td>
                                                     <td class="px-2 py-1 text-right text-gray-600">{{ $lineRow['quantity'] ?? '' }}</td>
-                                                    <td class="px-2 py-1 text-right text-gray-900">UGX {{ $fmtDecimal($lineRow['line_total'] ?? 0) }}</td>
-                                                    <td class="px-2 py-1 text-gray-800">{{ $lineRow['attribution_label'] ?? ($lineRow['primary_insurer'] ?? 'Client') }}</td>
+                                                    <td class="px-2 py-1 text-right text-gray-900">
+                                                        UGX {{ $fmtDecimal($lineRow['line_total'] ?? 0) }}
+                                                    </td>
+                                                    <td class="px-2 py-1 text-gray-800">
+                                                        @if(!empty($lineRow['secondary_insurer']) && (float) ($lineRow['secondary_covered_amount'] ?? 0) > 0.001)
+                                                            @php
+                                                                $primaryPay = (float) ($lineRow['covered_amount'] ?? 0);
+                                                                if ($primaryPay <= 0.001) {
+                                                                    $primaryPay = max(0, (float) ($lineRow['line_total'] ?? 0) - (float) $lineRow['secondary_covered_amount']);
+                                                                }
+                                                                $pct = isset($lineRow['coverage_percent']) ? (float) $lineRow['coverage_percent'] : null;
+                                                            @endphp
+                                                            <div class="space-y-0.5 leading-snug">
+                                                                <div>
+                                                                    {{ $lineRow['primary_insurer'] }}
+                                                                    @if($pct !== null && $pct > 0 && $pct < 100)
+                                                                        <span class="text-gray-400">({{ rtrim(rtrim(number_format($pct, 2, '.', ''), '0'), '.') }}%)</span>
+                                                                    @endif
+                                                                    : <span class="font-mono">UGX {{ $fmtDecimal($primaryPay) }}</span>
+                                                                </div>
+                                                                <div>{{ $lineRow['secondary_insurer'] }}: <span class="font-mono">UGX {{ $fmtDecimal($lineRow['secondary_covered_amount']) }}</span></div>
+                                                            </div>
+                                                        @elseif(!empty($lineRow['primary_insurer']) && (float) ($lineRow['covered_amount'] ?? 0) > 0.001 && (float) ($lineRow['client_portion'] ?? 0) > 0.001)
+                                                            <div class="space-y-0.5 leading-snug">
+                                                                <div>{{ $lineRow['primary_insurer'] }}: <span class="font-mono">UGX {{ $fmtDecimal($lineRow['covered_amount']) }}</span></div>
+                                                                <div class="text-gray-600">Client: <span class="font-mono">UGX {{ $fmtDecimal($lineRow['client_portion']) }}</span></div>
+                                                            </div>
+                                                        @else
+                                                            {{ $lineRow['attribution_label'] ?? ($lineRow['primary_insurer'] ?? 'Client') }}
+                                                        @endif
+                                                    </td>
                                                 </tr>
                                             @endforeach
                                         </tbody>
@@ -366,7 +400,8 @@
                         $snapTot = (float) ($authSnap['total_amount'] ?? $invoice->total_amount ?? 0);
                         $scVendorShares = [];
                         if ($snapSc > 0.001 && ! empty($authSnap['vendors']) && is_array($authSnap['vendors'])) {
-                            $eligibleV = [];
+                            $scHolder = null;
+                            $candidates = [];
                             foreach ($authSnap['vendors'] as $v) {
                                 if (! is_array($v)) {
                                     continue;
@@ -375,31 +410,17 @@
                                 if (in_array($st, ['failed', 'skipped'], true)) {
                                     continue;
                                 }
-                                $eligibleV[] = $v;
-                            }
-                            $wts = [];
-                            foreach ($eligibleV as $v) {
-                                $w = (float) ($v['insurance_total'] ?? 0);
-                                if ($w <= 0) {
-                                    $w = (float) ($v['amount_submitted'] ?? 0);
+                                if ((float) ($v['insurance_total'] ?? 0) <= 0.001) {
+                                    continue;
                                 }
-                                $wts[] = max(0.0, $w);
+                                $candidates[] = $v;
                             }
-                            $wSum = array_sum($wts);
-                            if ($wSum <= 0) {
-                                $wts = array_fill(0, count($eligibleV), 1.0);
-                                $wSum = count($eligibleV) > 0 ? (float) count($eligibleV) : 1.0;
+                            usort($candidates, fn ($a, $b) => ((float) ($a['priority'] ?? 999)) <=> ((float) ($b['priority'] ?? 999)));
+                            if ($candidates !== []) {
+                                $scHolder = $candidates[0];
                             }
-                            $acc = 0.0;
-                            $nv = count($eligibleV);
-                            foreach ($eligibleV as $idx => $v) {
-                                if ($idx === $nv - 1) {
-                                    $scVendorShares[] = ['v' => $v, 'amt' => round($snapSc - $acc, 2)];
-                                } else {
-                                    $part = round($snapSc * ($wts[$idx] / $wSum), 2);
-                                    $acc += $part;
-                                    $scVendorShares[] = ['v' => $v, 'amt' => $part];
-                                }
+                            if ($scHolder) {
+                                $scVendorShares[] = ['v' => $scHolder, 'amt' => round($snapSc, 2)];
                             }
                         }
                     @endphp
@@ -410,17 +431,14 @@
                                 <p class="flex justify-between gap-2"><span>Clinical subtotal</span><span class="font-mono">UGX {{ $fmtDecimal($snapSub) }}</span></p>
                             @endif
                             @if($snapSc > 0)
-                                <p class="flex justify-between gap-2 mt-1"><span>Service charge</span><span class="font-mono">UGX {{ $fmtDecimal($snapSc) }}</span></p>
                                 @if(count($scVendorShares))
-                                    <p class="text-gray-900 mt-1.5 font-medium leading-snug">
-                                        By insurer:
-                                        @foreach($scVendorShares as $si => $row)
-                                            {{ $row['v']['vendor_name'] ?? 'Insurer' }}@if(! empty($row['v']['portion_label'])) [{{ $row['v']['portion_label'] }}]@endif UGX {{ $fmtDecimal($row['amt']) }}@if($si < count($scVendorShares) - 1) · @endif
-                                        @endforeach
+                                    @php $scRow = $scVendorShares[0]; @endphp
+                                    <p class="flex justify-between gap-2 mt-1">
+                                        <span>Service charge — {{ $scRow['v']['vendor_name'] ?? 'Insurer' }}@if(! empty($scRow['v']['portion_label'])) [{{ $scRow['v']['portion_label'] }}]@endif</span>
+                                        <span class="font-mono">UGX {{ $fmtDecimal($scRow['amt']) }}</span>
                                     </p>
-                                    <p class="text-gray-500 mt-1 text-[10px] leading-snug">Proportional to each insurer’s authorized payment; rounded so the amounts sum to the service charge.</p>
                                 @else
-                                    <p class="text-gray-600 mt-1 text-[10px]">Included in the invoice total.</p>
+                                    <p class="flex justify-between gap-2 mt-1"><span>Service charge</span><span class="font-mono">UGX {{ $fmtDecimal($snapSc) }}</span></p>
                                 @endif
                             @endif
                             @if($snapTot > 0)
@@ -430,26 +448,12 @@
                     @endif
 
                     @if($isMultiVendor && !empty($authSnap['vendors']))
-                        <div class="mb-4 space-y-1 text-xs text-gray-700">
+                        <p class="mb-4 text-xs text-gray-700 leading-snug">
                             @foreach($authSnap['vendors'] as $vendorIdx => $vendor)
-                                @php
-                                    $vendorAmountSubmitted = (float) ($vendor['amount_submitted'] ?? 0);
-                                    $vendorInsuranceAmount = (float) ($vendor['insurance_total'] ?? 0);
-                                    $clientAlloc = (float) ($vendor['client_portion_allocated'] ?? 0);
-                                @endphp
-                                <p>
-                                    @if(!empty($vendor['portion_label']))
-                                        <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-bold text-gray-700 mr-1 align-middle" title="Cascade portion label">{{ $vendor['portion_label'] }}</span>
-                                    @endif
-                                    <span class="font-medium text-gray-900">{{ $vendor['vendor_name'] ?? 'Vendor '.($vendorIdx + 1) }}</span>
-                                    — pays UGX {{ $fmtDecimal($vendorInsuranceAmount) }}, submitted UGX {{ $fmtDecimal($vendorAmountSubmitted) }}
-                                    @if($clientAlloc > 0.01)
-                                        , client alloc. UGX {{ $fmtDecimal($clientAlloc) }}
-                                    @endif
-                                    <span class="text-gray-500">({{ ucfirst($vendor['authorization_status'] ?? 'unknown') }})</span>
-                                </p>
+                                @php $vendorInsuranceAmount = (float) ($vendor['insurance_total'] ?? 0); @endphp
+                                <span class="font-medium text-gray-900">{{ $vendor['vendor_name'] ?? 'Vendor '.($vendorIdx + 1) }}</span>@if(!empty($vendor['portion_label'])) [{{ $vendor['portion_label'] }}]@endif: UGX {{ $fmtDecimal($vendorInsuranceAmount) }}@if(!$loop->last) · @endif
                             @endforeach
-                        </div>
+                        </p>
                     @endif
 
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm border-t pt-4">

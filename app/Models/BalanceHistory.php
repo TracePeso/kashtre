@@ -154,6 +154,18 @@ class BalanceHistory extends Model
         $parsed = self::parseInsuranceStatementDescriptionLine((string) $this->description);
 
         if ($invoice && is_array($invoice->insurance_authorization_snapshot)) {
+            $cascadeLine = self::findCascadeLineItemForStatement(
+                $invoice->insurance_authorization_snapshot,
+                $invoice,
+                $parsed
+            );
+            if ($cascadeLine !== null) {
+                $splitLabel = self::formatSplitInsuranceBracketLabel($cascadeLine);
+                if ($splitLabel !== null) {
+                    return $splitLabel;
+                }
+            }
+
             $fromSnap = self::resolveInsuranceVendorNameFromSnapshotForLine(
                 $invoice->insurance_authorization_snapshot,
                 $invoice,
@@ -254,6 +266,10 @@ class BalanceHistory extends Model
                 continue;
             }
 
+            if (($ex['reason_scope'] ?? '') === 'partial_coverage') {
+                continue;
+            }
+
             $exItemId = $ex['item_id'] ?? $ex['kashtre_item_id'] ?? null;
             $invItemId = $invoiceItem['id'] ?? $invoiceItem['item_id'] ?? null;
             if ($exItemId !== null && $invItemId !== null && (string) $exItemId === (string) $invItemId) {
@@ -321,8 +337,143 @@ class BalanceHistory extends Model
         return $best ?? self::firstEligibleVendorName($sorted);
     }
 
+    /**
+     * Match authorization cascade_line_items row for a statement line (item name or service fee).
+     *
+     * @return array<string, mixed>|null
+     */
+    private static function findCascadeLineItemForStatement(array $snap, Invoice $invoice, ?array $parsedLine): ?array
+    {
+        if ($parsedLine === null) {
+            return null;
+        }
+
+        if (($parsedLine['is_service_fee'] ?? false) === true) {
+            $scVendor = trim((string) ($snap['service_charge_vendor_name'] ?? ''));
+            if ($scVendor !== '') {
+                return ['primary_insurer' => $scVendor, 'is_service_fee' => true];
+            }
+
+            return null;
+        }
+
+        $cascadeLines = $snap['cascade_line_items'] ?? null;
+        if (! is_array($cascadeLines) || $cascadeLines === []) {
+            return null;
+        }
+
+        $targetName = mb_strtolower(trim((string) ($parsedLine['name'] ?? '')));
+        if ($targetName === '') {
+            return null;
+        }
+
+        $invoiceItem = self::findInvoiceItemRowByDisplayName($invoice, (string) ($parsedLine['name'] ?? ''));
+        $itemCode = $invoiceItem ? trim((string) ($invoiceItem['code'] ?? '')) : '';
+
+        foreach ($cascadeLines as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            $lineName = mb_strtolower(trim((string) ($line['name'] ?? '')));
+            $lineCode = trim((string) ($line['code'] ?? ''));
+
+            $matches = ($targetName !== '' && $lineName !== '' && $targetName === $lineName)
+                || ($itemCode !== '' && $lineCode !== '' && strcasecmp($itemCode, $lineCode) === 0);
+
+            if ($matches) {
+                return $line;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Bracket label for partial-coverage lines split across two insurers.
+     */
+    private static function formatSplitInsuranceBracketLabel(array $cascadeLine): ?string
+    {
+        $primary = trim((string) ($cascadeLine['primary_insurer'] ?? ''));
+        $secondary = trim((string) ($cascadeLine['secondary_insurer'] ?? ''));
+        $secondaryAmt = (float) ($cascadeLine['secondary_covered_amount'] ?? 0);
+
+        if ($secondary === '' || $secondaryAmt <= 0.001 || $primary === '') {
+            return null;
+        }
+
+        $primaryAmt = (float) ($cascadeLine['covered_amount'] ?? 0);
+        if ($primaryAmt <= 0.001) {
+            $lineTotal = (float) ($cascadeLine['line_total'] ?? 0);
+            $primaryAmt = max(0, round($lineTotal - $secondaryAmt, 2));
+        }
+
+        $pct = isset($cascadeLine['coverage_percent']) ? (float) $cascadeLine['coverage_percent'] : null;
+        $pctSuffix = $pct !== null && $pct > 0 && $pct < 100
+            ? ' ('.rtrim(rtrim(number_format($pct, 2, '.', ''), '0'), '.').'%)'
+            : '';
+
+        $fmt = static fn (float $n) => number_format($n, 2);
+
+        return $primary.$pctSuffix.' UGX '.$fmt($primaryAmt).' · '.$secondary.' UGX '.$fmt($secondaryAmt);
+    }
+
+    /**
+     * Per-insurer shares for balance statement rows when a line is split (e.g. 50% + 50% cascade).
+     *
+     * @param  array<string, mixed>  $itemData
+     * @return array<int, array{insurer: string, amount: float}>
+     */
+    public static function insurancePayerSplitsForInvoiceItem(Invoice $invoice, string $itemDisplayName, array $itemData): array
+    {
+        $snap = $invoice->insurance_authorization_snapshot;
+        if (! is_array($snap)) {
+            return [];
+        }
+
+        $parsed = ['name' => $itemDisplayName, 'is_service_fee' => false];
+        $cascadeLine = self::findCascadeLineItemForStatement($snap, $invoice, $parsed);
+        if ($cascadeLine === null) {
+            return [];
+        }
+
+        $secondary = trim((string) ($cascadeLine['secondary_insurer'] ?? ''));
+        $secondaryAmt = (float) ($cascadeLine['secondary_covered_amount'] ?? 0);
+        if ($secondary === '' || $secondaryAmt <= 0.001) {
+            return [];
+        }
+
+        $primary = trim((string) ($cascadeLine['primary_insurer'] ?? ''));
+        if ($primary === '') {
+            return [];
+        }
+
+        $primaryAmt = (float) ($cascadeLine['covered_amount'] ?? 0);
+        if ($primaryAmt <= 0.001) {
+            $total = (float) ($itemData['total_amount'] ?? 0);
+            $primaryAmt = max(0, round($total - $secondaryAmt, 2));
+        }
+
+        return [
+            ['insurer' => $primary, 'amount' => round($primaryAmt, 2)],
+            ['insurer' => $secondary, 'amount' => round($secondaryAmt, 2)],
+        ];
+    }
+
     private static function resolveInsuranceVendorNameFromSnapshotForLine(array $snap, Invoice $invoice, ?array $parsedLine): ?string
     {
+        $cascadeLine = self::findCascadeLineItemForStatement($snap, $invoice, $parsedLine);
+        if ($cascadeLine !== null) {
+            $splitLabel = self::formatSplitInsuranceBracketLabel($cascadeLine);
+            if ($splitLabel !== null) {
+                return $splitLabel;
+            }
+
+            $primary = trim((string) ($cascadeLine['primary_insurer'] ?? $cascadeLine['attribution_label'] ?? ''));
+            if ($primary !== '') {
+                return $primary;
+            }
+        }
+
         $multiRows = null;
         if (! empty($snap['multi_vendor']) && ! empty($snap['vendors']) && is_array($snap['vendors'])) {
             $multiRows = $snap['vendors'];
@@ -336,6 +487,11 @@ class BalanceHistory extends Model
 
             $isServiceFee = ($parsedLine['is_service_fee'] ?? false) === true;
             if ($isServiceFee) {
+                $scVendor = trim((string) ($snap['service_charge_vendor_name'] ?? ''));
+                if ($scVendor !== '') {
+                    return $scVendor;
+                }
+
                 return self::pickHighestInsuranceVendorName($sorted);
             }
 

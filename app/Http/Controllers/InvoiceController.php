@@ -1659,9 +1659,19 @@ class InvoiceController extends Controller
             $paymentMethods = $validated['payment_methods'] ?? [];
             $isInsurancePaymentMethod = in_array('insurance', $paymentMethods);
 
+            // Insurance authorization runs after commit; queue only after POS user confirms (Continue).
+            $hasActiveInsuranceVendors = \App\Models\ClientVendor::where('client_id', $client->id)
+                ->where('status', 'active')
+                ->exists();
+            $willRequestInsuranceAuthorization = $hasActiveInsuranceVendors
+                || ($client->insurance_company_id && trim((string) ($client->policy_number ?? '')) !== '');
+            $deferInsuranceServiceQueue = $willRequestInsuranceAuthorization && $nonDepositItems->isNotEmpty();
+
             // Check if payment is fully completed (for cash payments)
             $isFullyPaid = ($validated['amount_paid'] ?? 0) >= $invoice->total_amount && $invoice->payment_status === 'paid';
             $isCashPayment = in_array('cash', $paymentMethods) && ! $isCreditTransaction && ! $isInsurancePaymentMethod;
+
+            $shouldQueueInsuranceNow = ($isInsuranceTransaction || $isInsurancePaymentMethod) && ! $deferInsuranceServiceQueue;
 
             // Queue items immediately for credit clients (they're approved for credit, items should be offered)
             Log::info('=== STEP 15: CHECKING IF ITEMS SHOULD BE QUEUED ===', [
@@ -1669,6 +1679,8 @@ class InvoiceController extends Controller
                 'is_credit_transaction' => $isCreditTransaction,
                 'is_insurance_transaction' => $isInsuranceTransaction,
                 'is_insurance_payment_method' => $isInsurancePaymentMethod,
+                'defer_insurance_service_queue' => $deferInsuranceServiceQueue,
+                'should_queue_insurance_now' => $shouldQueueInsuranceNow,
                 'is_fully_paid' => $isFullyPaid,
                 'is_cash_payment' => $isCashPayment,
                 'non_deposit_items_empty' => $nonDepositItems->isEmpty(),
@@ -1682,17 +1694,17 @@ class InvoiceController extends Controller
 
             // Queue items for:
             // 1. Credit clients (approved to receive services on credit)
-            // 2. Insurance transactions (queue immediately so service points see client/items)
+            // 2. Insurance transactions (after POS confirms authorization — see completeInsuranceServiceDelivery)
             // 3. Fully paid cash transactions (payment complete)
             $shouldQueueItems = (
                 $isCreditTransaction ||
-                $isInsurancePaymentMethod ||
+                $shouldQueueInsuranceNow ||
                 ($isFullyPaid && $isCashPayment)
             ) && $nonDepositItems->isNotEmpty();
 
             if ($shouldQueueItems) {
                 // Determine transaction type for logging
-                if ($isInsuranceTransaction || $isInsurancePaymentMethod) {
+                if ($shouldQueueInsuranceNow && ($isInsuranceTransaction || $isInsurancePaymentMethod)) {
                     $transactionType = 'INSURANCE';
                 } elseif ($isCreditTransaction) {
                     $transactionType = 'CREDIT';
@@ -2060,6 +2072,9 @@ class InvoiceController extends Controller
                 'invoice' => $invoice,
                 'next_invoice_number' => $nextInvoiceNumber,
             ];
+            if ($deferInsuranceServiceQueue) {
+                $responseData['service_queue_deferred'] = true;
+            }
             if ($insuranceAuthorization && ! empty($insuranceAuthorization['success'])) {
                 $authStatus = $insuranceAuthorization['authorization_status'] ?? 'auto_approved';
 
@@ -3640,6 +3655,8 @@ class InvoiceController extends Controller
             }
         }
 
+        $this->repairVendorPortionTraceInvoicesIfNeeded($invoice);
+
         // Load the invoice with quotations relationship
         $invoice->load(['quotations', 'vendorPortionInvoices', 'parentInvoice']);
 
@@ -3702,6 +3719,100 @@ class InvoiceController extends Controller
     /**
      * Get insurance authorization details for an invoice (for Refresh on collect-client-portion modal).
      */
+    /**
+     * Queue invoice line items at service points after the POS user confirms insurance authorization.
+     */
+    public function completeInsuranceServiceDelivery(Invoice $invoice)
+    {
+        $user = Auth::user();
+        if ($user->business_id !== 1 && $invoice->business_id !== $user->business_id) {
+            abort(403, 'Unauthorized access to invoice.');
+        }
+
+        $invoice->load('client');
+        $client = $invoice->client;
+        if (! $client) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Client not found for this invoice.',
+            ], 422);
+        }
+
+        $existingCount = \App\Models\ServiceDeliveryQueue::where('invoice_id', $invoice->id)->count();
+        if ($existingCount > 0) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Service items are already queued for this invoice.',
+                'already_queued' => true,
+            ]);
+        }
+
+        $nonDepositItems = collect($invoice->items ?? [])->filter(function ($item) {
+            $name = \Illuminate\Support\Str::lower(trim((string) ($item['displayName'] ?? $item['name'] ?? $item['item_name'] ?? '')));
+
+            return $name !== 'deposit';
+        })->values();
+
+        if ($nonDepositItems->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No items to queue on this invoice.',
+            ], 422);
+        }
+
+        $hasInsuranceContext = is_array($invoice->insurance_authorization_snapshot)
+            || \App\Models\ClientVendor::where('client_id', $client->id)->where('status', 'active')->exists()
+            || $client->insurance_company_id;
+
+        if (! $hasInsuranceContext) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This invoice is not part of an insurance authorization flow.',
+            ], 422);
+        }
+
+        $insuranceCompanyId = $client->insurance_company_id;
+        if (! $insuranceCompanyId) {
+            $thirdPartyPayer = \App\Models\ThirdPartyPayer::where('business_id', $invoice->business_id)
+                ->where('client_id', $client->id)
+                ->where('type', 'insurance_company')
+                ->where('status', 'active')
+                ->first();
+            $insuranceCompanyId = $thirdPartyPayer?->insurance_company_id;
+        }
+
+        try {
+            $moneyTrackingService = new \App\Services\MoneyTrackingService();
+
+            DB::transaction(function () use ($invoice, $nonDepositItems, $insuranceCompanyId, $moneyTrackingService) {
+                $this->queueItemsAtServicePoints($invoice, $nonDepositItems->toArray(), $insuranceCompanyId);
+                $moneyTrackingService->processSuspenseAccountMovements($invoice, $nonDepositItems->toArray());
+            });
+
+            Log::info('[Kashtre] Insurance service delivery queued after POS confirmation', [
+                'invoice_id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'items_queued' => $nonDepositItems->count(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Items queued at service points.',
+                'queued_count' => \App\Models\ServiceDeliveryQueue::where('invoice_id', $invoice->id)->count(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('[Kashtre] completeInsuranceServiceDelivery failed', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not queue items: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function getInsuranceAuthorization(Invoice $invoice)
     {
         $user = Auth::user();
@@ -4854,28 +4965,114 @@ class InvoiceController extends Controller
             }
 
             $primaryName = null;
-            foreach ($eligible as $v) {
+            $primaryVendor = null;
+            $primaryIdx = null;
+            foreach ($eligible as $idx => $v) {
                 $breakdown = is_array($v['breakdown'] ?? null) ? $v['breakdown'] : [];
                 $excludedItems = is_array($breakdown['excluded_items'] ?? null) ? $breakdown['excluded_items'] : [];
                 if (BalanceHistory::invoiceRowExcludedByInsuranceBreakdown($item, $excludedItems)) {
                     continue;
                 }
                 $primaryName = trim((string) ($v['vendor_name'] ?? ''));
+                $primaryVendor = $v;
+                $primaryIdx = $idx;
                 break;
             }
 
-            $rows[] = [
+            $partialMeta = $primaryVendor
+                ? $this->partialCoverageMetaForInvoiceItem($item, $primaryVendor)
+                : null;
+
+            $secondaryName = null;
+            $secondaryCoversCascade = false;
+            if ($primaryIdx !== null && $partialMeta && ($partialMeta['client_portion'] ?? 0) > 0.001) {
+                for ($j = $primaryIdx + 1; $j < count($eligible); $j++) {
+                    $secondary = $eligible[$j];
+                    $secBreakdown = is_array($secondary['breakdown'] ?? null) ? $secondary['breakdown'] : [];
+                    $secExcluded = is_array($secBreakdown['excluded_items'] ?? null) ? $secBreakdown['excluded_items'] : [];
+                    if (BalanceHistory::invoiceRowExcludedByInsuranceBreakdown($item, $secExcluded)) {
+                        continue;
+                    }
+                    $secStatus = (string) ($secondary['authorization_status'] ?? '');
+                    if (in_array($secStatus, ['failed', 'skipped'], true)) {
+                        continue;
+                    }
+                    $secondaryName = trim((string) ($secondary['vendor_name'] ?? ''));
+                    $secondaryCoversCascade = $secondaryName !== '';
+                    break;
+                }
+            }
+
+            $attributionLabel = ($primaryName !== null && $primaryName !== '') ? $primaryName : 'Client';
+            $clientPortion = $partialMeta ? (float) ($partialMeta['client_portion'] ?? 0) : 0.0;
+            if ($secondaryCoversCascade && $secondaryName !== '') {
+                $attributionLabel = $primaryName.' · '.$secondaryName;
+                $clientPortion = 0.0;
+            } elseif ($partialMeta && ($partialMeta['coverage_percent'] ?? 100) < 100) {
+                $attributionLabel = $primaryName;
+            }
+
+            $row = [
                 'item_id' => $itemId,
                 'name' => $name,
                 'code' => $item['code'] ?? null,
                 'quantity' => $qty,
                 'line_total' => round($lineTotal, 2),
                 'primary_insurer' => $primaryName !== '' ? $primaryName : null,
-                'attribution_label' => ($primaryName !== null && $primaryName !== '') ? $primaryName : 'Client',
+                'secondary_insurer' => $secondaryCoversCascade ? $secondaryName : null,
+                'attribution_label' => $attributionLabel,
             ];
+
+            if ($partialMeta) {
+                $row['coverage_percent'] = $partialMeta['coverage_percent'];
+                $row['covered_amount'] = $partialMeta['covered_amount'];
+                $row['client_portion'] = round((float) $clientPortion, 2);
+                if ($secondaryCoversCascade) {
+                    $row['secondary_covered_amount'] = round((float) ($partialMeta['client_portion'] ?? 0), 2);
+                }
+            }
+
+            $rows[] = $row;
         }
 
         return $rows;
+    }
+
+    /**
+     * @param  array<string, mixed>  $invoiceItem
+     * @param  array<string, mixed>  $vendorRow
+     * @return array{coverage_percent: float, covered_amount: float, client_portion: float}|null
+     */
+    private function partialCoverageMetaForInvoiceItem(array $invoiceItem, array $vendorRow): ?array
+    {
+        $breakdown = is_array($vendorRow['breakdown'] ?? null) ? $vendorRow['breakdown'] : [];
+        $excludedItems = is_array($breakdown['excluded_items'] ?? null) ? $breakdown['excluded_items'] : [];
+        $itemCode = trim((string) ($invoiceItem['code'] ?? ''));
+        $itemName = mb_strtolower(trim((string) ($invoiceItem['name'] ?? $invoiceItem['displayName'] ?? '')));
+
+        foreach ($excludedItems as $ex) {
+            if (! is_array($ex) || ($ex['reason_scope'] ?? '') !== 'partial_coverage') {
+                continue;
+            }
+
+            $exCode = trim((string) ($ex['code'] ?? ''));
+            $exName = mb_strtolower(trim((string) ($ex['name'] ?? '')));
+
+            $matches = ($itemCode !== '' && $exCode !== '' && strcasecmp($itemCode, $exCode) === 0)
+                || ($itemName !== '' && $exName !== '' && $itemName === $exName);
+
+            if (! $matches) {
+                continue;
+            }
+
+            return [
+                'coverage_percent' => (float) ($ex['coverage_percent'] ?? 100),
+                'covered_amount' => round((float) ($ex['covered_amount'] ?? 0), 2),
+                'client_portion' => round((float) ($ex['amount'] ?? 0), 2),
+            ];
+        }
+
+        return null;
     }
 
     /**
@@ -4885,6 +5082,49 @@ class InvoiceController extends Controller
      * @param  array<string, mixed>  $snapshot
      * @return array<string, mixed>
      */
+    /**
+     * Recreate trace child invoices when their totals no longer match the parent (e.g. after SC trace fix).
+     */
+    private function repairVendorPortionTraceInvoicesIfNeeded(Invoice $invoice): void
+    {
+        if ($invoice->parent_invoice_id) {
+            return;
+        }
+
+        $snapshot = $invoice->insurance_authorization_snapshot;
+        if (! is_array($snapshot) || empty($snapshot['multi_vendor']) || empty($snapshot['vendors'])) {
+            return;
+        }
+
+        $invoice->loadMissing('vendorPortionInvoices');
+        if ($invoice->vendorPortionInvoices->isEmpty()) {
+            return;
+        }
+
+        $traceSum = round((float) $invoice->vendorPortionInvoices->sum('total_amount'), 2);
+        $parentTotal = round((float) $invoice->total_amount, 2);
+
+        if (abs($traceSum - $parentTotal) <= 0.02) {
+            return;
+        }
+
+        try {
+            $snapshot = $this->syncVendorPortionTraceInvoices($invoice, $snapshot);
+            $invoice->update(['insurance_authorization_snapshot' => $snapshot]);
+            $invoice->unsetRelation('vendorPortionInvoices');
+            Log::info('[Kashtre] Repaired vendor portion trace invoices to match parent total', [
+                'invoice_id' => $invoice->id,
+                'parent_total' => $parentTotal,
+                'previous_trace_sum' => $traceSum,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('[Kashtre] Vendor portion trace repair failed', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     private function syncVendorPortionTraceInvoices(Invoice $parent, array $snapshot): array
     {
         if (empty($snapshot['multi_vendor']) || empty($snapshot['vendors']) || ! is_array($snapshot['vendors'])) {
@@ -4917,8 +5157,10 @@ class InvoiceController extends Controller
             return $snapshot;
         }
 
+        $serviceChargeVendorIdx = $this->resolveServiceChargeVendorIndex($snapshot['vendors'] ?? []);
+
         try {
-            DB::transaction(function () use ($parent, &$snapshot, $metaRows) {
+            DB::transaction(function () use ($parent, &$snapshot, $metaRows, $serviceChargeVendorIdx) {
                 Invoice::where('parent_invoice_id', $parent->id)->delete();
 
                 foreach ($metaRows as $order => $meta) {
@@ -4926,6 +5168,9 @@ class InvoiceController extends Controller
                     $vendorRow = $meta['row'];
                     $idx = $meta['idx'];
                     $priorityInt = (int) round((float) ($vendorRow['priority'] ?? ($order + 1)));
+
+                    $vendorRow['receives_service_charge'] = $serviceChargeVendorIdx !== null && $serviceChargeVendorIdx === $idx;
+                    $snapshot['vendors'][$idx]['receives_service_charge'] = $vendorRow['receives_service_charge'];
 
                     $child = $this->createVendorPortionTraceInvoice($parent, $vendorRow, $letter, $priorityInt);
 
@@ -4949,19 +5194,14 @@ class InvoiceController extends Controller
     private function createVendorPortionTraceInvoice(Invoice $parent, array $vendorRow, string $letter, int $cascadePriority): Invoice
     {
         $parent->refresh();
-        $amountSubmitted = round(max(0.0, (float) ($vendorRow['amount_submitted'] ?? 0)), 2);
-        $parentTotal = (float) ($parent->total_amount ?? 0);
-        $ratio = $parentTotal > 0 ? min(1.0, $amountSubmitted / $parentTotal) : 0.0;
-        $portionSubtotal = round((float) ($parent->subtotal ?? 0) * $ratio, 2);
-        $portionSc = round($amountSubmitted - $portionSubtotal, 2);
-        if ($portionSc < 0) {
-            $portionSc = 0.0;
-            $portionSubtotal = $amountSubmitted;
-        }
+        $insuranceTotal = round((float) ($vendorRow['insurance_total'] ?? 0), 2);
+        // Trace copy total = this insurer's authorized share only (A + B must sum to parent invoice total).
+        $portionSubtotal = $insuranceTotal;
+        $portionSc = 0.0;
+        $amountSubmitted = $insuranceTotal;
 
         $invoiceNumber = Invoice::generateInvoiceNumber((int) $parent->business_id, 'proforma');
 
-        $insuranceTotal = round((float) ($vendorRow['insurance_total'] ?? 0), 2);
         $clientTotal = round((float) ($vendorRow['client_total'] ?? 0), 2);
 
         $portionSnap = [
@@ -5058,7 +5298,49 @@ class InvoiceController extends Controller
         $snapshot['service_charge'] = round((float) ($invoice->service_charge ?? 0), 2);
         $snapshot['total_amount'] = round((float) ($invoice->total_amount ?? 0), 2);
 
+        if (! empty($snapshot['multi_vendor']) && ! empty($snapshot['vendors']) && is_array($snapshot['vendors'])) {
+            $scIdx = $this->resolveServiceChargeVendorIndex($snapshot['vendors']);
+            if ($scIdx !== null) {
+                $snapshot['service_charge_vendor_index'] = $scIdx;
+                $snapshot['service_charge_vendor_name'] = $snapshot['vendors'][$scIdx]['vendor_name'] ?? null;
+            }
+        }
+
         return $snapshot;
+    }
+
+    /**
+     * Clinic service charge is attributed to one insurer only (first in priority with an insurance share).
+     *
+     * @param  array<int, array<string, mixed>>  $vendors
+     */
+    private function resolveServiceChargeVendorIndex(array $vendors): ?int
+    {
+        $candidates = [];
+        foreach ($vendors as $idx => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $status = (string) ($row['authorization_status'] ?? '');
+            if (in_array($status, ['failed', 'skipped'], true)) {
+                continue;
+            }
+            if ((float) ($row['insurance_total'] ?? 0) <= 0.001) {
+                continue;
+            }
+            $candidates[] = [
+                'idx' => $idx,
+                'priority' => (float) ($row['priority'] ?? 999),
+            ];
+        }
+
+        if ($candidates === []) {
+            return null;
+        }
+
+        usort($candidates, fn ($a, $b) => $a['priority'] <=> $b['priority']);
+
+        return $candidates[0]['idx'];
     }
 
     /**

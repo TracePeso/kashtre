@@ -19,6 +19,7 @@ use App\Models\ContractorBalanceHistory;
 use App\Models\PaymentMethodAccount;
 use App\Models\ServiceChargeMaturationPeriod;
 use App\Models\MaturationPeriod;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -902,6 +903,55 @@ class MoneyTrackingService
                 $itemDisplayName = $item->name;
                 $debitRecord = null;
                 if ($isInsuranceInvoice) {
+                    $payerSplits = BalanceHistory::insurancePayerSplitsForInvoiceItem($invoice, $itemDisplayName, $itemData);
+
+                    if (count($payerSplits) > 1) {
+                        foreach ($payerSplits as $split) {
+                            $currentBalance = BalanceHistory::where('client_id', $client->id)
+                                ->orderBy('created_at', 'desc')
+                                ->value('new_balance') ?? 0;
+
+                            $splitAmount = (float) $split['amount'];
+                            $splitInsurer = (string) $split['insurer'];
+                            $splitNotes = "{$itemDisplayName} (x{$quantity}) - Invoice #{$invoice->invoice_number} - Paid by {$splitInsurer}";
+
+                            $splitRecord = BalanceHistory::create([
+                                'client_id' => $client->id,
+                                'business_id' => $business->id,
+                                'branch_id' => $client->branch_id,
+                                'invoice_id' => $invoice->id,
+                                'user_id' => auth()->id() ?? 1,
+                                'transaction_type' => 'debit',
+                                'payment_method' => 'insurance',
+                                'description' => "{$itemDisplayName} (x{$quantity}) [Insurance]",
+                                'previous_balance' => $currentBalance,
+                                'change_amount' => $splitAmount,
+                                'new_balance' => $currentBalance,
+                                'reference_number' => $invoice->invoice_number,
+                                'notes' => $splitNotes,
+                                'payment_status' => 'Paid',
+                            ]);
+
+                            $debitRecords[] = [
+                                'item_name' => $item->name,
+                                'quantity' => $quantity,
+                                'amount' => $splitAmount,
+                                'type' => 'item_payment',
+                                'status' => 'completed',
+                                'balance_history_id' => $splitRecord->id ?? null,
+                                'insurer' => $splitInsurer,
+                            ];
+                        }
+
+                        Log::info('Balance statement created for split insurance item', [
+                            'invoice_id' => $invoice->id,
+                            'item_name' => $item->name,
+                            'splits' => $payerSplits,
+                        ]);
+
+                        continue;
+                    }
+
                     $currentBalance = BalanceHistory::where('client_id', $client->id)
                         ->orderBy('created_at', 'desc')
                         ->value('new_balance') ?? 0;
@@ -995,7 +1045,14 @@ class MoneyTrackingService
                         ->orderBy('created_at', 'desc')
                         ->value('new_balance') ?? 0;
 
-                    $scNotes = "Service Fee - Invoice #{$invoice->invoice_number} - Paid by {$insuranceCounterpartyLabelForNotes}";
+                    $scPayerLabel = $insuranceCounterpartyLabelForNotes;
+                    if (is_array($authSnapshot)) {
+                        $scFromSnap = trim((string) ($authSnapshot['service_charge_vendor_name'] ?? ''));
+                        if ($scFromSnap !== '') {
+                            $scPayerLabel = $scFromSnap;
+                        }
+                    }
+                    $scNotes = "Service Fee - Invoice #{$invoice->invoice_number} - Paid by {$scPayerLabel}";
 
                     $serviceChargeRecord = BalanceHistory::create([
                         'client_id' => $client->id,
@@ -1884,11 +1941,7 @@ class MoneyTrackingService
      */
     private function resolveInvoicePaymentMethodForServiceChargeMaturation(Invoice $invoice): ?string
     {
-        $methods = $invoice->payment_methods ?? [];
-        if (is_string($methods)) {
-            $methods = json_decode($methods, true) ?? [];
-        }
-        $methods = array_values(array_unique(array_filter((array) $methods)));
+        $methods = $this->normalizedInvoicePaymentMethodStrings($invoice);
 
         if ($methods === []) {
             return null;
@@ -1902,6 +1955,193 @@ class MoneyTrackingService
         }
 
         return $methods[0];
+    }
+
+    /**
+     * Service charge maturation for an invoice (entity hold vs immediate Kashtre).
+     *
+     * @return array{days: int, payment_method: ?string, metadata: array<string, mixed>}
+     */
+    private function serviceChargeMaturationContext(Invoice $invoice): array
+    {
+        $method = $this->resolveInvoicePaymentMethodForServiceChargeMaturation($invoice);
+        if ($method === null) {
+            return ['days' => 0, 'payment_method' => null, 'metadata' => []];
+        }
+
+        $days = ServiceChargeMaturationPeriod::resolveMaturationDays((int) $invoice->business_id, $method);
+        if ($days <= 0) {
+            return ['days' => 0, 'payment_method' => $method, 'metadata' => []];
+        }
+
+        return [
+            'days' => $days,
+            'payment_method' => $method,
+            'metadata' => [
+                'service_charge_maturation_days' => $days,
+                'service_charge_matures_at' => now()->addDays($days)->toIso8601String(),
+                'service_charge_maturation_payment_method' => $method,
+            ],
+        ];
+    }
+
+    private function isServiceFeeTransferDescription(string $description): bool
+    {
+        return str_contains($description, 'Service Fee Transfer');
+    }
+
+    /**
+     * Statement line only (account balance already updated by transferMoney).
+     */
+    private function recordBusinessStatementLineWithoutBalanceMutation(
+        int $businessId,
+        int $moneyAccountId,
+        float $amount,
+        string $type,
+        string $description,
+        ?string $referenceType,
+        ?int $referenceId,
+        array $metadata = [],
+        ?string $paymentStatus = 'paid',
+        ?string $paymentMethod = null
+    ): BusinessBalanceHistory {
+        $account = MoneyAccount::findOrFail($moneyAccountId);
+        $currentBalance = (float) $account->balance;
+        $previousBalance = $type === 'credit'
+            ? $currentBalance - $amount
+            : $currentBalance + $amount;
+
+        return BusinessBalanceHistory::create([
+            'business_id' => $businessId,
+            'money_account_id' => $moneyAccountId,
+            'previous_balance' => round($previousBalance, 2),
+            'amount' => round($amount, 2),
+            'new_balance' => round($currentBalance, 2),
+            'type' => $type,
+            'description' => $description,
+            'reference_type' => $referenceType,
+            'reference_id' => $referenceId,
+            'metadata' => $metadata,
+            'user_id' => auth()->id(),
+            'payment_status' => $paymentStatus,
+            'payment_method' => $paymentMethod,
+        ]);
+    }
+
+    /**
+     * Move matured service-charge holds from entity account to Kashtre (debit entity, credit Kashtre).
+     */
+    public function releaseMaturedServiceChargeHolds(?int $businessId = null): int
+    {
+        $released = 0;
+
+        $holds = BusinessBalanceHistory::query()
+            ->where('type', 'credit')
+            ->where('payment_status', 'pending_payment')
+            ->where('description', 'like', '%Service Fee Transfer%')
+            ->when($businessId !== null, fn ($q) => $q->where('business_id', $businessId))
+            ->orderBy('id')
+            ->get();
+
+        foreach ($holds as $hold) {
+            $metadata = is_array($hold->metadata) ? $hold->metadata : [];
+            if (! empty($metadata['service_charge_matured_released'])) {
+                continue;
+            }
+
+            $maturesAtRaw = $metadata['service_charge_matures_at'] ?? null;
+            if (! is_string($maturesAtRaw) || $maturesAtRaw === '') {
+                continue;
+            }
+
+            try {
+                if (Carbon::parse($maturesAtRaw)->isFuture()) {
+                    continue;
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+
+            $moneyAccount = MoneyAccount::find($hold->money_account_id);
+            if (! $moneyAccount || $moneyAccount->type !== 'business_account') {
+                continue;
+            }
+
+            $amount = round(abs((float) $hold->amount), 2);
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $invoiceId = (int) ($metadata['invoice_id'] ?? $hold->reference_id ?? 0);
+            $invoice = $invoiceId > 0 ? Invoice::find($invoiceId) : null;
+            $business = Business::find($hold->business_id);
+            if (! $business) {
+                continue;
+            }
+
+            $invoiceNumber = $invoice?->invoice_number ?? ($metadata['invoice_number'] ?? 'N/A');
+            $paymentMethod = $hold->payment_method ?? ($metadata['service_charge_maturation_payment_method'] ?? 'mobile_money');
+
+            try {
+                DB::transaction(function () use ($hold, $moneyAccount, $amount, $invoice, $business, $invoiceNumber, $paymentMethod, &$metadata) {
+                    $kashtreAccount = $this->getOrCreateKashtreAccount($business);
+
+                    $this->transferMoney(
+                        $moneyAccount,
+                        $kashtreAccount,
+                        $amount,
+                        'service_charge_maturation_release',
+                        $invoice,
+                        null,
+                        "Service Fee matured — Invoice {$invoiceNumber}",
+                        null,
+                        'debit'
+                    );
+
+                    $this->recordBusinessStatementLineWithoutBalanceMutation(
+                        (int) $hold->business_id,
+                        (int) $moneyAccount->id,
+                        $amount,
+                        'debit',
+                        "Service fee maturation release — Invoice {$invoiceNumber}",
+                        $invoice ? 'invoice' : 'BusinessBalanceHistory',
+                        $invoice ? $invoice->id : $hold->id,
+                        [
+                            'invoice_id' => $invoice?->id,
+                            'invoice_number' => $invoiceNumber,
+                            'hold_history_id' => $hold->id,
+                            'type' => 'service_charge_maturation_release',
+                        ],
+                        'paid',
+                        $paymentMethod
+                    );
+
+                    $metadata['service_charge_matured_released'] = true;
+                    $metadata['service_charge_released_at'] = now()->toIso8601String();
+                    $hold->update([
+                        'payment_status' => 'paid',
+                        'metadata' => $metadata,
+                    ]);
+                });
+
+                $released++;
+            } catch (\Throwable $e) {
+                Log::error('Failed to release matured service charge hold', [
+                    'hold_id' => $hold->id,
+                    'business_id' => $hold->business_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($released > 0) {
+            Log::info('Released matured service charge holds', [
+                'count' => $released,
+                'business_id' => $businessId,
+            ]);
+        }
+
+        return $released;
     }
 
     /**
@@ -2079,22 +2319,16 @@ class MoneyTrackingService
             $paymentMethod = 'mobile_money';
         }
 
-        // Kashtre service fee credits: pending until service-charge maturation period elapses
-        $maturationExtraMeta = [];
-        if ($toAccount->type === 'kashtre_account' && $invoice && str_contains((string) $description, 'Service Fee Transfer')) {
-            $matMethod = $this->resolveInvoicePaymentMethodForServiceChargeMaturation($invoice);
-            if ($matMethod !== null) {
-                $matDays = ServiceChargeMaturationPeriod::resolveMaturationDays((int) $invoice->business_id, $matMethod);
-                if ($matDays > 0) {
-                    $paymentStatus = 'pending_payment';
-                    $maturationExtraMeta = [
-                        'service_charge_maturation_days' => $matDays,
-                        'service_charge_matures_at' => now()->addDays($matDays)->toIso8601String(),
-                        'service_charge_maturation_payment_method' => $matMethod,
-                    ];
-                    if (in_array($matMethod, $futureValidMethods, true)) {
-                        $paymentMethod = $matMethod;
-                    }
+        // Service charge maturation: hold on entity (business) statement until period elapses, then release to Kashtre.
+        $serviceChargeMaturationMeta = [];
+        if ($invoice && $this->isServiceFeeTransferDescription((string) $description)) {
+            $scContext = $this->serviceChargeMaturationContext($invoice);
+            if ($scContext['days'] > 0 && in_array($toAccount->type, ['business_account', 'kashtre_account'], true)) {
+                $paymentStatus = 'pending_payment';
+                $serviceChargeMaturationMeta = $scContext['metadata'];
+                $matMethod = $scContext['payment_method'];
+                if ($matMethod !== null && in_array($matMethod, $futureValidMethods, true)) {
+                    $paymentMethod = $matMethod;
                 }
             }
         }
@@ -2110,20 +2344,20 @@ class MoneyTrackingService
                 $invoice ? 'invoice' : 'MoneyTransfer',
                 $invoice ? $invoice->id : $transfer->id,
                 array_merge([
-                    'from_account' => $fromAccount->name,
+                    'from_account' => $fromAccount?->name,
                     'to_account' => $toAccount->name,
                     'transfer_type' => $transferType,
                     'invoice_id' => $invoice ? $invoice->id : null,
-                    'invoice_number' => $invoice ? $invoice->invoice_number : null
-                ], $insuranceEntityMeta),
+                    'invoice_number' => $invoice ? $invoice->invoice_number : null,
+                ], $insuranceEntityMeta, $serviceChargeMaturationMeta),
                 auth()->id(),
                 $paymentStatus,
                 $paymentMethod
             );
         }
 
-        // Create BusinessBalanceHistory records for Kashtre account
-        if ($toAccount->type === 'kashtre_account') {
+        // Create BusinessBalanceHistory records for Kashtre account (immediate service fee only — matured fees arrive via release)
+        if ($toAccount->type === 'kashtre_account' && $serviceChargeMaturationMeta === []) {
             \App\Models\BusinessBalanceHistory::recordChange(
                 1, // Kashtre business ID
                 $toAccount->id,
@@ -2132,13 +2366,13 @@ class MoneyTrackingService
                 $description,
                 $invoice ? 'invoice' : 'MoneyTransfer',
                 $invoice ? $invoice->id : $transfer->id,
-                array_merge([
-                    'from_account' => $fromAccount->name,
+                [
+                    'from_account' => $fromAccount?->name,
                     'to_account' => $toAccount->name,
                     'transfer_type' => $transferType,
                     'invoice_id' => $invoice ? $invoice->id : null,
                     'invoice_number' => $invoice ? $invoice->invoice_number : null,
-                ], $maturationExtraMeta),
+                ],
                 auth()->id(),
                 $paymentStatus,
                 $paymentMethod
@@ -3008,6 +3242,8 @@ class MoneyTrackingService
     public function processSaveAndExit(Invoice $invoice, $items, $itemStatus = null)
     {
         try {
+            $this->releaseMaturedServiceChargeHolds((int) $invoice->business_id);
+
             Log::info("=== SAVE AND EXIT PROCESSING STARTED ===", [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
@@ -5415,15 +5651,23 @@ class MoneyTrackingService
                 // Store the balance before transfer
                 $kashtreSuspenseBalance = $kashtreSuspenseAccount->balance;
                 
+                $scMaturation = $this->serviceChargeMaturationContext($invoice);
+                $serviceChargeHeldOnEntity = $scMaturation['days'] > 0;
+
                 Log::info("📦 === SAVE & EXIT: PROCESSING KASHTRE SUSPENSE ACCOUNT ===", [
                     'balance' => $kashtreSuspenseBalance,
                     'account_name' => $kashtreSuspenseAccount->name,
                     'account_id' => $kashtreSuspenseAccount->id,
-                    'decision_reason' => 'Kashtre suspense has balance, moving to Kashtre account',
-                    'destination_account_type' => 'kashtre_account'
+                    'decision_reason' => $serviceChargeHeldOnEntity
+                        ? 'Service charge maturation — holding on entity (business) account'
+                        : 'Kashtre suspense has balance, moving to Kashtre account',
+                    'destination_account_type' => $serviceChargeHeldOnEntity ? 'business_account' : 'kashtre_account',
+                    'service_charge_maturation_days' => $scMaturation['days'],
                 ]);
 
-                $kashtreAccount = $this->getOrCreateKashtreAccount($business);
+                $kashtreAccount = $serviceChargeHeldOnEntity
+                    ? $this->getOrCreateBusinessAccount($business)
+                    : $this->getOrCreateKashtreAccount($business);
                 
                 // Get package tracking number for description
                 // For package adjustments, look for the most recent package tracking record
