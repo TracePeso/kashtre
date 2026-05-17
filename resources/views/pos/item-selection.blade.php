@@ -2921,7 +2921,7 @@
                     Swal.fire({
                         icon: 'success',
                         title: 'Payment prompt sent',
-                        text: 'Client should approve on their phone. You can complete below.'
+                        text: 'Client should approve on their phone. Items will be sent to service points after payment is confirmed (usually within a minute).'
                     });
                 } else {
                     Swal.fire({
@@ -2930,7 +2930,8 @@
                         text: payResult && payResult.message ? payResult.message : 'Could not send prompt. Please collect payment manually.'
                     });
                 }
-                finishInvoiceSuccess(dataForSuccess, invoiceNumber, button, originalText);
+                // Do not queue service delivery until Yo confirms (payments:check-status cron).
+                finishInvoiceSuccess(dataForSuccess, invoiceNumber, button, originalText, { completeInsuranceDelivery: false });
             });
         }
 
