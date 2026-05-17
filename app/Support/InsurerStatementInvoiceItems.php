@@ -38,6 +38,13 @@ final class InsurerStatementInvoiceItems
             return [];
         }
 
+        if (InsurerCascadeLineAllocations::invoiceUsesCascadeLineItems($invoice)) {
+            $cascadeLines = InsurerCascadeLineAllocations::payableLinesForPayer($invoice, $payer);
+            if ($cascadeLines !== []) {
+                return array_map(fn (array $row) => $row['line'], $cascadeLines);
+            }
+        }
+
         if (! empty($snapshot['multi_vendor']) && ! empty($snapshot['vendors']) && is_array($snapshot['vendors'])) {
             return self::linesForMultiVendorSnapshot($baseLines, $snapshot['vendors'], $payer);
         }

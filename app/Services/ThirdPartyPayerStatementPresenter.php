@@ -38,10 +38,25 @@ class ThirdPartyPayerStatementPresenter
 
         if ($h->transaction_type === 'debit' && $lines->isNotEmpty()) {
             $totalDebit = abs((float) $h->change_amount);
+            $matched = self::matchInvoiceItemLabel((string) ($h->description ?? ''), $invoice);
+            if ($matched !== null) {
+                return collect([self::buildRow($h, $matched, $totalDebit, $h->description)]);
+            }
+
             $subtotal = $lines->sum(fn (array $line) => self::lineAmount($line));
 
-            if ($totalDebit > 0 && $subtotal > 0) {
+            if ($totalDebit > 0 && $subtotal > 0 && abs($subtotal - $totalDebit) > 0.02) {
                 return self::expandedDebitRows($h, $lines, $totalDebit, $subtotal);
+            }
+
+            if ($totalDebit > 0 && $lines->count() === 1) {
+                $line = $lines->first();
+                $name = trim((string) ($line['name'] ?? $line['displayName'] ?? 'Line item'));
+                $qty = (float) ($line['quantity'] ?? 1);
+                $qtyDisp = ($qty != floor($qty)) ? $qty : (int) $qty;
+                $label = $qtyDisp > 1 ? "{$name} (×{$qtyDisp})" : $name;
+
+                return collect([self::buildRow($h, $label, $totalDebit, $h->description)]);
             }
         }
 

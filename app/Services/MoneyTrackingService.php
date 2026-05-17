@@ -791,7 +791,15 @@ class MoneyTrackingService
                     'invoice_id' => $invoice->id,
                     'vendor_count' => count($authSnapshot['vendors'])
                 ]);
-                
+
+                $cascadeLedgerPosted = app(ThirdPartyInsuranceVendorLedgerService::class)
+                    ->postInsuranceVendorDebits($invoice, (int) $business->id, (int) $client->id);
+
+                if ($cascadeLedgerPosted) {
+                    Log::info('Cascade itemized vendor insurance debits posted', [
+                        'invoice_id' => $invoice->id,
+                    ]);
+                } else {
                 foreach ($authSnapshot['vendors'] as $vendor) {
                     $vendorStatus = (string) ($vendor['authorization_status'] ?? '');
                     if (in_array($vendorStatus, ['failed', 'skipped'], true)) {
@@ -849,6 +857,7 @@ class MoneyTrackingService
                             // the client portion; the guarantee debit above remains until insurer settlement.
                         }
                     }
+                }
                 }
                 
             }

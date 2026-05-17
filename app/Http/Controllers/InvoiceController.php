@@ -2273,6 +2273,11 @@ class InvoiceController extends Controller
         // even when earlier insurance-tracking creation paths are skipped.
         $this->ensureClientInsuranceTrackingEntry($invoice, $client, $authorization);
 
+        if (app(\App\Services\ThirdPartyInsuranceVendorLedgerService::class)
+            ->postInsuranceVendorDebits($invoice, (int) $business->id, (int) $client->id)) {
+            return;
+        }
+
         $vendors = [];
         if (! empty($authorization['multi_vendor']) && ! empty($authorization['vendors']) && is_array($authorization['vendors'])) {
             $vendors = $authorization['vendors'];
@@ -3399,7 +3404,7 @@ class InvoiceController extends Controller
 
         $query = Invoice::where('business_id', $business->id)
             ->whereNull('parent_invoice_id')
-            ->with(['client', 'branch', 'createdBy']);
+            ->with(['client', 'branch', 'createdBy', 'vendorPortionInvoices']);
 
         // Filter by client if specified
         if ($request->has('client_id')) {
@@ -3658,7 +3663,7 @@ class InvoiceController extends Controller
         $this->repairVendorPortionTraceInvoicesIfNeeded($invoice);
 
         // Load the invoice with quotations relationship
-        $invoice->load(['quotations', 'vendorPortionInvoices', 'parentInvoice']);
+        $invoice->load(['quotations', 'vendorPortionInvoices', 'parentInvoice.vendorPortionInvoices']);
 
         return view('invoices.show', compact('invoice'));
     }

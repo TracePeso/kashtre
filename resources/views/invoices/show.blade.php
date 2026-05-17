@@ -47,7 +47,7 @@
             @elseif($invoice->vendorPortionInvoices->isNotEmpty())
                 <div class="bg-slate-50 border border-slate-200 rounded-lg shadow-sm mb-6 p-4">
                     <h3 class="text-sm font-semibold text-slate-800 mb-2">Insurer cascade trace (labeled portions)</h3>
-                    <p class="text-xs text-slate-600 mb-3">Each letter matches the order amounts were submitted to primary (A), secondary (B), tertiary (C), and so on. These invoices are for follow-up only; the primary invoice above is unchanged.</p>
+                    <p class="text-xs text-slate-600 mb-3">Each letter matches the order amounts were submitted to insurers (A, then B, …). <strong>Mother invoice {{ $invoice->invoice_number }}</strong> stays the main visit record; trace copies are for insurer portal follow-up only.</p>
                     @php $traceSum = $invoice->vendorPortionInvoices->sum('total_amount'); @endphp
                     <ul class="space-y-2 text-sm">
                         @foreach($invoice->vendorPortionInvoices as $portion)
