@@ -252,13 +252,16 @@ class ServiceDeliveryQueueController extends Controller
                 ->whereIn('status', ['pending', 'in_progress', 'partially_done'])
                 ->count();
 
-        // Reset all pending and in-progress items
+            // Reset all pending and in-progress items one by one to trigger model hooks (syncQueue)
             ServiceDeliveryQueue::where('service_point_id', $servicePointId)
                 ->whereIn('status', ['pending', 'in_progress', 'partially_done'])
-                ->update([
-                    'status' => 'cancelled',
-                    'updated_at' => now()
-                ]);
+                ->get()
+                ->each(function ($item) {
+                    $item->update([
+                        'status' => 'cancelled',
+                        'updated_at' => now()
+                    ]);
+                });
 
             return response()->json([
                 'success' => true,

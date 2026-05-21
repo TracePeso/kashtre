@@ -404,6 +404,7 @@
                         
                         @php
                             $clientInvoices = \App\Models\Invoice::where('client_id', $client->id)
+                                ->whereNull('parent_invoice_id')
                                 ->orderBy('created_at', 'desc')
                                 ->limit(5)
                                 ->get();

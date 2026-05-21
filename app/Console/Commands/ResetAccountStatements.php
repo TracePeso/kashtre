@@ -2,14 +2,19 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
+use App\Models\AccountsReceivable;
 use App\Models\BalanceHistory;
 use App\Models\BusinessBalanceHistory;
+use App\Models\Client;
 use App\Models\ContractorBalanceHistory;
+use App\Models\ContractorProfile;
+use App\Models\MoneyAccount;
 use App\Models\MoneyTransfer;
 use App\Models\ServiceDeliveryQueue;
-use App\Models\MoneyAccount;
-use App\Models\ContractorProfile;
+use App\Models\ThirdPartyPayer;
+use App\Models\ThirdPartyPayerBalanceHistory;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Schema;
 
 class ResetAccountStatements extends Command
 {
@@ -25,16 +30,17 @@ class ResetAccountStatements extends Command
      *
      * @var string
      */
-    protected $description = 'Reset all account statements and related data for testing purposes';
+    protected $description = 'Reset statements (client, business, contractor, third-party), AR, transfers, money accounts, client/payer running balances, and queue finalization flags for testing';
 
     /**
      * Execute the console command.
      */
     public function handle()
     {
-        if (!$this->option('confirm')) {
-            if (!$this->confirm('This will delete ALL account statements, money transfers, and reset all balances. Are you sure?')) {
+        if (! $this->option('confirm')) {
+            if (! $this->confirm('This will delete ALL account statements (including third-party), accounts receivable, money transfers, zero client/third-party running balances, and reset money accounts. Are you sure?')) {
                 $this->info('Operation cancelled.');
+
                 return;
             }
         }
@@ -48,7 +54,7 @@ class ResetAccountStatements extends Command
             ServiceDeliveryQueue::query()->update([
                 'is_finalized' => false,
                 'finalized_at' => null,
-                'finalized_by_user_id' => null
+                'finalized_by_user_id' => null,
             ]);
 
             // Clear all balance histories
@@ -66,6 +72,34 @@ class ResetAccountStatements extends Command
             $contractorCount = ContractorBalanceHistory::count();
             ContractorBalanceHistory::truncate();
             $this->info("Deleted {$contractorCount} contractor balance history records");
+
+            // Third-party payer statements + accounts receivable (first + third party)
+            Schema::disableForeignKeyConstraints();
+            try {
+                $this->info('Clearing third-party payer balance histories...');
+                $tppHistCount = ThirdPartyPayerBalanceHistory::withTrashed()->count();
+                ThirdPartyPayerBalanceHistory::truncate();
+                $this->info("Deleted {$tppHistCount} third-party payer statement rows");
+
+                $this->info('Clearing accounts receivable...');
+                $arCount = AccountsReceivable::withTrashed()->count();
+                AccountsReceivable::truncate();
+                $this->info("Deleted {$arCount} accounts receivable records");
+            } finally {
+                Schema::enableForeignKeyConstraints();
+            }
+
+            $this->info('Resetting third-party payer running balances (current_balance)...');
+            if (Schema::hasColumn('third_party_payers', 'current_balance')) {
+                ThirdPartyPayer::query()->update(['current_balance' => 0]);
+                $this->info('third_party_payers.current_balance set to 0 for all payers');
+            }
+
+            $this->info('Resetting client running balances (clients.balance)...');
+            if (Schema::hasColumn('clients', 'balance')) {
+                Client::query()->update(['balance' => 0]);
+                $this->info('All clients.balance set to 0');
+            }
 
             // Clear money transfers
             $this->info('Clearing money transfers...');
@@ -87,8 +121,8 @@ class ResetAccountStatements extends Command
             $this->info('');
             $this->info('✅ ACCOUNT STATEMENT RESET COMPLETED SUCCESSFULLY ✅');
             $this->info('==========================================');
-            $this->info('All balance histories, money transfers, and account balances have been cleared.');
-            $this->info('Service delivery queues have been reset and can be finalized again.');
+            $this->info('All balance histories (incl. third-party payer statements), accounts receivable, money transfers, and money accounts have been cleared.');
+            $this->info('Client and third-party payer running balances set to 0. Queue finalization flags reset.');
             $this->info('');
             $this->info('You can now test the new money movement flow:');
             $this->info('1. Update item statuses (temporary)');
@@ -97,7 +131,7 @@ class ResetAccountStatements extends Command
 
         } catch (\Exception $e) {
             $this->error('❌ RESET FAILED ❌');
-            $this->error('Error: ' . $e->getMessage());
+            $this->error('Error: '.$e->getMessage());
             $this->error('Some operations may have completed, others may have failed.');
         }
     }

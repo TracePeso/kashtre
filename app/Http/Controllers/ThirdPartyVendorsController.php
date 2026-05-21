@@ -322,16 +322,7 @@ class ThirdPartyVendorsController extends Controller
                 $statementView = 'items';
             }
 
-            // Get all balance history records with all relationships
-            $balanceHistories = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-                ->orderBy('created_at', 'desc')
-                ->with(['invoice', 'client', 'business', 'branch', 'user'])
-                ->paginate(50)
-                ->withQueryString();
-
-            $itemStatementRows = ThirdPartyPayerStatementPresenter::rowsFromHistories($balanceHistories->getCollection());
-
-            // Calculate totals
+            // Calculate totals (table data is loaded via Livewire + Filament)
             $totalCredits = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
                 ->where('transaction_type', 'credit')
                 ->sum('change_amount');
@@ -340,20 +331,13 @@ class ThirdPartyVendorsController extends Controller
                 ->where('transaction_type', 'debit')
                 ->sum('change_amount'));
 
-            $currentBalance = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-                ->orderBy('created_at', 'desc')
-                ->value('new_balance') ?? 0;
-
             return view('third-party-vendors.balance-statement', compact(
                 'vendor',
                 'business',
                 'thirdPartyPayer',
-                'balanceHistories',
-                'itemStatementRows',
                 'statementView',
                 'totalCredits',
-                'totalDebits',
-                'currentBalance'
+                'totalDebits'
             ));
         } catch (\Exception $e) {
             Log::error('Exception while fetching vendor balance statement', [

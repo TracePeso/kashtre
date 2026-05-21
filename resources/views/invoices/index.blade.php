@@ -92,12 +92,26 @@
                         <tbody class="bg-white divide-y divide-gray-200">
                             @forelse($invoices as $invoice)
                             <tr class="hover:bg-gray-50">
-                                <td class="px-6 py-4 whitespace-nowrap">
+                                <td class="px-6 py-4">
                                     <div class="text-sm font-medium text-blue-600">
                                         <a href="{{ route('invoices.show', $invoice) }}" class="hover:text-blue-800">
                                             {{ $invoice->invoice_number }}
                                         </a>
+                                        <span class="ml-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Mother</span>
                                     </div>
+                                    @if($invoice->vendorPortionInvoices->isNotEmpty())
+                                        <div class="mt-1.5 flex flex-wrap gap-1.5">
+                                            @foreach($invoice->vendorPortionInvoices as $portion)
+                                                <a href="{{ route('invoices.show', $portion) }}"
+                                                   class="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-mono text-slate-700 hover:bg-slate-100"
+                                                   title="Insurer follow-up copy {{ $portion->vendor_portion_label }}">
+                                                    <span class="inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[9px] font-bold">{{ $portion->vendor_portion_label }}</span>
+                                                    {{ $portion->invoice_number }}
+                                                    <span class="text-slate-500">UGX {{ number_format($portion->total_amount, 0) }}</span>
+                                                </a>
+                                            @endforeach
+                                        </div>
+                                    @endif
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="text-sm text-gray-900">{{ $invoice->client_name }}</div>

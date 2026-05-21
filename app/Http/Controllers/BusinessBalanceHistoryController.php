@@ -42,13 +42,11 @@ class BusinessBalanceHistoryController extends Controller
         
         if ($user->business_id == 1) {
             // For Kashtre (super business), we need to calculate for all businesses
-            // For now, calculate totals from filtered records for display
-            $totalCredits = BusinessBalanceHistory::whereIn('money_account_id', $businessAccountIds)
+            // Credits: include matured insurance / service-fee pendings via effective status
+            $totalCredits = (float) BusinessBalanceHistory::whereIn('money_account_id', $businessAccountIds)
                 ->where('type', 'credit')
-                ->where(function($query) {
-                    $query->where('payment_status', 'paid')
-                        ->orWhereNull('payment_status'); // Include records without payment_status (legacy data)
-                })
+                ->get()
+                ->filter(fn (BusinessBalanceHistory $h): bool => $h->effectiveCreditPaymentStatus() === 'paid')
                 ->sum('amount');
             
             $totalDebits = BusinessBalanceHistory::whereIn('money_account_id', $businessAccountIds)
@@ -76,30 +74,33 @@ class BusinessBalanceHistoryController extends Controller
             $balanceData = $moneyTrackingService->calculateBusinessAvailableBalance($user->business);
             $totalCredits = $balanceData['totalCredits'];
             $totalDebits = $balanceData['totalDebits'];
-            $totalBalance = $balanceData['totalBalance'];
             $withdrawalSuspenseBalance = $balanceData['withdrawalSuspenseBalance'];
             $availableBalance = $balanceData['availableBalance'];
         }
 
-        // Calculate pending payments total and fetch list
-        $pendingPaymentsTotal = BusinessBalanceHistory::whereIn('money_account_id', $businessAccountIds)
-            ->when($user->business_id != 1, function($query) use ($user) {
-                return $query->where('business_id', $user->business_id);
-            })
-            ->where('payment_status', 'pending_payment')
-            ->where('type', 'credit') // Only count credits (money coming in)
-            ->sum('amount');
-
-        // Fetch pending payments list for table
-        $pendingPaymentsList = BusinessBalanceHistory::with(['business'])
+        // Pending credits: DB pending_payment minus rows whose maturation date has passed (effective still pending)
+        $pendingPaymentsBaseQuery = BusinessBalanceHistory::with(['business'])
             ->whereIn('money_account_id', $businessAccountIds)
             ->when($user->business_id != 1, function($query) use ($user) {
                 return $query->where('business_id', $user->business_id);
             })
             ->where('payment_status', 'pending_payment')
             ->where('type', 'credit')
-            ->orderBy('created_at', 'desc')
-            ->get();
+            ->orderBy('created_at', 'desc');
+
+        $pendingPaymentsList = $pendingPaymentsBaseQuery->get()
+            ->filter(fn (BusinessBalanceHistory $h): bool => $h->effectiveCreditPaymentStatus() === 'pending_payment')
+            ->values();
+
+        $pendingPaymentsTotal = (float) $pendingPaymentsList->sum('amount');
+
+        // Total balance = gross business-account position (effective-paid credits + still-pending credits − debits)
+        $totalBalance = (float) (($totalCredits ?? 0) + $pendingPaymentsTotal - ($totalDebits ?? 0));
+
+        // Kashtre: available stays withdrawable slice only (effective-paid − debits − withdrawal suspense)
+        if ($user->business_id == 1) {
+            $availableBalance = ($totalCredits - $totalDebits) - $withdrawalSuspenseBalance;
+        }
 
         // Fetch pending maturity (AccountsReceivable with future due_date)
         $pendingMaturityQuery = \App\Models\AccountsReceivable::with(['client', 'business', 'invoice', 'thirdPartyPayer'])
@@ -125,12 +126,6 @@ class BusinessBalanceHistoryController extends Controller
         });
 
         $pendingMaturityTotal = $pendingMaturityList->sum('balance');
-
-        // For Kashtre, calculate availableBalance manually
-        if ($user->business_id == 1) {
-            $totalBalance = $totalCredits - $totalDebits;
-            $availableBalance = $totalBalance - $withdrawalSuspenseBalance;
-        }
 
         return view('business-balance-statement.index', compact(
             'businessBalanceHistories', 

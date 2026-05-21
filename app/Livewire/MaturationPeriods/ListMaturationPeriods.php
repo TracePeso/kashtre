@@ -9,7 +9,6 @@ use Filament\Forms;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Tables;
-use Filament\Tables\Actions\CreateAction;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Actions\DeleteAction;
@@ -34,6 +33,21 @@ class ListMaturationPeriods extends Component implements HasForms, HasTable
 {
     use InteractsWithForms;
     use InteractsWithTable;
+
+    private function permissions(): array
+    {
+        return (array) (auth()->user()->permissions ?? []);
+    }
+
+    private function hasSettingsAdminAccess(): bool
+    {
+        return auth()->check() && auth()->user()->business_id === 1;
+    }
+
+    private function can(string $permission): bool
+    {
+        return in_array($permission, $this->permissions()) || $this->hasSettingsAdminAccess();
+    }
 
     public function table(Table $table): Table
     {
@@ -142,17 +156,17 @@ class ListMaturationPeriods extends Component implements HasForms, HasTable
             ])
             ->actions([
                 ViewAction::make()
-                    ->visible(fn() => in_array('View Maturation Periods', auth()->user()->permissions ?? []))
+                    ->visible(fn() => $this->can('View Maturation Periods'))
                     ->url(fn (MaturationPeriod $record): string => route('maturation-periods.show', $record)),
                 EditAction::make()
-                    ->visible(fn() => in_array('Edit Maturation Periods', auth()->user()->permissions ?? []))
+                    ->visible(fn() => $this->can('Edit Maturation Periods'))
                     ->url(fn (MaturationPeriod $record): string => route('maturation-periods.edit', $record))
                     ->color('warning'),
                 Action::make('toggleStatus')
                     ->label(fn (MaturationPeriod $record): string => $record->is_active ? 'Deactivate' : 'Activate')
                     ->icon(fn (MaturationPeriod $record): string => $record->is_active ? 'heroicon-o-x-circle' : 'heroicon-o-check-circle')
                     ->color(fn (MaturationPeriod $record): string => $record->is_active ? 'danger' : 'success')
-                    ->visible(fn() => in_array('Manage Maturation Periods', auth()->user()->permissions ?? []))
+                    ->visible(fn() => $this->can('Manage Maturation Periods'))
                     ->requiresConfirmation()
                     ->modalHeading(fn (MaturationPeriod $record): string => $record->is_active ? 'Deactivate Payment Method' : 'Activate Payment Method')
                     ->modalDescription(fn (MaturationPeriod $record): string => 
@@ -175,7 +189,7 @@ class ListMaturationPeriods extends Component implements HasForms, HasTable
                             ->send();
                     }),
                 DeleteAction::make()
-                    ->visible(fn() => in_array('Delete Maturation Periods', auth()->user()->permissions ?? []))
+                    ->visible(fn() => $this->can('Delete Maturation Periods'))
                     ->requiresConfirmation()
                     ->modalHeading('Delete Payment Method')
                     ->modalDescription('Are you sure you want to delete this payment method? This action cannot be undone and will remove it from all client registration options.')
@@ -191,14 +205,24 @@ class ListMaturationPeriods extends Component implements HasForms, HasTable
             ->bulkActions([
                 BulkActionGroup::make([
                     DeleteBulkAction::make()
-                        ->visible(fn() => in_array('Delete Maturation Periods', auth()->user()->permissions ?? [])),
+                        ->visible(fn() => $this->can('Delete Maturation Periods')),
                 ]),
             ])
             ->headerActions([
-                CreateAction::make()
-                    ->visible(fn() => in_array('Add Maturation Periods', auth()->user()->permissions ?? []))
+                Action::make('create')
+                    ->visible(fn() => $this->can('Add Maturation Periods'))
                     ->label('Create Maturation Period')
+                    ->icon('heroicon-o-plus')
                     ->url(route('maturation-periods.create'))
+                    ->color('success'),
+            ])
+            ->emptyStateActions([
+                Action::make('createEmpty')
+                    ->visible(fn() => $this->can('Add Maturation Periods'))
+                    ->label('Create Maturation Period')
+                    ->icon('heroicon-o-plus')
+                    ->url(route('maturation-periods.create'))
+                    ->button()
                     ->color('success'),
             ])
             ->defaultSort('business_id')

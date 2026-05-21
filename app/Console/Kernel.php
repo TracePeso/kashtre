@@ -31,6 +31,9 @@ class Kernel extends ConsoleKernel
         
         // Check and auto-reject overdue withdrawal requests every hour
         $schedule->command('withdrawals:auto-reject-overdue')->hourly();
+
+        // Move matured service charges from entity account to Kashtre
+        $schedule->command('service-charge:release-matured')->hourly();
     }
 
     /**

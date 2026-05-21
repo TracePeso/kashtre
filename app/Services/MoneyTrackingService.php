@@ -18,6 +18,8 @@ use App\Models\BusinessBalanceHistory;
 use App\Models\ContractorBalanceHistory;
 use App\Models\PaymentMethodAccount;
 use App\Models\ServiceChargeMaturationPeriod;
+use App\Models\MaturationPeriod;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -668,6 +670,17 @@ class MoneyTrackingService
         try {
             DB::beginTransaction();
 
+            if ($invoice->parent_invoice_id !== null) {
+                DB::commit();
+                Log::info('Skipping processPaymentCompleted for vendor portion trace invoice', [
+                    'invoice_id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'parent_invoice_id' => $invoice->parent_invoice_id,
+                ]);
+
+                return [];
+            }
+
             $client = $invoice->client;
             $business = $invoice->business;
             $debitRecords = [];
@@ -722,7 +735,7 @@ class MoneyTrackingService
             $authSnapshotForGuard = is_array($invoice->insurance_authorization_snapshot)
                 ? $invoice->insurance_authorization_snapshot
                 : json_decode($invoice->insurance_authorization_snapshot, true);
-            $isInsuranceInvoice = !empty($authSnapshotForGuard) && (
+            $isInsuranceInvoice = $invoice->parent_invoice_id === null && ! empty($authSnapshotForGuard) && (
                 isset($authSnapshotForGuard['vendors']) || isset($authSnapshotForGuard['insurance_total'])
             ) && (float) ($authSnapshotForGuard['insurance_total'] ?? 0) > 0;
 
@@ -769,7 +782,7 @@ class MoneyTrackingService
             $authSnapshot = is_array($invoice->insurance_authorization_snapshot) 
                 ? $invoice->insurance_authorization_snapshot 
                 : json_decode($invoice->insurance_authorization_snapshot, true);
-            $isMultiVendorInsurance = $authSnapshot && ($authSnapshot['multi_vendor'] ?? false);
+            $isMultiVendorInsurance = $invoice->parent_invoice_id === null && $authSnapshot && ($authSnapshot['multi_vendor'] ?? false);
             
             if ($isMultiVendorInsurance && isset($authSnapshot['vendors'])) {
                 // For multi-vendor insurance, keep vendor-side ledger updates.
@@ -778,7 +791,15 @@ class MoneyTrackingService
                     'invoice_id' => $invoice->id,
                     'vendor_count' => count($authSnapshot['vendors'])
                 ]);
-                
+
+                $cascadeLedgerPosted = app(ThirdPartyInsuranceVendorLedgerService::class)
+                    ->postInsuranceVendorDebits($invoice, (int) $business->id, (int) $client->id);
+
+                if ($cascadeLedgerPosted) {
+                    Log::info('Cascade itemized vendor insurance debits posted', [
+                        'invoice_id' => $invoice->id,
+                    ]);
+                } else {
                 foreach ($authSnapshot['vendors'] as $vendor) {
                     $vendorStatus = (string) ($vendor['authorization_status'] ?? '');
                     if (in_array($vendorStatus, ['failed', 'skipped'], true)) {
@@ -837,8 +858,13 @@ class MoneyTrackingService
                         }
                     }
                 }
+                }
                 
             }
+
+            $insuranceCounterpartyLabelForNotes = $isInsuranceInvoice
+                ? $this->resolveInsuranceCounterpartyLabel($invoice)
+                : '';
 
             foreach ($itemsToProcess as $index => $itemData) {
                 $itemId = $itemData['item_id'] ?? $itemData['id'] ?? null;
@@ -886,9 +912,60 @@ class MoneyTrackingService
                 $itemDisplayName = $item->name;
                 $debitRecord = null;
                 if ($isInsuranceInvoice) {
+                    $payerSplits = BalanceHistory::insurancePayerSplitsForInvoiceItem($invoice, $itemDisplayName, $itemData);
+
+                    if (count($payerSplits) > 1) {
+                        foreach ($payerSplits as $split) {
+                            $currentBalance = BalanceHistory::where('client_id', $client->id)
+                                ->orderBy('created_at', 'desc')
+                                ->value('new_balance') ?? 0;
+
+                            $splitAmount = (float) $split['amount'];
+                            $splitInsurer = (string) $split['insurer'];
+                            $splitNotes = "{$itemDisplayName} (x{$quantity}) - Invoice #{$invoice->invoice_number} - Paid by {$splitInsurer}";
+
+                            $splitRecord = BalanceHistory::create([
+                                'client_id' => $client->id,
+                                'business_id' => $business->id,
+                                'branch_id' => $client->branch_id,
+                                'invoice_id' => $invoice->id,
+                                'user_id' => auth()->id() ?? 1,
+                                'transaction_type' => 'debit',
+                                'payment_method' => 'insurance',
+                                'description' => "{$itemDisplayName} (x{$quantity}) [Insurance]",
+                                'previous_balance' => $currentBalance,
+                                'change_amount' => $splitAmount,
+                                'new_balance' => $currentBalance,
+                                'reference_number' => $invoice->invoice_number,
+                                'notes' => $splitNotes,
+                                'payment_status' => 'Paid',
+                            ]);
+
+                            $debitRecords[] = [
+                                'item_name' => $item->name,
+                                'quantity' => $quantity,
+                                'amount' => $splitAmount,
+                                'type' => 'item_payment',
+                                'status' => 'completed',
+                                'balance_history_id' => $splitRecord->id ?? null,
+                                'insurer' => $splitInsurer,
+                            ];
+                        }
+
+                        Log::info('Balance statement created for split insurance item', [
+                            'invoice_id' => $invoice->id,
+                            'item_name' => $item->name,
+                            'splits' => $payerSplits,
+                        ]);
+
+                        continue;
+                    }
+
                     $currentBalance = BalanceHistory::where('client_id', $client->id)
                         ->orderBy('created_at', 'desc')
                         ->value('new_balance') ?? 0;
+
+                    $itemInsuranceNotes = "{$itemDisplayName} (x{$quantity}) - Invoice #{$invoice->invoice_number} - Paid by {$insuranceCounterpartyLabelForNotes}";
 
                     $debitRecord = BalanceHistory::create([
                         'client_id' => $client->id,
@@ -903,7 +980,7 @@ class MoneyTrackingService
                         'change_amount' => $totalAmount,
                         'new_balance' => $currentBalance,
                         'reference_number' => $invoice->invoice_number,
-                        'notes' => "{$itemDisplayName} (x{$quantity})",
+                        'notes' => $itemInsuranceNotes,
                         'payment_status' => 'Paid',
                     ]);
                 } else {
@@ -938,8 +1015,9 @@ class MoneyTrackingService
             }
 
             // Create debit record for service charge if applicable.
-            // For insurance invoices, service fee is part of insurance/client-allocation tracking
-            // and must not hit client balance as a standalone debit.
+            // Non-insurance: normal debit (affects running client balance).
+            // Insurance: same informational pattern as clinical lines above — show service fee on the
+            // statement without changing balance (insurance_total / client_total already split the visit).
             if ($invoice->service_charge > 0 && !$isInsuranceInvoice) {
                 $serviceChargeRecord = BalanceHistory::recordDebit(
                     $client,
@@ -963,6 +1041,60 @@ class MoneyTrackingService
                     'service_charge' => $invoice->service_charge,
                     'balance_history_id' => $serviceChargeRecord->id ?? null
                 ]);
+            } elseif ($invoice->service_charge > 0 && $isInsuranceInvoice) {
+                $scDescription = 'Service Fee [Insurance]';
+                $existingSc = BalanceHistory::where('client_id', $client->id)
+                    ->where('invoice_id', $invoice->id)
+                    ->where('transaction_type', 'debit')
+                    ->where('description', $scDescription)
+                    ->first();
+
+                if (! $existingSc) {
+                    $currentBalanceForSc = BalanceHistory::where('client_id', $client->id)
+                        ->orderBy('created_at', 'desc')
+                        ->value('new_balance') ?? 0;
+
+                    $scPayerLabel = $insuranceCounterpartyLabelForNotes;
+                    if (is_array($authSnapshot)) {
+                        $scFromSnap = trim((string) ($authSnapshot['service_charge_vendor_name'] ?? ''));
+                        if ($scFromSnap !== '') {
+                            $scPayerLabel = $scFromSnap;
+                        }
+                    }
+                    $scNotes = "Service Fee - Invoice #{$invoice->invoice_number} - Paid by {$scPayerLabel}";
+
+                    $serviceChargeRecord = BalanceHistory::create([
+                        'client_id' => $client->id,
+                        'business_id' => $business->id,
+                        'branch_id' => $client->branch_id,
+                        'invoice_id' => $invoice->id,
+                        'user_id' => auth()->id() ?? 1,
+                        'transaction_type' => 'debit',
+                        'payment_method' => 'insurance',
+                        'description' => $scDescription,
+                        'previous_balance' => $currentBalanceForSc,
+                        'change_amount' => $invoice->service_charge,
+                        'new_balance' => $currentBalanceForSc,
+                        'reference_number' => $invoice->invoice_number,
+                        'notes' => $scNotes,
+                        'payment_status' => 'Paid',
+                    ]);
+
+                    $debitRecords[] = [
+                        'item_name' => 'Service Charge',
+                        'quantity' => 1,
+                        'amount' => $invoice->service_charge,
+                        'type' => 'service_charge_insurance_statement',
+                        'status' => 'completed',
+                        'balance_history_id' => $serviceChargeRecord->id ?? null
+                    ];
+
+                    Log::info('Balance statement created for service charge (insurance informational)', [
+                        'invoice_id' => $invoice->id,
+                        'service_charge' => $invoice->service_charge,
+                        'balance_history_id' => $serviceChargeRecord->id ?? null,
+                    ]);
+                }
             }
 
             DB::commit();
@@ -1818,11 +1950,7 @@ class MoneyTrackingService
      */
     private function resolveInvoicePaymentMethodForServiceChargeMaturation(Invoice $invoice): ?string
     {
-        $methods = $invoice->payment_methods ?? [];
-        if (is_string($methods)) {
-            $methods = json_decode($methods, true) ?? [];
-        }
-        $methods = array_values(array_unique(array_filter((array) $methods)));
+        $methods = $this->normalizedInvoicePaymentMethodStrings($invoice);
 
         if ($methods === []) {
             return null;
@@ -1836,6 +1964,193 @@ class MoneyTrackingService
         }
 
         return $methods[0];
+    }
+
+    /**
+     * Service charge maturation for an invoice (entity hold vs immediate Kashtre).
+     *
+     * @return array{days: int, payment_method: ?string, metadata: array<string, mixed>}
+     */
+    private function serviceChargeMaturationContext(Invoice $invoice): array
+    {
+        $method = $this->resolveInvoicePaymentMethodForServiceChargeMaturation($invoice);
+        if ($method === null) {
+            return ['days' => 0, 'payment_method' => null, 'metadata' => []];
+        }
+
+        $days = ServiceChargeMaturationPeriod::resolveMaturationDays((int) $invoice->business_id, $method);
+        if ($days <= 0) {
+            return ['days' => 0, 'payment_method' => $method, 'metadata' => []];
+        }
+
+        return [
+            'days' => $days,
+            'payment_method' => $method,
+            'metadata' => [
+                'service_charge_maturation_days' => $days,
+                'service_charge_matures_at' => now()->addDays($days)->toIso8601String(),
+                'service_charge_maturation_payment_method' => $method,
+            ],
+        ];
+    }
+
+    private function isServiceFeeTransferDescription(string $description): bool
+    {
+        return str_contains($description, 'Service Fee Transfer');
+    }
+
+    /**
+     * Statement line only (account balance already updated by transferMoney).
+     */
+    private function recordBusinessStatementLineWithoutBalanceMutation(
+        int $businessId,
+        int $moneyAccountId,
+        float $amount,
+        string $type,
+        string $description,
+        ?string $referenceType,
+        ?int $referenceId,
+        array $metadata = [],
+        ?string $paymentStatus = 'paid',
+        ?string $paymentMethod = null
+    ): BusinessBalanceHistory {
+        $account = MoneyAccount::findOrFail($moneyAccountId);
+        $currentBalance = (float) $account->balance;
+        $previousBalance = $type === 'credit'
+            ? $currentBalance - $amount
+            : $currentBalance + $amount;
+
+        return BusinessBalanceHistory::create([
+            'business_id' => $businessId,
+            'money_account_id' => $moneyAccountId,
+            'previous_balance' => round($previousBalance, 2),
+            'amount' => round($amount, 2),
+            'new_balance' => round($currentBalance, 2),
+            'type' => $type,
+            'description' => $description,
+            'reference_type' => $referenceType,
+            'reference_id' => $referenceId,
+            'metadata' => $metadata,
+            'user_id' => auth()->id(),
+            'payment_status' => $paymentStatus,
+            'payment_method' => $paymentMethod,
+        ]);
+    }
+
+    /**
+     * Move matured service-charge holds from entity account to Kashtre (debit entity, credit Kashtre).
+     */
+    public function releaseMaturedServiceChargeHolds(?int $businessId = null): int
+    {
+        $released = 0;
+
+        $holds = BusinessBalanceHistory::query()
+            ->where('type', 'credit')
+            ->where('payment_status', 'pending_payment')
+            ->where('description', 'like', '%Service Fee Transfer%')
+            ->when($businessId !== null, fn ($q) => $q->where('business_id', $businessId))
+            ->orderBy('id')
+            ->get();
+
+        foreach ($holds as $hold) {
+            $metadata = is_array($hold->metadata) ? $hold->metadata : [];
+            if (! empty($metadata['service_charge_matured_released'])) {
+                continue;
+            }
+
+            $maturesAtRaw = $metadata['service_charge_matures_at'] ?? null;
+            if (! is_string($maturesAtRaw) || $maturesAtRaw === '') {
+                continue;
+            }
+
+            try {
+                if (Carbon::parse($maturesAtRaw)->isFuture()) {
+                    continue;
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+
+            $moneyAccount = MoneyAccount::find($hold->money_account_id);
+            if (! $moneyAccount || $moneyAccount->type !== 'business_account') {
+                continue;
+            }
+
+            $amount = round(abs((float) $hold->amount), 2);
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $invoiceId = (int) ($metadata['invoice_id'] ?? $hold->reference_id ?? 0);
+            $invoice = $invoiceId > 0 ? Invoice::find($invoiceId) : null;
+            $business = Business::find($hold->business_id);
+            if (! $business) {
+                continue;
+            }
+
+            $invoiceNumber = $invoice?->invoice_number ?? ($metadata['invoice_number'] ?? 'N/A');
+            $paymentMethod = $hold->payment_method ?? ($metadata['service_charge_maturation_payment_method'] ?? 'mobile_money');
+
+            try {
+                DB::transaction(function () use ($hold, $moneyAccount, $amount, $invoice, $business, $invoiceNumber, $paymentMethod, &$metadata) {
+                    $kashtreAccount = $this->getOrCreateKashtreAccount($business);
+
+                    $this->transferMoney(
+                        $moneyAccount,
+                        $kashtreAccount,
+                        $amount,
+                        'service_charge_maturation_release',
+                        $invoice,
+                        null,
+                        "Service Fee matured — Invoice {$invoiceNumber}",
+                        null,
+                        'debit'
+                    );
+
+                    $this->recordBusinessStatementLineWithoutBalanceMutation(
+                        (int) $hold->business_id,
+                        (int) $moneyAccount->id,
+                        $amount,
+                        'debit',
+                        "Service fee maturation release — Invoice {$invoiceNumber}",
+                        $invoice ? 'invoice' : 'BusinessBalanceHistory',
+                        $invoice ? $invoice->id : $hold->id,
+                        [
+                            'invoice_id' => $invoice?->id,
+                            'invoice_number' => $invoiceNumber,
+                            'hold_history_id' => $hold->id,
+                            'type' => 'service_charge_maturation_release',
+                        ],
+                        'paid',
+                        $paymentMethod
+                    );
+
+                    $metadata['service_charge_matured_released'] = true;
+                    $metadata['service_charge_released_at'] = now()->toIso8601String();
+                    $hold->update([
+                        'payment_status' => 'paid',
+                        'metadata' => $metadata,
+                    ]);
+                });
+
+                $released++;
+            } catch (\Throwable $e) {
+                Log::error('Failed to release matured service charge hold', [
+                    'hold_id' => $hold->id,
+                    'business_id' => $hold->business_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($released > 0) {
+            Log::info('Released matured service charge holds', [
+                'count' => $released,
+                'business_id' => $businessId,
+            ]);
+        }
+
+        return $released;
     }
 
     /**
@@ -1961,28 +2276,28 @@ class MoneyTrackingService
         // Determine payment_status and payment_method based on client type and transfer type
         $paymentStatus = 'paid'; // Default to paid
         $paymentMethod = null;
+        $insuranceEntityMeta = [];
         
         // Allowed DB enum values for business_balance_histories.payment_method
         $futureValidMethods = ['account_balance', 'mobile_money', 'bank_transfer', 'v_card', 'p_card', 'insurance', 'credit_arrangement'];
-        
-        if ($invoice && $invoice->client) {
-            $client = $invoice->client;
-            $paymentMethods = $invoice->payment_methods ?? [];
-            
-            // Ensure payment_methods is an array (handle JSON string case)
-            if (is_string($paymentMethods)) {
-                $paymentMethods = json_decode($paymentMethods, true) ?? [];
-            }
-            
-            // Check for insurance payments
-            if (in_array('insurance', $paymentMethods)) {
+
+        $invoicePaymentMethods = $this->normalizedInvoicePaymentMethodStrings($invoice);
+
+        // Insurance is invoice-scoped; do not require client relation (maturation metadata must still apply).
+        if ($invoice && in_array('insurance', $invoicePaymentMethods, true)) {
+            $paymentMethod = 'insurance'; // Will be validated below
+            if ($toAccount->type === 'business_account') {
+                $insuranceEntityMeta = $this->insuranceBusinessCreditMaturationMeta($invoice);
+                $paymentStatus = $insuranceEntityMeta !== [] ? 'pending_payment' : 'paid';
+            } else {
                 $paymentStatus = 'paid';
-                // Try to use 'insurance' if enum supports it, otherwise fallback to 'mobile_money'
-                // Check if enum has been updated by trying to determine current enum values
-                $paymentMethod = 'insurance'; // Will be validated below
             }
+        } elseif ($invoice && $invoice->client) {
+            $client = $invoice->client;
+            $paymentMethods = $invoicePaymentMethods;
+
             // Check for credit arrangements
-            elseif (in_array('credit_arrangement', $paymentMethods) || $client->is_credit_eligible) {
+            if (in_array('credit_arrangement', $paymentMethods, true) || $client->is_credit_eligible) {
                 // If this is a suspense_to_final transfer (services being delivered) and client is credit-eligible
                 if ($transferType === 'suspense_to_final') {
                     $paymentStatus = 'pending_payment';
@@ -1995,7 +2310,7 @@ class MoneyTrackingService
             // For other payment methods, use invoice payment status
             else {
                 $paymentStatus = $invoice->payment_status ?? 'paid';
-                if (!empty($paymentMethods)) {
+                if ($paymentMethods !== []) {
                     $paymentMethod = $paymentMethods[0] ?? null;
                 }
             }
@@ -2013,22 +2328,16 @@ class MoneyTrackingService
             $paymentMethod = 'mobile_money';
         }
 
-        // Kashtre service fee credits: pending until service-charge maturation period elapses
-        $maturationExtraMeta = [];
-        if ($toAccount->type === 'kashtre_account' && $invoice && str_contains((string) $description, 'Service Fee Transfer')) {
-            $matMethod = $this->resolveInvoicePaymentMethodForServiceChargeMaturation($invoice);
-            if ($matMethod !== null) {
-                $matDays = ServiceChargeMaturationPeriod::resolveMaturationDays((int) $invoice->business_id, $matMethod);
-                if ($matDays > 0) {
-                    $paymentStatus = 'pending_payment';
-                    $maturationExtraMeta = [
-                        'service_charge_maturation_days' => $matDays,
-                        'service_charge_matures_at' => now()->addDays($matDays)->toIso8601String(),
-                        'service_charge_maturation_payment_method' => $matMethod,
-                    ];
-                    if (in_array($matMethod, $futureValidMethods, true)) {
-                        $paymentMethod = $matMethod;
-                    }
+        // Service charge maturation: hold on entity (business) statement until period elapses, then release to Kashtre.
+        $serviceChargeMaturationMeta = [];
+        if ($invoice && $this->isServiceFeeTransferDescription((string) $description)) {
+            $scContext = $this->serviceChargeMaturationContext($invoice);
+            if ($scContext['days'] > 0 && in_array($toAccount->type, ['business_account', 'kashtre_account'], true)) {
+                $paymentStatus = 'pending_payment';
+                $serviceChargeMaturationMeta = $scContext['metadata'];
+                $matMethod = $scContext['payment_method'];
+                if ($matMethod !== null && in_array($matMethod, $futureValidMethods, true)) {
+                    $paymentMethod = $matMethod;
                 }
             }
         }
@@ -2043,21 +2352,21 @@ class MoneyTrackingService
                 $description,
                 $invoice ? 'invoice' : 'MoneyTransfer',
                 $invoice ? $invoice->id : $transfer->id,
-                [
-                    'from_account' => $fromAccount->name,
+                array_merge([
+                    'from_account' => $fromAccount?->name,
                     'to_account' => $toAccount->name,
                     'transfer_type' => $transferType,
                     'invoice_id' => $invoice ? $invoice->id : null,
-                    'invoice_number' => $invoice ? $invoice->invoice_number : null
-                ],
+                    'invoice_number' => $invoice ? $invoice->invoice_number : null,
+                ], $insuranceEntityMeta, $serviceChargeMaturationMeta),
                 auth()->id(),
                 $paymentStatus,
                 $paymentMethod
             );
         }
 
-        // Create BusinessBalanceHistory records for Kashtre account
-        if ($toAccount->type === 'kashtre_account') {
+        // Create BusinessBalanceHistory records for Kashtre account (immediate service fee only — matured fees arrive via release)
+        if ($toAccount->type === 'kashtre_account' && $serviceChargeMaturationMeta === []) {
             \App\Models\BusinessBalanceHistory::recordChange(
                 1, // Kashtre business ID
                 $toAccount->id,
@@ -2066,13 +2375,13 @@ class MoneyTrackingService
                 $description,
                 $invoice ? 'invoice' : 'MoneyTransfer',
                 $invoice ? $invoice->id : $transfer->id,
-                array_merge([
-                    'from_account' => $fromAccount->name,
+                [
+                    'from_account' => $fromAccount?->name,
                     'to_account' => $toAccount->name,
                     'transfer_type' => $transferType,
                     'invoice_id' => $invoice ? $invoice->id : null,
                     'invoice_number' => $invoice ? $invoice->invoice_number : null,
-                ], $maturationExtraMeta),
+                ],
                 auth()->id(),
                 $paymentStatus,
                 $paymentMethod
@@ -2290,6 +2599,54 @@ class MoneyTrackingService
     }
 
     /**
+     * Metadata for business-account credits funded via insurance (entity revenue maturation).
+     *
+     * @return array<string, mixed>
+     */
+    private function insuranceBusinessCreditMaturationMeta(Invoice $invoice): array
+    {
+        $days = MaturationPeriod::resolveMaturationDays((int) $invoice->business_id, 'insurance');
+        if ($days <= 0) {
+            return [];
+        }
+
+        return [
+            'credit_maturation_days' => $days,
+            'credit_matures_at' => now()->addDays($days)->toIso8601String(),
+            'credit_maturation_payment_method' => 'insurance',
+        ];
+    }
+
+    /**
+     * Lowercased payment method tokens from invoice (handles JSON string values and mixed casing).
+     *
+     * @return list<string>
+     */
+    private function normalizedInvoicePaymentMethodStrings(?Invoice $invoice): array
+    {
+        if ($invoice === null) {
+            return [];
+        }
+
+        $raw = $invoice->payment_methods ?? [];
+        if (is_string($raw)) {
+            $raw = json_decode($raw, true) ?? [];
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($raw as $m) {
+            if (is_string($m) && trim($m) !== '') {
+                $out[] = strtolower(trim($m));
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
      * Calculate business available balance from BusinessBalanceHistory (source of truth)
      * This method ensures consistent calculation across all controllers
      * 
@@ -2308,14 +2665,14 @@ class MoneyTrackingService
         $totalBalance = 0;
 
         if ($businessAccount) {
-            // Calculate total credits - exclude pending payments (they haven't been paid yet)
-            $totalCredits = BusinessBalanceHistory::where('business_id', $business->id)
+            // Credits count toward balance only when effectively paid (includes matured insurance / service-fee pendings)
+            $creditHistories = BusinessBalanceHistory::where('business_id', $business->id)
                 ->where('money_account_id', $businessAccount->id)
                 ->where('type', 'credit')
-                ->where(function($query) {
-                    $query->where('payment_status', 'paid')
-                        ->orWhereNull('payment_status'); // Include records without payment_status (legacy data)
-                })
+                ->get();
+
+            $totalCredits = (float) $creditHistories
+                ->filter(fn (BusinessBalanceHistory $h): bool => $h->effectiveCreditPaymentStatus() === 'paid')
                 ->sum('amount');
 
             // Calculate total debits - include all debits
@@ -2452,20 +2809,20 @@ class MoneyTrackingService
             // Determine payment status and method from invoice
             $paymentStatus = 'paid'; // Default to paid for service delivery
             $paymentMethod = null;
+            $insuranceEntityMeta = [];
             
             if ($invoice) {
-                // Check invoice payment methods
-                $paymentMethods = $invoice->payment_methods ?? [];
-                if (in_array('insurance', $paymentMethods)) {
+                $paymentMethods = $this->normalizedInvoicePaymentMethodStrings($invoice);
+                if (in_array('insurance', $paymentMethods, true)) {
                     $paymentMethod = 'insurance';
-                    $paymentStatus = 'paid'; // Insurance payments are considered paid
-                } elseif (in_array('credit_arrangement', $paymentMethods) || $invoice->client->is_credit_eligible ?? false) {
+                    $insuranceEntityMeta = $this->insuranceBusinessCreditMaturationMeta($invoice);
+                    $paymentStatus = $insuranceEntityMeta !== [] ? 'pending_payment' : 'paid';
+                } elseif (in_array('credit_arrangement', $paymentMethods, true) || ($invoice->client?->is_credit_eligible ?? false)) {
                     $paymentStatus = 'pending_payment';
                     $paymentMethod = 'credit_arrangement';
                 } else {
                     $paymentStatus = $invoice->payment_status ?? 'paid';
-                    // Try to get payment method from invoice
-                    if (!empty($paymentMethods)) {
+                    if ($paymentMethods !== []) {
                         $paymentMethod = $paymentMethods[0] ?? null;
                     }
                 }
@@ -2480,11 +2837,11 @@ class MoneyTrackingService
                 "Service delivery payment for {$item->name} ({$serviceDeliveryQueue->quantity}) - Business share",
                 'service_delivery_queue',
                 $serviceDeliveryQueue->id,
-                [
+                array_merge([
                     'invoice_id' => $invoice->id,
                     'item_id' => $item->id,
                     'client_id' => $invoice->client_id
-                ],
+                ], $insuranceEntityMeta),
                 $user ? $user->id : null,
                 $paymentStatus,
                 $paymentMethod
@@ -2502,7 +2859,7 @@ class MoneyTrackingService
                     "Service charge for invoice #{$invoice->invoice_number}"
                 );
                 
-                // Record Kashtre balance statement
+                // Record Kashtre balance statement (avoid copying insurance pending onto Kashtre; transferMoney already recorded maturation)
                 BusinessBalanceHistory::recordChange(
                     1, // Kashtre business_id
                     $kashtreAccount->id,
@@ -2518,8 +2875,8 @@ class MoneyTrackingService
                         'business_id' => $business->id
                     ],
                     $user ? $user->id : null,
-                    $paymentStatus,
-                    $paymentMethod
+                    'paid',
+                    $paymentMethod === 'insurance' ? 'mobile_money' : ($paymentMethod ?? 'mobile_money')
                 );
             }
             
@@ -2894,6 +3251,8 @@ class MoneyTrackingService
     public function processSaveAndExit(Invoice $invoice, $items, $itemStatus = null)
     {
         try {
+            $this->releaseMaturedServiceChargeHolds((int) $invoice->business_id);
+
             Log::info("=== SAVE AND EXIT PROCESSING STARTED ===", [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
@@ -3202,18 +3561,20 @@ class MoneyTrackingService
             // Determine payment status and method from invoice
             $paymentStatus = 'paid'; // Default to paid for service delivery
             $paymentMethod = null;
+            $insuranceEntityMeta = [];
             
             if ($invoice) {
-                $paymentMethods = $invoice->payment_methods ?? [];
-                if (in_array('insurance', $paymentMethods)) {
+                $paymentMethods = $this->normalizedInvoicePaymentMethodStrings($invoice);
+                if (in_array('insurance', $paymentMethods, true)) {
                     $paymentMethod = 'insurance';
-                    $paymentStatus = 'paid';
-                } elseif (in_array('credit_arrangement', $paymentMethods) || $invoice->client->is_credit_eligible ?? false) {
+                    $insuranceEntityMeta = $this->insuranceBusinessCreditMaturationMeta($invoice);
+                    $paymentStatus = $insuranceEntityMeta !== [] ? 'pending_payment' : 'paid';
+                } elseif (in_array('credit_arrangement', $paymentMethods, true) || ($invoice->client?->is_credit_eligible ?? false)) {
                     $paymentStatus = 'pending_payment';
                     $paymentMethod = 'credit_arrangement';
                 } else {
                     $paymentStatus = $invoice->payment_status ?? 'paid';
-                    if (!empty($paymentMethods)) {
+                    if ($paymentMethods !== []) {
                         $paymentMethod = $paymentMethods[0] ?? null;
                     }
                 }
@@ -3227,11 +3588,11 @@ class MoneyTrackingService
                 "{$bulkItem->name} ({$quantity})",
                 'invoice',
                 $invoice->id,
-                [
+                array_merge([
                     'invoice_number' => $invoice->invoice_number,
                     'bulk_item_name' => $bulkItem->name,
                     'description' => "Service delivery completed - Bulk: {$bulkItem->name}"
-                ],
+                ], $insuranceEntityMeta),
                 auth()->id(),
                 $paymentStatus,
                 $paymentMethod
@@ -3706,18 +4067,20 @@ class MoneyTrackingService
         // Determine payment status and method from invoice
         $paymentStatus = 'paid'; // Default to paid for package adjustments
         $paymentMethod = null;
+        $insuranceEntityMeta = [];
         
         if ($invoice) {
-            $paymentMethods = $invoice->payment_methods ?? [];
-            if (in_array('insurance', $paymentMethods)) {
+            $paymentMethods = $this->normalizedInvoicePaymentMethodStrings($invoice);
+            if (in_array('insurance', $paymentMethods, true)) {
                 $paymentMethod = 'insurance';
-                $paymentStatus = 'paid';
-            } elseif (in_array('credit_arrangement', $paymentMethods) || $invoice->client->is_credit_eligible ?? false) {
+                $insuranceEntityMeta = $this->insuranceBusinessCreditMaturationMeta($invoice);
+                $paymentStatus = $insuranceEntityMeta !== [] ? 'pending_payment' : 'paid';
+            } elseif (in_array('credit_arrangement', $paymentMethods, true) || ($invoice->client?->is_credit_eligible ?? false)) {
                 $paymentStatus = 'pending_payment';
                 $paymentMethod = 'credit_arrangement';
             } else {
                 $paymentStatus = $invoice->payment_status ?? 'paid';
-                if (!empty($paymentMethods)) {
+                if ($paymentMethods !== []) {
                     $paymentMethod = $paymentMethods[0] ?? null;
                 }
             }
@@ -3731,13 +4094,13 @@ class MoneyTrackingService
             $transfer->description,
             'MoneyTransfer',
             $transfer->id,
-            [
+            array_merge([
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'package_adjustment_amount' => $packageAdjustmentAmount,
                 'from_account' => $clientSuspenseAccount->name,
                 'to_account' => $businessAccount->name
-            ],
+            ], $insuranceEntityMeta),
             auth()->id(),
             $paymentStatus,
             $paymentMethod
@@ -5297,15 +5660,23 @@ class MoneyTrackingService
                 // Store the balance before transfer
                 $kashtreSuspenseBalance = $kashtreSuspenseAccount->balance;
                 
+                $scMaturation = $this->serviceChargeMaturationContext($invoice);
+                $serviceChargeHeldOnEntity = $scMaturation['days'] > 0;
+
                 Log::info("📦 === SAVE & EXIT: PROCESSING KASHTRE SUSPENSE ACCOUNT ===", [
                     'balance' => $kashtreSuspenseBalance,
                     'account_name' => $kashtreSuspenseAccount->name,
                     'account_id' => $kashtreSuspenseAccount->id,
-                    'decision_reason' => 'Kashtre suspense has balance, moving to Kashtre account',
-                    'destination_account_type' => 'kashtre_account'
+                    'decision_reason' => $serviceChargeHeldOnEntity
+                        ? 'Service charge maturation — holding on entity (business) account'
+                        : 'Kashtre suspense has balance, moving to Kashtre account',
+                    'destination_account_type' => $serviceChargeHeldOnEntity ? 'business_account' : 'kashtre_account',
+                    'service_charge_maturation_days' => $scMaturation['days'],
                 ]);
 
-                $kashtreAccount = $this->getOrCreateKashtreAccount($business);
+                $kashtreAccount = $serviceChargeHeldOnEntity
+                    ? $this->getOrCreateBusinessAccount($business)
+                    : $this->getOrCreateKashtreAccount($business);
                 
                 // Get package tracking number for description
                 // For package adjustments, look for the most recent package tracking record

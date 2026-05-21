@@ -311,6 +311,18 @@ class ServiceDeliveryQueue extends Model
         static::creating(function ($queue) {
             $queue->uuid = (string) Str::uuid();
         });
+
+        static::saved(function ($queueItem) {
+            if (app()->bound(\App\Services\CallingServiceClient::class) || class_exists(\App\Services\CallingServiceClient::class)) {
+                app(\App\Services\CallingServiceClient::class)->syncQueue($queueItem);
+            }
+        });
+
+        static::deleted(function ($queueItem) {
+            if (app()->bound(\App\Services\CallingServiceClient::class) || class_exists(\App\Services\CallingServiceClient::class)) {
+                app(\App\Services\CallingServiceClient::class)->deleteQueueItem($queueItem->uuid);
+            }
+        });
     }
 
     public function getRouteKeyName()
@@ -336,6 +348,17 @@ class ServiceDeliveryQueue extends Model
     }
 
     /**
+     * Accessor for formatted_waiting_time — used in Blade as $queue->formatted_waiting_time
+     */
+    public function getFormattedWaitingTimeAttribute(): ?string
+    {
+        if (!$this->queued_at) {
+            return null;
+        }
+        return $this->getFormattedWaitingTime();
+    }
+
+    /**
      * Format waiting time as 2m:45s
      */
     public function getFormattedWaitingTime()
@@ -351,7 +374,7 @@ class ServiceDeliveryQueue extends Model
     {
         $minutes = floor($seconds / 60);
         $remainingSeconds = $seconds % 60;
-        
+
         return sprintf('%dm:%02ds', $minutes, $remainingSeconds);
     }
 

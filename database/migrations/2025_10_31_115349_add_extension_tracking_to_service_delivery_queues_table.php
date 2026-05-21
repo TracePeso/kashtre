@@ -12,17 +12,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Temporarily disable strict mode
-        DB::statement("SET sql_mode = ''");
-        
-        // Add extended_at column using raw SQL
-        DB::statement("ALTER TABLE service_delivery_queues ADD COLUMN extended_at TIMESTAMP NULL AFTER partially_done_at");
+        if (!Schema::hasColumn('service_delivery_queues', 'extended_at')) {
+            Schema::table('service_delivery_queues', function (Blueprint $table) {
+                $table->timestamp('extended_at')->nullable()->after('partially_done_at');
+            });
+        }
 
-        // Update the status enum to include 'not_done'
+        // We can use a raw statement for ENUM change if needed, but safely
         DB::statement("ALTER TABLE service_delivery_queues MODIFY COLUMN status ENUM('pending', 'in_progress', 'partially_done', 'completed', 'cancelled', 'not_done') DEFAULT 'pending'");
-        
-        // Re-enable strict mode
-        DB::statement("SET sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'");
     }
 
     /**
@@ -30,10 +27,12 @@ return new class extends Migration
      */
     public function down(): void
     {
-        // Remove extended_at column using raw SQL
-        DB::statement("ALTER TABLE service_delivery_queues DROP COLUMN extended_at");
+        if (Schema::hasColumn('service_delivery_queues', 'extended_at')) {
+            Schema::table('service_delivery_queues', function (Blueprint $table) {
+                $table->dropColumn('extended_at');
+            });
+        }
 
-        // Revert the status enum
         DB::statement("ALTER TABLE service_delivery_queues MODIFY COLUMN status ENUM('pending', 'in_progress', 'partially_done', 'completed', 'cancelled') DEFAULT 'pending'");
     }
 };

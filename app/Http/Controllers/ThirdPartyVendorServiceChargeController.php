@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Business;
 use App\Models\InsuranceCompany;
 use App\Models\ThirdPartyVendorServiceCharge;
+use App\Services\ThirdPartyVendorServiceChargeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +26,7 @@ class ThirdPartyVendorServiceChargeController extends Controller
 
         $user = Auth::user();
         $businesses = $this->businessesForForm($user);
-        $defaultTiers = config('third_party_vendor_service_charges.default_tiers', []);
+        $defaultTiers = app(ThirdPartyVendorServiceChargeService::class)->recommendedDefaults();
 
         $insuranceCompaniesForClinic = collect();
         if ((int) $user->business_id !== 1) {
@@ -123,7 +124,7 @@ class ThirdPartyVendorServiceChargeController extends Controller
             ->orderBy('lower_bound')
             ->get();
 
-        $defaultTiers = config('third_party_vendor_service_charges.default_tiers', []);
+        $defaultTiers = app(ThirdPartyVendorServiceChargeService::class)->recommendedDefaults();
 
         $insuranceCompany = $insuranceCompanyId !== null
             ? InsuranceCompany::find($insuranceCompanyId)

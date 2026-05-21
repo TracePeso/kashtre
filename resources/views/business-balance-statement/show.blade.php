@@ -53,6 +53,9 @@
                                             Payment Status
                                         </th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Days to mature
+                                        </th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             Payment Method
                                         </th>
                                     </tr>
@@ -135,11 +138,12 @@
                                                 {{ $history->reference_number ?? '-' }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
-                                                <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full 
-                                                    @if($history->payment_status === 'paid') bg-green-100 text-green-800
-                                                    @else bg-yellow-100 text-yellow-800 @endif">
-                                                    {{ ucfirst(str_replace('_', ' ', $history->payment_status ?? 'pending_payment')) }}
+                                                <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ $history->businessStatementPaymentStatusBadgeClass() }}">
+                                                    {{ $history->businessStatementPaymentStatusDisplay() }}
                                                 </span>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                                {{ $history->businessStatementCreditMaturityLabel() }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                                 @if($history->payment_method)

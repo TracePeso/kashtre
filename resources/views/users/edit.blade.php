@@ -65,16 +65,16 @@
                     <div x-show="open" class="p-4 space-y-4">
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                                <label for="surname">Surname <span class="text-red-500">*</span></label>
-                                <input type="text" name="surname" id="surname" required placeholder="Enter surname" class="form-input w-full" value="{{ old('surname', $surname) }}">
+                                <label for="surname">Surname <span class="text-gray-500 text-sm">(optional)</span></label>
+                                <input type="text" name="surname" id="surname" placeholder="Enter surname" class="form-input w-full" value="{{ old('surname', $surname) }}">
                             </div>
                             <div>
-                                <label for="first_name">First Name <span class="text-red-500">*</span></label>
-                                <input type="text" name="first_name" id="first_name" required placeholder="Enter first name" class="form-input w-full" value="{{ old('first_name', $first_name) }}">
+                                <label for="first_name">First name <span class="text-gray-500 text-sm">(optional)</span></label>
+                                <input type="text" name="first_name" id="first_name" placeholder="Enter first name" class="form-input w-full" value="{{ old('first_name', $first_name) }}">
                             </div>
                             <div>
-                                <label for="middle_name">Middle Name</label>
-                                <input type="text" name="middle_name" id="middle_name" placeholder="Enter middle name (optional)" class="form-input w-full" value="{{ old('middle_name', $middle_name) }}">
+                                <label for="middle_name">Middle name <span class="text-gray-500 text-sm">(optional)</span></label>
+                                <input type="text" name="middle_name" id="middle_name" placeholder="Enter middle name" class="form-input w-full" value="{{ old('middle_name', $middle_name) }}">
                             </div>
                         </div>
                         <div>
@@ -129,9 +129,9 @@
                             </select>
                         </div>
                         <div>
-                            <label for="branch_id">Branch <span class="text-red-500">*</span></label>
-                            <select name="branch_id" id="branch_id" required class="form-select w-full" :disabled="!branches.length">
-                                <option value="" disabled>Select Branch</option>
+                            <label for="branch_id">Branch <span class="text-gray-500 text-sm">(optional)</span></label>
+                            <select name="branch_id" id="branch_id" class="form-select w-full" :disabled="!branches.length">
+                                <option value="">Default branch</option>
                                 <template x-for="branch in branches" :key="branch.id">
                                     <option :value="branch.id" x-text="branch.name" :selected="branch.id == {{ old('branch_id', $user->branch_id) }}"></option>
                                 </template>
@@ -139,27 +139,27 @@
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                                <label for="qualification_id">Qualification <span class="text-red-500">*</span></label>
-                                <select name="qualification_id" id="qualification_id" required class="form-select w-full">
-                                    <option value="" disabled>Select Qualification</option>
+                                <label for="qualification_id">Qualification <span class="text-gray-500 text-sm">(optional)</span></label>
+                                <select name="qualification_id" id="qualification_id" class="form-select w-full">
+                                    <option value="">Not specified</option>
                                     <template x-for="q in filteredQualifications" :key="q.id">
                                         <option :value="q.id" x-text="q.name" :selected="q.id == {{ old('qualification_id', $user->qualification_id) }}"></option>
                                     </template>
                                 </select>
                             </div>
                             <div>
-                                <label for="title_id">Title <span class="text-red-500">*</span></label>
-                                <select name="title_id" id="title_id" required class="form-select w-full">
-                                    <option value="" disabled>Select Title</option>
+                                <label for="title_id">Job title <span class="text-gray-500 text-sm">(optional)</span></label>
+                                <select name="title_id" id="title_id" class="form-select w-full">
+                                    <option value="">Not specified</option>
                                     <template x-for="t in filteredTitles" :key="t.id">
                                         <option :value="t.id" x-text="t.name" :selected="t.id == {{ old('title_id', $user->title_id) }}"></option>
                                     </template>
                                 </select>
                             </div>
                             <div>
-                                <label for="department_id">Department <span class="text-red-500">*</span></label>
-                                <select name="department_id" id="department_id" required class="form-select w-full">
-                                    <option value="" disabled>Select Department</option>
+                                <label for="department_id">Department <span class="text-gray-500 text-sm">(optional)</span></label>
+                                <select name="department_id" id="department_id" class="form-select w-full">
+                                    <option value="">Not specified</option>
                                     <template x-for="d in filteredDepartments" :key="d.id">
                                         <option :value="d.id" x-text="d.name" :selected="d.id == {{ old('department_id', $user->department_id) }}"></option>
                                     </template>
@@ -167,9 +167,8 @@
                             </div>
                         </div>
                         <div>
-                            <label for="status">Status <span class="text-red-500">*</span></label>
-                            <select name="status" id="status" required class="form-select w-full">
-                                <option value="" disabled>Select Status</option>
+                            <label for="status">Status</label>
+                            <select name="status" id="status" class="form-select w-full">
                                 <option value="active" {{ old('status', $user->status) == 'active' ? 'selected' : '' }}>Active</option>
                                 <option value="inactive" {{ old('status', $user->status) == 'inactive' ? 'selected' : '' }}>Inactive</option>
                                 <option value="suspended" {{ old('status', $user->status) == 'suspended' ? 'selected' : '' }}>Suspended</option>
@@ -188,7 +187,7 @@
                         <!-- Service Points -->
                         <div>
                             <label for="service_points" class="block text-sm font-medium text-gray-700">
-                                Service Points <span class="text-red-500">*</span>
+                                Service points <span class="text-gray-500 text-sm">(optional)</span>
                             </label>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
                                 <template x-for="sp in filteredServicePoints" :key="sp.id">
@@ -203,7 +202,7 @@
                         <!-- Allowed Branches -->
                         <div>
                             <label for="allowed_branches" class="block text-sm font-medium text-gray-700">
-                                Allowed Branches <span class="text-red-500">*</span>
+                                Allowed branches <span class="text-gray-500 text-sm">(optional)</span>
                             </label>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
                                 <template x-for="branch in filteredBranches" :key="branch.id">

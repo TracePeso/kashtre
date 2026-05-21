@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class ThirdPartyPayerBalanceHistory extends Model
 {
@@ -67,6 +68,19 @@ class ThirdPartyPayerBalanceHistory extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Human label for statements (matches business statement: "Pending" / "Paid").
+     */
+    public static function normalizePaymentStatusLabel(?string $status): string
+    {
+        return match ($status) {
+            'paid' => 'Paid',
+            'pending_payment' => 'Pending',
+            null, '' => 'N/A',
+            default => Str::title(str_replace('_', ' ', $status)),
+        };
     }
 
     // Static methods for creating balance history records

@@ -611,6 +611,22 @@ class CheckPaymentStatus extends Command
 
             // Handle regular items with service points (only for non-package, non-bulk items)
             if ($branchServicePoint && $branchServicePoint->service_point_id) {
+                $existingQueue = \App\Models\ServiceDeliveryQueue::where('invoice_id', $invoice->id)
+                    ->where('client_id', $invoice->client_id)
+                    ->where('item_id', $itemId)
+                    ->where('service_point_id', $branchServicePoint->service_point_id)
+                    ->first();
+
+                if ($existingQueue) {
+                    Log::info("Regular item already queued for invoice, skipping duplicate", [
+                        'invoice_id' => $invoice->id,
+                        'queue_id' => $existingQueue->id,
+                        'item_id' => $itemId,
+                        'service_point_id' => $branchServicePoint->service_point_id,
+                    ]);
+                    continue;
+                }
+
                 Log::info("Creating service delivery queue for regular item", [
                     'item_id' => $itemId,
                     'service_point_id' => $branchServicePoint->service_point_id,

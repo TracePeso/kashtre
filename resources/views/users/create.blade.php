@@ -66,38 +66,58 @@ return ['id' => $sp->id, 'name' => $sp->name];
                             <!-- Bio fields start -->
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
-                                    <label for="surname">Surname <span class="text-red-500">*</span></label>
-                                    <input type="text" name="surname" id="surname" required placeholder="Enter surname" class="form-input w-full">
+                                    <label for="surname">Surname <span class="text-gray-500 text-sm">(optional)</span></label>
+                                    <input type="text" name="surname" id="surname" placeholder="Enter surname" class="form-input w-full">
                                 </div>
                                 <div>
-                                    <label for="first_name">First Name <span class="text-red-500">*</span></label>
-                                    <input type="text" name="first_name" id="first_name" required placeholder="Enter first name" class="form-input w-full">
+                                    <label for="first_name">First name <span class="text-gray-500 text-sm">(optional)</span></label>
+                                    <input type="text" name="first_name" id="first_name" placeholder="Enter first name" class="form-input w-full">
                                 </div>
                                 <div>
-                                    <label for="middle_name">Middle Name</label>
-                                    <input type="text" name="middle_name" id="middle_name" placeholder="Enter middle name (optional)" class="form-input w-full">
+                                    <label for="middle_name">Middle name <span class="text-gray-500 text-sm">(optional)</span></label>
+                                    <input type="text" name="middle_name" id="middle_name" placeholder="Enter middle name" class="form-input w-full">
                                 </div>
                             </div>
+                            <p class="text-sm text-gray-500">If names are left blank, the display name defaults to the part of the email before &quot;@&quot;.</p>
                             <div>
                                 <label for="email">Email <span class="text-red-500">*</span></label>
                                 <input type="email" name="email" id="email" required placeholder="Enter email address" class="form-input w-full">
                             </div>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label for="phone">Phone <span class="text-red-500">*</span></label>
-                                    <input type="text" name="phone" id="phone" required placeholder="Enter phone number" class="form-input w-full">
+                                    <label for="phone">Phone <span class="text-gray-500 text-sm">(optional)</span></label>
+                                    <input type="text" name="phone" id="phone" placeholder="Enter phone number" class="form-input w-full">
                                 </div>
                                 <div>
-                                    <label for="nin">NIN <span class="text-red-500">*</span></label>
-                                    <input type="text" name="nin" id="nin" required placeholder="Enter NIN" class="form-input w-full">
+                                    <label for="nin">National ID (NIN) <span class="text-gray-500 text-sm">(optional)</span></label>
+                                    <input type="text" name="nin" id="nin" placeholder="National identification number" class="form-input w-full">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="gender">Gender <span class="text-gray-500 text-sm">(optional)</span></label>
+                                    <select name="gender" id="gender" class="form-select w-full">
+                                        <option value="">Not specified</option>
+                                        <option value="male">Male</option>
+                                        <option value="female">Female</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="birth_date">Date of birth <span class="text-gray-500 text-sm">(optional)</span></label>
+                                    <input type="date" name="birth_date" id="birth_date" class="form-input w-full">
+                                    <p class="text-xs text-gray-500 mt-1">Age is derived from this date when viewing the profile.</p>
                                 </div>
                             </div>
                             <div>
-                                <label for="gender">Gender <span class="text-red-500">*</span></label>
-                                <select name="gender" id="gender" required class="form-select w-full">
-                                    <option value="" disabled selected>Select Gender</option>
-                                    <option value="male">Male</option>
-                                    <option value="female">Female</option>
+                                <label for="marital_status">Marital status <span class="text-gray-500 text-sm">(optional)</span></label>
+                                <select name="marital_status" id="marital_status" class="form-select w-full">
+                                    <option value="">Not specified</option>
+                                    <option value="single">Single</option>
+                                    <option value="married">Married</option>
+                                    <option value="divorced">Divorced</option>
+                                    <option value="widowed">Widowed</option>
+                                    <option value="separated">Separated</option>
                                     <option value="other">Other</option>
                                 </select>
                             </div>
@@ -131,9 +151,9 @@ return ['id' => $sp->id, 'name' => $sp->name];
                                 </select>
                             </div>
                             <div>
-                                <label for="branch_id">Branch <span class="text-red-500">*</span></label>
-                                <select name="branch_id" id="branch_id" required class="form-select w-full" :disabled="!branches.length">
-                                    <option value="" disabled selected>Select Branch</option>
+                                <label for="branch_id">Branch <span class="text-gray-500 text-sm">(optional — defaults to yours)</span></label>
+                                <select name="branch_id" id="branch_id" class="form-select w-full" :disabled="!branches.length">
+                                    <option value="">Default branch</option>
                                     <template x-for="branch in branches" :key="branch.id">
                                         <option :value="branch.id" x-text="branch.name"></option>
                                     </template>
@@ -150,18 +170,18 @@ return ['id' => $sp->id, 'name' => $sp->name];
                                     </select>
                                 </div>
                                 <div>
-                                    <label for="title_id">Title <span class="text-red-500">*</span></label>
-                                    <select name="title_id" id="title_id" required class="form-select w-full">
-                                        <option value="" disabled selected>Select Title</option>
+                                    <label for="title_id">Job title <span class="text-gray-500 text-sm">(optional)</span></label>
+                                    <select name="title_id" id="title_id" class="form-select w-full">
+                                        <option value="">Not specified</option>
                                         <template x-for="t in filteredTitles" :key="t.id">
                                             <option :value="t.id" x-text="t.name"></option>
                                         </template>
                                     </select>
                                 </div>
                                 <div>
-                                    <label for="department_id">Department <span class="text-red-500">*</span></label>
-                                    <select name="department_id" id="department_id" required class="form-select w-full">
-                                        <option value="" disabled selected>Select Department</option>
+                                    <label for="department_id">Department <span class="text-gray-500 text-sm">(optional)</span></label>
+                                    <select name="department_id" id="department_id" class="form-select w-full">
+                                        <option value="">Not specified</option>
                                         <template x-for="d in filteredDepartments" :key="d.id">
                                             <option :value="d.id" x-text="d.name"></option>
                                         </template>
@@ -169,9 +189,9 @@ return ['id' => $sp->id, 'name' => $sp->name];
                                 </div>
                             </div>
                             <div>
-                                <label for="status">Status <span class="text-red-500">*</span></label>
-                                <select name="status" id="status" required class="form-select w-full">
-                                    <option value="" disabled selected>Select Status</option>
+                                <label for="status">Status</label>
+                                <select name="status" id="status" class="form-select w-full">
+                                    <option value="">Default (active)</option>
                                     <option value="active">Active</option>
                                     <option value="inactive">Inactive</option>
                                     <option value="suspended">Suspended</option>
@@ -191,7 +211,7 @@ return ['id' => $sp->id, 'name' => $sp->name];
                             <!-- Service Points -->
                             <div>
                                 <label for="service_points" class="block text-sm font-medium text-gray-700">
-                                    Service Points <span class="text-red-500">*</span>
+                                    Service points <span class="text-gray-500 text-sm">(optional)</span>
                                 </label>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
                                                                     <template x-for="sp in filteredServicePoints" :key="sp.id">
@@ -206,7 +226,7 @@ return ['id' => $sp->id, 'name' => $sp->name];
                             <!-- Allowed Branches -->
                             <div>
                                 <label for="allowed_branches" class="block text-sm font-medium text-gray-700">
-                                    Allowed Branches <span class="text-red-500">*</span>
+                                    Allowed branches <span class="text-gray-500 text-sm">(optional)</span>
                                 </label>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
                                     <template x-for="branch in filteredBranches" :key="branch.id">

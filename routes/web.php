@@ -58,11 +58,16 @@ use App\Http\Controllers\AutomatedTestController;
 use App\Http\Controllers\MaturationPeriodController;
 use App\Http\Controllers\ServiceChargeMaturationPeriodController;
 use App\Http\Controllers\PaymentMethodAccountController;
+use App\Http\Controllers\CallingModuleConfigController;
+use App\Http\Controllers\ServicePointCallerController;
+use App\Http\Controllers\CallingController;
+use App\Http\Controllers\EmergencyController;
 use App\Http\Controllers\BankScheduleController;
 use App\Http\Controllers\WithdrawalSettingController;
 use App\Http\Controllers\BusinessWithdrawalSettingController;
 use App\Http\Controllers\WithdrawalRequestController;
 use App\Http\Controllers\BusinessSettingsController;
+use App\Http\Controllers\BroadcastAuthController;
 use App\Http\Controllers\ThirdPartyPayerController;
 use App\Http\Controllers\CreditNoteWorkflowController;
 use App\Http\Controllers\CreditNoteWorkflowBulkUploadController;
@@ -91,6 +96,14 @@ use Illuminate\Http\Request;
 */
 
 Route::redirect('/', 'login');
+
+Route::match(['get', 'post'], '/reverb/auth', BroadcastAuthController::class)
+    ->middleware(['auth'])
+    ->withoutMiddleware([
+        \App\Http\Middleware\RequireTwoFactorForKashtre::class,
+        \App\Http\Middleware\VerifyCsrfToken::class,
+    ])
+    ->name('reverb.auth');
 
 // Third-party payer authentication routes (public)
 Route::prefix('third-party-payer')->name('third-party-payer.')->group(function () {
@@ -126,6 +139,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::post('/dashboard/yo-payment-test', [DashboardController::class, 'testYoPayment'])->name('dashboard.yo-payment-test');
+    Route::post('/dashboard/testing-environment-reset', [DashboardController::class, 'clearTestingEnvironment'])
+        ->name('dashboard.testing-environment-reset')
+        ->middleware('throttle:5,1');
 
     // Automated Tests
     Route::get('/automated-tests', [AutomatedTestController::class, 'index'])->name('automated-tests.index');
@@ -145,6 +161,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource("users", UserController::class);
     Route::resource("roles", RoleController::class);
     Route::resource("departments", DepartmentController::class);
+    Route::resource("client-spaces", ClientSpaceController::class);
     Route::resource("titles", TitleController::class);
     Route::resource("qualifications", QualificationController::class);
     Route::resource("rooms", RoomController::class);
@@ -215,6 +232,8 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     Route::post('/settings/countries', [SettingsController::class, 'storeCountry'])->name('settings.countries.store');
     Route::put('/settings/countries/{country}', [SettingsController::class, 'updateCountry'])->name('settings.countries.update');
     Route::delete('/settings/countries/{country}', [SettingsController::class, 'destroyCountry'])->name('settings.countries.destroy');
+    Route::post('/settings/vendor-service-charge-defaults', [SettingsController::class, 'updateVendorServiceChargeDefaults'])
+        ->name('settings.vendor-service-charge-defaults.update');
 
     // Insurance Companies routes (redirect index to settings)
     Route::get('/insurance-companies', function() {
@@ -243,6 +262,12 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     Route::resource('service-charge-maturation-periods', ServiceChargeMaturationPeriodController::class)->except(['index']);
     Route::post('service-charge-maturation-periods/{service_charge_maturation_period}/toggle-status', [ServiceChargeMaturationPeriodController::class, 'toggleStatus'])
         ->name('service-charge-maturation-periods.toggle-status');
+
+    // Calling Module Config (Kashtre admin only)
+    Route::resource("calling-module-configs", CallingModuleConfigController::class)->except(['show']);
+    Route::post("calling-module-configs/{callingModuleConfig}/toggle-status", [CallingModuleConfigController::class, 'toggleStatus'])->name('calling-module-configs.toggle-status');
+    Route::post("calling-module-configs/{callingModuleConfig}/toggle-audio", [CallingModuleConfigController::class, 'toggleAudio'])->name('calling-module-configs.toggle-audio');
+    Route::post("calling-module-configs/{callingModuleConfig}/toggle-video", [CallingModuleConfigController::class, 'toggleVideo'])->name('calling-module-configs.toggle-video');
     
     // Payment Method Account Transactions
     Route::get("payment-method-accounts/{paymentMethodAccount}/transactions", [PaymentMethodAccountController::class, 'transactions'])->name('payment-method-accounts.transactions');
@@ -408,6 +433,7 @@ Route::post('/invoices/generate-invoice-number', [InvoiceController::class, 'gen
 Route::post('/invoices/{invoice}/generate-quotation', [QuotationController::class, 'generateFromInvoice'])->name('invoices.generate-quotation');
 Route::get('/invoices/{invoice}/print', [InvoiceController::class, 'print'])->name('invoices.print');
 Route::get('/invoices/{invoice}/insurance-authorization', [InvoiceController::class, 'getInsuranceAuthorization'])->name('invoices.insurance-authorization');
+Route::post('/invoices/{invoice}/complete-insurance-service-delivery', [InvoiceController::class, 'completeInsuranceServiceDelivery'])->name('invoices.complete-insurance-service-delivery');
 Route::patch('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])->name('invoices.cancel');
 Route::resource('invoices', InvoiceController::class);
 
@@ -439,6 +465,66 @@ Route::get('/service-delivery/statement/{invoice}', [ServiceDeliveryController::
 // Money Tracking routes
 Route::get('/money-tracking/dashboard', [MoneyTrackingController::class, 'dashboard'])->name('money-tracking.dashboard');
 Route::get('/money-tracking/client-account/{client}', [MoneyTrackingController::class, 'getClientAccount'])->name('money-tracking.client-account');
+
+// Calling Module — Named caller management (business admin, calling must be enabled)
+// NOTE: static nested routes must be before the resource to avoid {caller} capturing them
+Route::get('service-point-callers/call-settings/voices', [ServicePointCallerController::class, 'getVoices'])->name('service-point-callers.get-voices');
+Route::get('service-point-callers/call-settings/preview', [ServicePointCallerController::class, 'previewVoice'])->name('service-point-callers.preview-voice');
+Route::get('service-point-callers/call-settings', [ServicePointCallerController::class, 'callSettingsIndex'])->name('service-point-callers.call-settings-index');
+Route::post('service-point-callers/call-settings', [ServicePointCallerController::class, 'saveGlobalCallSettings'])->name('service-point-callers.save-global-call-settings');
+Route::get('service-point-callers/emergency-settings', [ServicePointCallerController::class, 'emergencySettingsIndex'])->name('service-point-callers.emergency-settings-index');
+Route::post('service-point-callers/emergency-settings', [ServicePointCallerController::class, 'saveEmergencySettings'])->name('service-point-callers.save-emergency-settings');
+Route::get('service-point-callers/p2p-settings', [ServicePointCallerController::class, 'p2pSettingsIndex'])->name('service-point-callers.p2p-settings');
+Route::post('service-point-callers/p2p-settings', [ServicePointCallerController::class, 'saveP2pSettings'])->name('service-point-callers.save-p2p-settings');
+Route::delete('service-point-callers/{caller}/service-points/{servicePoint}', [ServicePointCallerController::class, 'removeServicePoint'])->name('service-point-callers.remove-service-point');
+Route::post('service-point-callers/{caller}/generate-token', [ServicePointCallerController::class, 'generateToken'])->name('service-point-callers.generate-token');
+Route::post('service-point-callers/{caller}/call-settings', [ServicePointCallerController::class, 'updateCallSettings'])->name('service-point-callers.update-call-settings');
+Route::resource('service-point-callers', ServicePointCallerController::class)->only(['index', 'create', 'store', 'edit', 'update', 'destroy'])->parameters(['service-point-callers' => 'caller']);
+
+// PA (Public Announcement) sections — settings
+Route::get('pa-sections', [\App\Http\Controllers\PaAnnouncementController::class, 'index'])->name('pa-sections.index');
+Route::post('pa-sections', [\App\Http\Controllers\PaAnnouncementController::class, 'store'])->name('pa-sections.store');
+Route::put('pa-sections/{paSection}', [\App\Http\Controllers\PaAnnouncementController::class, 'update'])->name('pa-sections.update');
+Route::delete('pa-sections/{paSection}', [\App\Http\Controllers\PaAnnouncementController::class, 'destroy'])->name('pa-sections.destroy');
+Route::get('pa/console', [\App\Http\Controllers\PaAnnouncementController::class, 'console'])->name('pa.console');
+
+// PA broadcasting — used from the calling page
+Route::post('pa/start', [\App\Http\Controllers\PaAnnouncementController::class, 'start'])->name('pa.start');
+Route::post('pa/stop', [\App\Http\Controllers\PaAnnouncementController::class, 'stop'])->name('pa.stop');
+Route::post('pa/chunk', [\App\Http\Controllers\PaAnnouncementController::class, 'chunk'])->name('pa.chunk');
+Route::post('pa/signal/caller', [\App\Http\Controllers\PaAnnouncementController::class, 'signalToCaller'])->name('pa.signal.caller');
+Route::get('pa/status', [\App\Http\Controllers\PaAnnouncementController::class, 'status'])->name('pa.status');
+
+// Calling Module — Staff calling page
+Route::get('/calling', [CallingController::class, 'index'])->name('calling.index');
+Route::post('/calling/select', [CallingController::class, 'selectCaller'])->name('calling.select');
+Route::post('/calling/deselect', [CallingController::class, 'deselectCaller'])->name('calling.deselect');
+Route::post('/calling/announce', [CallingController::class, 'announce'])->name('calling.announce');
+Route::get('/callers/log', [CallingController::class, 'log'])->name('callers.log');
+
+// Emergency alerts
+Route::post('/service-points/{servicePoint}/emergency', [EmergencyController::class, 'trigger'])->name('emergency.trigger');
+
+// P2P Audio Calling
+Route::prefix('calls')->name('calls.')->group(function () {
+    Route::post('/initiate', [\App\Http\Controllers\P2PCallController::class, 'initiateCall'])->name('initiate');
+    Route::post('/{callUuid}/accept', [\App\Http\Controllers\P2PCallController::class, 'acceptCall'])->name('accept');
+    Route::post('/{callUuid}/reject', [\App\Http\Controllers\P2PCallController::class, 'rejectCall'])->name('reject');
+    Route::post('/{callUuid}/cancel', [\App\Http\Controllers\P2PCallController::class, 'cancelCall'])->name('cancel');
+    Route::post('/{callUuid}/end', [\App\Http\Controllers\P2PCallController::class, 'endCall'])->name('end');
+    Route::post('/{callUuid}/signal', [\App\Http\Controllers\P2PCallController::class, 'signal'])->name('signal');
+    Route::get('/{callUuid}/signals', [\App\Http\Controllers\P2PCallController::class, 'pollSignals'])->name('signals');
+    Route::get('/{callUuid}/status', [\App\Http\Controllers\P2PCallController::class, 'callStatus'])->name('status');
+    Route::get('/incoming', [\App\Http\Controllers\P2PCallController::class, 'incomingCall'])->name('incoming');
+    Route::get('/history', [\App\Http\Controllers\P2PCallController::class, 'callHistory'])->name('history');
+    Route::get('/online-users', [\App\Http\Controllers\P2PCallController::class, 'onlineUsers'])->name('online-users');
+});
+
+Route::post('/service-points/{servicePoint}/emergency/resolve', [EmergencyController::class, 'resolve'])->name('emergency.resolve');
+Route::post('/emergency/trigger', [EmergencyController::class, 'triggerGlobal'])->name('emergency.trigger.global');
+Route::post('/emergency/resolve', [EmergencyController::class, 'resolveGlobal'])->name('emergency.resolve.global');
+Route::get('/emergency/status', [EmergencyController::class, 'status'])->name('emergency.status');
+Route::get('/emergency/log', [EmergencyController::class, 'log'])->name('emergency.log');
 
 // Payment Review routes (for reviewing third-party payer payments)
 Route::get('/payment-reviews', [PaymentReviewController::class, 'index'])->name('payment-reviews.index');

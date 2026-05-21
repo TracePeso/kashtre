@@ -65,6 +65,36 @@
                 </div>
             </div>
 
+            @if((int) auth()->user()->business_id === 1)
+                <div class="mb-6 rounded-xl border border-red-200 bg-red-50/90 p-6 shadow-sm">
+                    <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div class="flex items-start space-x-4">
+                            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-100">
+                                <svg class="h-6 w-6 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-red-900">Super-admin: reset testing data</h3>
+                                <p class="mt-1 text-sm text-red-800/90">
+                                    Runs <span class="font-mono text-xs">service-queues:reset --all</span>,
+                                    <span class="font-mono text-xs">suspense:clear</span>, and
+                                    <span class="font-mono text-xs">reset:account-statements</span> (queues, suspense, all statements including third-party AR &mdash; destructive).
+                                </p>
+                            </div>
+                        </div>
+                        <form method="POST" action="{{ route('dashboard.testing-environment-reset') }}" class="shrink-0"
+                              onsubmit="return confirm('This will cancel pending queues, clear suspense, and wipe statements / transfers / accounts receivable / third-party payer histories. Only use on a database you are allowed to reset. Continue?');">
+                            @csrf
+                            <button type="submit"
+                                    class="rounded-lg bg-red-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2">
+                                Reset testing environment
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            @endif
+
             <!-- Page Title with User & Branch Info -->
             <div class="mb-8 flex justify-between items-center bg-white/50 backdrop-blur-sm p-6 rounded-xl shadow-sm">
                 <div>

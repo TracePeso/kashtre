@@ -36,6 +36,11 @@ class Room extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    public function servicePoints()
+    {
+        return $this->hasMany(ServicePoint::class);
+    }
+
     protected static function booted()
     {
         static::creating(function ($room) {

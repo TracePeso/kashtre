@@ -26,22 +26,22 @@
 
         <!-- Summary Stats -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <!-- Available Balance -->
-            <div class="bg-white rounded-lg shadow-md p-6 border border-gray-200">
-                <div class="text-center">
-                    <h3 class="text-lg font-semibold text-gray-900 mb-2">Available Balance</h3>
-                    <p class="text-3xl font-bold text-blue-600">
-                        UGX {{ number_format(($totalCredits ?? 0) - ($totalDebits ?? 0), 2) }}
-                    </p>
-                </div>
-            </div>
-
             <!-- Total Balance -->
             <div class="bg-white rounded-lg shadow-md p-6 border border-gray-200">
                 <div class="text-center">
                     <h3 class="text-lg font-semibold text-gray-900 mb-2">Total Balance</h3>
                     <p class="text-3xl font-bold text-green-600">
                         UGX {{ number_format(($totalCredits ?? 0) + ($pendingPayments ?? 0) - ($totalDebits ?? 0), 2) }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Available Balance -->
+            <div class="bg-white rounded-lg shadow-md p-6 border border-gray-200">
+                <div class="text-center">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-2">Available Balance</h3>
+                    <p class="text-3xl font-bold text-blue-600">
+                        UGX {{ number_format(($totalCredits ?? 0) - ($totalDebits ?? 0), 2) }}
                     </p>
                 </div>
             </div>
@@ -83,6 +83,7 @@
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reference</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Days to mature</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Method</th>
                         </tr>
                     </thead>
@@ -191,13 +192,16 @@
                                         {{ $history->kashtreStatementPaymentStatusDisplay() }}
                                     </span>
                                 </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {{ $history->kashtreStatementCreditMaturityLabel() }}
+                                </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                     {{ $history->kashtreStatementPaymentMethodLabel() }}
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                                <td colspan="8" class="px-6 py-8 text-center text-gray-500">
                                     No transactions found.
                                 </td>
                             </tr>

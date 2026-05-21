@@ -3,26 +3,24 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
+use Lab404\Impersonate\Models\Impersonate;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Jetstream\HasProfilePhoto;
 use Laravel\Sanctum\HasApiTokens;
-use Lab404\Impersonate\Models\Impersonate;
-use Illuminate\Support\Str;
-
-
-
 
 class User extends Authenticatable
 {
     use HasApiTokens;
     use HasFactory;
     use HasProfilePhoto;
+    use Impersonate;
     use Notifiable;
     use TwoFactorAuthenticatable;
-    use Impersonate;
 
     /**
      * The attributes that are mass assignable.
@@ -31,6 +29,8 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
+        'p2p_display_name',
+        'p2p_ringtone',
         'email',
         'password',
         'status',
@@ -46,6 +46,8 @@ class User extends Authenticatable
         'gender',
         'phone',
         'nin',
+        'birth_date',
+        'marital_status',
         'profile_photo_path',
         'email_verified_at',
         'remember_token',
@@ -84,6 +86,7 @@ class User extends Authenticatable
         'status' => 'string',
         'total_balance' => 'decimal:2',
         'current_balance' => 'decimal:2',
+        'birth_date' => 'date',
     ];
 
     /**
@@ -94,6 +97,11 @@ class User extends Authenticatable
     protected $appends = [
         'profile_photo_url',
     ];
+
+    public function getP2pNameAttribute()
+    {
+        return $this->p2p_display_name ?: $this->name;
+    }
 
     public function business()
     {
@@ -131,11 +139,24 @@ class User extends Authenticatable
     }
 
     /**
+     * Age in full years from birth_date (HR display); null when unknown.
+     */
+    public function hrAge(): ?int
+    {
+        if ($this->birth_date === null) {
+            return null;
+        }
+
+        return Carbon::parse($this->birth_date)->age;
+    }
+
+    /**
      * Check if user is a cashier (has Cashier permission)
      */
     public function isCashier()
     {
         $permissions = $this->permissions ?? [];
+
         return in_array('Cashier', $permissions);
     }
 
@@ -145,7 +166,7 @@ class User extends Authenticatable
     public function getCurrentBranchAttribute()
     {
         $currentBranchId = session('current_branch_id', $this->branch_id);
-        
+
         // If we have a branch ID, try to find the branch
         if ($currentBranchId) {
             $branch = Branch::find($currentBranchId);
@@ -153,7 +174,7 @@ class User extends Authenticatable
                 return $branch;
             }
         }
-        
+
         // Fallback to the user's assigned branch
         if ($this->branch_id) {
             $branch = Branch::find($this->branch_id);
@@ -161,7 +182,7 @@ class User extends Authenticatable
                 return $branch;
             }
         }
-        
+
         // If no branch is found, return null
         return null;
     }
@@ -174,6 +195,7 @@ class User extends Authenticatable
         if ($this->service_points) {
             return ServicePoint::whereIn('id', $this->service_points);
         }
+
         return collect();
     }
 
@@ -185,6 +207,7 @@ class User extends Authenticatable
         if ($this->service_points) {
             return ServiceQueue::whereIn('service_point_id', $this->service_points);
         }
+
         return collect();
     }
 

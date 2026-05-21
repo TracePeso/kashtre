@@ -225,7 +225,7 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
                                         @if(!empty($row['payment_status']))
                                         <span class="px-2 py-1 text-xs rounded-full {{ $row['payment_status'] === 'paid' ? 'bg-green-100 text-green-800' : ($row['payment_status'] === 'pending_payment' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800') }}">
-                                            {{ ucfirst(str_replace('_', ' ', $row['payment_status'])) }}
+                                            {{ \App\Models\ThirdPartyPayerBalanceHistory::normalizePaymentStatusLabel($row['payment_status']) }}
                                         </span>
                                         @else
                                         <span class="text-gray-400">N/A</span>
@@ -319,7 +319,7 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
                                         @if($history->payment_status)
                                         <span class="px-2 py-1 text-xs rounded-full {{ $history->payment_status === 'paid' ? 'bg-green-100 text-green-800' : ($history->payment_status === 'pending_payment' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800') }}">
-                                            {{ ucfirst(str_replace('_', ' ', $history->payment_status)) }}
+                                            {{ \App\Models\ThirdPartyPayerBalanceHistory::normalizePaymentStatusLabel($history->payment_status) }}
                                         </span>
                                         @else
                                         <span class="text-gray-400">N/A</span>
