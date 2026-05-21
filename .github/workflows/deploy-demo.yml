@@ -14,40 +14,71 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to VPS (Demo)
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
         with:
-          host: 187.124.117.169
-          username: root
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            set -e
+          php-version: '8.3'
+          extensions: mbstring, xml, bcmath, ctype, json, tokenizer, curl
+          coverage: none
 
-            git config --global --add safe.directory /var/www/demo
+      - name: Install Composer dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction --ignore-platform-reqs
 
-            cd /var/www/demo
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
 
-            git fetch origin
-            git reset --hard origin/demo
+      - name: Install frontend dependencies
+        run: npm ci
 
-            export COMPOSER_ALLOW_SUPERUSER=1
-            composer install --no-dev --optimize-autoloader --no-interaction
+      - name: Build frontend assets
+        env:
+          VITE_REVERB_APP_KEY: kashtre-reverb-key
+          VITE_REVERB_HOST: reverb.kashtre.com
+          VITE_REVERB_PORT: 443
+          VITE_REVERB_SCHEME: https
+          VITE_WEBRTC_STUN_URLS: ${{ vars.VITE_WEBRTC_STUN_URLS || 'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302' }}
+          VITE_WEBRTC_TURN_URL: ${{ secrets.VITE_WEBRTC_TURN_URL }}
+          VITE_WEBRTC_TURN_USERNAME: ${{ secrets.VITE_WEBRTC_TURN_USERNAME }}
+          VITE_WEBRTC_TURN_CREDENTIAL: ${{ secrets.VITE_WEBRTC_TURN_CREDENTIAL }}
+          VITE_WEBRTC_ICE_TRANSPORT_POLICY: ${{ vars.VITE_WEBRTC_ICE_TRANSPORT_POLICY || 'all' }}
+        run: npm run build
 
-            npm install --no-audit --no-fund
-            npm run build
+      - name: Install sshpass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass || { echo "Failed to install sshpass"; exit 1; }
+          sshpass -v || { echo "sshpass not found after installation"; exit 1; }
 
-            chown -R www-data:www-data /var/www/demo
-            chmod -R 775 storage bootstrap/cache
+      - name: Test SSH Connection
+        env:
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          SSHPASS: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no -p 65002 "$FTP_USERNAME@$FTP_SERVER" whoami
+          sshpass -e ssh -o StrictHostKeyChecking=no -p 65002 "$FTP_USERNAME@$FTP_SERVER" "echo 'Test command execution' && ls -la /home/u242329769/domains/demo.kashtre.com/public_html"
 
-            php artisan storage:link || true
-            php artisan migrate --force
+      - name: Deploy to Hostinger
+        env:
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          SSHPASS: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          DEPLOY_DIR="/home/u242329769/domains/demo.kashtre.com/public_html"
+          ARTISAN_PHP="php -d opcache.enable_cli=0"
 
-            php artisan optimize:clear
+          echo "Local files in GITHUB_WORKSPACE:"
+          ls -la $GITHUB_WORKSPACE
 
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
+          sshpass -e rsync -avz --exclude '.env' --exclude '.htaccess' -e "ssh -p 65002 -o StrictHostKeyChecking=no" $GITHUB_WORKSPACE/ "$FTP_USERNAME@$FTP_SERVER":"$DEPLOY_DIR"
 
-            php artisan queue:restart || true
+          # Clear stale cached Laravel config before any Artisan command.
+          sshpass -e ssh -o StrictHostKeyChecking=no -p 65002 "$FTP_USERNAME@$FTP_SERVER" "cd /home/u242329769/domains/demo.kashtre.com/public_html && echo 'Clearing stale cache files...' && rm -f bootstrap/cache/*.php && echo 'Checking Reverb config shape...' && $ARTISAN_PHP -r '\$config = require \"config/reverb.php\"; echo isset(\$config[\"servers\"][\"reverb\"][\"scaling\"]) ? \"Reverb scaling config present\n\" : \"Reverb scaling config missing\n\";' && echo 'Setting permissions...' && chmod -R 755 storage bootstrap/cache 2>/dev/null || echo 'Warning: Could not set permissions' && echo 'Removing existing storage link...' && rm -f public/storage && echo 'Creating storage link...' && $ARTISAN_PHP artisan storage:link"
 
-            systemctl restart php8.3-fpm
+          sshpass -e ssh -o StrictHostKeyChecking=no -p 65002 "$FTP_USERNAME@$FTP_SERVER" "cd /home/u242329769/domains/demo.kashtre.com/public_html && echo 'Checking for existing tables that need migration records...' && $ARTISAN_PHP artisan fix:existing-tables && echo 'Running migrations...' && $ARTISAN_PHP artisan migrate --force --verbose && echo 'Checking migration status...' && $ARTISAN_PHP artisan migrate:status && echo 'Clearing and caching...' && $ARTISAN_PHP artisan optimize:clear && $ARTISAN_PHP artisan view:clear && $ARTISAN_PHP artisan config:cache && $ARTISAN_PHP artisan route:cache && echo 'Deployment completed successfully!'"

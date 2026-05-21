@@ -17,6 +17,7 @@ class ServicePoint extends Model
         'description',
         'business_id',
         'branch_id',
+        'room_id',
     ];
 
     protected $casts = [
@@ -39,6 +40,11 @@ class ServicePoint extends Model
     public function branch()
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function room()
+    {
+        return $this->belongsTo(Room::class);
     }
 
     public function serviceQueues()

@@ -98,6 +98,7 @@ class ListClientSpaces extends Component implements HasForms, HasTable
                             ->options(Business::where('id', '!=', 1)->pluck('name', 'id'))
                             ->required()
                             ->disabled(fn() => Auth::user()->business_id !== 1)
+                            ->dehydrated()
                             ->reactive(),
 
                         Select::make('branch_id')
@@ -149,6 +150,7 @@ class ListClientSpaces extends Component implements HasForms, HasTable
                             ->required()
                             ->default(Auth::user()->business_id)
                             ->disabled(fn() => Auth::user()->business_id !== 1)
+                            ->dehydrated()
                             ->reactive(),
 
                         Select::make('branch_id')
@@ -180,6 +182,49 @@ class ListClientSpaces extends Component implements HasForms, HasTable
                             ->success()
                             ->send();
                     }),
+            ])
+            ->emptyStateHeading('No client spaces')
+            ->emptyStateDescription('Create a client space to get started.')
+            ->emptyStateIcon('heroicon-o-building-office')
+            ->emptyStateActions([
+                CreateAction::make()
+                    ->visible(fn() => in_array('Add Client Spaces', Auth::user()->permissions))
+                    ->label('Create Client Space')
+                    ->modalHeading('Add New Client Space')
+                    ->form([
+                        Select::make('business_id')
+                            ->label('Business')
+                            ->placeholder('Select a business')
+                            ->options(Business::where('id', '!=', 1)->pluck('name', 'id'))
+                            ->required()
+                            ->default(Auth::user()->business_id)
+                            ->disabled(fn() => Auth::user()->business_id !== 1)
+                            ->dehydrated()
+                            ->reactive(),
+
+                        Select::make('branch_id')
+                            ->label('Branch')
+                            ->placeholder('Select a branch (optional)')
+                            ->options(function ($get) {
+                                $businessId = $get('business_id');
+                                return $businessId
+                                    ? Branch::where('business_id', $businessId)->pluck('name', 'id')
+                                    : [];
+                            })
+                            ->nullable()
+                            ->reactive(),
+
+                        TextInput::make('name')
+                            ->label('Client Space Name')
+                            ->placeholder('Enter client space name')
+                            ->required(),
+
+                        Textarea::make('description')
+                            ->label('Description')
+                            ->placeholder('Enter description')
+                            ->nullable(),
+                    ])
+                    ->createAnother(false),
             ]);
     }
 

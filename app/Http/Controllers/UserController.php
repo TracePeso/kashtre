@@ -11,7 +11,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
-use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 
 class UserController extends Controller
@@ -80,7 +79,7 @@ class UserController extends Controller
 
         $businesses = Business::all();
         // $permissions = $this->getAllPermissions();
-        $app_permissions = $this->getAccessControl(['Masters']);
+        $app_permissions = $this->getUserPermissionOptions();
 
         // dd($permissions);
 
@@ -209,8 +208,7 @@ class UserController extends Controller
         }
         $businesses = Business::all();
         // $permissions = $this->getAllPermissions();
-        $app_permissions = $this->getAccessControl(['Masters']);
-
+        $app_permissions = $this->getUserPermissionOptions();
         return view('users.show', compact('user', 'contractorProfile', 'businesses', 'app_permissions'));
     }
 
@@ -236,9 +234,23 @@ class UserController extends Controller
         $first_name = $nameParts[1] ?? '';
         $middle_name = $nameParts[2] ?? '';
 
-        $app_permissions = $this->getAccessControl(['Masters']);
-
+        $app_permissions = $this->getUserPermissionOptions();
         return view('users.edit', compact('user', 'businesses', 'qualifications', 'departments', 'sections', 'titles', 'servicePoints', 'contractorProfile', 'surname', 'first_name', 'middle_name', 'app_permissions'));
+    }
+
+    /**
+     * Staff/user forms intentionally hide most Masters permissions.
+     * We add back selected Masters permissions so admins can grant them without
+     * exposing the rest of the Masters block in the user editor.
+     */
+    private function getUserPermissionOptions(): array
+    {
+        $permissions = $this->getAccessControl(['Masters']);
+        $permissions['Masters'] = [
+            'Maturation Periods' => self::$masters['Maturation Periods'],
+        ];
+
+        return $permissions;
     }
 
     public function update(Request $request, $id)

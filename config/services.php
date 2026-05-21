@@ -44,6 +44,15 @@ return [
         'timeout' => env('THIRD_PARTY_API_TIMEOUT', 30),
     ],
 
+    'calling_service' => [
+        'url'         => env('CALLING_SERVICE_URL', 'http://127.0.0.1:8001'),
+        'sync_secret' => env('CALLING_SERVICE_SYNC_SECRET', ''),
+    ],
+
+    'hr_module' => [
+        'api_key' => env('HR_MODULE_API_KEY'),
+    ],
+
     'vendor' => [
         'api_url' => env('VENDOR_API_URL', 'http://localhost:8001'),
     ],

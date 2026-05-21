@@ -16,17 +16,17 @@ return new class extends Migration
         DB::statement('SET FOREIGN_KEY_CHECKS=0;');
         
         Schema::table('withdrawal_setting_approvers', function (Blueprint $table) {
-            // Drop the old unique constraint that doesn't include approval_level
-            // Note: This might be used by a foreign key, so we disable FK checks above
-            $table->dropUnique('unique_approver_per_setting_level');
-            
-            // Add new unique constraint that includes approval_level
-            // This allows the same approver to have different approval levels (initiator, authorizer, approver)
-            // but prevents duplicates with the same combination
+            // Add new unique constraint that includes approval_level FIRST
+            // so MySQL has an index to satisfy the foreign key constraint on withdrawal_setting_id
             $table->unique(
                 ['withdrawal_setting_id', 'approver_id', 'approver_type', 'approver_level', 'approval_level'],
                 'unique_approver_per_setting_level_and_approval_level'
             );
+        });
+
+        Schema::table('withdrawal_setting_approvers', function (Blueprint $table) {
+            // Now drop the old unique constraint
+            $table->dropUnique('unique_approver_per_setting_level');
         });
         
         DB::statement('SET FOREIGN_KEY_CHECKS=1;');

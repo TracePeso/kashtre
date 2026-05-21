@@ -30,6 +30,11 @@ class RequireTwoFactorForKashtre
         if ($request->is('cashier*') || $request->is('cashier-dashboard*')) {
             return $next($request);
         }
+
+        // Broadcast auth endpoints must return signed JSON, not interactive redirects.
+        if ($request->is('broadcasting/*')) {
+            return $next($request);
+        }
         
         // Only check for authenticated users
         if (!Auth::check()) {
@@ -81,6 +86,12 @@ class RequireTwoFactorForKashtre
 
         // Check if 2FA is enabled (two_factor_confirmed_at is set)
         if (empty($user->two_factor_confirmed_at)) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'Two-factor authentication (2FA) is required before accessing this endpoint.',
+                ], 403);
+            }
+
             return redirect()->route('profile.show')
                 ->with('warning', 'Two-factor authentication (2FA) is required for all users. You must enable 2FA before accessing other parts of the system. Please set up 2FA in your profile settings below.');
         }
@@ -88,4 +99,3 @@ class RequireTwoFactorForKashtre
         return $next($request);
     }
 }
-

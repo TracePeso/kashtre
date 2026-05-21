@@ -41,4 +41,8 @@ class ClientSpace extends Model
             $clientSpace->uuid = (string) Str::uuid();
         });
     }
+    public function getRouteKeyName()
+    {
+        return 'uuid';
+    }
 }

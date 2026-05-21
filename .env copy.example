@@ -26,6 +26,12 @@ REVERB_PORT=443
 REVERB_SCHEME=https
 REVERB_VERIFY_TLS=false
 
+# Calling service integration
+# Local: http://127.0.0.1:8001
+# Hosted/Hostinger: use the public HTTPS URL of your calling service
+CALLING_SERVICE_URL=http://127.0.0.1:8001
+CALLING_SERVICE_SYNC_SECRET=
+
 LOG_CHANNEL=stack
 LOG_DEPRECATIONS_CHANNEL=null
 LOG_LEVEL=debug
@@ -74,13 +80,34 @@ PUSHER_PORT=443
 PUSHER_SCHEME=https
 PUSHER_APP_CLUSTER=mt1
 
+# Reverb broadcasting for caller audio and PA signaling
+REVERB_APP_ID=kashtre
+REVERB_APP_KEY=
+REVERB_APP_SECRET=
+REVERB_HOST=localhost
+REVERB_PORT=8080
+REVERB_SCHEME=http
+REVERB_SERVER_HOST=0.0.0.0
+REVERB_SERVER_PORT=8080
+
 VITE_APP_NAME="${APP_NAME}"
 VITE_PUSHER_APP_KEY="${PUSHER_APP_KEY}"
 VITE_PUSHER_HOST="${PUSHER_HOST}"
 VITE_PUSHER_PORT="${PUSHER_PORT}"
 VITE_PUSHER_SCHEME="${PUSHER_SCHEME}"
 VITE_PUSHER_APP_CLUSTER="${PUSHER_APP_CLUSTER}"
+VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"
+VITE_REVERB_HOST="${REVERB_HOST}"
+VITE_REVERB_PORT="${REVERB_PORT}"
+VITE_REVERB_SCHEME="${REVERB_SCHEME}"
 
+# Optional WebRTC relay settings for P2P calling.
+# STUN-only may connect signaling but still fail to carry audio on some networks.
+VITE_WEBRTC_STUN_URLS=stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302
+VITE_WEBRTC_TURN_URL=
+VITE_WEBRTC_TURN_USERNAME=
+VITE_WEBRTC_TURN_CREDENTIAL=
+VITE_WEBRTC_ICE_TRANSPORT_POLICY=all
 
 YO_PAYMENTS_URL=https://paymentsapi1.yo.co.ug/ybs/task.php
 YO_PAYMENTS_TEST_URL=https://paymentsdev1.yo.co.ug/yopaytest/task.php
