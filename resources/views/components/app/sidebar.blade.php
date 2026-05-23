@@ -70,6 +70,18 @@
                     </li>
                     @endif
 
+                    @php($canAccessHrManager = \App\Support\HrModule::userCanAccess(Auth::user()))
+                    @if($canAccessHrManager)
+                    <li>
+                        <a href="{{ route('hr.dashboard') }}" class="flex items-center pl-4 pr-3 py-2 rounded-lg {{ request()->routeIs('hr.*') ? 'bg-blue-100 text-blue-900 font-semibold' : 'text-gray-700 hover:text-blue-700 hover:bg-blue-50' }}">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 7h12M6 12h12M6 17h12M4 7h.01M4 12h.01M4 17h.01"></path>
+                            </svg>
+                            <span class="text-sm font-medium ml-3 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">HR Manager</span>
+                        </a>
+                    </li>
+                    @endif
+
                     <!-- Callers dropdown: for business admins with calling module enabled -->
                     @php
                         $callerPerms = ['View Callers', 'Add Callers', 'Edit Callers', 'Manage Callers'];
