@@ -1,6 +1,6 @@
 <div class="space-y-6">
 
-    @if(empty(auth()->user()->two_factor_secret) && config('app.env') !== 'local')
+    @if(config('security.two_factor.required', false) && empty(auth()->user()->two_factor_secret) && config('app.env') !== 'local')
     <div class="bg-orange-500/95 border border-orange-400 rounded-xl px-5 py-4 text-white flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-sm">
         <div class="flex items-start md:items-center gap-3">
             <span class="inline-flex items-center justify-center rounded-full bg-white/20 text-white h-10 w-10">
@@ -243,17 +243,6 @@
         </div>
         
         @php
-            // Add comprehensive logging for dashboard transaction queries
-            \Log::info("=== DASHBOARD TRANSACTION QUERIES START ===", [
-                'business_id' => $business->id,
-                'business_name' => $business->name,
-                'current_branch_id' => $currentBranch?->id ?? null,
-                'current_branch_name' => $currentBranch->name ?? null,
-                'user_id' => auth()->user()->id,
-                'is_kashtre_user' => $business->id == 1,
-                'timestamp' => now()->toISOString()
-            ]);
-
             // For Kashtre users (business_id == 1), show all transactions from all businesses
             // For regular businesses, show only their own transactions
             $transactionQuery = \App\Models\Transaction::withTrashed()->with(['business', 'client', 'branch']);
@@ -272,27 +261,6 @@
                     ->limit(5)
                     ->get();
             }
-            
-            \Log::info("All transactions query result", [
-                'business_id' => $business->id,
-                'total_count' => $allTransactions->count(),
-                'transactions' => $allTransactions->map(function($t) {
-                    return [
-                        'id' => $t->id,
-                        'reference' => $t->reference,
-                        'amount' => $t->amount,
-                        'status' => $t->status,
-                        'created_at' => $t->created_at,
-                        'business_id' => $t->business_id,
-                        'branch_id' => $t->branch_id,
-                        'client_id' => $t->client_id,
-                        'invoice_id' => $t->invoice_id,
-                        'deleted_at' => $t->deleted_at,
-                        'is_soft_deleted' => $t->trashed()
-                    ];
-                })->toArray()
-            ]);
-
             // Get pending transactions (including soft-deleted)
             $pendingQuery = \App\Models\Transaction::withTrashed()->where('status', 'pending');
             if ($business->id == 1) {
@@ -309,20 +277,6 @@
                     ->limit(5)
                     ->get();
             }
-            
-            \Log::info("Pending transactions query result", [
-                'business_id' => $business->id,
-                'pending_count' => $pendingTransactions->count(),
-                'pending_transactions' => $pendingTransactions->map(function($t) {
-                    return [
-                        'id' => $t->id,
-                        'reference' => $t->reference,
-                        'amount' => $t->amount,
-                        'status' => $t->status
-                    ];
-                })->toArray()
-            ]);
-            
             // Get completed transactions (including soft-deleted)
             $completedQuery = \App\Models\Transaction::withTrashed()->where('status', 'completed');
             if ($business->id == 1) {
@@ -339,20 +293,6 @@
                     ->limit(5)
                     ->get();
             }
-            
-            \Log::info("Completed transactions query result", [
-                'business_id' => $business->id,
-                'completed_count' => $completedTransactions->count(),
-                'completed_transactions' => $completedTransactions->map(function($t) {
-                    return [
-                        'id' => $t->id,
-                        'reference' => $t->reference,
-                        'amount' => $t->amount,
-                        'status' => $t->status
-                    ];
-                })->toArray()
-            ]);
-            
             // Get failed transactions (including soft-deleted)
             $failedQuery = \App\Models\Transaction::withTrashed()->where('status', 'failed');
             if ($business->id == 1) {
@@ -369,53 +309,6 @@
                     ->limit(5)
                     ->get();
             }
-            
-            \Log::info("Failed transactions query result", [
-                'business_id' => $business->id,
-                'failed_count' => $failedTransactions->count(),
-                'failed_transactions' => $failedTransactions->map(function($t) {
-                    return [
-                        'id' => $t->id,
-                        'reference' => $t->reference,
-                        'amount' => $t->amount,
-                        'status' => $t->status
-                    ];
-                })->toArray()
-            ]);
-
-            // Also log raw database query to see all transactions
-            $rawAllTransactions = \DB::table('transactions')
-                ->where('business_id', $business->id)
-                ->orderBy('created_at', 'desc')
-                ->get();
-            
-            \Log::info("Raw database query result", [
-                'business_id' => $business->id,
-                'raw_count' => $rawAllTransactions->count(),
-                'raw_transactions' => $rawAllTransactions->map(function($t) {
-                    return [
-                        'id' => $t->id,
-                        'reference' => $t->reference,
-                        'amount' => $t->amount,
-                        'status' => $t->status,
-                        'created_at' => $t->created_at,
-                        'business_id' => $t->business_id,
-                        'branch_id' => $t->branch_id,
-                        'deleted_at' => $t->deleted_at
-                    ];
-                })->toArray()
-            ]);
-
-            \Log::info("=== DASHBOARD TRANSACTION QUERIES END ===", [
-                'business_id' => $business->id,
-                'summary' => [
-                    'all_count' => $allTransactions->count(),
-                    'pending_count' => $pendingTransactions->count(),
-                    'completed_count' => $completedTransactions->count(),
-                    'failed_count' => $failedTransactions->count(),
-                    'raw_count' => $rawAllTransactions->count()
-                ]
-            ]);
         @endphp
         
         <!-- All Transactions Tab Content -->
@@ -815,5 +708,4 @@
         }
     }
 </script>
-
 

@@ -16,6 +16,10 @@ class RequireTwoFactorForKashtre
      */
     public function handle(Request $request, Closure $next): Response
     {
+        if (! config('security.two_factor.required', false)) {
+            return $next($request);
+        }
+
         // Skip 2FA enforcement in local development
         if (config('app.env') === 'local') {
             return $next($request);

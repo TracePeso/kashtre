@@ -45,41 +45,47 @@ class AppServiceProvider extends ServiceProvider
         // });
 
         View::composer('*', function ($view) {
-            $user = Auth::user();
+            static $sharedViewData;
 
-            $view->with('business', $user?->business);
-            $view->with('permissions', (array) ($user?->permissions ?? []));
+            if ($sharedViewData === null) {
+                $user = Auth::user();
 
-            // Calling module flags
-            $callingModuleEnabled = false;
-            $callingModuleConfig  = null;
-            $userIsACaller = false;
-            if ($user) {
-                $callingModuleConfig  = CallingModuleConfig::where('business_id', $user->business_id)
-                    ->where('is_active', true)
-                    ->first();
-                $callingModuleEnabled = (bool) $callingModuleConfig;
+                $sharedViewData = [
+                    'business' => $user?->business,
+                    'permissions' => (array) ($user?->permissions ?? []),
+                    'callingModuleEnabled' => false,
+                    'callingModuleConfig' => null,
+                    'userIsACaller' => false,
+                    'globalActiveEmergency' => false,
+                    'activeEmergencyAlert' => null,
+                ];
 
-                if ($callingModuleEnabled) {
-                    $sessionCallerId = session('caller_id');
+                if ($user) {
+                    $callingModuleConfig = CallingModuleConfig::where('business_id', $user->business_id)
+                        ->where('is_active', true)
+                        ->first();
 
-                    // User is a caller if they have a session caller_id pointing to an active Caller
-                    $userIsACaller = $sessionCallerId && Caller::where('id', $sessionCallerId)
-                        ->where('business_id', $user->business_id)
-                        ->where('status', 'active')
-                        ->exists();
+                    $sharedViewData['callingModuleConfig'] = $callingModuleConfig;
+                    $sharedViewData['callingModuleEnabled'] = (bool) $callingModuleConfig;
+
+                    if ($sharedViewData['callingModuleEnabled']) {
+                        $sessionCallerId = session('caller_id');
+
+                        $sharedViewData['userIsACaller'] = (bool) ($sessionCallerId && Caller::where('id', $sessionCallerId)
+                            ->where('business_id', $user->business_id)
+                            ->where('status', 'active')
+                            ->exists());
+
+                        $activeEmergencyAlert = app(EmergencyAlertService::class)
+                            ->resolveActiveAlertForBusiness($user->business_id);
+
+                        $sharedViewData['activeEmergencyAlert'] = $activeEmergencyAlert;
+                        $sharedViewData['globalActiveEmergency'] = (bool) $activeEmergencyAlert;
+                    }
                 }
             }
-            $view->with('callingModuleEnabled', $callingModuleEnabled);
-            $view->with('callingModuleConfig', $callingModuleConfig);
-            $view->with('userIsACaller', $userIsACaller);
 
-            $activeEmergencyAlert = ($user && $callingModuleEnabled)
-                ? app(EmergencyAlertService::class)->resolveActiveAlertForBusiness($user->business_id)
-                : null;
-            $globalActiveEmergency = (bool) $activeEmergencyAlert;
-            $view->with('globalActiveEmergency', $globalActiveEmergency);
-            $view->with('activeEmergencyAlert', $activeEmergencyAlert);
+            $view->with($sharedViewData);
         });
 
          // Register observers

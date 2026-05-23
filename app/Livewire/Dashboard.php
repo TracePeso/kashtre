@@ -44,18 +44,12 @@ class Dashboard extends Component
             // Regular staff dashboard
             $this->business = $user->business;
             $this->currentBranch = $user->current_branch;
-            
-            // Get the actual business account balance from MoneyAccount
-            // For Kashtre (business_id = 1), show kashtre_account balance
-            // For other businesses, show business_account balance
-            // Calculate balance from business_balance_histories (source of truth)
-            // Match the exact calculation from business-balance-statement/index.blade.php
-            $businessBalanceHistories = BusinessBalanceHistory::where('business_id', $this->business->id)->get();
-            
-            $credits = $businessBalanceHistories->where('type', 'credit')->sum('amount');
-            $debits = $businessBalanceHistories->where('type', 'debit')->sum('amount');
-            
-            $this->balance = $credits - $debits;
+
+            $this->balance = (float) (
+                BusinessBalanceHistory::where('business_id', $this->business->id)
+                    ->selectRaw("COALESCE(SUM(CASE WHEN type = 'credit' THEN amount WHEN type = 'debit' THEN -amount ELSE 0 END), 0) as calculated_balance")
+                    ->value('calculated_balance') ?? 0
+            );
         }
 
         $this->lastUpdate = now()->format('H:i:s');
