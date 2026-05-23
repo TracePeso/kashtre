@@ -34,6 +34,9 @@ class User extends Authenticatable
         'p2p_display_name',
         'p2p_ringtone',
         'email',
+        'deactivated_at',
+        'staff_uuid',
+        'is_hr_admin',
         'password',
         'status',
         'business_id',
@@ -74,9 +77,11 @@ class User extends Authenticatable
      */
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'deactivated_at' => 'datetime',
         'service_points' => 'array',
         'permissions' => 'array',
         'allowed_branches' => 'array',
+        'is_hr_admin' => 'boolean',
         'gender' => 'string',
         'phone' => 'string',
         'nin' => 'string',
@@ -97,9 +102,27 @@ class User extends Authenticatable
         'profile_photo_url',
     ];
 
+    public const HR_PERMISSIONS = [
+        'View HR Staff',
+        'Add HR Staff',
+        'Edit HR Staff',
+        'View HR Setup',
+        'Add HR Setup',
+        'Edit HR Setup',
+        'View HR Approvals',
+        'Edit HR Approvals',
+        'Manage HR Biometrics',
+        'Manage AI Roster Constraints',
+    ];
+
     public function getP2pNameAttribute()
     {
         return $this->p2p_display_name ?: $this->name;
+    }
+
+    public function getStaffUuidAttribute($value): ?string
+    {
+        return $value ?: $this->uuid;
     }
 
     public function business()
@@ -217,6 +240,129 @@ class User extends Authenticatable
     public function completedQueuesToday()
     {
         return $this->serviceQueues()->completed()->today()->orderBy('completed_at', 'desc');
+    }
+
+    public static function filterHrPermissions(mixed $permissions): array
+    {
+        if (is_string($permissions)) {
+            $permissions = json_decode($permissions, true) ?: [];
+        }
+
+        if (! is_array($permissions)) {
+            return [];
+        }
+
+        return array_values(array_intersect(self::HR_PERMISSIONS, self::flattenPermissions($permissions)));
+    }
+
+    private static function flattenPermissions(array $permissions): array
+    {
+        $flattened = [];
+
+        foreach ($permissions as $permission) {
+            if (is_array($permission)) {
+                $flattened = array_merge($flattened, self::flattenPermissions($permission));
+                continue;
+            }
+
+            if (is_object($permission)) {
+                $flattened = array_merge($flattened, self::flattenPermissions((array) $permission));
+                continue;
+            }
+
+            if (is_string($permission) && trim($permission) !== '') {
+                $flattened[] = trim($permission);
+            }
+        }
+
+        return array_values(array_unique($flattened));
+    }
+
+    public function hasHrPermission(string $permission): bool
+    {
+        return (bool) ($this->attributes['is_hr_admin'] ?? false)
+            || in_array($permission, (array) ($this->permissions ?? []), true);
+    }
+
+    public function hasAnyHrPermission(array $permissions): bool
+    {
+        return (bool) ($this->attributes['is_hr_admin'] ?? false)
+            || count(array_intersect($permissions, (array) ($this->permissions ?? []))) > 0;
+    }
+
+    public function canViewHrStaff(): bool
+    {
+        return $this->hasAnyHrPermission(['View HR Staff', 'Add HR Staff', 'Edit HR Staff']);
+    }
+
+    public function canAddHrStaff(): bool
+    {
+        return $this->hasHrPermission('Add HR Staff');
+    }
+
+    public function canEditHrStaff(): bool
+    {
+        return $this->hasHrPermission('Edit HR Staff');
+    }
+
+    public function canViewHrSetup(): bool
+    {
+        return $this->hasAnyHrPermission(['View HR Setup', 'Add HR Setup', 'Edit HR Setup']);
+    }
+
+    public function canAddHrSetup(): bool
+    {
+        return $this->hasHrPermission('Add HR Setup');
+    }
+
+    public function canEditHrSetup(): bool
+    {
+        return $this->hasHrPermission('Edit HR Setup');
+    }
+
+    public function canViewHrApprovals(): bool
+    {
+        return $this->hasAnyHrPermission(['View HR Approvals', 'Edit HR Approvals']);
+    }
+
+    public function canViewHrBiometrics(): bool
+    {
+        return $this->hasAnyHrPermission(['View HR Staff', 'Edit HR Staff', 'Manage HR Biometrics']);
+    }
+
+    public function canManageHrBiometrics(): bool
+    {
+        return $this->hasAnyHrPermission(['Edit HR Staff', 'Manage HR Biometrics']);
+    }
+
+    public function canManageAiRosterConstraints(): bool
+    {
+        return $this->hasHrPermission('Manage AI Roster Constraints');
+    }
+
+    public function canEditHrApprovals(): bool
+    {
+        return $this->hasHrPermission('Edit HR Approvals');
+    }
+
+    public function canViewAllApprovals(): bool
+    {
+        return $this->canViewHrApprovals();
+    }
+
+    public function canSyncHrData(): bool
+    {
+        return $this->hasAnyHrPermission(['Add HR Staff', 'Edit HR Staff']);
+    }
+
+    public function canManageAllApprovals(): bool
+    {
+        return $this->canEditHrApprovals();
+    }
+
+    public function isActive(): bool
+    {
+        return $this->deactivated_at === null && $this->status === 'active';
     }
 
     protected static function booted()

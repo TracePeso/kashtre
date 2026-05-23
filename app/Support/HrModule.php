@@ -15,6 +15,8 @@ class HrModule
         'Edit HR Setup',
         'View HR Approvals',
         'Edit HR Approvals',
+        'Manage HR Biometrics',
+        'Manage AI Roster Constraints',
     ];
 
     public static function userCanAccess(?User $user): bool

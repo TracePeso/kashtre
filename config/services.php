@@ -53,4 +53,21 @@ return [
         'api_key' => env('HR_MODULE_API_KEY'),
     ],
 
+    'kashtre' => [
+        'synced_user_password' => env('KASHTRE_SYNCED_USER_PASSWORD', 'password'),
+    ],
+
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY', ''),
+        'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+        'base_url' => env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta'),
+        'verify_ssl' => filter_var(env('GEMINI_VERIFY_SSL', true), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? true,
+        'connect_timeout' => (int) env('GEMINI_CONNECT_TIMEOUT', 10),
+        'timeout' => (int) env('GEMINI_TIMEOUT', 120),
+        'roster_stale_after_seconds' => (int) env('GEMINI_ROSTER_STALE_AFTER_SECONDS', 7500),
+        'roster_candidate_count' => (int) env('GEMINI_ROSTER_CANDIDATE_COUNT', 2),
+        'roster_max_output_tokens' => (int) env('GEMINI_ROSTER_MAX_OUTPUT_TOKENS', 8192),
+        'roster_max_workdays_per_request' => (int) env('GEMINI_ROSTER_MAX_WORKDAYS_PER_REQUEST', 7),
+    ],
+
 ];

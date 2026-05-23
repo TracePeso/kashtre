@@ -1,0 +1,317 @@
+<?php
+
+namespace App\Livewire;
+
+use App\Models\ApprovalWorkflow;
+use App\Models\Organization;
+use App\Models\StaffAssignment;
+use App\Services\KashApiService;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
+use Livewire\Component;
+
+class ApprovalWorkflowManager extends Component
+{
+    private const GENERIC_CATEGORIES = ['leave', 'coverage', 'offsite_duty'];
+    private const APPROVER_LEVELS = ['primary', 'secondary', 'tertiary'];
+    private const MIN_APPROVERS_PER_LEVEL = 3;
+
+    public $organizationId;
+    public $workflows = [];
+    public array $staffOptions = [];
+    public array $configuredCategories = [];
+    public ?string $message = null;
+    public bool $canAddSetup = false;
+    public bool $canEditSetup = false;
+
+    // Form state
+    public bool $showModal = false;
+    public ?int $editingId = null;
+    public string $category = 'leave';
+    public array $approverUuids = [];
+
+    public function mount()
+    {
+        $org = Organization::current();
+        $this->organizationId = $org?->id;
+        $this->canAddSetup = Auth::user()?->canAddHrSetup() ?? false;
+        $this->canEditSetup = Auth::user()?->canEditHrSetup() ?? false;
+        $this->loadStaffOptions();
+        $this->loadWorkflows();
+        $this->resetForm();
+    }
+
+    public function loadWorkflows()
+    {
+        if (!$this->organizationId) {
+            $this->workflows = [];
+            return;
+        }
+
+        $this->workflows = ApprovalWorkflow::where('organization_id', $this->organizationId)
+            ->whereIn('approval_category', self::GENERIC_CATEGORIES)
+            ->with('approvers')
+            ->orderBy('approval_category')
+            ->get()
+            ->toArray();
+
+        $this->configuredCategories = collect($this->workflows)
+            ->pluck('approval_category')
+            ->all();
+    }
+
+    public function loadStaffOptions(): void
+    {
+        $this->staffOptions = [];
+
+        if ($this->organizationId) {
+            $this->staffOptions = StaffAssignment::where('organization_id', $this->organizationId)
+                ->where('status', 'active')
+                ->orderBy('staff_name')
+                ->pluck('staff_name', 'staff_uuid')
+                ->toArray();
+        }
+
+        if (!empty($this->staffOptions)) {
+            return;
+        }
+
+        try {
+            $staffData = app(KashApiService::class)->getStaff(['per_page' => 100]);
+            foreach (Arr::get($staffData, 'data', []) as $staff) {
+                $uuid = $staff['uuid'] ?? $staff['id'] ?? null;
+                $name = $staff['name'] ?? $staff['full_name'] ?? trim(($staff['first_name'] ?? '') . ' ' . ($staff['last_name'] ?? ''));
+
+                if ($uuid && $name) {
+                    $this->staffOptions[(string) $uuid] = $name;
+                }
+            }
+        } catch (\Throwable) {
+            $this->staffOptions = [];
+        }
+
+    }
+
+    public function openCreateModal()
+    {
+        if (!$this->canAddSetup) {
+            $this->message = 'You do not have permission to manage HR setup.';
+            return;
+        }
+
+        $this->resetForm();
+        $this->message = null;
+        $this->showModal = true;
+    }
+
+    public function openEditModal($id)
+    {
+        if (!$this->canEditSetup) {
+            $this->message = 'You do not have permission to manage HR setup.';
+            return;
+        }
+
+        $wf = ApprovalWorkflow::with('approvers')->find($id);
+        if (!$wf) return;
+
+        $this->editingId = $wf->id;
+        $this->category = $wf->approval_category;
+        $this->approverUuids = $this->defaultApproverSelections();
+
+        foreach ($wf->approvers->groupBy('approver_level') as $level => $approvers) {
+            $this->approverUuids[$level] = $approvers
+                ->pluck('approver_staff_uuid')
+                ->map(fn ($uuid) => (string) $uuid)
+                ->values()
+                ->all();
+
+            foreach ($approvers as $approver) {
+                $this->staffOptions[$approver->approver_staff_uuid] = $approver->approver_name;
+            }
+
+            $this->ensureApproverSlotCount($level);
+        }
+
+        $this->message = null;
+        $this->showModal = true;
+    }
+
+    public function saveWorkflow()
+    {
+        if (($this->editingId && !$this->canEditSetup) || (!$this->editingId && !$this->canAddSetup)) {
+            $this->message = 'You do not have permission to manage HR setup.';
+            return;
+        }
+
+        $this->validate(array_merge([
+            'category' => [
+                'required',
+                'in:leave,coverage,offsite_duty',
+                Rule::unique('hr_approval_workflows', 'approval_category')
+                    ->where(fn ($query) => $query->where('organization_id', $this->organizationId))
+                    ->ignore($this->editingId),
+            ],
+        ], $this->approverValidationRules()));
+
+        $approverSelections = $this->normalizedApproverSelections();
+
+        if ($this->hasDuplicateApproverSelections($approverSelections)) {
+            return;
+        }
+
+        $data = [
+            'organization_id' => $this->organizationId,
+            'approval_category' => $this->category,
+            'is_active' => true,
+        ];
+
+        if ($this->editingId) {
+            $wf = ApprovalWorkflow::find($this->editingId);
+            $wf->update($data);
+        } else {
+            $wf = ApprovalWorkflow::create($data);
+        }
+
+        // Sync approvers
+        $wf->approvers()->delete();
+
+        foreach (self::APPROVER_LEVELS as $level) {
+            $wf->syncApprovers($level, collect($approverSelections[$level] ?? [])
+                ->values()
+                ->map(fn (string $uuid): array => [
+                    'uuid' => $uuid,
+                    'name' => $this->staffOptions[$uuid] ?? $uuid,
+                ])
+                ->all());
+        }
+
+        $this->showModal = false;
+        $this->message = 'Approval workflow saved.';
+        $this->resetForm();
+        $this->loadWorkflows();
+    }
+
+    public function deleteWorkflow($id)
+    {
+        if (!$this->canEditSetup) {
+            $this->message = 'You do not have permission to manage HR setup.';
+            return;
+        }
+
+        ApprovalWorkflow::find($id)?->update(['is_active' => false]);
+        $this->message = 'Approval workflow deactivated.';
+        $this->loadWorkflows();
+    }
+
+    public function resetForm()
+    {
+        $this->editingId = null;
+        $availableCategory = collect(self::GENERIC_CATEGORIES)
+            ->first(fn ($category) => !in_array($category, $this->configuredCategories, true));
+
+        $this->category = $availableCategory ?? 'leave';
+        $this->approverUuids = $this->defaultApproverSelections();
+    }
+
+    public function addApproverSlot(string $level): void
+    {
+        if (! in_array($level, self::APPROVER_LEVELS, true)) {
+            return;
+        }
+
+        $this->approverUuids[$level][] = '';
+    }
+
+    public function removeApproverSlot(string $level, int $index): void
+    {
+        if (! in_array($level, self::APPROVER_LEVELS, true)) {
+            return;
+        }
+
+        $slots = $this->approverUuids[$level] ?? [];
+
+        if (count($slots) <= self::MIN_APPROVERS_PER_LEVEL || ! array_key_exists($index, $slots)) {
+            return;
+        }
+
+        unset($slots[$index]);
+        $this->approverUuids[$level] = array_values($slots);
+    }
+
+    public function render()
+    {
+        return view('livewire.approval-workflow-manager');
+    }
+
+    private function approverValidationRules(): array
+    {
+        $rules = [];
+
+        foreach (self::APPROVER_LEVELS as $level) {
+            $rules["approverUuids.$level"] = 'required|array|min:'.self::MIN_APPROVERS_PER_LEVEL;
+            $rules["approverUuids.$level.*"] = 'required|string|distinct';
+        }
+
+        return $rules;
+    }
+
+    private function defaultApproverSelections(): array
+    {
+        return collect(self::APPROVER_LEVELS)
+            ->mapWithKeys(fn (string $level): array => [
+                $level => array_fill(0, self::MIN_APPROVERS_PER_LEVEL, ''),
+            ])
+            ->all();
+    }
+
+    private function ensureApproverSlotCount(string $level): void
+    {
+        $slots = array_values($this->approverUuids[$level] ?? []);
+
+        while (count($slots) < self::MIN_APPROVERS_PER_LEVEL) {
+            $slots[] = '';
+        }
+
+        $this->approverUuids[$level] = $slots;
+    }
+
+    private function normalizedApproverSelections(): array
+    {
+        $normalized = [];
+
+        foreach (self::APPROVER_LEVELS as $level) {
+            $normalized[$level] = collect($this->approverUuids[$level] ?? [])
+                ->map(fn ($uuid): string => trim((string) $uuid))
+                ->values()
+                ->all();
+        }
+
+        return $normalized;
+    }
+
+    private function hasDuplicateApproverSelections(array $approverSelections): bool
+    {
+        $seen = [];
+        $hasDuplicates = false;
+
+        foreach (self::APPROVER_LEVELS as $level) {
+            foreach ($approverSelections[$level] ?? [] as $index => $uuid) {
+                if ($uuid === '') {
+                    continue;
+                }
+
+                if (isset($seen[$uuid])) {
+                    $this->addError("approverUuids.$level.$index", 'This staff member is already assigned to another approval slot.');
+                    $hasDuplicates = true;
+                    continue;
+                }
+
+                $seen[$uuid] = true;
+            }
+        }
+
+        return $hasDuplicates;
+    }
+}
+
