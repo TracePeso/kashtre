@@ -84,11 +84,15 @@
 
                     <!-- Callers dropdown: for business admins with calling module enabled -->
                     @php
+                        $callerPermissions = (array) ($permissions ?? []);
                         $callerPerms = ['View Callers', 'Add Callers', 'Edit Callers', 'Manage Callers'];
-                        $canBroadcastAnnouncements = in_array('Broadcast Announcements', (array) $permissions);
-                        $hasAnyCallerPerm = count(array_intersect($callerPerms, (array) $permissions)) > 0 || $canBroadcastAnnouncements;
+                        $canBroadcastAnnouncements = in_array('Broadcast Announcements', $callerPermissions, true);
                     @endphp
-                    @if(Auth::user()->business_id != 1 && isset($callingModuleEnabled) && $callingModuleEnabled && $hasAnyCallerPerm)
+                    @if(
+                        Auth::user()->business_id != 1
+                        && !empty($callingModuleEnabled)
+                        && ($canBroadcastAnnouncements || count(array_intersect($callerPerms, $callerPermissions)) > 0)
+                    )
                     <li>
                         <button @click="openGroup === 'callers' ? openGroup = '' : openGroup = 'callers'"
                                 :class="openGroup === 'callers' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'"
