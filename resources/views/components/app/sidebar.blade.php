@@ -18,9 +18,7 @@
             <!-- Logo and Business Info -->
             <div class="flex flex-col items-center w-full">
                 <h1 class="text-[#011478] font-extrabold text-xl mb-1">{{ env('APP_NAME') }}</h1>
-                @php
-                $logoPath = $business->logo ?? null;
-                @endphp
+                @php($logoPath = $business->logo ?? null)
                 <div class="w-16 h-16 rounded-lg overflow-hidden">
                     @if ($logoPath && file_exists(public_path('storage/' . $logoPath)))
                     <img src="{{ asset('storage/' . $logoPath) }}" alt="Business Logo" class="w-full h-full object-contain">
@@ -83,15 +81,16 @@
                     @endif
 
                     <!-- Callers dropdown: for business admins with calling module enabled -->
-                    @php
-                        $callerPermissions = (array) ($permissions ?? []);
-                        $callerPerms = ['View Callers', 'Add Callers', 'Edit Callers', 'Manage Callers'];
-                        $canBroadcastAnnouncements = in_array('Broadcast Announcements', $callerPermissions, true);
-                    @endphp
                     @if(
                         Auth::user()->business_id != 1
                         && !empty($callingModuleEnabled)
-                        && ($canBroadcastAnnouncements || count(array_intersect($callerPerms, $callerPermissions)) > 0)
+                        && (
+                            in_array('Broadcast Announcements', (array) ($permissions ?? []), true)
+                            || count(array_intersect(
+                                ['View Callers', 'Add Callers', 'Edit Callers', 'Manage Callers'],
+                                (array) ($permissions ?? [])
+                            )) > 0
+                        )
                     )
                     <li>
                         <button @click="openGroup === 'callers' ? openGroup = '' : openGroup = 'callers'"
@@ -118,7 +117,7 @@
                                     Call Settings
                                 </a>
                             </li>
-                            @if($canBroadcastAnnouncements)
+                            @if(in_array('Broadcast Announcements', (array) ($permissions ?? []), true))
                             <li>
                                 <a href="{{ route('pa.console') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
                                     Public Announcements
@@ -347,42 +346,7 @@
 
                             <!-- Credit Limit Requests - Available for all businesses with permission -->
                             @if(in_array('Manage Credit Limits', (array) $permissions))
-                            @php
-                                $user = Auth::user();
-                                $pendingCount = 0;
-                                
-                                // Get user's approval levels
-                                $userApproverLevels = \App\Models\CreditLimitApprovalApprover::where('business_id', $user->business_id)
-                                    ->where('approver_id', $user->id)
-                                    ->pluck('approval_level')
-                                    ->toArray();
-                                
-                                // Count pending authorizations
-                                if (in_array('authorizer', $userApproverLevels)) {
-                                    $pendingCount += \App\Models\CreditLimitChangeRequest::where('business_id', $user->business_id)
-                                        ->where('status', 'initiated')
-                                        ->where('current_step', 2)
-                                        ->whereHas('approvals', function ($q) use ($user) {
-                                            $q->where('approver_id', $user->id)
-                                              ->where('approval_level', 'authorizer')
-                                              ->whereNull('action');
-                                        })
-                                        ->count();
-                                }
-                                
-                                // Count pending approvals
-                                if (in_array('approver', $userApproverLevels)) {
-                                    $pendingCount += \App\Models\CreditLimitChangeRequest::where('business_id', $user->business_id)
-                                        ->where('status', 'authorized')
-                                        ->where('current_step', 3)
-                                        ->whereHas('approvals', function ($q) use ($user) {
-                                            $q->where('approver_id', $user->id)
-                                              ->where('approval_level', 'approver')
-                                              ->whereNull('action');
-                                        })
-                                        ->count();
-                                }
-                            @endphp
+                            @php($pendingCount = \App\Support\SidebarMenu::pendingCreditLimitRequestCount(Auth::user()))
                             <li>
                                 <a href="{{ route('credit-limit-requests.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
                                     <span class="flex items-center justify-between w-full">
@@ -601,16 +565,13 @@
                             </li>
                             @endif
 
-                            @php
-                                $clientSpacePermissions = [
-                                    'Client Spaces',
-                                    'View Client Spaces',
-                                    'Add Client Spaces',
-                                    'Edit Client Spaces',
-                                    'Delete Client Spaces',
-                                ];
-                                $canAccessClientSpaces = count(array_intersect($clientSpacePermissions, (array) $permissions)) > 0;
-                            @endphp
+                            @php($canAccessClientSpaces = count(array_intersect([
+                                'Client Spaces',
+                                'View Client Spaces',
+                                'Add Client Spaces',
+                                'Edit Client Spaces',
+                                'Delete Client Spaces',
+                            ], (array) $permissions)) > 0)
                             @if($canAccessClientSpaces)
                             <li><a href="{{ route('client-spaces.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Client Spaces</a></li>
                             @endif
