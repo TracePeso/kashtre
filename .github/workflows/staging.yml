@@ -1,84 +1,99 @@
-name: Deploy Staging Branch to Hostinger (Root)
+name: Deploy Staging Branch to VPS
 
 on:
   push:
     branches:
       - staging
 
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
 jobs:
   deploy:
     name: Deploy Staging Branch
     runs-on: ubuntu-latest
-    env:
-      ACTIONS_RUNNER_DEBUG: true
-      ACTIONS_STEP_DEBUG: true
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          php-version: '8.3'
-          extensions: mbstring, xml, bcmath, ctype, json, tokenizer, curl
-          coverage: none
+          host: ${{ vars.STAGING_VPS_HOST }}
+          username: ${{ vars.STAGING_VPS_USER }}
+          key: ${{ secrets.STAGING_VPS_SSH_KEY || secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
 
-      - name: Install Composer dependencies
-        run: composer install --no-dev --optimize-autoloader --no-interaction --ignore-platform-reqs
+            DEPLOY_PATH="${{ vars.STAGING_DEPLOY_PATH }}"
+            PHP_FPM_SERVICE="${{ vars.STAGING_PHP_FPM_SERVICE || 'php8.3-fpm' }}"
+            ARTISAN_PHP="php -d opcache.enable_cli=0"
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
+            if [ -z "$DEPLOY_PATH" ]; then
+              echo "STAGING_DEPLOY_PATH is not configured."
+              exit 1
+            fi
 
-      - name: Install frontend dependencies
-        run: npm ci
+            echo "Starting STAGING deployment..."
 
-      - name: Build frontend assets
-        env:
-          VITE_REVERB_APP_KEY: kashtre-reverb-key
-          VITE_REVERB_HOST: reverb.kashtre.com
-          VITE_REVERB_PORT: 443
-          VITE_REVERB_SCHEME: https
-          VITE_WEBRTC_STUN_URLS: ${{ vars.VITE_WEBRTC_STUN_URLS || 'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302' }}
-          VITE_WEBRTC_TURN_URL: ${{ secrets.VITE_WEBRTC_TURN_URL }}
-          VITE_WEBRTC_TURN_USERNAME: ${{ secrets.VITE_WEBRTC_TURN_USERNAME }}
-          VITE_WEBRTC_TURN_CREDENTIAL: ${{ secrets.VITE_WEBRTC_TURN_CREDENTIAL }}
-          VITE_WEBRTC_ICE_TRANSPORT_POLICY: ${{ vars.VITE_WEBRTC_ICE_TRANSPORT_POLICY || 'all' }}
-        run: npm run build
+            git config --global --add safe.directory "$DEPLOY_PATH"
 
-      - name: Install sshpass
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y sshpass || { echo "Failed to install sshpass"; exit 1; }
-          sshpass -v || { echo "sshpass not found after installation"; exit 1; }
+            cd "$DEPLOY_PATH"
 
-      - name: Test SSH Connection
-        env:
-          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
-          FTP_SERVER: ${{ secrets.FTP_SERVER }}
-          SSHPASS: ${{ secrets.FTP_PASSWORD }}
-        run: |
-          sshpass -e ssh -o StrictHostKeyChecking=no -p 65002 "$FTP_USERNAME@$FTP_SERVER" whoami
-          sshpass -e ssh -o StrictHostKeyChecking=no -p 65002 "$FTP_USERNAME@$FTP_SERVER" "echo 'Test command execution' && ls -la /home/u242329769/domains/staging.kashtre.com/public_html"
+            echo "Fetching latest code..."
+            git fetch origin
 
-      - name: Deploy to Hostinger
-        env:
-          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
-          FTP_SERVER: ${{ secrets.FTP_SERVER }}
-          SSHPASS: ${{ secrets.FTP_PASSWORD }}
-        run: |
-          DEPLOY_DIR="/home/u242329769/domains/staging.kashtre.com/public_html"
-          ARTISAN_PHP="php -d opcache.enable_cli=0"
+            echo "Resetting to staging branch..."
+            git reset --hard origin/staging
 
-          echo "Local files in GITHUB_WORKSPACE:"
-          ls -la $GITHUB_WORKSPACE
+            echo "Installing PHP dependencies..."
+            composer install --no-dev --optimize-autoloader --no-interaction
 
-          sshpass -e rsync -avz --exclude '.env' --exclude '.htaccess' -e "ssh -p 65002 -o StrictHostKeyChecking=no" $GITHUB_WORKSPACE/ "$FTP_USERNAME@$FTP_SERVER":"$DEPLOY_DIR"
+            echo "Installing Node dependencies..."
+            npm install --no-audit --no-fund
 
-          # Clear stale cached Laravel config before any Artisan command.
-          sshpass -e ssh -o StrictHostKeyChecking=no -p 65002 "$FTP_USERNAME@$FTP_SERVER" "cd /home/u242329769/domains/staging.kashtre.com/public_html && echo 'Clearing stale cache files...' && rm -f bootstrap/cache/*.php && echo 'Checking Reverb config shape...' && $ARTISAN_PHP -r '\$config = require \"config/reverb.php\"; echo isset(\$config[\"servers\"][\"reverb\"][\"scaling\"]) ? \"Reverb scaling config present\n\" : \"Reverb scaling config missing\n\";' && echo 'Setting permissions...' && chmod -R 755 storage bootstrap/cache 2>/dev/null || echo 'Warning: Could not set permissions' && echo 'Removing existing storage link...' && rm -f public/storage && echo 'Creating storage link...' && $ARTISAN_PHP artisan storage:link"
+            echo "Building frontend..."
+            export VITE_REVERB_APP_KEY="kashtre-reverb-key"
+            export VITE_REVERB_HOST="reverb.kashtre.com"
+            export VITE_REVERB_PORT="443"
+            export VITE_REVERB_SCHEME="https"
+            export VITE_WEBRTC_STUN_URLS="${{ vars.VITE_WEBRTC_STUN_URLS || 'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302' }}"
+            export VITE_WEBRTC_TURN_URL="${{ secrets.VITE_WEBRTC_TURN_URL }}"
+            export VITE_WEBRTC_TURN_USERNAME="${{ secrets.VITE_WEBRTC_TURN_USERNAME }}"
+            export VITE_WEBRTC_TURN_CREDENTIAL="${{ secrets.VITE_WEBRTC_TURN_CREDENTIAL }}"
+            export VITE_WEBRTC_ICE_TRANSPORT_POLICY="${{ vars.VITE_WEBRTC_ICE_TRANSPORT_POLICY || 'all' }}"
+            npm run build
 
-          sshpass -e ssh -o StrictHostKeyChecking=no -p 65002 "$FTP_USERNAME@$FTP_SERVER" "cd /home/u242329769/domains/staging.kashtre.com/public_html && echo 'Checking for existing tables that need migration records...' && $ARTISAN_PHP artisan fix:existing-tables && echo 'Running migrations...' && $ARTISAN_PHP artisan migrate --force --verbose && echo 'Checking migration status...' && $ARTISAN_PHP artisan migrate:status && echo 'Clearing and caching...' && $ARTISAN_PHP artisan optimize:clear && $ARTISAN_PHP artisan view:clear && $ARTISAN_PHP artisan config:cache && $ARTISAN_PHP artisan route:cache && echo 'Deployment completed successfully!'"
+            echo "Fixing permissions..."
+            chown -R www-data:www-data "$DEPLOY_PATH"
+            chmod -R 775 storage bootstrap/cache
+
+            echo "Clearing stale cache files..."
+            rm -f bootstrap/cache/*.php
+
+            echo "Creating storage link..."
+            $ARTISAN_PHP artisan storage:link || true
+
+            echo "Checking for existing tables that need migration records..."
+            $ARTISAN_PHP artisan fix:existing-tables
+
+            echo "Running migrations..."
+            $ARTISAN_PHP artisan migrate --force --verbose
+
+            echo "Checking migration status..."
+            $ARTISAN_PHP artisan migrate:status
+
+            echo "Clearing caches..."
+            $ARTISAN_PHP artisan optimize:clear
+
+            echo "Caching config/routes/views..."
+            $ARTISAN_PHP artisan config:cache
+            $ARTISAN_PHP artisan route:cache
+            $ARTISAN_PHP artisan view:cache
+
+            echo "Restarting queues..."
+            $ARTISAN_PHP artisan queue:restart || true
+
+            echo "Restarting PHP-FPM..."
+            systemctl restart "$PHP_FPM_SERVICE"
+
+            echo "Staging deployment completed successfully."
