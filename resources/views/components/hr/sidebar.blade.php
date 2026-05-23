@@ -172,22 +172,22 @@
 
 <div class="min-w-fit">
     <div
-        class="fixed inset-0 z-40 bg-slate-900/40 transition-opacity duration-200 lg:hidden"
+        class="fixed inset-0 z-40 bg-gray-900/30 transition-opacity duration-200 lg:hidden lg:z-auto"
         :class="sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'"
         aria-hidden="true"
         x-cloak
     ></div>
 
-    <aside
+    <div
         id="sidebar"
-        class="absolute left-0 top-0 z-40 flex h-[100dvh] w-64 shrink-0 flex-col overflow-y-auto rounded-r-[1.75rem] bg-white p-4 shadow-xl shadow-slate-200/60 transition-all duration-200 ease-in-out dark:bg-slate-800 dark:shadow-none lg:static lg:left-auto lg:top-auto lg:w-20 lg:translate-x-0 lg:sidebar-expanded:!w-64 2xl:!w-64"
+        class="absolute left-0 top-0 z-40 flex h-[100dvh] w-64 shrink-0 flex-col overflow-y-scroll no-scrollbar bg-white p-4 transition-all duration-200 ease-in-out dark:bg-gray-800 lg:static lg:left-auto lg:top-auto lg:w-20 lg:translate-x-0 lg:overflow-y-auto lg:sidebar-expanded:!w-64 2xl:!w-64 rounded-r-2xl shadow-xs"
         :class="sidebarOpen ? 'max-lg:translate-x-0' : 'max-lg:-translate-x-64'"
         @click.outside="sidebarOpen = false"
         @keydown.escape.window="sidebarOpen = false"
     >
-        <div class="mb-8 flex justify-between pr-3 sm:px-2">
+        <div class="mb-10 flex justify-between pr-3 sm:px-2">
             <button
-                class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-600 shadow-sm hover:bg-slate-100 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white lg:hidden"
+                class="text-gray-500 hover:text-gray-400 lg:hidden"
                 @click.stop="sidebarOpen = !sidebarOpen"
                 aria-controls="sidebar"
                 :aria-expanded="sidebarOpen"
@@ -198,19 +198,23 @@
                 </svg>
             </button>
 
-            <a href="{{ route('hr.dashboard') }}" class="flex w-full items-center gap-3 rounded-[1.4rem] border border-slate-200/80 bg-gradient-to-br from-white to-slate-50 px-4 py-4 shadow-sm transition hover:border-blue-200 hover:shadow-md dark:border-slate-700/70 dark:from-slate-800 dark:to-slate-800/80 dark:hover:border-sky-500/30">
-                <div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-100 shadow-inner dark:bg-slate-700">
-                    <img src="{{ asset('images/kashtre_logo.svg') }}" alt="Kashtre Logo" class="h-10 w-10 object-contain">
+            <a href="{{ route('hr.dashboard') }}" class="flex w-full flex-col items-center">
+                <h1 class="mb-1 text-xl font-extrabold text-[#011478]">HR Manager</h1>
+                <div class="h-16 w-16 overflow-hidden rounded-lg">
+                    <img src="{{ asset('images/kashtre_logo.svg') }}" alt="Kashtre Logo" class="h-full w-full object-contain">
                 </div>
-                <div class="min-w-0 flex-1 duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100">
-                    <p class="truncate text-sm font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">HR Manager</p>
-                    <h1 class="mt-1 truncate text-xl font-extrabold leading-tight text-[#011478] dark:text-sky-300">{{ $organization?->name ?: 'Kashtre HR Workspace' }}</h1>
-                </div>
+                <h2 class="mt-2 text-center text-sm font-bold text-[#011478] lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">
+                    {{ $organization?->name ?: 'Kashtre HR Workspace' }}
+                </h2>
+                <p class="mt-0.5 text-center text-xs text-gray-500 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">
+                    Independent HR module
+                </p>
             </a>
         </div>
 
-        <nav>
-            <ul class="space-y-1" x-data="{ openGroup: '{{ $openGroupKey }}' }">
+        <div class="space-y-8">
+            <div>
+                <ul class="mt-3 space-y-2" x-data="{ openGroup: '{{ $openGroupKey }}' }">
                 @foreach ($navItems as $item)
                     @continue(! $item['visible'])
                     @php($groupKey = \Illuminate\Support\Str::slug($item['label']))
@@ -218,36 +222,32 @@
                         @if(! empty($item['children']))
                             <button
                                 type="button"
-                                class="kashtre-nav-group-button {{ $item['active'] ? 'kashtre-nav-group-open' : 'kashtre-nav-group-idle' }}"
                                 @click="openGroup = openGroup === '{{ $groupKey }}' ? '' : '{{ $groupKey }}'"
+                                :class="openGroup === '{{ $groupKey }}' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'"
+                                class="flex w-full items-center justify-between rounded-md pl-4 pr-3 py-2 text-left"
                                 :aria-expanded="(openGroup === '{{ $groupKey }}').toString()"
                             >
                                 <span class="flex items-center">
-                                    <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ $item['icon'] }}"></path>
                                     </svg>
-                                    <span class="ml-3 flex-1 whitespace-nowrap text-left duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100">
+                                    <span class="ml-3 flex-1 text-sm font-medium whitespace-nowrap text-left duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100">
                                         {{ $item['label'] }}
                                     </span>
                                 </span>
-                                <svg class="h-4 w-4 shrink-0 transition lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100" :class="{ 'rotate-180': openGroup === '{{ $groupKey }}' }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg class="h-4 w-4 transform transition-transform duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100" :class="{ 'rotate-180': openGroup === '{{ $groupKey }}' }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                                 </svg>
                             </button>
                             <ul
                                 x-show="openGroup === '{{ $groupKey }}'"
-                                x-transition:enter="transition ease-out duration-200"
-                                x-transition:enter-start="opacity-0 -translate-y-1"
-                                x-transition:enter-end="opacity-100 translate-y-0"
-                                x-transition:leave="transition ease-in duration-150"
-                                x-transition:leave-start="opacity-100 translate-y-0"
-                                x-transition:leave-end="opacity-0 -translate-y-1"
-                                class="mt-1 space-y-1 pl-9 lg:hidden lg:sidebar-expanded:block 2xl:block"
+                                x-collapse
+                                class="mt-1 space-y-1 pl-10"
                             >
                                 @foreach($item['children'] as $child)
                                     @continue(! ($child['visible'] ?? true))
                                     <li>
-                                        <a href="{{ $child['href'] }}" class="kashtre-nav-sublink {{ ($child['active'] ?? false) ? 'kashtre-nav-sublink-active' : 'kashtre-nav-sublink-idle' }}">
+                                        <a href="{{ $child['href'] }}" class="block py-1.5 text-sm {{ ($child['active'] ?? false) ? 'font-medium text-blue-700' : 'text-gray-700 hover:text-blue-700' }}">
                                             {{ $child['label'] }}
                                         </a>
                                     </li>
@@ -256,51 +256,48 @@
                         @else
                             <a
                                 href="{{ route($item['route']) }}"
-                                class="kashtre-nav-link {{ $item['active'] ? 'kashtre-nav-link-active' : 'kashtre-nav-link-idle' }}"
+                                class="flex items-center rounded-lg pl-4 pr-3 py-2 {{ $item['active'] ? 'bg-blue-100 text-blue-900 font-semibold' : 'text-gray-700 hover:text-blue-700 hover:bg-blue-50' }}"
                             >
-                                <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ $item['icon'] }}"></path>
                                 </svg>
-                                <span class="ml-3 whitespace-nowrap duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100">
+                                <span class="ml-3 text-sm font-medium whitespace-nowrap duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100">
                                     {{ $item['label'] }}
                                 </span>
                             </a>
                         @endif
                     </li>
                 @endforeach
-            </ul>
-        </nav>
+                </ul>
+            </div>
+        </div>
 
-        <div class="mt-auto space-y-2 pt-4">
+        <div class="mt-auto hidden justify-end pt-3 lg:inline-flex 2xl:hidden">
+            <div class="w-12 pl-4 pr-3 py-2">
+                <button class="text-gray-400 transition-colors hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400" @click="sidebarExpanded = !sidebarExpanded" type="button">
+                    <span class="sr-only">Expand or collapse sidebar</span>
+                    <svg class="shrink-0 fill-current text-gray-400 dark:text-gray-500 sidebar-expanded:rotate-180" width="16" height="16" viewBox="0 0 16 16">
+                        <path d="M15 16a1 1 0 0 1-1-1V1a1 1 0 1 1 2 0v14a1 1 0 0 1-1 1ZM8.586 7H1a1 1 0 1 0 0 2h7.586l-2.793 2.793a1 1 0 1 0 1.414 1.414l4.5-4.5A.997.997 0 0 0 12 8.01M11.924 7.617a.997.997 0 0 0-.217-.324l-4.5-4.5a1 1 0 0 0-1.414 1.414L8.586 7M12 7.99a.996.996 0 0 0-.076-.373Z" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="pt-3">
             <form method="POST" action="{{ route('logout') }}">
                 @csrf
                 <button
                     type="submit"
-                    class="flex w-full items-center rounded-xl px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:text-slate-300 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                    class="flex w-full items-center rounded-lg px-4 py-2 text-gray-700 transition hover:bg-red-50 hover:text-red-700"
                 >
-                    <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                     </svg>
-                    <span class="ml-3 whitespace-nowrap duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100">
+                    <span class="ml-3 text-sm font-medium whitespace-nowrap duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100">
                         Sign Out
                     </span>
                 </button>
             </form>
-
-            <div class="hidden justify-end lg:inline-flex 2xl:hidden">
-                <div class="w-12 pl-4 pr-3 py-2">
-                    <button
-                        class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition-colors hover:bg-slate-100 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
-                        @click="sidebarExpanded = !sidebarExpanded"
-                        type="button"
-                    >
-                        <span class="sr-only">Expand or collapse sidebar</span>
-                        <svg class="shrink-0 fill-current sidebar-expanded:rotate-180" width="16" height="16" viewBox="0 0 16 16">
-                            <path d="M15 16a1 1 0 0 1-1-1V1a1 1 0 1 1 2 0v14a1 1 0 0 1-1 1ZM8.586 7H1a1 1 0 1 0 0 2h7.586l-2.793 2.793a1 1 0 1 0 1.414 1.414l4.5-4.5A.997.997 0 0 0 12 8.01M11.924 7.617a.997.997 0 0 0-.217-.324l-4.5-4.5a1 1 0 0 0-1.414 1.414L8.586 7" />
-                        </svg>
-                    </button>
-                </div>
-            </div>
         </div>
-    </aside>
+    </div>
 </div>
