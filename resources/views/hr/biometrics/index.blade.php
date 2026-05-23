@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-hr-layout>
     <x-slot name="header">Biometrics</x-slot>
 
     @php
@@ -1362,4 +1362,4 @@
             })();
         </script>
     @endif
-</x-app-layout>
+</x-hr-layout>

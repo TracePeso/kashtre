@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-hr-layout>
     <div class="py-10 bg-gradient-to-b from-sky-50 to-transparent">
         <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             @if(session('error'))
@@ -59,4 +59,4 @@
             </section>
         </div>
     </div>
-</x-app-layout>
+</x-hr-layout>

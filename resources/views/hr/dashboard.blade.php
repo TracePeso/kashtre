@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-hr-layout>
     <x-slot name="header">HR Dashboard</x-slot>
 
     @php($user = Auth::user())
@@ -256,4 +256,4 @@
         </a>
         @endif
     </div>
-</x-app-layout>
+</x-hr-layout>

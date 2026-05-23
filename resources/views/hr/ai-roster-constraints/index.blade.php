@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-hr-layout>
     <x-slot name="header">AI Duty Roster Constraints</x-slot>
 
     <div class="space-y-6">
@@ -24,4 +24,4 @@
             </p>
         </section>
     </div>
-</x-app-layout>
+</x-hr-layout>
