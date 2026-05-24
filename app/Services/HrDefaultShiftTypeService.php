@@ -15,6 +15,17 @@ class HrDefaultShiftTypeService
     {
         return [
             [
+                'code' => 'RWH',
+                'name' => 'Regular working Hours',
+                'start_time' => '08:00:00',
+                'end_time' => '17:00:00',
+                'break_durations_minutes' => [
+                    ['duration_minutes' => 60],
+                ],
+                'color' => '#0F766E',
+                'is_system_default' => true,
+            ],
+            [
                 'code' => 'EARLY',
                 'name' => 'Early Shift',
                 'start_time' => '06:00:00',
@@ -34,7 +45,7 @@ class HrDefaultShiftTypeService
                     ['duration_minutes' => 60],
                 ],
                 'color' => '#16A34A',
-                'is_system_default' => true,
+                'is_system_default' => false,
             ],
             [
                 'code' => 'EVENING',
@@ -75,6 +86,8 @@ class HrDefaultShiftTypeService
 
     public function seedMissingDefaults(Organization $organization): int
     {
+        $this->normalizeLegacyRegularWorkingHoursShift($organization);
+
         $existingByCode = ShiftType::query()
             ->where('organization_id', $organization->id)
             ->whereNull('deleted_at')
@@ -93,7 +106,12 @@ class HrDefaultShiftTypeService
                 continue;
             }
 
-            if ($code === 'DAY' && strcasecmp((string) $existing->name, 'Regular working Hours') === 0) {
+            if ($code === 'RWH' && strcasecmp((string) $existing->name, 'Regular working Hours') !== 0) {
+                $existing->fill($this->payload($organization, $definition, true))->save();
+                continue;
+            }
+
+            if ($code === 'DAY' && strcasecmp((string) $existing->name, 'Day Shift') !== 0) {
                 $existing->fill($this->payload($organization, $definition, $existing->is_system_default))->save();
             }
         }
@@ -105,14 +123,14 @@ class HrDefaultShiftTypeService
             ->exists();
 
         if (! $hasSystemDefault) {
-            $dayShift = ShiftType::query()
+            $regularShift = ShiftType::query()
                 ->where('organization_id', $organization->id)
                 ->whereNull('deleted_at')
-                ->where('code', 'DAY')
+                ->where('code', 'RWH')
                 ->first();
 
-            if ($dayShift) {
-                $dayShift->forceFill(['is_system_default' => true])->save();
+            if ($regularShift) {
+                $regularShift->forceFill(['is_system_default' => true])->save();
             }
         }
 
@@ -160,5 +178,24 @@ class HrDefaultShiftTypeService
         }
 
         return $start->diffInMinutes($end);
+    }
+
+    private function normalizeLegacyRegularWorkingHoursShift(Organization $organization): void
+    {
+        $legacyRegularShift = ShiftType::query()
+            ->where('organization_id', $organization->id)
+            ->whereNull('deleted_at')
+            ->where('code', 'DAY')
+            ->where('name', 'Regular working Hours')
+            ->first();
+
+        if (! $legacyRegularShift) {
+            return;
+        }
+
+        $legacyRegularShift->forceFill([
+            'code' => 'RWH',
+            'is_system_default' => true,
+        ])->save();
     }
 }

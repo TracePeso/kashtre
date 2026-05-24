@@ -104,7 +104,7 @@ class ShiftTypeTable extends Component implements HasForms, HasTable
                     })
                     ->successNotificationTitle('Shift type updated.'),
                 Tables\Actions\DeleteAction::make()
-                    ->visible(fn (): bool => Auth::user()?->canEditHrSetup() ?? false)
+                    ->visible(fn (?ShiftType $record): bool => (Auth::user()?->canEditHrSetup() ?? false) && ! $this->hasLockedShiftName($record))
                     ->button()
                     ->label('Delete')
                     ->color('danger')
@@ -318,7 +318,8 @@ class ShiftTypeTable extends Component implements HasForms, HasTable
 
     protected function hasLockedShiftName(?ShiftType $record): bool
     {
-        return strcasecmp((string) $record?->code, 'DAY') === 0;
+        return strcasecmp((string) $record?->code, 'RWH') === 0
+            || strcasecmp((string) $record?->name, 'Regular working Hours') === 0;
     }
 }
 
