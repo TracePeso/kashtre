@@ -234,9 +234,24 @@ class OrganizationalStructure extends Component
             return;
         }
 
+        $name = $this->normalizedRoutingNodeName(
+            $this->newUnitParentId ? $this->newUnitName : $tierLevel->name
+        );
+
+        if ($this->routingNodeExists($org->id, $this->newUnitParentId, $tierLevel->id, $name)) {
+            $this->addError(
+                $this->newUnitParentId ? 'newUnitName' : 'newUnitTierLevelId',
+                $this->newUnitParentId
+                    ? 'This routing node already exists under the selected parent.'
+                    : 'This root routing node already exists for the selected tier level.'
+            );
+
+            return;
+        }
+
         HrOrganizationalUnit::create([
             'organization_id' => $org->id,
-            'name' => $this->newUnitParentId ? $this->newUnitName : $tierLevel->name,
+            'name' => $name,
             'parent_id' => $this->newUnitParentId,
             'tier_level_id' => $tierLevel->id,
             'type' => $tierLevel->name,
@@ -314,8 +329,23 @@ class OrganizationalStructure extends Component
             return;
         }
 
+        $name = $this->normalizedRoutingNodeName(
+            $this->editUnitParentId ? $this->editUnitName : $tierLevel->name
+        );
+
+        if ($this->routingNodeExists($org->id, $this->editUnitParentId, $tierLevel->id, $name, $unit->id)) {
+            $this->addError(
+                $this->editUnitParentId ? 'editUnitName' : 'editUnitTierLevelId',
+                $this->editUnitParentId
+                    ? 'This routing node already exists under the selected parent.'
+                    : 'This root routing node already exists for the selected tier level.'
+            );
+
+            return;
+        }
+
         $unit->update([
-            'name' => $this->editUnitParentId ? $this->editUnitName : $tierLevel->name,
+            'name' => $name,
             'parent_id' => $this->editUnitParentId ?: null,
             'tier_level_id' => $tierLevel->id,
             'type' => $tierLevel->name,
@@ -405,6 +435,36 @@ class OrganizationalStructure extends Component
         return $parent?->tierLevel
             ? $parent->tierLevel->level_order < $tierLevel->level_order
             : true;
+    }
+
+    private function normalizedRoutingNodeName(?string $name): string
+    {
+        return trim((string) $name);
+    }
+
+    private function routingNodeExists(
+        int $organizationId,
+        mixed $parentId,
+        int $tierLevelId,
+        string $name,
+        ?int $exceptUnitId = null
+    ): bool {
+        $query = HrOrganizationalUnit::where('organization_id', $organizationId)
+            ->routingNodes()
+            ->where('tier_level_id', $tierLevelId)
+            ->where('name', $name);
+
+        if ($parentId) {
+            $query->where('parent_id', $parentId);
+        } else {
+            $query->whereNull('parent_id');
+        }
+
+        if ($exceptUnitId) {
+            $query->whereKeyNot($exceptUnitId);
+        }
+
+        return $query->exists();
     }
 
     private function tierLevelFor(Organization $org, mixed $tierLevelId): ?HrOrganizationTierLevel
