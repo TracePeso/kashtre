@@ -100,19 +100,14 @@ class ClientSpaceDirectory extends Component
             ->with('organizationalUnit')
             ->findOrFail($this->selectedSecondaryStaffAssignmentId);
 
-        $attachedRoutingUnitIds = $this->attachedRoutingUnitIdsForClientSpace($clientSpace);
-
         if (in_array($assignment->status, ['inactive', 'orphaned'], true)) {
             $this->addError('selectedSecondaryStaffAssignmentId', 'Inactive or orphaned staff cannot be added as secondary clinical staff.');
 
             return;
         }
 
-        if (
-            $assignment->isOnLowestRoutingNode()
-            && ! $attachedRoutingUnitIds->contains((int) $assignment->organizational_unit_id)
-        ) {
-            $this->addError('selectedSecondaryStaffAssignmentId', 'Staff on the last routing node can only be linked to client spaces attached under that node.');
+        if ($assignment->isOnLowestRoutingNode()) {
+            $this->addError('selectedSecondaryStaffAssignmentId', 'Staff on a last routing node must be added through Add Staff, not Secondary Additions.');
 
             return;
         }
@@ -822,19 +817,11 @@ class ClientSpaceDirectory extends Component
             ->pluck('staff_assignment_id')
             ->map(fn ($id): int => (int) $id);
 
-        $attachedRoutingUnitIds = $this->attachedRoutingUnitIdsForClientSpace($clientSpace);
-
         return StaffAssignment::with('organizationalUnit')
             ->where('organization_id', $org->id)
             ->whereNotIn('status', ['inactive', 'orphaned'])
             ->whereNotIn('id', $activeLinkedAssignmentIds)
-            ->where(function ($query) use ($attachedRoutingUnitIds): void {
-                $query->eligibleForSecondaryClientSpaceAssignments();
-
-                if ($attachedRoutingUnitIds->isNotEmpty()) {
-                    $query->orWhereIn('organizational_unit_id', $attachedRoutingUnitIds->all());
-                }
-            })
+            ->eligibleForSecondaryClientSpaceAssignments()
             ->where(function ($query) use ($clientSpace): void {
                 $query
                     ->whereNull('organizational_unit_id')

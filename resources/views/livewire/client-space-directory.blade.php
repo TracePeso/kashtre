@@ -239,7 +239,7 @@
                     Secondary Client Space Assignment
                 </h3>
                 <p class="mb-4 text-sm text-gray-600">
-                    Use this when the staff member should keep their main location unchanged. Staff parked on an attached last routing node can also be linked here.
+                    Use this when the staff member should keep their main location unchanged and is not parked on a last routing node. Last-node staff should be added through Add Staff.
                 </p>
 
                 <form wire:submit.prevent="addSecondaryAssignment">
@@ -253,7 +253,7 @@
                         </select>
                         @error('selectedSecondaryStaffAssignmentId') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                         @if($secondaryStaffOptions->isEmpty())
-                            <p class="mt-2 text-sm text-gray-500">No staff are available for a secondary assignment to this client space.</p>
+                            <p class="mt-2 text-sm text-gray-500">No staff outside last routing nodes are available for a secondary assignment to this client space.</p>
                         @endif
                     </div>
 
