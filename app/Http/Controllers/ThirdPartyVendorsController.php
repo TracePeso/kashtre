@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\AccountBalanceSummaryService;
 use App\Services\ThirdPartyApiService;
 use App\Services\ThirdPartyPayerStatementPresenter;
 use Illuminate\Http\Request;
@@ -58,31 +59,7 @@ class ThirdPartyVendorsController extends Controller
                     ->get()
                     ->keyBy(fn ($payer) => (int) $payer->insurance_company_id);
 
-                $payerIds = $payers->pluck('id')->all();
-                $creditTotalsByPayer = \App\Models\ThirdPartyPayerBalanceHistory::query()
-                    ->selectRaw('third_party_payer_id, COALESCE(SUM(change_amount), 0) as total')
-                    ->whereIn('third_party_payer_id', $payerIds)
-                    ->where('transaction_type', 'credit')
-                    ->groupBy('third_party_payer_id')
-                    ->pluck('total', 'third_party_payer_id');
-
-                $debitTotalsByPayer = \App\Models\ThirdPartyPayerBalanceHistory::query()
-                    ->selectRaw('third_party_payer_id, COALESCE(SUM(change_amount), 0) as total')
-                    ->whereIn('third_party_payer_id', $payerIds)
-                    ->where('transaction_type', 'debit')
-                    ->groupBy('third_party_payer_id')
-                    ->pluck('total', 'third_party_payer_id');
-
-                $latestBalanceByPayer = \App\Models\ThirdPartyPayerBalanceHistory::query()
-                    ->selectRaw('third_party_payer_id, MAX(id) as latest_id')
-                    ->whereIn('third_party_payer_id', $payerIds)
-                    ->groupBy('third_party_payer_id')
-                    ->pluck('latest_id', 'third_party_payer_id');
-
-                $latestHistories = \App\Models\ThirdPartyPayerBalanceHistory::query()
-                    ->whereIn('id', $latestBalanceByPayer->filter()->values())
-                    ->get(['id', 'third_party_payer_id', 'new_balance'])
-                    ->keyBy('third_party_payer_id');
+                $balanceSummaryService = app(AccountBalanceSummaryService::class);
 
                 // Merge payer status and balances into vendor data
                 foreach ($vendors as &$vendor) {
@@ -101,14 +78,13 @@ class ThirdPartyVendorsController extends Controller
                     }
 
                     if ($payer) {
-                        $creditTotal = (float) ($creditTotalsByPayer[$payer->id] ?? 0);
-                        $debitTotal = abs((float) ($debitTotalsByPayer[$payer->id] ?? 0));
-                        $currentBalance = $creditTotal - $debitTotal;
+                        $balances = $balanceSummaryService->forThirdPartyPayer($payer);
 
                         $vendor['payer_status'] = $payer->status;
                         $vendor['payer_id'] = $payer->id;
-                        $vendor['total_balance'] = abs($debitTotal - $creditTotal);
-                        $vendor['current_balance'] = $currentBalance;
+                        $vendor['available_balance'] = $balances['available_balance'];
+                        $vendor['total_balance'] = $balances['total_balance'];
+                        $vendor['current_balance'] = $balances['available_balance'];
                     }
                 }
                 unset($vendor);
@@ -205,30 +181,27 @@ class ThirdPartyVendorsController extends Controller
 
             $balanceHistories = collect();
             $itemStatementRows = collect();
-            $totalCredits = 0;
-            $totalDebits = 0;
-            $currentBalance = 0;
+            $balanceSummary = [
+                'available_balance' => 0.0,
+                'total_balance' => 0.0,
+                'suspense_balance' => 0.0,
+                'total_credits' => 0.0,
+                'total_debits' => 0.0,
+                'ledger_balance' => 0.0,
+            ];
 
             if ($thirdPartyPayer) {
-                // Get recent balance history (last 10 for summary on details page)
+                $balanceSummary = app(AccountBalanceSummaryService::class)->forThirdPartyPayer($thirdPartyPayer);
+
                 $balanceHistories = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
                     ->with(['invoice', 'client', 'business', 'branch', 'user'])
                     ->orderBy('created_at', 'desc')
                     ->limit(10)
                     ->get();
 
+                $balanceHistories = app(AccountBalanceSummaryService::class)->enrichThirdPartyPayerHistories($balanceHistories);
+
                 $itemStatementRows = ThirdPartyPayerStatementPresenter::rowsFromHistories($balanceHistories);
-
-                // Calculate totals
-                $totalCredits = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-                    ->where('transaction_type', 'credit')
-                    ->sum('change_amount');
-                
-                $totalDebits = abs(\App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-                    ->where('transaction_type', 'debit')
-                    ->sum('change_amount'));
-
-                $currentBalance = $totalCredits - $totalDebits;
             }
 
             return view('third-party-vendors.show', compact(
@@ -238,9 +211,7 @@ class ThirdPartyVendorsController extends Controller
                 'thirdPartyPayer',
                 'balanceHistories',
                 'itemStatementRows',
-                'totalCredits',
-                'totalDebits',
-                'currentBalance'
+                'balanceSummary',
             ));
         } catch (\Exception $e) {
             Log::error('Exception while fetching vendor details', [
@@ -322,22 +293,14 @@ class ThirdPartyVendorsController extends Controller
                 $statementView = 'items';
             }
 
-            // Calculate totals (table data is loaded via Livewire + Filament)
-            $totalCredits = \App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-                ->where('transaction_type', 'credit')
-                ->sum('change_amount');
-            
-            $totalDebits = abs(\App\Models\ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-                ->where('transaction_type', 'debit')
-                ->sum('change_amount'));
+            $balanceSummary = app(AccountBalanceSummaryService::class)->forThirdPartyPayer($thirdPartyPayer);
 
             return view('third-party-vendors.balance-statement', compact(
                 'vendor',
                 'business',
                 'thirdPartyPayer',
                 'statementView',
-                'totalCredits',
-                'totalDebits'
+                'balanceSummary',
             ));
         } catch (\Exception $e) {
             Log::error('Exception while fetching vendor balance statement', [

@@ -61,29 +61,26 @@
                 </div>
             </div>
 
+            @php
+                $availableBalance = (float) ($balanceSummary['available_balance'] ?? 0);
+                $totalBalance = (float) ($balanceSummary['total_balance'] ?? 0);
+            @endphp
             <!-- Summary Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6">
-                        <h3 class="text-sm font-medium text-gray-500 mb-2">Total Credits</h3>
-                        <p class="text-2xl font-bold text-green-600">UGX {{ number_format($totalCredits, 2) }}</p>
-                        <p class="text-xs text-gray-500 mt-1">All credit transactions</p>
-                    </div>
-                </div>
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="p-6">
-                        <h3 class="text-sm font-medium text-gray-500 mb-2">Total Debits</h3>
-                        <p class="text-2xl font-bold text-red-600">UGX {{ number_format($totalDebits, 2) }}</p>
-                        <p class="text-xs text-gray-500 mt-1">All debit transactions</p>
-                    </div>
-                </div>
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="p-6">
-                        <h3 class="text-sm font-medium text-gray-500 mb-2">Total Balance</h3>
-                        <p class="text-2xl font-bold text-gray-700">
-                            UGX {{ number_format(abs($totalDebits - $totalCredits), 2) }}
+                        <h3 class="text-sm font-medium text-gray-500 mb-2">Available balance</h3>
+                        <p class="text-2xl font-bold {{ $availableBalance < 0 ? 'text-red-600' : ($availableBalance > 0 ? 'text-green-600' : 'text-gray-700') }}">
+                            UGX {{ number_format($availableBalance, 2) }}
                         </p>
-                        <p class="text-xs text-gray-500 mt-1">Calculated as total debits minus total credits</p>
+                        <p class="text-xs text-gray-500 mt-1">Total credits minus total debits</p>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                    <div class="p-6">
+                        <h3 class="text-sm font-medium text-gray-500 mb-2">Total balance</h3>
+                        <p class="text-2xl font-bold text-gray-700">UGX {{ number_format($totalBalance, 2) }}</p>
+                        <p class="text-xs text-gray-500 mt-1">Available balance plus suspense</p>
                     </div>
                 </div>
             </div>

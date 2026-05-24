@@ -69,17 +69,9 @@ class InsurerPortalVendorSummaryService
             ];
         }
 
-        $totalCredits = (float) ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-            ->where('transaction_type', 'credit')
-            ->sum('change_amount');
-
-        $totalDebits = abs((float) ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-            ->where('transaction_type', 'debit')
-            ->sum('change_amount'));
-
-        $currentBalance = (float) (ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-            ->orderBy('created_at', 'desc')
-            ->value('new_balance') ?? 0);
+        $balanceSummary = app(AccountBalanceSummaryService::class)->forThirdPartyPayer($thirdPartyPayer);
+        $chronological = app(ThirdPartyPayerChronologicalPaymentService::class);
+        $outstandingEntries = $chronological->previewAllocation($thirdPartyPayer, 0)['entries'];
 
         $recent = ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
             ->with(['invoice', 'client', 'business', 'branch', 'user'])
@@ -111,10 +103,15 @@ class InsurerPortalVendorSummaryService
         return [
             'payer' => $this->serializePayer($thirdPartyPayer),
             'financial' => [
-                'total_credits' => $totalCredits,
-                'total_debits' => $totalDebits,
-                'total_balance' => abs($totalDebits - $totalCredits),
-                'current_balance' => $currentBalance,
+                'total_credits' => $balanceSummary['total_credits'],
+                'total_debits' => $balanceSummary['total_debits'],
+                'available_balance' => $balanceSummary['available_balance'],
+                'total_balance' => $balanceSummary['total_balance'],
+                'suspense_balance' => $balanceSummary['suspense_balance'],
+                'current_balance' => $balanceSummary['available_balance'],
+                'ledger_balance' => $balanceSummary['ledger_balance'],
+                'total_outstanding' => $chronological->totalOutstanding($thirdPartyPayer),
+                'outstanding_entries' => $outstandingEntries,
             ],
             'recent_transactions' => $recent->map(fn ($h) => $this->serializeBalanceHistory($h))->values()->all(),
             'invoices' => $invoices->values()->all(),
