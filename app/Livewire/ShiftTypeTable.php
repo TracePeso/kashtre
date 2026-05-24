@@ -64,7 +64,7 @@ class ShiftTypeTable extends Component implements HasForms, HasTable
 
                 Tables\Columns\TextColumn::make('break_durations_minutes')
                     ->label('Breaks (min)')
-                    ->formatStateUsing(fn (mixed $state, ShiftType $record): string => $record->formattedBreakDurations())
+                    ->state(fn (ShiftType $record): string => $record->formattedBreakDurations())
                     ->alignCenter(),
 
                 Tables\Columns\TextColumn::make('break_duration_minutes')
