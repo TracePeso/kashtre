@@ -320,7 +320,9 @@ class OrganizationalStructure extends Component
             return;
         }
 
-        $name = $this->normalizedRoutingNodeName($tierLevel->name);
+        $name = $this->normalizedRoutingNodeName(
+            $this->editUnitParentId ? $unit->name : $tierLevel->name
+        );
 
         if ($this->routingNodeExists($org->id, $this->editUnitParentId, $tierLevel->id, $name, $unit->id)) {
             $this->addError(

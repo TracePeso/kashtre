@@ -3,13 +3,16 @@
 namespace App\Console\Commands;
 
 use App\Models\Business;
+use App\Models\Department;
 use App\Models\HrClientSpaceRoute;
 use App\Models\HrOrganizationalUnit;
 use App\Models\HrOrganizationTierLevel;
 use App\Models\Organization;
 use App\Models\Section;
 use App\Models\StaffAssignment;
+use App\Models\User;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -42,6 +45,10 @@ class BuildHrRoutingStructure extends Command
             $this->error('No routing levels were resolved for this target.');
 
             return self::FAILURE;
+        }
+
+        if (count($levelNames) > 3) {
+            $this->warn('Only the first three levels are populated from seeded business data. Extra levels will be created but left without generated nodes.');
         }
 
         $fresh = (bool) $this->option('fresh');
@@ -85,14 +92,20 @@ class BuildHrRoutingStructure extends Command
         $this->line("Tier levels updated: {$summary['tier_levels_updated']}");
         $this->line("Routing nodes created: {$summary['routing_nodes_created']}");
         $this->line("Routing nodes updated: {$summary['routing_nodes_updated']}");
+        $this->line("Department branches created: {$summary['department_nodes_created']}");
+        $this->line("Section branches created: {$summary['section_nodes_created']}");
+        $this->line("Sections attached directly to root: {$summary['sections_attached_to_root']}");
 
         if ($fresh) {
             $this->line("Routing nodes cleared first: {$summary['routing_nodes_cleared']}");
             $this->line("Tier levels cleared first: {$summary['tier_levels_cleared']}");
         }
 
-        if (! empty($summary['node_chain'])) {
-            $this->line('Organogram: '.implode(' -> ', $summary['node_chain']));
+        if (! empty($summary['tree_preview'])) {
+            $this->line('Organogram Preview:');
+            foreach ($summary['tree_preview'] as $line) {
+                $this->line("  {$line}");
+            }
         }
 
         return self::SUCCESS;
@@ -158,11 +171,11 @@ class BuildHrRoutingStructure extends Command
         $levels = collect(['Directorate']);
 
         if ($business && $business->departments()->exists()) {
-            $levels->push('Heads of Departments');
+            $levels->push('Department');
         }
 
         if ($business && Section::query()->where('business_id', $business->id)->exists()) {
-            $levels->push('Sectional Heads');
+            $levels->push('Section');
         }
 
         return $levels->unique()->values()->all();
@@ -186,37 +199,122 @@ class BuildHrRoutingStructure extends Command
             'tier_levels_updated' => 0,
             'routing_nodes_created' => 0,
             'routing_nodes_updated' => 0,
+            'department_nodes_created' => 0,
+            'section_nodes_created' => 0,
+            'sections_attached_to_root' => 0,
             'routing_nodes_cleared' => 0,
             'tier_levels_cleared' => 0,
-            'node_chain' => [],
+            'tree_preview' => [],
         ];
 
         if ($fresh) {
             ['routing_nodes_cleared' => $summary['routing_nodes_cleared'], 'tier_levels_cleared' => $summary['tier_levels_cleared']] = $this->clearExistingStructure($organization);
         }
 
-        $parentId = null;
+        $tierLevels = [];
 
         foreach ($levelNames as $index => $levelName) {
             $order = $index + 1;
             [$tierLevel, $tierLevelAction] = $this->upsertTierLevel($organization, $levelName, $order);
+            $tierLevels[$order] = $tierLevel;
 
             if ($tierLevelAction === 'created') {
                 $summary['tier_levels_created']++;
             } elseif ($tierLevelAction === 'updated') {
                 $summary['tier_levels_updated']++;
             }
+        }
 
-            [$node, $nodeAction] = $this->upsertRoutingNode($organization, $tierLevel, $parentId, $order);
+        $rootTierLevel = $tierLevels[1] ?? null;
 
-            if ($nodeAction === 'created') {
-                $summary['routing_nodes_created']++;
-            } elseif ($nodeAction === 'updated') {
-                $summary['routing_nodes_updated']++;
+        if (! $rootTierLevel) {
+            return $summary;
+        }
+
+        [$rootNode, $rootAction] = $this->upsertRoutingNode(
+            $organization,
+            $rootTierLevel,
+            null,
+            $rootTierLevel->name,
+            'generated_organogram_root',
+            "organization:{$organization->id}:root",
+            1,
+            ['organization_created' => $organizationWasCreated]
+        );
+        $this->trackRoutingNodeAction($summary, $rootAction);
+        $summary['tree_preview'][] = $rootNode->name;
+
+        $departmentTierLevel = $tierLevels[2] ?? null;
+        $sectionTierLevel = $tierLevels[3] ?? null;
+        $departments = $this->departmentsForBusiness($business);
+        $sections = $this->sectionsForBusiness($business);
+        $departmentNodesById = [];
+
+        if ($departmentTierLevel && $departments->isNotEmpty()) {
+            foreach ($departments->values() as $index => $department) {
+                [$departmentNode, $departmentAction] = $this->upsertRoutingNode(
+                    $organization,
+                    $departmentTierLevel,
+                    $rootNode->id,
+                    $department->name,
+                    'generated_department_branch',
+                    "department:{$department->id}",
+                    $index + 1,
+                    [
+                        'business_id' => $department->business_id,
+                        'department_id' => $department->id,
+                        'department_uuid' => $department->uuid,
+                    ]
+                );
+
+                $departmentNodesById[$department->id] = $departmentNode;
+                $this->trackRoutingNodeAction($summary, $departmentAction, 'department');
+                $summary['tree_preview'][] = "- {$departmentNode->name}";
             }
+        }
 
-            $summary['node_chain'][] = $node->name;
-            $parentId = $node->id;
+        $sectionNodeTier = $sectionTierLevel;
+
+        if (! $sectionNodeTier && empty($departmentNodesById)) {
+            $sectionNodeTier = $departmentTierLevel;
+        }
+
+        if ($sectionNodeTier && $sections->isNotEmpty()) {
+            $preferredDepartmentIds = $this->preferredDepartmentIdsForSections($business, $departments, $sections);
+
+            foreach ($sections->values() as $index => $section) {
+                $parentNode = $rootNode;
+
+                if (
+                    isset($preferredDepartmentIds[$section->id])
+                    && isset($departmentNodesById[$preferredDepartmentIds[$section->id]])
+                ) {
+                    $parentNode = $departmentNodesById[$preferredDepartmentIds[$section->id]];
+                } else {
+                    $summary['sections_attached_to_root']++;
+                }
+
+                [$sectionNode, $sectionAction] = $this->upsertRoutingNode(
+                    $organization,
+                    $sectionNodeTier,
+                    $parentNode->id,
+                    $section->name,
+                    'generated_section_branch',
+                    "section:{$section->id}",
+                    $index + 1,
+                    [
+                        'business_id' => $section->business_id,
+                        'section_id' => $section->id,
+                        'section_uuid' => $section->uuid,
+                        'attached_to_root' => $parentNode->is($rootNode),
+                    ]
+                );
+
+                $this->trackRoutingNodeAction($summary, $sectionAction, 'section');
+                $summary['tree_preview'][] = $parentNode->is($rootNode)
+                    ? "- {$sectionNode->name}"
+                    : "- {$parentNode->name} -> {$sectionNode->name}";
+            }
         }
 
         return $summary;
@@ -300,31 +398,158 @@ class BuildHrRoutingStructure extends Command
         return [$tierLevel, $action];
     }
 
+    private function departmentsForBusiness(?Business $business): Collection
+    {
+        if (! $business) {
+            return collect();
+        }
+
+        return Department::query()
+            ->where('business_id', $business->id)
+            ->orderBy('name')
+            ->get(['id', 'uuid', 'business_id', 'name']);
+    }
+
+    private function sectionsForBusiness(?Business $business): Collection
+    {
+        if (! $business) {
+            return collect();
+        }
+
+        return Section::query()
+            ->where('business_id', $business->id)
+            ->orderBy('name')
+            ->get(['id', 'uuid', 'business_id', 'name']);
+    }
+
+    private function preferredDepartmentIdsForSections(
+        ?Business $business,
+        Collection $departments,
+        Collection $sections
+    ): array {
+        if (! $business || $sections->isEmpty()) {
+            return [];
+        }
+
+        $sectionIds = $sections->pluck('id')->all();
+        $departmentIds = $departments->pluck('id')->flip();
+        $preferredDepartmentIds = [];
+
+        $usageRows = User::query()
+            ->where('business_id', $business->id)
+            ->whereIn('section_id', $sectionIds)
+            ->whereNotNull('department_id')
+            ->select('section_id', 'department_id', DB::raw('COUNT(*) as aggregate_count'))
+            ->groupBy('section_id', 'department_id')
+            ->orderBy('section_id')
+            ->orderByDesc('aggregate_count')
+            ->get();
+
+        foreach ($usageRows as $row) {
+            $sectionId = (int) $row->section_id;
+            $departmentId = (int) $row->department_id;
+
+            if (! isset($preferredDepartmentIds[$sectionId]) && isset($departmentIds[$departmentId])) {
+                $preferredDepartmentIds[$sectionId] = $departmentId;
+            }
+        }
+
+        foreach ($sections as $section) {
+            if (isset($preferredDepartmentIds[$section->id])) {
+                continue;
+            }
+
+            $matchedDepartmentId = $this->matchedDepartmentIdForSectionName($section->name, $departments);
+
+            if ($matchedDepartmentId) {
+                $preferredDepartmentIds[$section->id] = $matchedDepartmentId;
+            }
+        }
+
+        return $preferredDepartmentIds;
+    }
+
+    private function matchedDepartmentIdForSectionName(string $sectionName, Collection $departments): ?int
+    {
+        $normalizedSection = $this->normalizeNodeLabel($sectionName);
+
+        foreach ($departments as $department) {
+            $normalizedDepartment = $this->normalizeNodeLabel($department->name);
+
+            if ($normalizedDepartment === '' || $normalizedSection === '') {
+                continue;
+            }
+
+            if (
+                $normalizedDepartment === $normalizedSection
+                || str_contains($normalizedSection, $normalizedDepartment)
+                || str_contains($normalizedDepartment, $normalizedSection)
+            ) {
+                return (int) $department->id;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeNodeLabel(string $value): string
+    {
+        $normalized = preg_replace('/[^a-z0-9]+/i', ' ', strtolower(trim($value))) ?? '';
+
+        return trim($normalized);
+    }
+
     private function upsertRoutingNode(
         Organization $organization,
         HrOrganizationTierLevel $tierLevel,
         ?int $parentId,
-        int $order
+        string $name,
+        string $sourceType,
+        string $sourceKey,
+        int $order,
+        array $extraMetadata = []
     ): array {
-        $matches = HrOrganizationalUnit::query()
+        $name = trim($name);
+
+        $sourceMatches = HrOrganizationalUnit::query()
             ->where('organization_id', $organization->id)
             ->routingNodes()
-            ->where('tier_level_id', $tierLevel->id)
-            ->where('name', $tierLevel->name)
+            ->where('source_type', $sourceType)
+            ->where('source_key', $sourceKey)
             ->get();
 
-        if ($matches->count() > 1) {
+        if ($sourceMatches->count() > 1) {
             throw new RuntimeException(
-                "Multiple routing nodes already exist for level '{$tierLevel->name}' in organization {$organization->id}. Re-run with --fresh to rebuild cleanly."
+                "Multiple generated routing nodes already exist for source '{$sourceKey}' in organization {$organization->id}. Re-run with --fresh to rebuild cleanly."
             );
         }
 
-        $node = $matches->first() ?? new HrOrganizationalUnit([
-            'organization_id' => $organization->id,
-            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
-        ]);
+        $fallbackMatches = HrOrganizationalUnit::query()
+            ->where('organization_id', $organization->id)
+            ->routingNodes()
+            ->where('tier_level_id', $tierLevel->id)
+            ->where('name', $name)
+            ->when(
+                $parentId,
+                fn ($query) => $query->where('parent_id', $parentId),
+                fn ($query) => $query->whereNull('parent_id')
+            )
+            ->get();
 
-        $metadata = array_merge((array) $node->metadata, [
+        if ($fallbackMatches->count() > 1) {
+            throw new RuntimeException(
+                "Multiple routing nodes already exist for '{$name}' in organization {$organization->id}. Re-run with --fresh to rebuild cleanly."
+            );
+        }
+
+        $node = $sourceMatches->first()
+            ?? $fallbackMatches->first()
+            ?? new HrOrganizationalUnit([
+                'organization_id' => $organization->id,
+                'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+            ]);
+
+        $metadata = array_merge((array) $node->metadata, $extraMetadata, [
             'generated_by' => 'hr:build-routing-structure',
             'organogram_order' => $order,
         ]);
@@ -332,12 +557,12 @@ class BuildHrRoutingStructure extends Command
         $action = ! $node->exists ? 'created' : 'unchanged';
 
         if (
-            $node->name !== $tierLevel->name
+            $node->name !== $name
             || (int) $node->tier_level_id !== (int) $tierLevel->id
             || (int) ($node->parent_id ?? 0) !== (int) ($parentId ?? 0)
             || $node->type !== $tierLevel->name
-            || $node->source_type !== 'generated_organogram'
-            || $node->source_key !== "tier_level:{$tierLevel->id}"
+            || $node->source_type !== $sourceType
+            || $node->source_key !== $sourceKey
             || $node->metadata !== $metadata
         ) {
             $action = $node->exists ? 'updated' : 'created';
@@ -346,14 +571,31 @@ class BuildHrRoutingStructure extends Command
         $node->forceFill([
             'parent_id' => $parentId,
             'tier_level_id' => $tierLevel->id,
-            'name' => $tierLevel->name,
+            'name' => $name,
             'type' => $tierLevel->name,
             'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
-            'source_type' => 'generated_organogram',
-            'source_key' => "tier_level:{$tierLevel->id}",
+            'source_type' => $sourceType,
+            'source_key' => $sourceKey,
             'metadata' => $metadata,
         ])->save();
 
         return [$node, $action];
+    }
+
+    private function trackRoutingNodeAction(array &$summary, string $action, ?string $branchType = null): void
+    {
+        if ($action === 'created') {
+            $summary['routing_nodes_created']++;
+        } elseif ($action === 'updated') {
+            $summary['routing_nodes_updated']++;
+        }
+
+        if ($branchType === 'department' && $action === 'created') {
+            $summary['department_nodes_created']++;
+        }
+
+        if ($branchType === 'section' && $action === 'created') {
+            $summary['section_nodes_created']++;
+        }
     }
 }
