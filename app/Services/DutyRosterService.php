@@ -655,14 +655,14 @@ class DutyRosterService
 
     private function dispatchAsyncRosterJob(GenerateAiRosterDraft|GenerateRosterDraft $job): void
     {
-        $dispatchMode = (string) config('services.roster.async_dispatch_mode', 'after_response');
+        $dispatchMode = $this->resolveRosterDispatchMode();
 
         if (app()->environment('testing') && $dispatchMode === 'after_response') {
             $dispatchMode = 'database_queue';
         }
 
         if ($dispatchMode === 'database_queue') {
-            dispatch($job->onConnection('database'))->afterResponse();
+            dispatch($job->onConnection($this->resolveRosterQueueConnection()))->afterResponse();
 
             return;
         }
@@ -670,6 +670,28 @@ class DutyRosterService
         app()->terminating(static function () use ($job): void {
             app()->call([$job, 'handle']);
         });
+    }
+
+    private function resolveRosterDispatchMode(): string
+    {
+        $dispatchMode = strtolower((string) config('services.roster.async_dispatch_mode', 'auto'));
+
+        if ($dispatchMode !== 'auto') {
+            return $dispatchMode;
+        }
+
+        $queueConnection = (string) config('queue.default', 'sync');
+
+        return in_array($queueConnection, ['sync', 'null'], true)
+            ? 'after_response'
+            : 'database_queue';
+    }
+
+    private function resolveRosterQueueConnection(): string
+    {
+        $queueConnection = (string) config('queue.default', 'database');
+
+        return in_array($queueConnection, ['sync', 'null'], true) ? 'database' : $queueConnection;
     }
 
     /**

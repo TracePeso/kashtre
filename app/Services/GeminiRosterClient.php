@@ -120,7 +120,7 @@ class GeminiRosterClient
     {
         $generationConfig = [
             'temperature' => 0.7,
-            'candidateCount' => max(1, (int) config('services.gemini.roster_candidate_count', 2)),
+            'candidateCount' => max(1, (int) config('services.gemini.roster_candidate_count', 1)),
             'maxOutputTokens' => max(1024, (int) config('services.gemini.roster_max_output_tokens', 8192)),
             'responseMimeType' => 'application/json',
         ];
@@ -160,7 +160,7 @@ class GeminiRosterClient
             ]],
             'generationConfig' => [
                 'temperature' => 0.7,
-                'candidateCount' => max(1, (int) config('services.gemini.roster_candidate_count', 2)),
+                'candidateCount' => max(1, (int) config('services.gemini.roster_candidate_count', 1)),
                 'maxOutputTokens' => max(1024, (int) config('services.gemini.roster_max_output_tokens', 8192)),
                 'responseMimeType' => 'application/json',
             ],

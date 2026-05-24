@@ -530,6 +530,7 @@ class GeminiRosterDraftGenerator
                 'Respect fixed roster profiles, fixed days, preferred shifts, excluded shifts, and max overnight limits.',
                 'Respect daily caps, weekly ceilings, rest gaps, consecutive work day limits, blocked days, and staff unavailability; invalid suggestions will be rejected.',
                 'Stagger work days and off days across staff.',
+                'When a staff member is missing from current_workload or previous_workload_to_avoid, treat their workload there as zero.',
             ],
             'policy' => [
                 'weekly_standard_minutes' => (int) $policy->weekly_standard_minutes,
@@ -550,13 +551,7 @@ class GeminiRosterDraftGenerator
                 'net_minutes' => $shiftType->effectiveNetMinutes(),
                 'is_night_shift' => $shiftType->crossesMidnight(),
             ])->values()->all(),
-            'eligible_staff' => $eligibleAssignments->map(fn (StaffAssignment $assignment): array => [
-                'id' => (int) $assignment->id,
-                'title' => $assignment->staff_title,
-                'assignment_type' => $assignment->client_space_assignment_type,
-                'team' => $roster->teamLabelForStaffAssignment($assignment->id),
-                'rostering_profile' => $this->profileForPrompt($assignment),
-            ])->values()->all(),
+            'eligible_staff' => $this->eligibleStaffForPrompt($eligibleAssignments, $roster),
             'existing_assignments' => $this->existingAssignmentsForPrompt($selections),
             'current_workload' => $this->currentWorkloadForPrompt($currentSelections, $shiftTypeById, $eligibleAssignments, $weekendDays),
             'previous_assignments_to_avoid' => $this->existingAssignmentsForPrompt($avoidSelections),
@@ -570,7 +565,7 @@ class GeminiRosterDraftGenerator
      */
     private function dateChunks(array $dates): array
     {
-        $maxWorkdays = max(1, (int) config('services.gemini.roster_max_workdays_per_request', 7));
+        $maxWorkdays = max(1, (int) config('services.gemini.roster_max_workdays_per_request', 14));
 
         return array_chunk($dates, $maxWorkdays);
     }
@@ -631,33 +626,77 @@ class GeminiRosterDraftGenerator
     }
 
     /**
+     * @param Collection<int, StaffAssignment> $eligibleAssignments
+     * @return array<int, array<string, mixed>>
+     */
+    private function eligibleStaffForPrompt(Collection $eligibleAssignments, HrDutyRoster $roster): array
+    {
+        return $eligibleAssignments
+            ->map(function (StaffAssignment $assignment) use ($roster): array {
+                $payload = [
+                    'id' => (int) $assignment->id,
+                    'team' => $roster->teamLabelForStaffAssignment($assignment->id),
+                ];
+
+                if (filled($assignment->staff_title)) {
+                    $payload['title'] = $assignment->staff_title;
+                }
+
+                if (filled($assignment->client_space_assignment_type)) {
+                    $payload['assignment_type'] = $assignment->client_space_assignment_type;
+                }
+
+                $profile = $this->profileForPrompt($assignment);
+
+                if ($profile !== null) {
+                    $payload['rostering_profile'] = $profile;
+                }
+
+                return $payload;
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
      * @return array<string, mixed>
      */
-    private function profileForPrompt(StaffAssignment $assignment): array
+    private function profileForPrompt(StaffAssignment $assignment): ?array
     {
         $profile = $assignment->rosteringProfile;
 
         if (! $profile || ! $profile->is_active) {
-            return [
-                'mode' => 'dynamic',
-                'fixed_shift_type_id' => null,
-                'fixed_days_of_week' => [],
-                'preferred_shift_type_ids' => [],
-                'excluded_shift_type_ids' => [],
-                'max_night_shifts_per_cycle' => null,
-            ];
+            return null;
         }
 
-        return [
+        $payload = [
             'mode' => $profile->rostering_mode,
-            'fixed_shift_type_id' => $profile->fixed_shift_type_id ? (int) $profile->fixed_shift_type_id : null,
-            'fixed_days_of_week' => $profile->fixedDays(),
-            'preferred_shift_type_ids' => $profile->preferredShiftIds(),
-            'excluded_shift_type_ids' => $profile->excludedShiftIds(),
-            'max_night_shifts_per_cycle' => $profile->max_night_shifts_per_cycle !== null
-                ? (int) $profile->max_night_shifts_per_cycle
-                : null,
         ];
+
+        if ($profile->fixed_shift_type_id) {
+            $payload['fixed_shift_type_id'] = (int) $profile->fixed_shift_type_id;
+        }
+
+        $fixedDays = $profile->fixedDays();
+        if ($fixedDays !== []) {
+            $payload['fixed_days_of_week'] = $fixedDays;
+        }
+
+        $preferredShiftIds = $profile->preferredShiftIds();
+        if ($preferredShiftIds !== []) {
+            $payload['preferred_shift_type_ids'] = $preferredShiftIds;
+        }
+
+        $excludedShiftIds = $profile->excludedShiftIds();
+        if ($excludedShiftIds !== []) {
+            $payload['excluded_shift_type_ids'] = $excludedShiftIds;
+        }
+
+        if ($profile->max_night_shifts_per_cycle !== null) {
+            $payload['max_night_shifts_per_cycle'] = (int) $profile->max_night_shifts_per_cycle;
+        }
+
+        return $payload === ['mode' => 'dynamic'] ? null : $payload;
     }
 
     /**
@@ -673,22 +712,18 @@ class GeminiRosterDraftGenerator
         Collection $eligibleAssignments,
         array $weekendDays
     ): array {
-        $workload = $eligibleAssignments
-            ->mapWithKeys(fn (StaffAssignment $assignment): array => [
-                (string) $assignment->id => [
-                    'staff_assignment_id' => (int) $assignment->id,
-                    'assignment_count' => 0,
-                    'total_minutes' => 0,
-                    'day_shift_count' => 0,
-                    'night_shift_count' => 0,
-                    'weekend_shift_count' => 0,
-                    'shift_counts' => [],
-                ],
-            ])
-            ->all();
+        $eligibleIds = $eligibleAssignments
+            ->map(fn (StaffAssignment $assignment): string => (string) $assignment->id)
+            ->flip();
+        $workload = [];
 
         foreach ($selections as $staffId => $dateMap) {
             $staffKey = (string) $staffId;
+
+            if (! $eligibleIds->has($staffKey)) {
+                continue;
+            }
+
             $workload[$staffKey] ??= [
                 'staff_assignment_id' => (int) $staffId,
                 'assignment_count' => 0,
@@ -717,7 +752,15 @@ class GeminiRosterDraftGenerator
             }
         }
 
-        return array_values($workload);
+        return array_values(array_filter(
+            $workload,
+            static fn (array $row): bool => $row['assignment_count'] > 0
+                || $row['total_minutes'] > 0
+                || $row['day_shift_count'] > 0
+                || $row['night_shift_count'] > 0
+                || $row['weekend_shift_count'] > 0
+                || $row['shift_counts'] !== []
+        ));
     }
 
     /**
