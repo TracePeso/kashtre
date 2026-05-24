@@ -81,7 +81,7 @@ jobs:
             $ARTISAN_PHP artisan migrate --force --verbose
 
             echo "Bootstrapping missing HR routing structures..."
-            $ARTISAN_PHP artisan hr:build-routing-structure --auto-discover --if-missing --no-interaction
+            $ARTISAN_PHP artisan hr:build-routing-structure --auto-discover --if-missing --upgrade-generated --no-interaction
 
             echo "Checking migration status..."
             $ARTISAN_PHP artisan migrate:status
