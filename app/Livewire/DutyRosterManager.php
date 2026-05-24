@@ -71,6 +71,22 @@ class DutyRosterManager extends Component
         $this->resetValidation();
     }
 
+    public function updatedSelectedRosterId($value): void
+    {
+        $rosterId = (int) ($value ?: 0);
+
+        if ($rosterId <= 0) {
+            $this->resetSelectedRosterState();
+            return;
+        }
+
+        $roster = $this->findAccessibleRoster($rosterId);
+
+        abort_unless($roster, 404);
+
+        $this->hydrateSelectedRoster($roster);
+    }
+
     public function openCreateModal(?string $discipline = null): void
     {
         $selectedClientSpace = $this->selectedClientSpace();

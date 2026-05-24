@@ -18,6 +18,18 @@
                 </select>
             </div>
 
+            <div class="min-w-[20rem]">
+                <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Existing Roster</label>
+                <select wire:model.live="selectedRosterId" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    <option value="">Select a roster</option>
+                    @foreach($rosters as $roster)
+                        <option value="{{ $roster->id }}">
+                            {{ $roster->name }} | {{ $roster->cadre_or_discipline }} | {{ $this->rosterStatusLabel($roster) }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+
             <button type="button" wire:click="openCreateModal" @disabled($clientSpaces->isEmpty()) class="inline-flex items-center justify-center rounded-md border border-transparent bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50">
                 New Roster
             </button>
@@ -47,47 +59,11 @@
             <p class="mt-2 text-sm text-gray-500">Import or configure client spaces first, then come back here to build duty rosters for each title.</p>
         </div>
     @else
-    <div class="grid gap-6 xl:grid-cols-[22rem_minmax(0,1fr)]">
-        <div class="space-y-6">
-            <section class="rounded-lg border border-gray-200 bg-white p-5">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-500">Existing Rosters</h3>
-                        <p class="mt-1 text-sm text-gray-500">Draft, pending, published, and archived rosters in this client space.</p>
-                    </div>
-                    <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">{{ $rosters->count() }}</span>
-                </div>
-
-                @if($rosters->isEmpty())
-                    <div class="mt-4 rounded-md border border-dashed border-gray-300 bg-gray-50 px-4 py-5 text-sm text-gray-500">
-                        No rosters have been created for this client space yet.
-                    </div>
-                @else
-                    <div class="mt-4 space-y-3">
-                        @foreach($rosters as $roster)
-                            <button type="button" wire:click="openRoster({{ $roster->id }})" class="block w-full rounded-md border px-4 py-3 text-left transition {{ $selectedRoster && $selectedRoster->id === $roster->id ? 'border-gray-900 bg-gray-50' : 'border-gray-200 bg-white hover:border-gray-300' }}">
-                                <div class="flex items-start justify-between gap-3">
-                                    <div class="min-w-0">
-                                        <p class="truncate text-sm font-semibold text-gray-900">{{ $roster->name }}</p>
-                                        <p class="mt-1 text-xs text-gray-500">{{ $roster->cadre_or_discipline }}</p>
-                                        <p class="mt-2 text-xs text-gray-500">{{ $roster->start_date?->format('M j, Y') }} to {{ $roster->end_date?->format('M j, Y') }}</p>
-                                    </div>
-                                    <span class="rounded-full px-2.5 py-1 text-xs font-semibold {{ $this->rosterStatusClasses($roster) }}">
-                                        {{ $this->rosterStatusLabel($roster) }}
-                                    </span>
-                                </div>
-                            </button>
-                        @endforeach
-                    </div>
-                @endif
-            </section>
-        </div>
-
-        <div class="min-w-0">
+    <div class="min-w-0">
             @if(!$selectedRoster)
                 <div class="rounded-lg border border-dashed border-gray-300 bg-white px-6 py-10 text-center">
                     <h3 class="text-lg font-semibold text-gray-900">Open or create a roster</h3>
-                    <p class="mt-2 text-sm text-gray-500">Pick a roster from the left or create a new one for the selected client space and title set.</p>
+                    <p class="mt-2 text-sm text-gray-500">Pick a roster from the dropdown above or create a new one for the selected client space and title set.</p>
                 </div>
             @else
                 @php
@@ -138,12 +114,8 @@
                                     </button>
                                 @elseif($selectedRoster->isEditable())
                                     <button type="button" wire:click="generateRosterWithAi" wire:loading.attr="disabled" wire:target="generateRosterWithAi" class="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
-                                        <span wire:loading.remove wire:target="generateRosterWithAi">Generate with Gemini</span>
-                                        <span wire:loading wire:target="generateRosterWithAi">Starting Gemini...</span>
-                                    </button>
-                                    <button type="button" wire:click="generateRoster" wire:loading.attr="disabled" wire:target="generateRoster" @disabled($shiftTypes->isEmpty() || $staffRows->isEmpty()) class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">
-                                        <span wire:loading.remove wire:target="generateRoster">Auto-Generate</span>
-                                        <span wire:loading wire:target="generateRoster">Generating...</span>
+                                        <span wire:loading.remove wire:target="generateRosterWithAi">Auto-Generate</span>
+                                        <span wire:loading wire:target="generateRosterWithAi">Starting...</span>
                                     </button>
                                     <button type="button" wire:click="saveRoster" class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
                                         Save Draft
@@ -190,11 +162,8 @@
                                     <p wire:loading wire:target="generateRosterWithAi" class="text-xs font-medium text-blue-700">
                                         Sending this roster draft to Gemini. The draft will update only if Gemini returns usable assignments.
                                     </p>
-                                    <p wire:loading wire:target="generateRoster" class="text-xs font-medium text-gray-700">
-                                        Generating roster automatically.
-                                    </p>
                                     <p class="text-xs text-gray-500">
-                                        Gemini runs in the background. If Gemini fails, this draft now stays unchanged and the failure message appears here instead of silently switching to the automatic engine.
+                                        Auto-generation runs through Gemini in the background. If Gemini fails, this draft stays unchanged and the failure message appears here.
                                     </p>
                                     @error('roster')
                                         <div class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
@@ -522,7 +491,6 @@
                     </div>
                 </div>
             @endif
-        </div>
     </div>
     @endif
 
