@@ -6,6 +6,7 @@ use App\Models\HrPolicyVersion;
 use App\Models\HrRegionalPolicy;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\HrDefaultPolicyService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -58,16 +59,16 @@ class HrPolicyManager extends Component
 
         abort_unless($user instanceof User && $organization && $user->canViewHrSetup(), 403);
 
-        $policies = HrRegionalPolicy::query()
-            ->where('organization_id', $organization->id)
-            ->with([
-                'versions' => fn ($query) => $query
-                    ->orderByDesc('effective_from')
-                    ->orderByDesc('id'),
-            ])
-            ->orderByDesc('is_active')
-            ->orderBy('name')
-            ->get();
+        $policies = $this->policiesForOrganization($organization);
+
+        if ($policies->isEmpty()) {
+            app(HrDefaultPolicyService::class)->seedMissingDefaults($organization);
+            $policies = $this->policiesForOrganization($organization);
+
+            if ($policies->isNotEmpty() && $this->message === null) {
+                $this->message = 'Default HR policy created for this organization.';
+            }
+        }
 
         if (
             ! $this->creatingPolicy
@@ -588,6 +589,20 @@ class HrPolicyManager extends Component
         }
 
         return true;
+    }
+
+    private function policiesForOrganization(Organization $organization)
+    {
+        return HrRegionalPolicy::query()
+            ->where('organization_id', $organization->id)
+            ->with([
+                'versions' => fn ($query) => $query
+                    ->orderByDesc('effective_from')
+                    ->orderByDesc('id'),
+            ])
+            ->orderByDesc('is_active')
+            ->orderBy('name')
+            ->get();
     }
 
     private function assertCanAddPolicies(): void
