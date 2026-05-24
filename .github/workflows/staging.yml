@@ -28,6 +28,8 @@ jobs:
             DEPLOY_PATH="${{ vars.STAGING_DEPLOY_PATH }}"
             PHP_FPM_SERVICE="${{ vars.STAGING_PHP_FPM_SERVICE || 'php8.3-fpm' }}"
             ARTISAN_PHP="php -d opcache.enable_cli=0"
+            WEB_USER="${{ vars.STAGING_WEB_USER || 'www-data' }}"
+            WEB_GROUP="${{ vars.STAGING_WEB_GROUP || 'www-data' }}"
 
             if [ -z "$DEPLOY_PATH" ]; then
               echo "STAGING_DEPLOY_PATH is not configured."
@@ -64,12 +66,20 @@ jobs:
             export VITE_WEBRTC_ICE_TRANSPORT_POLICY="${{ vars.VITE_WEBRTC_ICE_TRANSPORT_POLICY || 'all' }}"
             npm run build
 
+            fix_runtime_permissions() {
+              mkdir -p storage/framework/views storage/framework/cache storage/framework/sessions bootstrap/cache
+              chown -R "$WEB_USER:$WEB_GROUP" storage bootstrap/cache
+              find storage bootstrap/cache -type d -exec chmod 775 {} \;
+              find storage bootstrap/cache -type f -exec chmod 664 {} \;
+            }
+
             echo "Fixing permissions..."
-            chown -R www-data:www-data "$DEPLOY_PATH"
-            chmod -R 775 storage bootstrap/cache
+            chown -R "$WEB_USER:$WEB_GROUP" "$DEPLOY_PATH"
+            fix_runtime_permissions
 
             echo "Clearing stale cache files..."
             rm -f bootstrap/cache/*.php
+            rm -f storage/framework/views/*.php
 
             echo "Creating storage link..."
             $ARTISAN_PHP artisan storage:link || true
@@ -93,6 +103,9 @@ jobs:
             $ARTISAN_PHP artisan config:cache
             $ARTISAN_PHP artisan route:cache
             $ARTISAN_PHP artisan view:cache
+
+            echo "Restoring runtime ownership after cache generation..."
+            fix_runtime_permissions
 
             echo "Restarting queues..."
             $ARTISAN_PHP artisan queue:restart || true
