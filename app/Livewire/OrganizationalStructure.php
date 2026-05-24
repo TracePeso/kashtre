@@ -525,12 +525,16 @@ class OrganizationalStructure extends Component
             ])
             ->orderBy('name')
             ->get() : collect();
+        $selectedLeafUnit = $org && $this->selectedLeafUnitId
+            ? $this->lowestRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId)
+            : null;
         return view('livewire.organizational-structure', compact(
             'rootUnits',
             'parentOptions',
             'tierLevels',
             'structureSummary',
             'clientSpaceOptions',
+            'selectedLeafUnit',
         ));
     }
 
