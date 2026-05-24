@@ -3,15 +3,10 @@
 namespace App\Services;
 
 use App\Models\ApprovalWorkflow;
-use App\Models\Branch;
-use App\Models\Business;
-use App\Models\Department;
 use App\Models\HrClientSpace;
 use App\Models\HrOrganizationalUnit;
 use App\Models\Organization;
-use App\Models\Section;
 use App\Models\StaffAssignment;
-use App\Models\Title;
 use App\Models\User;
 use App\Support\StaffRecordData;
 use Illuminate\Support\Arr;
@@ -69,9 +64,8 @@ class HrRealDataSyncService
         $preferredOrganizationId = $businessScope !== null && $businesses->count() === 1
             ? $preferredOrganization?->id
             : null;
-        $localBusinessesByReference = $this->localBusinessesByReference($businesses);
 
-        DB::transaction(function () use ($businesses, $branches, $clientSpaces, $staffRecords, $preferredOrganizationId, $localBusinessesByReference, &$stats): void {
+        DB::transaction(function () use ($businesses, $branches, $clientSpaces, $staffRecords, $preferredOrganizationId, &$stats): void {
             $organizationsByBusinessId = [];
 
             foreach ($businesses as $business) {
@@ -109,16 +103,11 @@ class HrRealDataSyncService
 
             foreach ($staffRecords as $staff) {
                 $organization = $this->organizationForStaff($staff, $organizationsByBusinessId);
-                $business = $this->localBusinessForStaff($staff, $organization, $localBusinessesByReference);
                 $staffUuid = StaffRecordData::uuid($staff);
 
                 if (! $organization || ! $staffUuid) {
                     continue;
                 }
-
-                $lookupIds = $business
-                    ? $this->ensureLookupDataForStaff($business, $staff)
-                    : ['department_id' => null, 'section_id' => null, 'title_id' => null, 'branch_id' => null];
 
                 StaffAssignment::updateOrCreate(
                     [
@@ -139,7 +128,7 @@ class HrRealDataSyncService
                 );
                 $stats['staff_assignments']++;
 
-                if ($this->upsertUser($staff, $business, $lookupIds)) {
+                if ($this->upsertUser($staff)) {
                     $stats['users']++;
                 }
             }
@@ -344,7 +333,7 @@ class HrRealDataSyncService
         return $this->clientSpaceRoutingService ?? app(ClientSpaceRoutingService::class);
     }
 
-    private function upsertUser(array $staff, ?Business $business = null, array $lookupIds = []): bool
+    private function upsertUser(array $staff): bool
     {
         $staffUuid = (string) ($staff['uuid'] ?? $staff['id'] ?? '');
         $email = $staff['email'] ?? null;
@@ -363,33 +352,6 @@ class HrRealDataSyncService
         $user->email = $email;
         $user->staff_uuid = $user->staff_uuid ?: $staffUuid;
         $user->email_verified_at ??= now();
-        $user->status = ($staff['status'] ?? 'active') === 'active' ? 'active' : 'inactive';
-
-        if ($user->status === 'inactive') {
-            $user->deactivated_at ??= now();
-        } else {
-            $user->deactivated_at = null;
-        }
-
-        if ($business) {
-            $user->business_id = $business->id;
-        }
-
-        if (! empty($lookupIds['branch_id'])) {
-            $user->branch_id = $lookupIds['branch_id'];
-        }
-
-        if (! empty($lookupIds['department_id'])) {
-            $user->department_id = $lookupIds['department_id'];
-        }
-
-        if (! empty($lookupIds['section_id'])) {
-            $user->section_id = $lookupIds['section_id'];
-        }
-
-        if (! empty($lookupIds['title_id'])) {
-            $user->title_id = $lookupIds['title_id'];
-        }
 
         if (array_key_exists('permissions', $staff) || array_key_exists('hr_permissions', $staff)) {
             $user->permissions = array_values(array_unique(array_merge(
@@ -407,180 +369,6 @@ class HrRealDataSyncService
         $user->save();
 
         return true;
-    }
-
-    private function localBusinessesByReference(Collection $businesses): array
-    {
-        $map = [];
-
-        foreach ($businesses as $business) {
-            if (! is_array($business)) {
-                continue;
-            }
-
-            $localBusiness = $this->resolveLocalBusinessFromReferences($this->businessReferencesFromBusiness($business));
-
-            if (! $localBusiness) {
-                continue;
-            }
-
-            foreach ($this->businessReferencesFromBusiness($business) as $reference) {
-                $map[(string) $reference] = $localBusiness;
-            }
-        }
-
-        return $map;
-    }
-
-    private function localBusinessForStaff(array $staff, ?Organization $organization, array $localBusinessesByReference): ?Business
-    {
-        foreach ($this->businessReferencesFromStaff($staff) as $reference) {
-            if (isset($localBusinessesByReference[(string) $reference])) {
-                return $localBusinessesByReference[(string) $reference];
-            }
-        }
-
-        if ($organization?->external_business_uuid) {
-            return $this->resolveLocalBusinessFromReferences([(string) $organization->external_business_uuid]);
-        }
-
-        return null;
-    }
-
-    private function resolveLocalBusinessFromReferences(array $references): ?Business
-    {
-        foreach ($references as $reference) {
-            if (! filled($reference)) {
-                continue;
-            }
-
-            $query = Business::query();
-
-            if (is_numeric($reference)) {
-                $business = (clone $query)->whereKey((int) $reference)->first();
-
-                if ($business) {
-                    return $business;
-                }
-            }
-
-            $business = $query->where('uuid', (string) $reference)->first();
-
-            if ($business) {
-                return $business;
-            }
-        }
-
-        return null;
-    }
-
-    private function ensureLookupDataForStaff(Business $business, array $staff): array
-    {
-        $departmentId = $this->ensureDepartmentId($business, StaffRecordData::department($staff));
-        $sectionId = $this->ensureSectionId($business, StaffRecordData::section($staff));
-        $titleId = $this->ensureTitleId($business, StaffRecordData::title($staff));
-
-        return [
-            'branch_id' => $this->resolveBranchIdForStaff($business, $staff),
-            'department_id' => $departmentId,
-            'section_id' => $sectionId,
-            'title_id' => $titleId,
-        ];
-    }
-
-    private function resolveBranchIdForStaff(Business $business, array $staff): ?int
-    {
-        $branchReference = StaffRecordData::branchExternalId($staff);
-        $branchName = StaffRecordData::branchName($staff);
-
-        if (filled($branchReference)) {
-            $query = Branch::query()->where('business_id', $business->id);
-
-            if (is_numeric($branchReference)) {
-                $branch = (clone $query)->whereKey((int) $branchReference)->first();
-
-                if ($branch) {
-                    return (int) $branch->id;
-                }
-            }
-
-            $branch = $query->where('uuid', (string) $branchReference)->first();
-
-            if ($branch) {
-                return (int) $branch->id;
-            }
-        }
-
-        if (filled($branchName)) {
-            return Branch::query()
-                ->where('business_id', $business->id)
-                ->where('name', (string) $branchName)
-                ->value('id');
-        }
-
-        return null;
-    }
-
-    private function ensureDepartmentId(Business $business, ?string $name): ?int
-    {
-        return $this->ensureLookupModelId(
-            Department::class,
-            $business->id,
-            $name,
-            'Synced department from HR staff data'
-        );
-    }
-
-    private function ensureSectionId(Business $business, ?string $name): ?int
-    {
-        return $this->ensureLookupModelId(
-            Section::class,
-            $business->id,
-            $name,
-            'Synced section from HR staff data'
-        );
-    }
-
-    private function ensureTitleId(Business $business, ?string $name): ?int
-    {
-        return $this->ensureLookupModelId(
-            Title::class,
-            $business->id,
-            $name,
-            'Synced title from HR staff data'
-        );
-    }
-
-    private function ensureLookupModelId(string $modelClass, int $businessId, ?string $name, string $description): ?int
-    {
-        $label = trim((string) $name);
-
-        if ($label === '') {
-            return null;
-        }
-
-        $model = $modelClass::withTrashed()
-            ->where('business_id', $businessId)
-            ->where('name', $label)
-            ->first();
-
-        if (! $model) {
-            $model = new $modelClass([
-                'business_id' => $businessId,
-                'name' => $label,
-                'description' => $description,
-            ]);
-        } elseif (method_exists($model, 'trashed') && $model->trashed()) {
-            $model->restore();
-        }
-
-        if (! $model->exists || blank($model->description)) {
-            $model->fill(['description' => $model->description ?: $description]);
-        }
-
-        $model->save();
-
-        return (int) $model->id;
     }
 
     private function ensureApprovalWorkflows(Organization $organization): int
