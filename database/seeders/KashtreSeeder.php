@@ -21,6 +21,7 @@ use App\Models\InsuranceCompany;
 use App\Models\PatientCategory;
 use App\Models\ContractorProfile;
 use App\Services\HrDefaultLeaveTypeService;
+use App\Services\HrDefaultPolicyService;
 use App\Services\HrDefaultShiftTypeService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -54,6 +55,7 @@ class KashtreSeeder extends Seeder
         );
         app(HrDefaultShiftTypeService::class)->seedMissingDefaults($organization);
         app(HrDefaultLeaveTypeService::class)->seedMissingDefaults($organization);
+        app(HrDefaultPolicyService::class)->seedMissingDefaults($organization);
 
         // 2. Create 2 Branches
         $branches = [];

@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
             KashtreSeeder::class,
             HrDefaultShiftTypeSeeder::class,
             HrDefaultLeaveTypeSeeder::class,
+            HrDefaultPolicySeeder::class,
         ]);
     }
 }
