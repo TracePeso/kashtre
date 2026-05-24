@@ -78,9 +78,14 @@ class ShiftTypeTable extends Component implements HasForms, HasTable
                     ->state(fn (ShiftType $record): int => $record->totalBreakDurationMinutes())
                     ->alignCenter(),
 
+                Tables\Columns\TextColumn::make('gross_duration_minutes')
+                    ->label('Gross (hrs)')
+                    ->state(fn (ShiftType $record): string => $this->formatHours($record->effectiveGrossMinutes()))
+                    ->alignCenter(),
+
                 Tables\Columns\TextColumn::make('net_duration_minutes')
-                    ->label('Net (min)')
-                    ->placeholder(fn (ShiftType $record): string => (string) $record->effectiveNetMinutes())
+                    ->label('Net (hrs)')
+                    ->state(fn (ShiftType $record): string => $this->formatHours($record->effectiveNetMinutes()))
                     ->alignCenter(),
 
                 Tables\Columns\IconColumn::make('is_active')
@@ -314,6 +319,21 @@ class ShiftTypeTable extends Component implements HasForms, HasTable
     public function render(): View
     {
         return view('livewire.shift-type-table');
+    }
+
+    protected function formatHours(?int $minutes): string
+    {
+        if ($minutes === null) {
+            return '-';
+        }
+
+        $hours = round(max(0, $minutes) / 60, 2);
+
+        if (fmod($hours, 1.0) === 0.0) {
+            return number_format($hours, 0).' hrs';
+        }
+
+        return rtrim(rtrim(number_format($hours, 2, '.', ''), '0'), '.').' hrs';
     }
 
     protected function hasLockedShiftName(?ShiftType $record): bool

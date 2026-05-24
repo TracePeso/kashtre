@@ -16,13 +16,20 @@
             ->exists()
         : false;
 
-    $dashboardItem = [
+    $primaryItems = [
         [
             'label' => 'Dashboard',
             'route' => 'hr.dashboard',
             'active' => request()->routeIs('hr.dashboard'),
             'icon' => 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z M8 5a2 2 0 012-2h4a2 2 0 012 2v6H8V5z',
             'visible' => true,
+        ],
+        [
+            'label' => 'AI Roster Constraints',
+            'route' => 'hr.ai-roster-constraints.index',
+            'active' => request()->routeIs('hr.ai-roster-constraints.*'),
+            'icon' => 'M9.75 3.104c.69-1.2 2.41-1.2 3.1 0l.824 1.432a1.8 1.8 0 001.554.9h1.648c1.38 0 2.24 1.494 1.55 2.694l-.824 1.432a1.8 1.8 0 000 1.8l.824 1.432c.69 1.2-.17 2.694-1.55 2.694h-1.648a1.8 1.8 0 00-1.554.9l-.824 1.432c-.69 1.2-2.41 1.2-3.1 0l-.824-1.432a1.8 1.8 0 00-1.554-.9H5.678c-1.38 0-2.24-1.494-1.55-2.694l.824-1.432a1.8 1.8 0 000-1.8l-.824-1.432c-.69-1.2.17-2.694 1.55-2.694h1.648a1.8 1.8 0 001.554-.9l.87-1.432z',
+            'visible' => $user?->canManageAiRosterConstraints() ?? false,
         ],
     ];
 
@@ -84,12 +91,6 @@
                     'href' => route('hr.shift-types.index'),
                     'active' => request()->routeIs('hr.shift-types.*'),
                     'visible' => $user?->canViewHrSetup() ?? false,
-                ],
-                [
-                    'label' => 'AI Roster Constraints',
-                    'href' => route('hr.ai-roster-constraints.index'),
-                    'active' => request()->routeIs('hr.ai-roster-constraints.*'),
-                    'visible' => $user?->canManageAiRosterConstraints() ?? false,
                 ],
             ],
         ],
@@ -228,7 +229,8 @@
         <div class="space-y-8">
             <div>
                 <ul class="mt-3 space-y-2" x-data="{ openGroup: '{{ $openGroupKey }}' }">
-                @foreach ($dashboardItem as $item)
+                @foreach ($primaryItems as $item)
+                    @continue(! ($item['visible'] ?? true))
                     <li>
                         <a
                             href="{{ route($item['route']) }}"
