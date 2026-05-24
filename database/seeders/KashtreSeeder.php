@@ -24,6 +24,7 @@ use App\Services\HrDefaultLeaveTypeService;
 use App\Services\HrDefaultPolicyService;
 use App\Services\HrDefaultShiftTypeService;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
@@ -34,6 +35,12 @@ class KashtreSeeder extends Seeder
         // Create 2 businesses with comprehensive data
         $this->createBusinessWithData('Kashtre Medical Center', 'katznicho@gmail.com', '256700000001', 'Kampala, Uganda');
         $this->createBusinessWithData('City Health Clinic', 'admin@cityhealth.com', '256700000002', 'Nakawa, Kampala');
+
+        Artisan::call('hr:build-routing-structure', [
+            '--auto-discover' => true,
+            '--if-missing' => true,
+            '--force' => true,
+        ]);
     }
 
     private function createBusinessWithData($businessName, $email, $phone, $address)
@@ -282,71 +289,69 @@ class KashtreSeeder extends Seeder
     {
         // Fetch lookup IDs scoped to this business
         $qualificationId = Qualification::where('business_id', $business->id)->where('name', 'MBChB')->value('id');
-        $departmentId = Department::where('business_id', $business->id)->where('name', 'Administration')->value('id');
-        $sectionId = Section::where('business_id', $business->id)->where('name', 'General Medicine')->value('id');
-        $titleId = Title::where('business_id', $business->id)->where('name', 'Dr.')->value('id');
+        $departmentIds = Department::where('business_id', $business->id)->pluck('id', 'name');
+        $sectionIds = Section::where('business_id', $business->id)->pluck('id', 'name');
+        $titleIds = Title::where('business_id', $business->id)->pluck('id', 'name');
+        $branchServicePoints = collect($branches)->mapWithKeys(function ($branch) use ($business) {
+            return [
+                $branch->id => ServicePoint::where('business_id', $business->id)
+                    ->where('branch_id', $branch->id)
+                    ->pluck('id')
+                    ->toArray(),
+            ];
+        });
+        $allowedBranchIds = collect($branches)->pluck('id')->values()->all();
+        $businessSlug = strtolower(str_replace(' ', '', $business->name));
 
-        // Get service points for the first branch
-        $servicePoints = ServicePoint::where('business_id', $business->id)
-            ->where('branch_id', $branches[0]->id)
-            ->pluck('id')
-            ->toArray();
-
-        // User 1 - Admin
-        User::create([
-            'uuid' => Str::uuid(),
+        $this->createSeedUser($business, $branches[0], $branchServicePoints[$branches[0]->id], $allowedBranchIds, [
             'name' => $business->name . ' Admin',
-            'email' => 'admin@' . strtolower(str_replace(' ', '', $business->name)) . '.com',
-            'password' => Hash::make('password'),
-            'status' => 'active',
-            'phone' => '2567000000' . rand(10, 99),
-            'nin' => 'CF' . Str::random(12),
-            'profile_photo_path' => null,
-            'business_id' => $business->id,
-            'branch_id' => $branches[0]->id,
-            'service_points' => $servicePoints,
+            'email' => 'admin@' . $businessSlug . '.com',
             'permissions' => [
                 'View Dashboard', 'View Dashboard Cards', 'View Dashboard Charts',
                 'Manage Users', 'Manage Settings', 'View Reports', 'Manage Items',
                 'Manage Suppliers', 'Manage Insurance', 'Manage Patient Categories'
             ],
-            'allowed_branches' => collect($branches)->pluck('id')->toArray(),
             'qualification_id' => $qualificationId,
-            'department_id' => $departmentId,
-            'section_id' => $sectionId,
-            'title_id' => $titleId,
+            'department_id' => $departmentIds->get('Administration'),
+            'section_id' => $sectionIds->get('General Medicine'),
+            'title_id' => $titleIds->get('Dr.'),
             'gender' => 'male',
+            'is_hr_admin' => true,
         ]);
 
-        // User 2 - Staff
-        $servicePoints2 = ServicePoint::where('business_id', $business->id)
-            ->where('branch_id', $branches[1]->id)
-            ->pluck('id')
-            ->toArray();
+        $staffProfiles = [
+            ['name' => $business->name . ' Staff', 'email' => 'staff@' . $businessSlug . '.com', 'branch_index' => 1, 'gender' => 'female', 'title' => 'Ms.', 'department' => 'Administration', 'section' => 'General Medicine'],
+            ['name' => 'Dr. Amina Nankya', 'email' => 'amina.nankya@' . $businessSlug . '.com', 'branch_index' => 0, 'gender' => 'female', 'title' => 'Dr.', 'department' => 'Outpatient Department', 'section' => 'General Medicine'],
+            ['name' => 'Dr. Paul Ssenfuma', 'email' => 'paul.ssenfuma@' . $businessSlug . '.com', 'branch_index' => 0, 'gender' => 'male', 'title' => 'Dr.', 'department' => 'Pediatrics', 'section' => 'Pediatrics'],
+            ['name' => 'Grace Namirembe', 'email' => 'grace.namirembe@' . $businessSlug . '.com', 'branch_index' => 0, 'gender' => 'female', 'title' => 'Sr.', 'department' => 'Emergency', 'section' => 'Emergency Medicine'],
+            ['name' => 'Joseph Kato', 'email' => 'joseph.kato@' . $businessSlug . '.com', 'branch_index' => 0, 'gender' => 'male', 'title' => 'Mr.', 'department' => 'Laboratory', 'section' => 'Cardiology'],
+            ['name' => 'Maria Nakibinge', 'email' => 'maria.nakibinge@' . $businessSlug . '.com', 'branch_index' => 0, 'gender' => 'female', 'title' => 'Mrs.', 'department' => 'Radiology', 'section' => 'Radiology'],
+            ['name' => 'Daniel Mugisha', 'email' => 'daniel.mugisha@' . $businessSlug . '.com', 'branch_index' => 1, 'gender' => 'male', 'title' => 'Mr.', 'department' => 'Pharmacy', 'section' => 'General Medicine'],
+            ['name' => 'Harriet Atim', 'email' => 'harriet.atim@' . $businessSlug . '.com', 'branch_index' => 1, 'gender' => 'female', 'title' => 'Ms.', 'department' => 'Surgery', 'section' => 'Surgery'],
+            ['name' => 'Peter Okello', 'email' => 'peter.okello@' . $businessSlug . '.com', 'branch_index' => 1, 'gender' => 'male', 'title' => 'Mr.', 'department' => 'Finance', 'section' => 'General Medicine'],
+            ['name' => 'Sarah Namatovu', 'email' => 'sarah.namatovu@' . $businessSlug . '.com', 'branch_index' => 1, 'gender' => 'female', 'title' => 'Prof.', 'department' => 'Outpatient Department', 'section' => 'Obstetrics & Gynecology'],
+            ['name' => 'Brian Mutebi', 'email' => 'brian.mutebi@' . $businessSlug . '.com', 'branch_index' => 1, 'gender' => 'male', 'title' => 'Eng.', 'department' => 'Administration', 'section' => 'General Medicine'],
+            ['name' => 'Ruth Naigaga', 'email' => 'ruth.naigaga@' . $businessSlug . '.com', 'branch_index' => 0, 'gender' => 'female', 'title' => 'Ms.', 'department' => 'Pediatrics', 'section' => 'Pediatrics'],
+            ['name' => 'Isaac Wasswa', 'email' => 'isaac.wasswa@' . $businessSlug . '.com', 'branch_index' => 0, 'gender' => 'male', 'title' => 'Dr.', 'department' => 'Emergency', 'section' => 'Emergency Medicine'],
+        ];
 
-        User::create([
-            'uuid' => Str::uuid(),
-            'name' => $business->name . ' Staff',
-            'email' => 'staff@' . strtolower(str_replace(' ', '', $business->name)) . '.com',
-            'password' => Hash::make('password'),
-            'status' => 'active',
-            'phone' => '2567000000' . rand(10, 99),
-            'nin' => 'CF' . Str::random(12),
-            'profile_photo_path' => null,
-            'business_id' => $business->id,
-            'branch_id' => $branches[1]->id,
-            'service_points' => $servicePoints2,
-            'permissions' => [
-                'View Dashboard', 'View Dashboard Cards', 'View Reports',
-                'Manage Items', 'View Suppliers', 'View Insurance'
-            ],
-            'allowed_branches' => [$branches[1]->id],
-            'qualification_id' => $qualificationId,
-            'department_id' => $departmentId,
-            'section_id' => $sectionId,
-            'title_id' => $titleId,
-            'gender' => 'female',
-        ]);
+        foreach ($staffProfiles as $profile) {
+            $branch = $branches[$profile['branch_index']] ?? $branches[0];
+
+            $this->createSeedUser($business, $branch, $branchServicePoints[$branch->id], $allowedBranchIds, [
+                'name' => $profile['name'],
+                'email' => $profile['email'],
+                'permissions' => [
+                    'View Dashboard', 'View Dashboard Cards', 'View Reports',
+                    'Manage Items', 'View Suppliers', 'View Insurance'
+                ],
+                'qualification_id' => $qualificationId,
+                'department_id' => $departmentIds->get($profile['department']) ?: $departmentIds->get('Administration'),
+                'section_id' => $sectionIds->get($profile['section']) ?: $sectionIds->get('General Medicine'),
+                'title_id' => $titleIds->get($profile['title']) ?: $titleIds->get('Mr.'),
+                'gender' => $profile['gender'],
+            ]);
+        }
 
         // Create 3 Contractors who are also Staff (for City Health Clinic only)
         if ($business->name === 'City Health Clinic') {
@@ -355,28 +360,19 @@ class KashtreSeeder extends Seeder
             $contractorPhones = ['2567000001', '2567000002', '2567000003'];
             
             foreach ($contractorNames as $index => $name) {
-                $contractorUser = User::create([
-                    'uuid' => Str::uuid(),
+                $contractorUser = $this->createSeedUser($business, $branches[0], $branchServicePoints[$branches[0]->id], $allowedBranchIds, [
                     'name' => $name,
                     'email' => $contractorEmails[$index],
-                    'password' => Hash::make('password'),
-                    'status' => 'active',
                     'phone' => $contractorPhones[$index],
-                    'nin' => 'CF' . Str::random(12),
-                    'profile_photo_path' => null,
-                    'business_id' => $business->id,
-                    'branch_id' => $branches[0]->id, // Main branch
-                    'service_points' => $servicePoints,
                     'permissions' => [
                         'View Dashboard', 'View Dashboard Cards', 'View Reports',
                         'Manage Items', 'View Suppliers', 'View Insurance',
                         'Manage Contractor Profile'
                     ],
-                    'allowed_branches' => collect($branches)->pluck('id')->toArray(),
                     'qualification_id' => $qualificationId,
-                    'department_id' => $departmentId,
-                    'section_id' => $sectionId,
-                    'title_id' => $titleId,
+                    'department_id' => $departmentIds->get('Administration'),
+                    'section_id' => $sectionIds->get('General Medicine'),
+                    'title_id' => $titleIds->get('Dr.'),
                     'gender' => $index === 1 ? 'female' : 'male',
                 ]);
 
@@ -386,5 +382,33 @@ class KashtreSeeder extends Seeder
                     ->update(['user_id' => $contractorUser->id]);
             }
         }
+    }
+
+    private function createSeedUser($business, $branch, array $servicePoints, array $allowedBranches, array $attributes): User
+    {
+        $staffUuid = (string) Str::uuid();
+
+        return User::create([
+            'uuid' => $staffUuid,
+            'staff_uuid' => $staffUuid,
+            'name' => $attributes['name'],
+            'email' => $attributes['email'],
+            'password' => Hash::make('password'),
+            'status' => 'active',
+            'phone' => $attributes['phone'] ?? '2567000000' . rand(10, 99),
+            'nin' => $attributes['nin'] ?? 'CF' . Str::random(12),
+            'profile_photo_path' => null,
+            'business_id' => $business->id,
+            'branch_id' => $branch->id,
+            'service_points' => $servicePoints,
+            'permissions' => $attributes['permissions'] ?? [],
+            'allowed_branches' => $attributes['allowed_branches'] ?? $allowedBranches,
+            'qualification_id' => $attributes['qualification_id'] ?? null,
+            'department_id' => $attributes['department_id'] ?? null,
+            'section_id' => $attributes['section_id'] ?? null,
+            'title_id' => $attributes['title_id'] ?? null,
+            'gender' => $attributes['gender'] ?? 'male',
+            'is_hr_admin' => $attributes['is_hr_admin'] ?? false,
+        ]);
     }
 }

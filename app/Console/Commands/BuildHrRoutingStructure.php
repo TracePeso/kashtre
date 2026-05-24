@@ -690,11 +690,24 @@ class BuildHrRoutingStructure extends Command
         }
 
         usort($leafNodes, fn (array $left, array $right): int => strcmp($this->pathKey($left['path']), $this->pathKey($right['path'])));
+        $focusLeaf = $leafNodes[0];
+        $focusPathNodes = $this->seedRoutePathForLeaf($focusLeaf['node']);
+
+        if ($focusPathNodes->isEmpty()) {
+            $focusPathNodes = collect([$focusLeaf['node']]);
+        }
+
+        $focusLeafNode = $focusPathNodes->last();
+        $focusDepartmentName = (string) ($focusLeaf['department_name'] ?: 'General Administration');
+        $upstreamTargets = $focusPathNodes
+            ->slice(0, max(0, $focusPathNodes->count() - 1))
+            ->values();
         $assignments = StaffAssignment::query()
             ->where('organization_id', $organization->id)
             ->orderBy('staff_name')
             ->get();
         $now = now();
+        $eligibleAssignments = collect();
 
         foreach ($assignments as $assignment) {
             if ($assignment->status === 'inactive') {
@@ -709,11 +722,40 @@ class BuildHrRoutingStructure extends Command
                 continue;
             }
 
-            $hashSeed = $assignment->staff_uuid ?: $assignment->staff_name ?: (string) $assignment->id;
-            $leafIndex = abs(crc32($hashSeed)) % count($leafNodes);
-            $target = $leafNodes[$leafIndex];
+            $eligibleAssignments->push($assignment);
+        }
+
+        if ($eligibleAssignments->isEmpty()) {
+            return $summary;
+        }
+
+        $placementTargets = collect();
+
+        foreach ($upstreamTargets as $node) {
+            $departmentName = $this->seedDepartmentNameForNode($node, $focusDepartmentName);
+
+            for ($slot = 0; $slot < 2; $slot++) {
+                $placementTargets->push([
+                    'node' => $node,
+                    'department_name' => $departmentName,
+                ]);
+            }
+        }
+
+        while ($placementTargets->count() < $eligibleAssignments->count()) {
+            $placementTargets->push([
+                'node' => $focusLeafNode,
+                'department_name' => $this->seedDepartmentNameForNode($focusLeafNode, $focusDepartmentName),
+            ]);
+        }
+
+        foreach ($eligibleAssignments->values() as $index => $assignment) {
+            $target = $placementTargets[$index] ?? [
+                'node' => $focusLeafNode,
+                'department_name' => $this->seedDepartmentNameForNode($focusLeafNode, $focusDepartmentName),
+            ];
             $targetNode = $target['node'];
-            $departmentName = (string) ($target['department_name'] ?: 'General Administration');
+            $departmentName = (string) $target['department_name'];
 
             if (
                 (int) $assignment->organizational_unit_id === (int) $targetNode->id
@@ -756,6 +798,30 @@ class BuildHrRoutingStructure extends Command
         return $summary;
     }
 
+    private function seedRoutePathForLeaf(HrOrganizationalUnit $leafNode): Collection
+    {
+        $pathNodes = [];
+        $cursor = $leafNode->loadMissing('parent');
+
+        while ($cursor) {
+            $pathNodes[] = $cursor;
+            $cursor = $cursor->parent_id
+                ? HrOrganizationalUnit::query()->with('parent')->find($cursor->parent_id)
+                : null;
+        }
+
+        return collect(array_reverse($pathNodes))
+            ->filter(fn ($node): bool => $node instanceof HrOrganizationalUnit)
+            ->values();
+    }
+
+    private function seedDepartmentNameForNode(HrOrganizationalUnit $node, string $fallback): string
+    {
+        $departmentName = trim((string) data_get($node->metadata, 'department_name', ''));
+
+        return $departmentName !== '' ? $departmentName : $fallback;
+    }
+
     private function staffContextsForTarget(Organization $organization, ?Business $business): Collection
     {
         $contexts = collect();
@@ -763,12 +829,11 @@ class BuildHrRoutingStructure extends Command
         if ($business) {
             $contexts = User::query()
                 ->where('business_id', $business->id)
-                ->whereNotNull('staff_uuid')
                 ->orderBy('name')
-                ->get(['staff_uuid', 'name', 'status', 'deactivated_at'])
+                ->get(['uuid', 'staff_uuid', 'name', 'status', 'deactivated_at'])
                 ->mapWithKeys(fn (User $user): array => [
-                    $user->staff_uuid => [
-                        'name' => $user->name ?: $user->staff_uuid,
+                    ($user->staff_uuid ?: $user->uuid) => [
+                        'name' => $user->name ?: ($user->staff_uuid ?: $user->uuid),
                         'is_active' => $this->userIsActive($user),
                     ],
                 ]);
