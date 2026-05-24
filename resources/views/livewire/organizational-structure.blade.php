@@ -250,6 +250,58 @@
     </div>
     @endif
 
+    @if($showLeafClientSpacesModal)
+    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center px-4 py-6">
+        <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl sm:max-w-2xl sm:w-full sm:p-6">
+            <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">
+                Attach Client Spaces to Last Routing Node
+            </h3>
+            <p class="mb-4 text-sm text-gray-600">
+                {{ $selectedLeafUnit ? $selectedLeafUnit->name : 'This node' }} is the last routing node. Choose the client spaces that should sit under it in the organogram.
+            </p>
+
+            <form wire:submit.prevent="saveLeafClientSpaces">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Client spaces</label>
+                    <div class="mt-1 max-h-80 overflow-y-auto rounded-md border border-gray-300">
+                        @forelse($clientSpaceOptions as $clientSpace)
+                            <label class="flex cursor-pointer items-start gap-3 border-b border-gray-100 px-3 py-2 hover:bg-gray-50">
+                                <input
+                                    type="checkbox"
+                                    wire:model.live="selectedLeafClientSpaceIds"
+                                    value="{{ $clientSpace->id }}"
+                                    class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                >
+                                <span class="min-w-0 text-sm text-gray-700">
+                                    <span class="block font-medium text-gray-900">{{ $clientSpace->name }}</span>
+                                    <span class="block text-xs text-gray-500">
+                                        {{ $clientSpace->parent ? 'Current primary route: '.$clientSpace->parent->name : 'No primary route yet' }}
+                                    </span>
+                                </span>
+                            </label>
+                        @empty
+                            <div class="px-3 py-4 text-sm text-gray-500">
+                                No client spaces are available yet.
+                            </div>
+                        @endforelse
+                    </div>
+                    @error('selectedLeafClientSpaceIds') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                    @error('selectedLeafClientSpaceIds.*') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                </div>
+
+                <div class="mt-5 sm:flex sm:flex-row-reverse">
+                    <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent px-4 py-2 bg-gray-900 text-base font-medium text-white hover:bg-gray-800 sm:ml-3 sm:w-auto sm:text-sm">
+                        Save Client Spaces
+                    </button>
+                    <button type="button" wire:click="$set('showLeafClientSpacesModal', false)" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    @endif
+
 @if($showEditTierModal)
     <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center">
         <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl sm:max-w-lg sm:w-full sm:p-6">

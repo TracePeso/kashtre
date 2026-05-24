@@ -37,20 +37,6 @@ class ClientSpaceRoutingService
             ]);
         }
 
-        if (
-            $primaryRoutingUnitId
-            && HrClientSpaceRoute::query()
-                ->where('organization_id', $clientSpace->organization_id)
-                ->where('routing_unit_id', (int) $primaryRoutingUnitId)
-                ->where('is_primary', true)
-                ->where('client_space_unit_id', '!=', $clientSpace->id)
-                ->exists()
-        ) {
-            throw ValidationException::withMessages([
-                'primaryRoutingUnitId' => 'This route is already the primary route for another client space. Add it as a unit instead.',
-            ]);
-        }
-
         $routingUnits = HrOrganizationalUnit::where('organization_id', $clientSpace->organization_id)
             ->lowestRoutingNodes()
             ->whereIn('id', $routingUnitIds)

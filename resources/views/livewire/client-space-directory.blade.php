@@ -152,7 +152,6 @@
                 <form wire:submit.prevent="savePlacement">
                     <div>
                         @php($lowestRoutingUnitIds = $lowestRoutingUnitOptions->pluck('id')->map(fn ($id) => (int) $id))
-                        @php($primaryRouteIdsInOtherClientSpaces = $primaryRouteIdsInOtherClientSpaces->map(fn ($id) => (int) $id))
                         <label class="block text-sm font-medium text-gray-700">Add Units</label>
                         <div class="mt-1 overflow-hidden rounded-md border border-gray-300">
                             <div class="border-b border-gray-200 px-3 py-2">
@@ -179,8 +178,6 @@
                             <div class="max-h-72 overflow-y-auto">
                                 @forelse($routingUnitOptions as $routingUnit)
                                     @php($isLowestRoutingUnit = $lowestRoutingUnitIds->contains((int) $routingUnit->id))
-                                    @php($isPrimaryElsewhere = $primaryRouteIdsInOtherClientSpaces->contains((int) $routingUnit->id))
-                                    @php($canUseAsPrimary = $isLowestRoutingUnit && ! $isPrimaryElsewhere)
                                     <div class="flex items-start gap-3 border-b border-gray-100 px-3 py-2 hover:bg-gray-50">
                                         <label class="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
                                             <input
@@ -199,20 +196,15 @@
                                                 </span>
                                             </span>
                                         </label>
-                                        <label class="mt-1 flex shrink-0 items-center gap-1 text-xs font-semibold {{ $canUseAsPrimary ? 'cursor-pointer text-gray-700' : 'cursor-not-allowed text-gray-400' }}">
+                                        <label class="mt-1 flex shrink-0 items-center gap-1 text-xs font-semibold {{ $isLowestRoutingUnit ? 'cursor-pointer text-gray-700' : 'cursor-not-allowed text-gray-400' }}">
                                             <input
                                                 type="radio"
                                                 wire:model.live="primaryRoutingUnitId"
                                                 value="{{ $routingUnit->id }}"
-                                                @disabled(! $canUseAsPrimary)
+                                                @disabled(! $isLowestRoutingUnit)
                                                 class="border-gray-300 text-blue-600 focus:ring-blue-500 disabled:bg-gray-100"
                                             >
-                                            <span>
-                                                Primary
-                                                @if($isPrimaryElsewhere)
-                                                    <span class="block font-normal text-gray-400">Primary in another client space</span>
-                                                @endif
-                                            </span>
+                                            <span>Primary</span>
                                         </label>
                                     </div>
                                 @empty
@@ -226,7 +218,7 @@
                         @error('linkedRoutingUnitIds') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                         @error('linkedRoutingUnitIds.*') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                         <p class="mt-2 text-xs text-gray-500">
-                            Select the lowest applicable units here. Use Primary to explicitly mark the display route; a primary route can only belong to one client space.
+                            Select the lowest applicable units here. Use Primary to mark the main route shown for this client space.
                         </p>
                     </div>
 

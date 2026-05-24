@@ -18,6 +18,11 @@
             <p class="mt-1 text-xs text-gray-500">
                 Staff assigned to this tier can route to its child tiers and client spaces.
             </p>
+            @if($unit->isLowestRoutingNode())
+                <p class="mt-1 text-xs text-blue-600">
+                    This is the last routing node. Attach client spaces here, then place staff directly into the correct client space.
+                </p>
+            @endif
             <div class="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
                 <span class="rounded bg-gray-50 px-2 py-1">
                     {{ $unit->routing_staff_count ?? $unit->staffAssignments()->whereNotIn('status', ['inactive', 'orphaned'])->count() }} routing staff
@@ -30,6 +35,11 @@
                 <button wire:click="openEditModal({{ $unit->id }})" class="text-sm font-medium text-gray-600 hover:text-gray-900">
                     Edit
                 </button>
+                @if($unit->isLowestRoutingNode())
+                    <button wire:click="openLeafClientSpacesModal({{ $unit->id }})" class="text-sm font-medium text-emerald-600 hover:text-emerald-800">
+                        Attach Client Spaces
+                    </button>
+                @endif
                 <button wire:click="openModal({{ $unit->id }})" class="text-sm font-medium text-blue-600 hover:text-blue-800">
                     Add Child
                 </button>
@@ -38,9 +48,12 @@
     </div>
 
     @php($routingChildren = $unit->children->filter(fn ($c) => $c->isRoutingNode()))
-    @php($linkedClientSpaces = $unit->relationLoaded('linkedPrimaryClientSpaces')
-        ? $unit->linkedPrimaryClientSpaces->unique('id')->values()
-        : $unit->linkedPrimaryClientSpaces()->withCount(['staffAssignments as active_staff_count' => fn ($query) => $query->where('status', 'active')])->get()->unique('id')->values())
+    @php($linkedClientSpaces = $unit->relationLoaded('linkedClientSpaces')
+        ? $unit->linkedClientSpaces->unique('id')->values()
+        : $unit->linkedClientSpaces()->withCount([
+            'staffAssignments as active_staff_count' => fn ($query) => $query->where('status', 'active'),
+            'secondaryStaffAssignments as secondary_staff_count',
+        ])->get()->unique('id')->values())
 
     @if($linkedClientSpaces->isNotEmpty())
         <ul class="ml-4 space-y-2 border-l border-gray-200 pb-4 pl-4">
@@ -53,13 +66,16 @@
                                 <span class="inline-flex items-center rounded bg-white px-2 py-0.5 text-xs font-medium text-sky-700">
                                     Client Space
                                 </span>
-                                <span class="inline-flex items-center rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                                    Primary Route
+                                <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium {{ $clientSpace->pivot?->is_primary ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' }}">
+                                    {{ $clientSpace->pivot?->is_primary ? 'Primary Route' : 'Shared Route' }}
                                 </span>
                             </div>
 
                             <p class="mt-1 text-xs text-slate-500">
-                                {{ (int) $clientSpace->active_staff_count }} active staff
+                                {{ (int) $clientSpace->active_staff_count }} primary staff
+                                @if(($clientSpace->secondary_staff_count ?? 0) > 0)
+                                    | {{ (int) $clientSpace->secondary_staff_count }} additional staff
+                                @endif
                             </p>
                         </div>
                     </div>

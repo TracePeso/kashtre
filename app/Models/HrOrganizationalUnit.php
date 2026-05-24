@@ -103,10 +103,13 @@ class HrOrganizationalUnit extends Model
             ->with([
                 'tierLevel',
                 'childrenRecursive',
-                'linkedPrimaryClientSpaces' => fn ($query) => $query
+                'linkedClientSpaces' => fn ($query) => $query
                     ->with('routingParents')
                     ->withCount([
                         'staffAssignments as active_staff_count' => fn ($staffQuery) => $staffQuery->where('status', 'active'),
+                    ])
+                    ->withCount([
+                        'secondaryStaffAssignments as secondary_staff_count',
                     ])
                     ->orderBy('hr_organizational_units.name'),
             ])
@@ -127,7 +130,8 @@ class HrOrganizationalUnit extends Model
     {
         return $this->hasMany(HrClientSpaceStaffAssignment::class, 'client_space_unit_id')
             ->where('assignment_type', HrClientSpaceStaffAssignment::TYPE_SECONDARY)
-            ->where('status', HrClientSpaceStaffAssignment::STATUS_ACTIVE);
+            ->where('status', HrClientSpaceStaffAssignment::STATUS_ACTIVE)
+            ->whereHas('staffAssignment', fn (Builder $query) => $query->eligibleForSecondaryClientSpaceAssignments());
     }
 
     public function clientSpace()

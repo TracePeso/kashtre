@@ -122,9 +122,23 @@ class StaffAssignment extends Model
         return $staffUuid ? User::where('staff_uuid', $staffUuid)->first() : null;
     }
 
+    public function isOnLowestRoutingNode(): bool
+    {
+        $unit = $this->organizationalUnit;
+
+        return $unit?->isLowestRoutingNode() ?? false;
+    }
+
     public function scopeOrphaned(Builder $query): Builder
     {
         return $query->where('status', 'orphaned');
+    }
+
+    public function scopeEligibleForSecondaryClientSpaceAssignments(Builder $query): Builder
+    {
+        return $query->whereDoesntHave('organizationalUnit', function (Builder $unitQuery): void {
+            $unitQuery->lowestRoutingNodes();
+        });
     }
 
     public function scopeWithoutActiveClientSpace(Builder $query): Builder

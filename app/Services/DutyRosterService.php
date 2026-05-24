@@ -62,7 +62,9 @@ class DutyRosterService
                     })
                     ->orWhereHas('clientSpaceStaffAssignments', function ($assignmentQuery) use ($user): void {
                         $assignmentQuery
+                            ->where('assignment_type', HrClientSpaceStaffAssignment::TYPE_SECONDARY)
                             ->where('staff_uuid', $user->staff_uuid)
+                            ->whereHas('staffAssignment', fn ($staffQuery) => $staffQuery->eligibleForSecondaryClientSpaceAssignments())
                             ->where('status', HrClientSpaceStaffAssignment::STATUS_ACTIVE);
                     });
             })
@@ -159,7 +161,9 @@ class DutyRosterService
             ->where('status', 'active')
             ->exists()
             || $clientSpace->clientSpaceStaffAssignments()
+                ->where('assignment_type', HrClientSpaceStaffAssignment::TYPE_SECONDARY)
                 ->where('staff_uuid', $user->staff_uuid)
+                ->whereHas('staffAssignment', fn ($staffQuery) => $staffQuery->eligibleForSecondaryClientSpaceAssignments())
                 ->where('status', HrClientSpaceStaffAssignment::STATUS_ACTIVE)
                 ->exists();
     }
@@ -1404,6 +1408,7 @@ class DutyRosterService
 
         $secondaryAssignments = StaffAssignment::query()
             ->where('organization_id', $clientSpace->organization_id)
+            ->eligibleForSecondaryClientSpaceAssignments()
             ->whereNotIn('status', ['inactive', 'orphaned'])
             ->whereHas('clientSpaceStaffAssignments', function ($query) use ($clientSpace): void {
                 $query

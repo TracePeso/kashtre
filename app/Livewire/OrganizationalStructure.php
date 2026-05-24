@@ -10,6 +10,7 @@ use App\Models\StaffAssignment;
 use App\Services\ClientSpaceRoutingService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 
 class OrganizationalStructure extends Component
@@ -29,6 +30,9 @@ class OrganizationalStructure extends Component
     public $editTierName = '';
     public $editTierOrder = '';
     public bool $showEditTierModal = false;
+    public bool $showLeafClientSpacesModal = false;
+    public ?int $selectedLeafUnitId = null;
+    public array $selectedLeafClientSpaceIds = [];
 
     protected $rules = [
         'newUnitTierLevelId' => 'required|exists:hr_organization_tier_levels,id',
@@ -346,6 +350,131 @@ class OrganizationalStructure extends Component
         session()->flash('message', 'Routing tier successfully updated.');
     }
 
+    public function openLeafClientSpacesModal(int $unitId): void
+    {
+        abort_unless($this->canEditRouting, 403);
+
+        $org = Organization::current();
+        if (! $org) {
+            return;
+        }
+
+        $leafUnit = $this->lowestRoutingUnitForOrganization($org, $unitId);
+        if (! $leafUnit) {
+            abort(404);
+        }
+
+        $this->resetValidation();
+        $this->selectedLeafUnitId = $leafUnit->id;
+        $this->selectedLeafClientSpaceIds = $leafUnit->linkedClientSpaces()
+            ->orderBy('hr_organizational_units.name')
+            ->get(['hr_organizational_units.id'])
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->values()
+            ->all();
+        $this->showLeafClientSpacesModal = true;
+    }
+
+    public function saveLeafClientSpaces(ClientSpaceRoutingService $clientSpaceRoutingService): void
+    {
+        abort_unless($this->canEditRouting, 403);
+
+        $org = Organization::current();
+        if (! $org) {
+            return;
+        }
+
+        $this->validate([
+            'selectedLeafUnitId' => 'required|integer|exists:hr_organizational_units,id',
+            'selectedLeafClientSpaceIds' => 'array',
+            'selectedLeafClientSpaceIds.*' => 'integer|exists:hr_organizational_units,id',
+        ]);
+
+        $leafUnit = $this->lowestRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId);
+        if (! $leafUnit) {
+            $this->addError('selectedLeafUnitId', 'Choose a valid last routing node.');
+
+            return;
+        }
+
+        $selectedClientSpaceIds = collect($this->selectedLeafClientSpaceIds)
+            ->filter(fn ($id): bool => filled($id))
+            ->map(fn ($id): int => (int) $id)
+            ->unique()
+            ->values();
+
+        $clientSpaces = HrOrganizationalUnit::where('organization_id', $org->id)
+            ->clientSpaces()
+            ->with(['parent', 'routingParents'])
+            ->whereIn('id', $selectedClientSpaceIds)
+            ->get()
+            ->keyBy('id');
+
+        if ($clientSpaces->count() !== $selectedClientSpaceIds->count()) {
+            $this->addError('selectedLeafClientSpaceIds', 'Choose client spaces from the current organization.');
+
+            return;
+        }
+
+        $currentClientSpaceIds = $leafUnit->linkedClientSpaces()
+            ->get(['hr_organizational_units.id'])
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->values();
+
+        $allClientSpaceIds = $currentClientSpaceIds
+            ->merge($selectedClientSpaceIds)
+            ->unique()
+            ->values();
+
+        foreach ($allClientSpaceIds as $clientSpaceId) {
+            $clientSpace = $clientSpaces->get($clientSpaceId)
+                ?? HrOrganizationalUnit::where('organization_id', $org->id)
+                    ->clientSpaces()
+                    ->with(['parent', 'routingParents'])
+                    ->find($clientSpaceId);
+
+            if (! $clientSpace) {
+                continue;
+            }
+
+            $existingRouteIds = $this->attachedRoutingUnitIdsForClientSpace($clientSpace);
+
+            if ($selectedClientSpaceIds->contains($clientSpaceId)) {
+                $routeIds = $existingRouteIds
+                    ->push($leafUnit->id)
+                    ->unique()
+                    ->values()
+                    ->all();
+                $primaryRoutingUnitId = $leafUnit->id;
+            } else {
+                $routeIds = $existingRouteIds
+                    ->reject(fn (int $routeId): bool => $routeId === (int) $leafUnit->id)
+                    ->values()
+                    ->all();
+                $primaryRoutingUnitId = in_array((int) $clientSpace->parent_id, $routeIds, true)
+                    ? (int) $clientSpace->parent_id
+                    : ($routeIds[0] ?? null);
+            }
+
+            try {
+                $clientSpaceRoutingService->syncRoutes($clientSpace, $routeIds, $primaryRoutingUnitId);
+            } catch (ValidationException $e) {
+                foreach ($e->errors() as $messages) {
+                    foreach ((array) $messages as $message) {
+                        $this->addError('selectedLeafClientSpaceIds', $message);
+                    }
+                }
+
+                return;
+            }
+        }
+
+        $this->resetLeafClientSpacesModal();
+        session()->flash('message', 'Client spaces attached to the last routing node.');
+    }
+
     public function render()
     {
         $this->canEditRouting = $this->userCanEditRouting();
@@ -361,6 +490,9 @@ class OrganizationalStructure extends Component
                                                         ->with('routingParents')
                                                         ->withCount([
                                                             'staffAssignments as active_staff_count' => fn ($staffQuery) => $staffQuery->where('status', 'active'),
+                                                        ])
+                                                        ->withCount([
+                                                            'secondaryStaffAssignments as secondary_staff_count',
                                                         ])
                                                         ->orderByDesc('hr_client_space_routes.is_primary')
                                                         ->orderBy('hr_organizational_units.name'),
@@ -384,12 +516,21 @@ class OrganizationalStructure extends Component
             'root_nodes' => 0,
             'staff_pool' => 0,
         ];
-
+        $clientSpaceOptions = $org ? HrOrganizationalUnit::where('organization_id', $org->id)
+            ->clientSpaces()
+            ->with(['parent', 'routingParents'])
+            ->withCount([
+                'staffAssignments as active_staff_count' => fn ($query) => $query->where('status', 'active'),
+                'secondaryStaffAssignments as secondary_staff_count',
+            ])
+            ->orderBy('name')
+            ->get() : collect();
         return view('livewire.organizational-structure', compact(
             'rootUnits',
             'parentOptions',
             'tierLevels',
             'structureSummary',
+            'clientSpaceOptions',
         ));
     }
 
@@ -514,6 +655,40 @@ class OrganizationalStructure extends Component
         });
 
         return $ids;
+    }
+
+    private function lowestRoutingUnitForOrganization(Organization $org, int $unitId): ?HrOrganizationalUnit
+    {
+        return HrOrganizationalUnit::where('organization_id', $org->id)
+            ->lowestRoutingNodes()
+            ->with(['tierLevel', 'linkedClientSpaces'])
+            ->find($unitId);
+    }
+
+    private function attachedRoutingUnitIdsForClientSpace(HrOrganizationalUnit $clientSpace)
+    {
+        $routeIds = collect();
+
+        if ($clientSpace->parent_id) {
+            $routeIds->push((int) $clientSpace->parent_id);
+        }
+
+        $routingParents = $clientSpace->relationLoaded('routingParents')
+            ? $clientSpace->routingParents
+            : $clientSpace->routingParents()->get(['hr_organizational_units.id']);
+
+        return $routeIds
+            ->merge($routingParents->pluck('id'))
+            ->map(fn ($id): int => (int) $id)
+            ->unique()
+            ->values();
+    }
+
+    private function resetLeafClientSpacesModal(): void
+    {
+        $this->showLeafClientSpacesModal = false;
+        $this->selectedLeafUnitId = null;
+        $this->selectedLeafClientSpaceIds = [];
     }
 
 }

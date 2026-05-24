@@ -97,10 +97,17 @@ class ClientSpaceDirectory extends Component
             ->findOrFail($this->selectedClientSpaceId);
 
         $assignment = StaffAssignment::where('organization_id', $org->id)
+            ->with('organizationalUnit')
             ->findOrFail($this->selectedSecondaryStaffAssignmentId);
 
         if (in_array($assignment->status, ['inactive', 'orphaned'], true)) {
             $this->addError('selectedSecondaryStaffAssignmentId', 'Inactive or orphaned staff cannot be added as secondary clinical staff.');
+
+            return;
+        }
+
+        if ($assignment->isOnLowestRoutingNode()) {
+            $this->addError('selectedSecondaryStaffAssignmentId', 'Staff on the last routing node must be placed directly in their client space instead of using an additional assignment.');
 
             return;
         }
@@ -624,11 +631,7 @@ class ClientSpaceDirectory extends Component
         $routingUnitOptions = $org && $this->canManageClientSpacePlacement
             ? $this->routingUnitOptionsForOrganization($org)
             : collect();
-        $primaryRouteIdsInOtherClientSpaces = $org && $this->canManageClientSpacePlacement
-            ? $this->primaryRouteIdsInOtherClientSpaces($org)
-            : collect();
-
-        return view('livewire.client-space-directory', compact('clientSpaces', 'staffOptions', 'secondaryStaffOptions', 'manageableClientSpaceIds', 'lowestRoutingUnitOptions', 'routingUnitOptions', 'primaryRouteIdsInOtherClientSpaces'));
+        return view('livewire.client-space-directory', compact('clientSpaces', 'staffOptions', 'secondaryStaffOptions', 'manageableClientSpaceIds', 'lowestRoutingUnitOptions', 'routingUnitOptions'));
     }
 
     private function setPermissions(): void
@@ -765,6 +768,7 @@ class ClientSpaceDirectory extends Component
 
         return StaffAssignment::with('organizationalUnit')
             ->where('organization_id', $org->id)
+            ->eligibleForSecondaryClientSpaceAssignments()
             ->whereNotIn('status', ['inactive', 'orphaned'])
             ->whereNotIn('id', $activeLinkedAssignmentIds)
             ->where(function ($query) use ($clientSpace): void {
@@ -857,21 +861,6 @@ class ClientSpaceDirectory extends Component
         }
 
         return $normalizedRoutingUnitIds->all();
-    }
-
-    private function primaryRouteIdsInOtherClientSpaces(Organization $org): Collection
-    {
-        return HrClientSpaceRoute::query()
-            ->where('organization_id', $org->id)
-            ->where('is_primary', true)
-            ->when(
-                $this->selectedPlacementClientSpaceId,
-                fn ($query) => $query->where('client_space_unit_id', '!=', $this->selectedPlacementClientSpaceId)
-            )
-            ->pluck('routing_unit_id')
-            ->map(fn ($id): int => (int) $id)
-            ->unique()
-            ->values();
     }
 
     private function selectedClientSpace(Organization $org): ?HrOrganizationalUnit
