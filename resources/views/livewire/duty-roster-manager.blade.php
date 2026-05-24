@@ -13,7 +13,7 @@
                         <option value="">No client spaces available</option>
                     @endif
                     @foreach($clientSpaces as $clientSpace)
-                        <option value="{{ $clientSpace->id }}">{{ $clientSpace->name }} ({{ $clientSpace->active_staff_count }} active staff)</option>
+                        <option value="{{ $clientSpace->id }}">{{ $clientSpace->name }} ({{ (int) $clientSpace->active_staff_count + (int) ($clientSpace->secondary_staff_count ?? 0) }} active staff)</option>
                     @endforeach
                 </select>
             </div>

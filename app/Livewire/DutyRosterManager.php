@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Models\HrCalendarEvent;
+use App\Models\HrClientSpaceStaffAssignment;
 use App\Models\HrDutyRoster;
 use App\Models\HrOrganizationalUnit;
 use App\Models\HrStaffRosteringProfile;
@@ -441,6 +442,7 @@ class DutyRosterManager extends Component
         abort_unless($organization && $user instanceof User, 403);
 
         $clientSpaces = $this->dutyRosterService()->accessibleClientSpaces($user, $organization);
+        $this->attachSecondaryStaffCounts($clientSpaces, $organization);
         $canSeeRosterModule = $this->canSeeRosterModule($user);
 
         abort_if($clientSpaces->isEmpty() && ! $canSeeRosterModule, 403);
@@ -634,6 +636,26 @@ class DutyRosterManager extends Component
     private function dutyRosterService(): DutyRosterService
     {
         return app(DutyRosterService::class);
+    }
+
+    private function attachSecondaryStaffCounts(Collection $clientSpaces, Organization $organization): void
+    {
+        if ($clientSpaces->isEmpty()) {
+            return;
+        }
+
+        $secondaryCounts = HrClientSpaceStaffAssignment::query()
+            ->where('organization_id', $organization->id)
+            ->whereIn('client_space_unit_id', $clientSpaces->pluck('id'))
+            ->where('assignment_type', HrClientSpaceStaffAssignment::TYPE_SECONDARY)
+            ->where('status', HrClientSpaceStaffAssignment::STATUS_ACTIVE)
+            ->selectRaw('client_space_unit_id, COUNT(*) as total')
+            ->groupBy('client_space_unit_id')
+            ->pluck('total', 'client_space_unit_id');
+
+        $clientSpaces->each(function (HrOrganizationalUnit $clientSpace) use ($secondaryCounts): void {
+            $clientSpace->setAttribute('secondary_staff_count', (int) ($secondaryCounts[(int) $clientSpace->id] ?? 0));
+        });
     }
 
     private function initializeSelectedClientSpace(Collection $clientSpaces): void

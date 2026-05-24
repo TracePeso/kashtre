@@ -54,11 +54,15 @@
                                 @endif
                             </div>
                             <div class="shrink-0 rounded-md bg-gray-50 px-3 py-2 text-right">
+                                @php($totalStaffCount = (int) $clientSpace->active_staff_count + (int) ($clientSpace->secondary_staff_count ?? 0))
                                 <p class="text-xs font-medium text-gray-500">Active staff</p>
-                                <p class="text-lg font-semibold text-gray-900">{{ $clientSpace->active_staff_count }}</p>
-                                @if(($clientSpace->secondary_staff_count ?? 0) > 0)
-                                    <p class="mt-1 text-xs text-gray-500">{{ $clientSpace->secondary_staff_count }} additional</p>
-                                @endif
+                                <p class="text-lg font-semibold text-gray-900">{{ $totalStaffCount }}</p>
+                                <p class="mt-1 text-xs text-gray-500">
+                                    {{ (int) $clientSpace->active_staff_count }} primary
+                                    @if(($clientSpace->secondary_staff_count ?? 0) > 0)
+                                        | {{ (int) $clientSpace->secondary_staff_count }} linked
+                                    @endif
+                                </p>
                                 <p class="mt-1 text-xs text-gray-500">{{ $clientSpace->routingParents->count() }} route{{ $clientSpace->routingParents->count() === 1 ? '' : 's' }}</p>
                                 @if($canManageClientSpacePlacement)
                                     <button type="button" wire:click="openPlacementModal({{ $clientSpace->id }})" class="mt-2 inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">
