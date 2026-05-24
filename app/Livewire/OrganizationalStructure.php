@@ -16,12 +16,10 @@ class OrganizationalStructure extends Component
 {
     public $newTierName = '';
     public $newTierOrder = '';
-    public $newUnitName = '';
     public $newUnitTierLevelId = null;
     public $newUnitParentId = null;
     public $showModal = false;
     public $editingUnitId = null;
-    public $editUnitName = '';
     public $editUnitTierLevelId = null;
     public $editUnitParentId = null;
     public array $blockedParentIds = [];
@@ -33,7 +31,6 @@ class OrganizationalStructure extends Component
     public bool $showEditTierModal = false;
 
     protected $rules = [
-        'newUnitName' => 'required|string|max:255',
         'newUnitTierLevelId' => 'required|exists:hr_organization_tier_levels,id',
         'newUnitParentId' => 'nullable|exists:hr_organizational_units,id',
         'newTierName' => 'required|string|max:255',
@@ -52,7 +49,6 @@ class OrganizationalStructure extends Component
         abort_unless($this->canEditRouting, 403);
 
         $this->resetValidation();
-        $this->newUnitName = '';
         $this->newUnitParentId = $parentId;
         $this->newUnitTierLevelId = $this->suggestedTierLevelId($parentId);
         $this->showModal = true;
@@ -204,7 +200,6 @@ class OrganizationalStructure extends Component
         $this->newUnitParentId = $this->newUnitParentId ?: null;
 
         $this->validate([
-            'newUnitName' => $this->newUnitParentId ? 'required|string|max:255' : 'nullable|string|max:255',
             'newUnitTierLevelId' => 'required|exists:hr_organization_tier_levels,id',
             'newUnitParentId' => 'nullable|exists:hr_organizational_units,id',
         ]);
@@ -234,16 +229,14 @@ class OrganizationalStructure extends Component
             return;
         }
 
-        $name = $this->normalizedRoutingNodeName(
-            $this->newUnitParentId ? $this->newUnitName : $tierLevel->name
-        );
+        $name = $this->normalizedRoutingNodeName($tierLevel->name);
 
         if ($this->routingNodeExists($org->id, $this->newUnitParentId, $tierLevel->id, $name)) {
             $this->addError(
-                $this->newUnitParentId ? 'newUnitName' : 'newUnitTierLevelId',
+                'newUnitTierLevelId',
                 $this->newUnitParentId
-                    ? 'This routing node already exists under the selected parent.'
-                    : 'This root routing node already exists for the selected tier level.'
+                    ? 'This routing level already exists under the selected parent.'
+                    : 'This root routing level already exists.'
             );
 
             return;
@@ -277,7 +270,6 @@ class OrganizationalStructure extends Component
 
         $this->resetValidation();
         $this->editingUnitId = $unit->id;
-        $this->editUnitName = $unit->name;
         $this->editUnitTierLevelId = $unit->tier_level_id;
         $this->editUnitParentId = $this->validParentFor($org, $unit->parent_id) ? $unit->parent_id : null;
         $this->blockedParentIds = array_merge([$unit->id], $this->descendantIds($unit));
@@ -298,7 +290,6 @@ class OrganizationalStructure extends Component
         $this->editUnitParentId = $this->editUnitParentId ?: null;
 
         $this->validate([
-            'editUnitName' => $this->editUnitParentId ? 'required|string|max:255' : 'nullable|string|max:255',
             'editUnitTierLevelId' => 'required|exists:hr_organization_tier_levels,id',
             'editUnitParentId' => 'nullable|exists:hr_organizational_units,id',
         ]);
@@ -329,16 +320,14 @@ class OrganizationalStructure extends Component
             return;
         }
 
-        $name = $this->normalizedRoutingNodeName(
-            $this->editUnitParentId ? $this->editUnitName : $tierLevel->name
-        );
+        $name = $this->normalizedRoutingNodeName($tierLevel->name);
 
         if ($this->routingNodeExists($org->id, $this->editUnitParentId, $tierLevel->id, $name, $unit->id)) {
             $this->addError(
-                $this->editUnitParentId ? 'editUnitName' : 'editUnitTierLevelId',
+                'editUnitTierLevelId',
                 $this->editUnitParentId
-                    ? 'This routing node already exists under the selected parent.'
-                    : 'This root routing node already exists for the selected tier level.'
+                    ? 'This routing level already exists under the selected parent.'
+                    : 'This root routing level already exists.'
             );
 
             return;

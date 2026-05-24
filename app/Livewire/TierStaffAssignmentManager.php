@@ -23,7 +23,6 @@ class TierStaffAssignmentManager extends Component
     public string $staffUuid = '';
     public $staffTargetTierId = null;
     public string $routingStaffUuid = '';
-    public string $newSubtierName = '';
     public $newSubtierTierLevelId = null;
     public ?string $message = null;
     public bool $canAssignStaff = false;
@@ -59,7 +58,6 @@ class TierStaffAssignmentManager extends Component
         $this->staffUuid = '';
         $this->staffTargetTierId = $this->defaultStaffTargetTierId($tier);
         $this->routingStaffUuid = '';
-        $this->newSubtierName = '';
         $this->newSubtierTierLevelId = $this->defaultSubtierTierLevelId($tier);
         $this->message = null;
     }
@@ -82,7 +80,6 @@ class TierStaffAssignmentManager extends Component
 
         $this->validate([
             'selectedTierId' => 'required|integer|exists:hr_organizational_units,id',
-            'newSubtierName' => 'required|string|max:255',
             'newSubtierTierLevelId' => 'required|integer|exists:hr_organization_tier_levels,id',
         ]);
 
@@ -92,7 +89,7 @@ class TierStaffAssignmentManager extends Component
             ->findOrFail($this->selectedTierId);
 
         if (! $this->canManageSubtiersForUnit($parent)) {
-            $this->addError('newSubtierName', $this->manageSubtiersDeniedMessage($parent));
+            $this->addError('newSubtierTierLevelId', $this->manageSubtiersDeniedMessage($parent));
 
             return;
         }
@@ -113,13 +110,13 @@ class TierStaffAssignmentManager extends Component
             return;
         }
 
-        if ($this->subtierNameExists($parent, $tierLevel, $this->newSubtierName)) {
-            $this->addError('newSubtierName', 'This routing node already exists under the selected node.');
+        $name = trim($tierLevel->name);
+
+        if ($this->subtierNameExists($parent, $tierLevel, $name)) {
+            $this->addError('newSubtierTierLevelId', 'This routing level already exists under the selected node.');
 
             return;
         }
-
-        $name = trim($this->newSubtierName);
 
         $subtier = HrOrganizationalUnit::create([
             'organization_id' => $org->id,
@@ -130,7 +127,6 @@ class TierStaffAssignmentManager extends Component
             'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
         ]);
 
-        $this->newSubtierName = '';
         $this->newSubtierTierLevelId = $this->defaultSubtierTierLevelId($parent);
         $this->staffTargetTierId = $subtier->id;
         $this->message = "Routing node {$name} added under {$this->routingUnitDisplayName($parent)}.";

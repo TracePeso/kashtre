@@ -128,13 +128,7 @@
                                         Create a lower routing level in Routing Structure before adding a direct node under {{ $selectedTierName }}.
                                     </div>
                                 @else
-                                    <form wire:submit.prevent="createSubtier" class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_12rem_auto]">
-                                        <input
-                                            type="text"
-                                            wire:model="newSubtierName"
-                                            placeholder="e.g. Finance, Safety, HSSQE"
-                                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                        >
+                                    <form wire:submit.prevent="createSubtier" class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
                                         <select wire:model="newSubtierTierLevelId" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                                             @foreach($subtierLevelOptions as $tierLevel)
                                                 <option value="{{ $tierLevel->id }}">Tier {{ $tierLevel->level_order }}: {{ $tierLevel->name }}</option>
@@ -144,7 +138,7 @@
                                             Add Routing Node
                                         </button>
                                     </form>
-                                    @error('newSubtierName') <p class="mt-2 text-xs text-red-600">{{ $message }}</p> @enderror
+                                    <p class="mt-2 text-xs text-gray-500">The selected routing level becomes the direct node name.</p>
                                     @error('newSubtierTierLevelId') <p class="mt-2 text-xs text-red-600">{{ $message }}</p> @enderror
                                 @endif
                             @else

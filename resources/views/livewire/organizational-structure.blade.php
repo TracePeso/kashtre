@@ -71,7 +71,7 @@
 <div class="mb-5 rounded-md border border-gray-200 bg-white">
         <div class="border-b border-gray-200 px-5 py-4">
             <h3 class="text-base font-semibold text-gray-900">Routing Levels</h3>
-            <p class="mt-1 text-sm text-gray-500">Define the depth of the structure. A level can contain many sibling nodes, for example Finance and Surgery can both sit on the Department level.</p>
+            <p class="mt-1 text-sm text-gray-500">Define the depth of the structure. Each routing node uses its selected level name automatically.</p>
         </div>
 
         <div class="grid grid-cols-1 gap-0 lg:grid-cols-[1fr_24rem]">
@@ -130,7 +130,7 @@
         <div class="flex flex-col gap-3 border-b border-gray-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h3 class="text-base font-semibold text-gray-900">Routing Tree</h3>
-                <p class="mt-1 text-sm text-gray-500">Create actual nodes under each level. Finance and Surgery can both be Department-level nodes, but each can route staff through different child nodes and client spaces.</p>
+                <p class="mt-1 text-sm text-gray-500">Create routing nodes under each level. The selected routing level becomes the node name automatically.</p>
             </div>
             @if($canEditRouting)
                 <button wire:click="openModal" class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
@@ -163,14 +163,6 @@
             </h3>
 
             <form wire:submit.prevent="saveUnit">
-                @if($newUnitParentId)
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700">Node name</label>
-                        <input type="text" wire:model="newUnitName" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                        @error('newUnitName') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
-                    </div>
-                @endif
-
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700">Routing level</label>
                     <select wire:model="newUnitTierLevelId" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
@@ -180,6 +172,7 @@
                         @endforeach
                     </select>
                     @error('newUnitTierLevelId') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
+                    <p class="mt-1 text-xs text-gray-500">The selected routing level becomes the node name.</p>
                 </div>
 
                 <div class="mb-4">
@@ -217,14 +210,6 @@
             </h3>
 
             <form wire:submit.prevent="saveUnitConfiguration">
-                @if($editUnitParentId)
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700">Node name</label>
-                        <input type="text" wire:model="editUnitName" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                        @error('editUnitName') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
-                    </div>
-                @endif
-
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700">Routing level</label>
                     <select wire:model="editUnitTierLevelId" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
@@ -234,6 +219,7 @@
                         @endforeach
                     </select>
                     @error('editUnitTierLevelId') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
+                    <p class="mt-1 text-xs text-gray-500">The selected routing level becomes the node name.</p>
                 </div>
 
                 <div class="mb-4">
