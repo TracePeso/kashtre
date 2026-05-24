@@ -224,6 +224,119 @@ class GeminiRosterDraftGenerator
     }
 
     /**
+     * @param Collection<int, StaffAssignment> $eligibleAssignments
+     * @param Collection<int, ShiftType> $shiftTypes
+     * @param array<int|string, array<string, mixed>> $entries
+     * @param array{
+     *   replace_existing_entries?: bool,
+     *   variation_seed?: string
+     * } $options
+     * @return array{
+     *   generation_mode:string,
+     *   variation_seed:string,
+     *   replace_existing_entries:bool,
+     *   eligible_staff_count:int,
+     *   shift_type_count:int,
+     *   chunk_count:int,
+     *   chunks:array<int, array{
+     *     chunk_index:int,
+     *     chunk_start:string,
+     *     chunk_end:string,
+     *     payload:array<string, mixed>
+     *   }>
+     * }
+     */
+    public function promptPreview(
+        HrDutyRoster $roster,
+        Collection $eligibleAssignments,
+        Collection $shiftTypes,
+        array $entries = [],
+        array $options = []
+    ): array {
+        $roster->loadMissing('organization', 'organizationalUnit');
+
+        $policy = $this->policyResolver->requireActiveVersion(
+            $roster->organization,
+            CarbonImmutable::parse($roster->start_date)
+        );
+
+        $eligibleAssignments = $eligibleAssignments->values();
+        $eligibleById = $eligibleAssignments->keyBy(fn (StaffAssignment $assignment): string => (string) $assignment->id);
+        $usableShiftTypes = $shiftTypes
+            ->filter(fn (ShiftType $shiftType): bool => $shiftType->is_active && $shiftType->is_rosterable)
+            ->filter(fn (ShiftType $shiftType): bool => $shiftType->effectiveNetMinutes() > 0)
+            ->sortBy([
+                ['start_time', 'asc'],
+                ['name', 'asc'],
+                ['id', 'asc'],
+            ])
+            ->values();
+        $this->assertPrerequisites($roster, $eligibleAssignments, $usableShiftTypes);
+
+        $dates = $this->dateRange($roster);
+        $validDates = collect($dates)->mapWithKeys(fn (CarbonImmutable $date): array => [$date->toDateString() => true]);
+        $shiftTypeById = $usableShiftTypes->keyBy(fn (ShiftType $shiftType): string => (string) $shiftType->id);
+        $previousSelections = $this->sanitizeSelections($entries, $eligibleById, $shiftTypeById, $validDates);
+        $replaceExistingEntries = (bool) ($options['replace_existing_entries'] ?? false);
+        $variationSeed = filled($options['variation_seed'] ?? null)
+            ? (string) $options['variation_seed']
+            : now()->format('YmdHisv');
+        $selections = $replaceExistingEntries ? [] : $previousSelections;
+        $avoidSelections = $replaceExistingEntries ? $previousSelections : [];
+        $weekendDays = $this->weekendDays($roster);
+        $dateChunks = $this->dateChunks($dates);
+
+        return [
+            'generation_mode' => $replaceExistingEntries ? 'new_variant' : 'fill_blanks',
+            'variation_seed' => $variationSeed,
+            'replace_existing_entries' => $replaceExistingEntries,
+            'eligible_staff_count' => $eligibleAssignments->count(),
+            'shift_type_count' => $usableShiftTypes->count(),
+            'chunk_count' => count($dateChunks),
+            'chunks' => collect($dateChunks)
+                ->values()
+                ->map(function (array $dateChunk, int $chunkIndex) use (
+                    $roster,
+                    $policy,
+                    $eligibleAssignments,
+                    $usableShiftTypes,
+                    $selections,
+                    $avoidSelections,
+                    $shiftTypeById,
+                    $weekendDays,
+                    $replaceExistingEntries,
+                    $variationSeed
+                ): array {
+                    $chunkValidDates = collect($dateChunk)->mapWithKeys(fn (CarbonImmutable $date): array => [$date->toDateString() => true]);
+                    $chunkSelections = $this->restrictSelectionsToDates($selections, $chunkValidDates);
+                    $chunkAvoidSelections = $this->restrictSelectionsToDates($avoidSelections, $chunkValidDates);
+
+                    return [
+                        'chunk_index' => $chunkIndex + 1,
+                        'chunk_start' => $dateChunk[0]->toDateString(),
+                        'chunk_end' => $dateChunk[array_key_last($dateChunk)]->toDateString(),
+                        'payload' => $this->promptPayload(
+                            $roster,
+                            $policy,
+                            $eligibleAssignments,
+                            $usableShiftTypes,
+                            $dateChunk,
+                            $chunkSelections,
+                            $chunkAvoidSelections,
+                            $shiftTypeById,
+                            $weekendDays,
+                            $replaceExistingEntries,
+                            $variationSeed.':chunk-'.($chunkIndex + 1),
+                            $selections,
+                            $avoidSelections
+                        ),
+                    ];
+                })
+                ->all(),
+        ];
+    }
+
+    /**
      * @param array<int|string, array<string, mixed>> $entries
      * @param Collection<string, StaffAssignment> $eligibleById
      * @param Collection<string, ShiftType> $shiftTypeById
@@ -326,7 +439,53 @@ class GeminiRosterDraftGenerator
         array $currentSelections,
         array $currentAvoidSelections
     ): string {
-        $payload = [
+        $payload = $this->promptPayload(
+            $roster,
+            $policy,
+            $eligibleAssignments,
+            $shiftTypes,
+            $dates,
+            $selections,
+            $avoidSelections,
+            $shiftTypeById,
+            $weekendDays,
+            $replaceExistingEntries,
+            $variationSeed,
+            $currentSelections,
+            $currentAvoidSelections
+        );
+
+        return json_encode($payload, JSON_UNESCAPED_SLASHES) ?: '{}';
+    }
+
+    /**
+     * @param Collection<int, StaffAssignment> $eligibleAssignments
+     * @param Collection<int, ShiftType> $shiftTypes
+     * @param array<int, CarbonImmutable> $dates
+     * @param array<int|string, array<string, string>> $selections
+     * @param array<int|string, array<string, string>> $avoidSelections
+     * @param array<int|string, array<string, string>> $currentSelections
+     * @param array<int|string, array<string, string>> $currentAvoidSelections
+     * @param Collection<string, ShiftType> $shiftTypeById
+     * @param array<int, int> $weekendDays
+     * @return array<string, mixed>
+     */
+    private function promptPayload(
+        HrDutyRoster $roster,
+        $policy,
+        Collection $eligibleAssignments,
+        Collection $shiftTypes,
+        array $dates,
+        array $selections,
+        array $avoidSelections,
+        Collection $shiftTypeById,
+        array $weekendDays,
+        bool $replaceExistingEntries,
+        string $variationSeed,
+        array $currentSelections,
+        array $currentAvoidSelections
+    ): array {
+        return [
             'instructions' => [
                 $replaceExistingEntries
                     ? 'Generate a fresh roster variant that replaces the previous AI draft.'
@@ -403,8 +562,6 @@ class GeminiRosterDraftGenerator
             'previous_assignments_to_avoid' => $this->existingAssignmentsForPrompt($avoidSelections),
             'previous_workload_to_avoid' => $this->currentWorkloadForPrompt($currentAvoidSelections, $shiftTypeById, $eligibleAssignments, $weekendDays),
         ];
-
-        return json_encode($payload, JSON_UNESCAPED_SLASHES) ?: '{}';
     }
 
     /**
