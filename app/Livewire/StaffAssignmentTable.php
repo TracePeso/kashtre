@@ -85,6 +85,12 @@ class StaffAssignmentTable extends Component implements HasForms, HasTable
                         : 'Flexible')
                     ->toggleable(),
 
+                Tables\Columns\TextColumn::make('shift_preference_summary')
+                    ->label('Shift Preference')
+                    ->state(fn (StaffAssignment $record): string => $this->shiftPreferenceSummary($record))
+                    ->wrap()
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('home_branch_name')
                     ->label('Home Branch')
                     ->placeholder('Not set')
@@ -153,16 +159,16 @@ class StaffAssignmentTable extends Component implements HasForms, HasTable
                         }
                     }),
                 Tables\Actions\Action::make('rosteringProfile')
-                    ->visible(fn (): bool => Auth::user()?->canEditHrStaff() ?? false)
+                    ->visible(fn (): bool => $this->canManageShiftPreferences())
                     ->button()
-                    ->label('Rostering')
+                    ->label('Shift Preference')
                     ->color('gray')
-                    ->modalHeading('Edit Rostering Profile')
+                    ->modalHeading('Edit Shift Preference')
                     ->fillForm(fn (StaffAssignment $record): array => $this->rosteringProfileFormData($record))
                     ->form($this->rosteringProfileFormSchema())
                     ->action(function (StaffAssignment $record, array $data): void {
                         $this->saveRosteringProfile($record, $data);
-                        Notification::make()->success()->title('Rostering profile updated.')->send();
+                        Notification::make()->success()->title('Shift preference updated.')->send();
                     }),
                 Tables\Actions\EditAction::make()
                     ->visible(fn (): bool => Auth::user()?->canEditHrStaff() ?? false)
@@ -428,6 +434,43 @@ class StaffAssignmentTable extends Component implements HasForms, HasTable
                 'notes' => $data['notes'] ?: null,
                 'is_active' => (bool) ($data['is_active'] ?? true),
             ]
+        );
+    }
+
+    protected function shiftPreferenceSummary(StaffAssignment $record): string
+    {
+        $profile = $record->rosteringProfile;
+
+        if (! $profile || ! $profile->is_active) {
+            return 'No preference set';
+        }
+
+        if ($profile->fixedShiftType) {
+            return 'Fixed: '.$this->shiftTypeLabel($profile->fixedShiftType);
+        }
+
+        $preferredLabels = collect($profile->preferredShiftIds())
+            ->map(fn (int $shiftId): ?string => $this->shiftTypeOptions()[(string) $shiftId] ?? null)
+            ->filter()
+            ->values();
+
+        if ($preferredLabels->isNotEmpty()) {
+            return 'Preferred: '.$preferredLabels->implode(', ');
+        }
+
+        return $profile->rostering_mode === HrStaffRosteringProfile::MODE_FIXED
+            ? 'Fixed pattern'
+            : 'Dynamic rotation';
+    }
+
+    protected function canManageShiftPreferences(): bool
+    {
+        $user = Auth::user();
+
+        return (bool) (
+            $user?->canEditHrStaff()
+            || $user?->canViewHrStaff()
+            || $user?->canViewHrSetup()
         );
     }
 
