@@ -20,6 +20,7 @@ class HrRealDataSyncService
         private readonly KashApiService $api,
         private readonly ?ClientSpaceRoutingService $clientSpaceRoutingService = null,
         private readonly ?HrDefaultShiftTypeService $defaultShiftTypeService = null,
+        private readonly ?HrDefaultLeaveTypeService $defaultLeaveTypeService = null,
     )
     {
     }
@@ -812,6 +813,7 @@ class HrRealDataSyncService
         );
 
         $this->defaultShiftTypeService?->seedMissingDefaults($organization);
+        $this->defaultLeaveTypeService?->seedMissingDefaults($organization);
 
         return $organization;
     }

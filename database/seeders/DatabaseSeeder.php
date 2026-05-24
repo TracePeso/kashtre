@@ -24,6 +24,7 @@ class DatabaseSeeder extends Seeder
             CurrencyCountrySeeder::class,
             KashtreSeeder::class,
             HrDefaultShiftTypeSeeder::class,
+            HrDefaultLeaveTypeSeeder::class,
         ]);
     }
 }

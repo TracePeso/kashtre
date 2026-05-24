@@ -720,16 +720,17 @@ class ApprovalRequestQueue extends Component
             ->whereIn('status', ['pending', 'approved'])
             ->orderByDesc('start_date')
             ->orderByDesc('id')
-            ->get()
-            ->groupBy('leave_type_id');
+            ->get();
 
-        $rows = $leaveTypes->map(function (LeaveType $leaveType) use ($leaveRequests): array {
-            $requestsForType = $leaveRequests->get($leaveType->id, collect());
+        $rows = $leaveTypes->map(function (LeaveType $leaveType) use ($leaveRequests, $assignment): array {
+            $requestsForType = $leaveRequests->where('leave_type_id', $leaveType->id)->values();
             $latestRequest = $requestsForType->first();
             $year = $latestRequest?->start_date?->year ?? now()->year;
-            $usedDays = (float) $requestsForType
-                ->filter(fn (HrApprovalRequest $request): bool => (int) $request->start_date?->year === (int) $year)
-                ->sum('requested_days');
+            $usedDays = $this->usedDaysForLeaveType(
+                $leaveType,
+                (int) $assignment->id,
+                (int) $year
+            );
             $latestRequestedDays = $latestRequest ? (float) $latestRequest->requested_days : null;
             $entitledDays = null;
             $balanceDays = null;
@@ -778,11 +779,16 @@ class ApprovalRequestQueue extends Component
 
         $year ??= now()->year;
 
+        return $this->usedDaysForLeaveType($leaveType, (int) $this->staffAssignmentId, (int) $year);
+    }
+
+    private function usedDaysForLeaveType(LeaveType $leaveType, int $staffAssignmentId, int $year): float
+    {
         return (float) HrApprovalRequest::query()
             ->where('organization_id', $this->organizationId)
             ->where('approval_category', 'leave')
-            ->where('leave_type_id', $leaveType->id)
-            ->where('staff_assignment_id', $this->staffAssignmentId)
+            ->whereIn('leave_type_id', $leaveType->groupedLeaveTypeIds())
+            ->where('staff_assignment_id', $staffAssignmentId)
             ->whereIn('status', ['pending', 'approved'])
             ->whereYear('start_date', $year)
             ->sum('requested_days');

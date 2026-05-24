@@ -21,6 +21,7 @@ class LeaveType extends Model
         'organization_id',
         'name',
         'code',
+        'balance_group_code',
         'session_type',
         'days_deducted_per_workday',
         'max_days_per_year',
@@ -83,5 +84,36 @@ class LeaveType extends Model
     public function requestedDaysForWorkingDays(float $workingDays): float
     {
         return round($workingDays * $this->deductionPerWorkday(), 2);
+    }
+
+    public function balanceGroupCode(): string
+    {
+        $groupCode = strtoupper(trim((string) $this->balance_group_code));
+
+        if ($groupCode !== '') {
+            return $groupCode;
+        }
+
+        return 'LEAVE_TYPE_'.$this->getKey();
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    public function groupedLeaveTypeIds(): array
+    {
+        $query = self::query()
+            ->where('organization_id', $this->organization_id);
+
+        if (filled($this->balance_group_code)) {
+            $query->where('balance_group_code', $this->balanceGroupCode());
+        } else {
+            $query->whereKey($this->getKey());
+        }
+
+        return $query
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
     }
 }

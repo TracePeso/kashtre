@@ -492,7 +492,7 @@ class HrApprovalRequest extends Model
             $usedDays = (float) self::query()
                 ->where('organization_id', $workflow->organization_id)
                 ->where('approval_category', 'leave')
-                ->where('leave_type_id', $leaveType->id)
+                ->whereIn('leave_type_id', $leaveType->groupedLeaveTypeIds())
                 ->where('staff_assignment_id', $assignment->id)
                 ->whereIn('status', ['pending', 'approved'])
                 ->whereYear('start_date', $start->year)

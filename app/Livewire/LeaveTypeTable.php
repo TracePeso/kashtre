@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Models\LeaveType;
 use App\Models\Organization;
+use App\Services\HrDefaultLeaveTypeService;
 use Filament\Forms;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -23,9 +24,15 @@ class LeaveTypeTable extends Component implements HasForms, HasTable
     public function table(Table $table): Table
     {
         $org = Organization::current();
+
+        if ($org) {
+            app(HrDefaultLeaveTypeService::class)->seedMissingDefaults($org);
+        }
+
         $query = LeaveType::query()
             ->when($org, fn($q) => $q->where('organization_id', $org->id))
-            ->latest();
+            ->orderBy('code')
+            ->latest('id');
 
         return $table
             ->query($query)
