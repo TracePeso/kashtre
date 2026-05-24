@@ -1427,7 +1427,58 @@ class DutyRosterService
             ->unique('id')
             ->sortBy('staff_name', SORT_NATURAL | SORT_FLAG_CASE)
             ->values()
+            ->pipe(fn (Collection $assignments): Collection => $this->hydrateAssignmentDisciplineMetadata($assignments))
             ->loadMissing('rosteringProfile.fixedShiftType');
+    }
+
+    /**
+     * Fill missing title/department labels from linked users so roster title pickers
+     * still work even before one-time backfills have run.
+     *
+     * @param Collection<int, StaffAssignment> $assignments
+     */
+    private function hydrateAssignmentDisciplineMetadata(Collection $assignments): Collection
+    {
+        $staffUuids = $assignments
+            ->filter(fn (StaffAssignment $assignment): bool => blank($assignment->staff_title) || blank($assignment->staff_department))
+            ->pluck('staff_uuid')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($staffUuids->isEmpty()) {
+            return $assignments;
+        }
+
+        $usersByStaffUuid = User::query()
+            ->with([
+                'title:id,name',
+                'department:id,name',
+            ])
+            ->whereIn('staff_uuid', $staffUuids)
+            ->orWhereIn('uuid', $staffUuids)
+            ->get(['id', 'uuid', 'staff_uuid', 'title_id', 'department_id'])
+            ->keyBy(fn (User $user): string => (string) ($user->staff_uuid ?: $user->uuid));
+
+        if ($usersByStaffUuid->isEmpty()) {
+            return $assignments;
+        }
+
+        return $assignments->each(function (StaffAssignment $assignment) use ($usersByStaffUuid): void {
+            $user = $usersByStaffUuid->get((string) $assignment->staff_uuid);
+
+            if (! $user) {
+                return;
+            }
+
+            if (blank($assignment->staff_title) && filled($user->title?->name)) {
+                $assignment->setAttribute('staff_title', $user->title->name);
+            }
+
+            if (blank($assignment->staff_department) && filled($user->department?->name)) {
+                $assignment->setAttribute('staff_department', $user->department->name);
+            }
+        });
     }
 
     private function cleanDisciplineLabel(?string $discipline): string
