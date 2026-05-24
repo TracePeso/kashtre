@@ -29,6 +29,8 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
+        'p2p_display_name',
+        'p2p_ringtone',
         'email',
         'password',
         'status',
@@ -95,6 +97,11 @@ class User extends Authenticatable
     protected $appends = [
         'profile_photo_url',
     ];
+
+    public function getP2pNameAttribute()
+    {
+        return $this->p2p_display_name ?: $this->name;
+    }
 
     public function business()
     {

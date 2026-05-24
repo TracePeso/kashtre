@@ -132,6 +132,11 @@ class Business extends Model
         return $this->hasMany(Department::class);
     }
 
+    public function clientSpaces()
+    {
+        return $this->hasMany(ClientSpace::class);
+    }
+
     public function sections()
     {
         return $this->hasMany(Section::class);

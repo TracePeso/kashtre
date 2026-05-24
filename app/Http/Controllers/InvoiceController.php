@@ -1551,6 +1551,46 @@ class InvoiceController extends Controller
                     }
                 }
 
+                // Determine payment status label for the transaction record.
+                $paymentStatus = 'Paid';
+
+                // TODO: REVERT IN PROD - local bypass: create transaction immediately for mobile money
+                // when API is bypassed on frontend and payment arrives as fully paid.
+                if ($primaryMethod === 'mobile_money' && ($validated['amount_paid'] ?? 0) >= $invoice->total_amount) {
+                    $existingTransaction = \App\Models\Transaction::where('reference', $invoiceNumber)
+                        ->where('client_id', $validated['client_id'])
+                        ->first();
+
+                    if (! $existingTransaction) {
+                        $itemsDescription = $this->buildItemsDescription($validated['items'], $client, $business, $invoiceNumber);
+
+                        \App\Models\Transaction::create([
+                            'business_id' => $validated['business_id'],
+                            'branch_id' => $validated['branch_id'],
+                            'client_id' => $validated['client_id'],
+                            'invoice_id' => $invoice->id,
+                            'amount' => $validated['amount_paid'],
+                            'reference' => $invoiceNumber,
+                            'description' => $itemsDescription,
+                            'status' => 'completed',
+                            'payment_status' => $paymentStatus,
+                            'type' => 'debit',
+                            'origin' => 'web',
+                            'phone_number' => $validated['payment_phone'] ?? $validated['client_phone'],
+                            'provider' => 'yo',
+                            'service' => 'invoice_payment',
+                            'date' => now(),
+                            'currency' => $invoiceCurrency,
+                            'names' => $validated['client_name'],
+                            'email' => null,
+                            'ip_address' => request()->ip(),
+                            'user_agent' => request()->userAgent(),
+                            'method' => 'mobile_money',
+                            'transaction_for' => 'main',
+                        ]);
+                    }
+                }
+
                 // Create transaction record for cash payments (non-credit transactions)
                 // Mobile money transactions are created in processMobileMoneyPayment method
                 if ($primaryMethod === 'cash') {
@@ -1670,6 +1710,7 @@ class InvoiceController extends Controller
             // Check if payment is fully completed (for cash payments)
             $isFullyPaid = ($validated['amount_paid'] ?? 0) >= $invoice->total_amount && $invoice->payment_status === 'paid';
             $isCashPayment = in_array('cash', $paymentMethods) && ! $isCreditTransaction && ! $isInsurancePaymentMethod;
+            $isMobileMoneyPayment = in_array('mobile_money', $paymentMethods) && ! $isCreditTransaction && ! $isInsurancePaymentMethod;
 
             $shouldQueueInsuranceNow = ($isInsuranceTransaction || $isInsurancePaymentMethod) && ! $deferInsuranceServiceQueue;
 
@@ -1699,7 +1740,7 @@ class InvoiceController extends Controller
             $shouldQueueItems = (
                 $isCreditTransaction ||
                 $shouldQueueInsuranceNow ||
-                ($isFullyPaid && $isCashPayment)
+                ($isFullyPaid && ($isCashPayment || $isMobileMoneyPayment))
             ) && $nonDepositItems->isNotEmpty();
 
             if ($shouldQueueItems) {
@@ -1708,6 +1749,8 @@ class InvoiceController extends Controller
                     $transactionType = 'INSURANCE';
                 } elseif ($isCreditTransaction) {
                     $transactionType = 'CREDIT';
+                } elseif ($isFullyPaid && $isMobileMoneyPayment) {
+                    $transactionType = 'MOBILE MONEY (FULLY PAID)';
                 } elseif ($isFullyPaid && $isCashPayment) {
                     $transactionType = 'CASH (FULLY PAID)';
                 } else {
@@ -1722,6 +1765,7 @@ class InvoiceController extends Controller
                     'is_credit_eligible' => $isCreditClient,
                     'is_insurance_payment' => $isInsuranceTransaction || $isInsurancePaymentMethod,
                     'is_fully_paid_cash' => $isFullyPaid && $isCashPayment,
+                    'is_fully_paid_mobile_money' => $isFullyPaid && $isMobileMoneyPayment,
                     'balance_due' => $invoice->balance_due,
                     'items_count' => $nonDepositItems->count(),
                     'items' => $nonDepositItems->toArray(),
@@ -4162,6 +4206,22 @@ class InvoiceController extends Controller
 
             // Handle regular items with service points (only for non-package, non-bulk items)
             if ($branchServicePoint && $branchServicePoint->service_point_id) {
+                $existingQueue = \App\Models\ServiceDeliveryQueue::where('invoice_id', $invoice->id)
+                    ->where('client_id', $invoice->client_id)
+                    ->where('item_id', $itemId)
+                    ->where('service_point_id', $branchServicePoint->service_point_id)
+                    ->first();
+
+                if ($existingQueue) {
+                    Log::info('Regular item already queued for invoice, skipping duplicate', [
+                        'invoice_id' => $invoice->id,
+                        'queue_id' => $existingQueue->id,
+                        'item_id' => $itemId,
+                        'service_point_id' => $branchServicePoint->service_point_id,
+                    ]);
+                    continue;
+                }
+
                 Log::info('Creating service delivery queue for regular item', [
                     'item_id' => $itemId,
                     'service_point_id' => $branchServicePoint->service_point_id,

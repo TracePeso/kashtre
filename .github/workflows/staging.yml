@@ -14,11 +14,9 @@ jobs:
       ACTIONS_STEP_DEBUG: true
 
     steps:
-      # Step 1: Checkout the code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Step 2: Set up PHP
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
@@ -26,52 +24,60 @@ jobs:
           extensions: mbstring, xml, bcmath, ctype, json, tokenizer, curl
           coverage: none
 
-      # Step 3: Install Composer dependencies
       - name: Install Composer dependencies
         run: composer install --no-dev --optimize-autoloader --no-interaction --ignore-platform-reqs
 
-      # Step 3b: Build frontend assets (Vite)
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install JS dependencies and build
-        run: |
-          npm install --no-audit --no-fund
-          npm run build
+      - name: Install frontend dependencies
+        run: npm ci
 
-      # Step 4: Install sshpass
+      - name: Build frontend assets
+        env:
+          VITE_REVERB_APP_KEY: kashtre-reverb-key
+          VITE_REVERB_HOST: reverb.kashtre.com
+          VITE_REVERB_PORT: 443
+          VITE_REVERB_SCHEME: https
+          VITE_WEBRTC_STUN_URLS: ${{ vars.VITE_WEBRTC_STUN_URLS || 'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302' }}
+          VITE_WEBRTC_TURN_URL: ${{ secrets.VITE_WEBRTC_TURN_URL }}
+          VITE_WEBRTC_TURN_USERNAME: ${{ secrets.VITE_WEBRTC_TURN_USERNAME }}
+          VITE_WEBRTC_TURN_CREDENTIAL: ${{ secrets.VITE_WEBRTC_TURN_CREDENTIAL }}
+          VITE_WEBRTC_ICE_TRANSPORT_POLICY: ${{ vars.VITE_WEBRTC_ICE_TRANSPORT_POLICY || 'all' }}
+        run: npm run build
       - name: Install sshpass
         run: |
           sudo apt-get update
           sudo apt-get install -y sshpass || { echo "Failed to install sshpass"; exit 1; }
           sshpass -v || { echo "sshpass not found after installation"; exit 1; }
 
-      # Step 5: Test SSH Connection
       - name: Test SSH Connection
+        env:
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          SSHPASS: ${{ secrets.FTP_PASSWORD }}
         run: |
-          sshpass -p "${{ secrets.FTP_PASSWORD }}" ssh -o StrictHostKeyChecking=no -p 65002 ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }} whoami
-          sshpass -p "${{ secrets.FTP_PASSWORD }}" ssh -o StrictHostKeyChecking=no -p 65002 ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }} "echo 'Test command execution' && ls -la /home/u242329769/domains/staging.kashtre.com/public_html"
+          sshpass -e ssh -o StrictHostKeyChecking=no -p 65002 "$FTP_USERNAME@$FTP_SERVER" whoami
+          sshpass -e ssh -o StrictHostKeyChecking=no -p 65002 "$FTP_USERNAME@$FTP_SERVER" "echo 'Test command execution' && ls -la /home/u242329769/domains/staging.kashtre.com/public_html"
 
-      # Step 6: Deploy to Hostinger via SSH
       - name: Deploy to Hostinger
         env:
-          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          SSHPASS: ${{ secrets.FTP_PASSWORD }}
         run: |
-          # Define deployment directory
           DEPLOY_DIR="/home/u242329769/domains/staging.kashtre.com/public_html"
+          ARTISAN_PHP="php -d opcache.enable_cli=0"
 
-          # Debug: List local files in GITHUB_WORKSPACE
           echo "Local files in GITHUB_WORKSPACE:"
           ls -la $GITHUB_WORKSPACE
 
-          # Copy files using rsync with sshpass, excluding .env and .htaccess
-          sshpass -p "$FTP_PASSWORD" rsync -avz --exclude '.env' --exclude '.htaccess' -e "ssh -p 65002 -o StrictHostKeyChecking=no" $GITHUB_WORKSPACE/ ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }}:"$DEPLOY_DIR"
+          sshpass -e rsync -avz --exclude '.env' --exclude '.htaccess' -e "ssh -p 65002 -o StrictHostKeyChecking=no" $GITHUB_WORKSPACE/ "$FTP_USERNAME@$FTP_SERVER":"$DEPLOY_DIR"
 
-          # Step 1: Set permissions and create storage link
-          sshpass -p "$FTP_PASSWORD" ssh -o StrictHostKeyChecking=no -p 65002 ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }} "cd /home/u242329769/domains/staging.kashtre.com/public_html && echo '✓ Setting permissions...' && chmod -R 755 storage bootstrap/cache 2>/dev/null || echo 'Warning: Could not set permissions' && echo '✓ Removing existing storage link...' && rm -f public/storage && echo '✓ Creating storage link...' && php artisan storage:link"
+          # Clear stale cached Laravel config before any Artisan command.
+          sshpass -e ssh -o StrictHostKeyChecking=no -p 65002 "$FTP_USERNAME@$FTP_SERVER" "cd /home/u242329769/domains/staging.kashtre.com/public_html && echo 'Clearing stale cache files...' && rm -f bootstrap/cache/*.php && echo 'Checking Reverb config shape...' && $ARTISAN_PHP -r '\$config = require \"config/reverb.php\"; echo isset(\$config[\"servers\"][\"reverb\"][\"scaling\"]) ? \"Reverb scaling config present\n\" : \"Reverb scaling config missing\n\";' && echo 'Setting permissions...' && chmod -R 755 storage bootstrap/cache 2>/dev/null || echo 'Warning: Could not set permissions' && echo 'Removing existing storage link...' && rm -f public/storage && echo 'Creating storage link...' && $ARTISAN_PHP artisan storage:link"
 
-          # Step 2: Handle migrations safely (mark existing tables as migrated)
-          sshpass -p "$FTP_PASSWORD" ssh -o StrictHostKeyChecking=no -p 65002 ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }} "cd /home/u242329769/domains/staging.kashtre.com/public_html && echo '✓ Checking for existing tables that need migration records...' && php artisan fix:existing-tables && echo '✓ Running migrations...' && php artisan migrate --force --verbose && echo '✓ Checking migration status...' && php artisan migrate:status && echo '✓ Clearing and caching...' && php artisan optimize:clear && php artisan view:clear && php artisan config:cache && php artisan route:cache && echo '✓ Deployment completed successfully!'" 
+          sshpass -e ssh -o StrictHostKeyChecking=no -p 65002 "$FTP_USERNAME@$FTP_SERVER" "cd /home/u242329769/domains/staging.kashtre.com/public_html && echo 'Checking for existing tables that need migration records...' && $ARTISAN_PHP artisan fix:existing-tables && echo 'Running migrations...' && $ARTISAN_PHP artisan migrate --force --verbose && echo 'Checking migration status...' && $ARTISAN_PHP artisan migrate:status && echo 'Clearing and caching...' && $ARTISAN_PHP artisan optimize:clear && $ARTISAN_PHP artisan view:clear && $ARTISAN_PHP artisan config:cache && $ARTISAN_PHP artisan route:cache && echo 'Deployment completed successfully!'"

@@ -18,7 +18,7 @@
 
     <div class="py-6">
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-            
+
             <!-- Visit ID Check -->
             @if(empty($client->visit_id))
             <script>
@@ -42,7 +42,7 @@
                 });
             </script>
             @endif
-            
+
             <!-- Success Message -->
             @if(session('success'))
             <div class="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
@@ -58,7 +58,6 @@
                 </div>
             </div>
             @endif
-            
             <!-- Section 1: compact Client ID / Visit ID + optional extra details -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6 border border-gray-100 dark:border-gray-700" x-data="{ expanded: false }">
                 <div class="p-4">
@@ -271,7 +270,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Section 3: Client Notes -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
                 <div class="p-6">
@@ -288,43 +287,43 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Section 4: Make a Request/Order - Professional Two Column Layout -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
                 <div class="p-6">
                     <h3 class="text-lg font-medium text-gray-900 mb-4">Make a Request/Order</h3>
-                    
+
                     <!-- Main POS Interface - Two Column Layout -->
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        
+
                         <!-- Left Column: Item Selection -->
                         <div>
                             <h4 class="text-md font-medium text-gray-900 mb-4">Select Item</h4>
-                            
+
                             <!-- Search Bar -->
                             <div class="mb-4">
                                 <div class="relative">
-                                    <input type="text" id="search-input" placeholder="Search items..." 
+                                    <input type="text" id="search-input" placeholder="Search items..."
                                            class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                                     <svg class="absolute left-3 top-2.5 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                                     </svg>
                                 </div>
                             </div>
-                            
+
                             <!-- Simple Options -->
                             <div class="flex items-center space-x-4 mb-4">
                                 <label class="flex items-center space-x-2">
                                     <input type="checkbox" id="show-prices" class="rounded border-gray-300">
                                     <span class="text-sm text-gray-700">Show Prices</span>
                                 </label>
-                                
+
                                 <label class="flex items-center space-x-2">
                                     <input type="checkbox" id="show-descriptions" class="rounded border-gray-300">
                                     <span class="text-sm text-gray-700">Show Descriptions</span>
                                 </label>
                             </div>
-                            
+
                             <!-- Items Table -->
                             <div class="border border-gray-200 rounded-lg overflow-hidden">
                                 <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
@@ -340,7 +339,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                
+
                                 <div id="items-container" class="divide-y divide-gray-200 max-h-96 overflow-y-auto">
                                     @forelse($items as $item)
                                     <div class="item-row px-4 py-3 hover:bg-gray-50" data-item-name="{{ strtolower($item->name) }}" data-item-display-name="{{ $item->name }}" data-item-other-names="{{ strtolower($item->other_names ?? '') }}" data-item-type="{{ $item->type ?? 'N/A' }}">
@@ -355,10 +354,10 @@
                                                     } else {
                                                         // Generate dynamic description based on item type and properties
                                                         $descriptionParts = [];
-                                                        
+
                                                         // Add type-specific description based on item name and type
                                                         $itemName = strtolower($item->name);
-                                                        
+
                                                         // Generate intelligent descriptions based on item name patterns
                                                         if (str_contains($itemName, 'amoxicillin')) {
                                                             $descriptionParts[] = 'Antibiotic medication for bacterial infections';
@@ -373,29 +372,29 @@
                                                         } elseif (str_contains($itemName, 'treatment') || str_contains($itemName, 'therapy')) {
                                                             $descriptionParts[] = 'Therapeutic treatment service';
                                                         }
-                                                        
+
                                                         // Add item variation info if present in name
                                                         if (str_contains($itemName, 'advanced') || str_contains($itemName, 'premium') || str_contains($itemName, 'deluxe') || str_contains($itemName, 'professional') || str_contains($itemName, 'enhanced')) {
                                                             $descriptionParts[] = 'Premium quality variant';
                                                         } elseif (str_contains($itemName, 'basic') || str_contains($itemName, 'standard')) {
                                                             $descriptionParts[] = 'Standard quality variant';
                                                         }
-                                                        
+
                                                         // Add category if available
                                                         if ($item->category && !empty(trim($item->category))) {
                                                             $descriptionParts[] = "Category: {$item->category}";
                                                         }
-                                                        
+
                                                         // Add other names if available
                                                         if ($item->other_names && !empty(trim($item->other_names))) {
                                                             $descriptionParts[] = "Also known as: {$item->other_names}";
                                                         }
-                                                        
+
                                                         // Add unit information if available
                                                         if ($item->unit && !empty(trim($item->unit))) {
                                                             $descriptionParts[] = "Unit: {$item->unit}";
                                                         }
-                                                        
+
                                                         $description = implode(' • ', $descriptionParts);
                                                     }
                                                 @endphp
@@ -415,9 +414,9 @@
                                                 </p>
                                             </div>
                                             <div>
-                                                <input type="number" min="0" value="0" 
+                                                <input type="number" min="0" value="0"
                                                        class="quantity-input w-20 px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                       data-item-id="{{ $item->id }}" 
+                                                       data-item-id="{{ $item->id }}"
                                                        data-item-price="{{ $item->final_price ?? 0 }}"
                                                        data-item-name="{{ $item->name }}"
                                                        data-item-display-name="{{ $item->name }}"
@@ -433,7 +432,7 @@
                                     @endforelse
                                 </div>
                             </div>
-                            
+
                             <!-- Pagination -->
                             <div class="mt-4 flex items-center justify-between text-sm text-gray-500">
                                 <span>Showing 1 to {{ min(5, count($items)) }} of {{ count($items) }} results</span>
@@ -447,11 +446,11 @@
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- Right Column: Request/Order Summary -->
                         <div>
                             <h4 class="text-md font-medium text-gray-900 mb-4">Request/Order Summary</h4>
-                            
+
                             <!-- Request/Order Summary Table -->
                             <div class="border border-gray-200 rounded-lg overflow-hidden">
                                 <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
@@ -470,14 +469,14 @@
                                         </div>
                                     </div>
                                 </div>
-                                
+
                                 <div id="request-order-summary-items" class="divide-y divide-gray-200 min-h-32">
                                     <div class="px-4 py-8">
                                         <p class="text-sm text-gray-500 text-center">No items selected</p>
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <!-- Request/Order Summary -->
                             <div class="mt-4 bg-gray-50 p-4 rounded-lg">
                                 <div class="flex justify-between items-center mb-2">
@@ -500,31 +499,31 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Section 5: Ordered Items (Requests/Orders) -->
-            <x-pos.ordered-items 
-                :pendingItems="$pendingItems" 
-                :partiallyDoneItems="$partiallyDoneItems" 
-                :completedItems="collect()" 
+            <x-pos.ordered-items
+                :pendingItems="$pendingItems"
+                :partiallyDoneItems="$partiallyDoneItems"
+                :completedItems="collect()"
                 :correctTotalAmount="$correctTotalAmount ?? 0"
                 :servicePoint="$servicePoint ?? null"
                 :client="$client"
             />
-            
+
             <!-- Save and Exit Button -->
             <div class="flex justify-end space-x-4 mt-6">
-                <a href="{{ route('clients.index') }}" 
-                   class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg transition-colors">
+                <button type="button" onclick="cancelAndExit()"
+                        class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg transition-colors">
                     Cancel
-                </a>
-                <button onclick="saveAndExit()" 
+                </button>
+                <button onclick="saveAndExit()"
                         class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors">
                     Save and Exit
                 </button>
             </div>
         </div>
     </div>
-    
+
     <!-- Client Confirmation Modal -->
     <div id="client-confirmation-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
         <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
@@ -534,7 +533,7 @@
                     {{ auth()->user()->business->name ?? 'Medical Centre' }}
                 </h3>
             </div>
-            
+
             <!-- Client Details -->
             <div class="px-6 py-4">
                 <div class="grid grid-cols-2 gap-4 mb-4">
@@ -549,12 +548,12 @@
                         <p class="text-sm text-gray-600">Visit ID: {{ $client->visit_id }}</p>
                     </div>
                 </div>
-                
+
                 <!-- QR Code Placeholder -->
                 <div class="flex justify-end mb-4">
                     <div class="w-16 h-16 bg-white border border-gray-300 flex items-center justify-center">
-                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=64x64&data={{ urlencode($client->client_id . '|' . $client->name) }}" 
-                             alt="QR Code" 
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=64x64&data={{ urlencode($client->client_id . '|' . $client->name) }}"
+                             alt="QR Code"
                              class="w-full h-full object-contain"
                              onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div class="hidden w-full h-full bg-gray-100 border border-gray-300 flex items-center justify-center">
@@ -563,7 +562,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Action Buttons -->
             <div class="bg-gray-50 px-6 py-4 rounded-b-lg flex justify-center space-x-4">
                 <button onclick="printClientDetails()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition duration-200">
@@ -591,7 +590,7 @@
                         <span id="invoice-number-display" class="text-lg font-bold text-gray-800 ml-2">Generating...</span>
                     </div>
                 </div>
-                
+
                 <!-- Client and Transaction Details -->
                 <div class="grid grid-cols-2 gap-4 mb-6 text-sm text-gray-700">
                     <div>
@@ -606,7 +605,7 @@
                         <p><strong>Branch Name:</strong> {{ auth()->user()->currentBranch->name ?? 'N/A' }}</p>
                     </div>
                 </div>
-                
+
                 <!-- Items Table -->
                 <div class="mb-6">
                     <table class="w-full border-collapse border border-gray-300">
@@ -624,7 +623,7 @@
                         </tbody>
                     </table>
                 </div>
-                
+
                 <!-- Package Adjustment Details -->
                 {{-- Commented out for debugging purposes
                 <div id="package-adjustment-details" class="mb-6 hidden">
@@ -636,7 +635,7 @@
                     </div>
                 </div>
                 --}}
-                
+
                 <!-- Financial Summary -->
                 <div class="text-right space-y-2 text-sm">
                     <div class="flex justify-between">
@@ -677,7 +676,7 @@
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                         Select Third-Party Payer <span class="text-red-500">*</span>
                     </label>
-                    <select id="third-party-payer-select" name="third_party_payer_id" 
+                    <select id="third-party-payer-select" name="third_party_payer_id"
                             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                         <option value="">-- Select Third-Party Payer --</option>
                         @foreach($thirdPartyPayers ?? [] as $payer)
@@ -689,7 +688,7 @@
                     </p>
                 </div>
                 @endif
-                
+
                 <!-- Action Buttons -->
                 <div class="flex justify-end space-x-4 mt-6">
                     <button onclick="closeInvoicePreview()" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors">
@@ -702,7 +701,7 @@
             </div>
         </div>
     </div>
-    
+
     <script>
         let cart = [];
         let serviceCharge = 0;
@@ -736,14 +735,14 @@
                         'Accept': 'application/json',
                     }
                 });
-                
+
                 if (response.ok) {
                     const data = await response.json();
                     if (data.success && data.deductible_used !== undefined) {
                         paymentResponsibility.deductibleUsed = parseFloat(data.deductible_used) || 0;
                         paymentResponsibility.deductibleRemaining = Math.max(0, paymentResponsibility.deductibleAmount - paymentResponsibility.deductibleUsed);
                         updateDeductibleDisplay();
-                        
+
                         console.log('Deductible updated:', {
                             used: paymentResponsibility.deductibleUsed,
                             remaining: paymentResponsibility.deductibleRemaining,
@@ -763,7 +762,7 @@
                 paymentResponsibility.deductibleUsed = 0;
             }
         }
-        
+
         // Refresh deductible status after payment (when returning from payment page)
         @if(session('success'))
         @php
@@ -782,7 +781,7 @@
         }, 500);
         @endif
         @endif
-        
+
         function updateDeductibleDisplay() {
             const deductibleUsedEl = document.getElementById('deductible-used');
             const deductibleRemainingEl = document.getElementById('deductible-remaining');
@@ -790,21 +789,21 @@
             const deductibleActionText = document.getElementById('deductible-action-text');
             const deductiblePayLink = document.getElementById('deductible-pay-link');
             const deductibleDetailsDisplay = document.getElementById('deductible-details-display');
-            
+
             // Update "met" display elements
             const deductibleUsedMetEl = document.getElementById('deductible-used-met');
             const deductibleRemainingMetEl = document.getElementById('deductible-remaining-met');
             const deductibleStatusBadgeMet = document.getElementById('deductible-status-badge-met');
-            
+
             if (deductibleUsedEl && deductibleRemainingEl && deductibleStatusBadge) {
                 deductibleUsedEl.textContent = `UGX ${paymentResponsibility.deductibleUsed.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
                 deductibleRemainingEl.textContent = `UGX ${paymentResponsibility.deductibleRemaining.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-                
+
                 if (paymentResponsibility.deductibleRemaining <= 0) {
                     // Deductible is met - show details display, hide payment link
                     deductibleStatusBadge.textContent = 'Met';
                     deductibleStatusBadge.className = 'px-3 py-1 text-xs font-medium rounded-full bg-green-200 text-green-800';
-                    
+
                     // Update met display
                     if (deductibleUsedMetEl) {
                         deductibleUsedMetEl.textContent = `UGX ${paymentResponsibility.deductibleUsed.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
@@ -812,7 +811,7 @@
                     if (deductibleRemainingMetEl) {
                         deductibleRemainingMetEl.textContent = `UGX ${paymentResponsibility.deductibleRemaining.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
                     }
-                    
+
                     // Hide payment link, show details display
                     if (deductiblePayLink) {
                         deductiblePayLink.classList.add('hidden');
@@ -829,7 +828,7 @@
                     // Deductible not met - show payment link, hide details display
                     deductibleStatusBadge.textContent = 'Not Met';
                     deductibleStatusBadge.className = 'px-3 py-1 text-xs font-medium rounded-full bg-yellow-200 text-yellow-800';
-                    
+
                     // Show payment link, hide details display
                     if (deductiblePayLink) {
                         deductiblePayLink.classList.remove('hidden');
@@ -845,7 +844,7 @@
                 }
             }
         }
-        
+
         function calculatePaymentResponsibility(cartTotal) {
             let copayPayment = 0;
             let deductiblePayment = 0;
@@ -885,43 +884,43 @@
                 total: copayPayment + deductiblePayment + coinsurancePayment
             };
         }
-        
+
         function updatePaymentResponsibilitySummary() {
             const summaryDiv = document.getElementById('payment-responsibility-summary');
             if (!summaryDiv) return;
-            
+
             const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             const payments = calculatePaymentResponsibility(cartTotal);
-            
+
             // Show/hide payment lines
             const copayLine = document.getElementById('copay-payment-line');
             const deductibleLine = document.getElementById('deductible-payment-line');
             const coinsuranceLine = document.getElementById('coinsurance-payment-line');
-            
+
             if (payments.copay > 0) {
                 document.getElementById('copay-amount-display').textContent = payments.copay.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                 if (copayLine) copayLine.style.display = 'flex';
             } else {
                 if (copayLine) copayLine.style.display = 'none';
             }
-            
+
             if (payments.deductible > 0) {
                 document.getElementById('deductible-payment-display').textContent = payments.deductible.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                 if (deductibleLine) deductibleLine.style.display = 'flex';
             } else {
                 if (deductibleLine) deductibleLine.style.display = 'none';
             }
-            
+
             if (payments.coinsurance > 0) {
                 document.getElementById('coinsurance-amount-display').textContent = payments.coinsurance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                 if (coinsuranceLine) coinsuranceLine.style.display = 'flex';
             } else {
                 if (coinsuranceLine) coinsuranceLine.style.display = 'none';
             }
-            
+
             // Update total
             document.getElementById('total-client-payment').textContent = payments.total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            
+
             // Show summary if there's any payment required
             if (payments.total > 0) {
                 summaryDiv.style.display = 'block';
@@ -929,7 +928,7 @@
                 summaryDiv.style.display = 'none';
             }
         }
-        
+
         // Initialize deductible calculation on page load
         @if($client->has_deductible && $client->deductible_amount)
         calculateDeductibleUsed();
@@ -947,12 +946,12 @@
                         'Accept': 'application/json',
                     }
                 });
-                
+
                 if (response.ok) {
                     const data = await response.json();
                     if (data.success && data.copay_paid !== undefined) {
                         updateCopayDisplay(data.copay_paid, data.copay_paid_amount || 0);
-                        
+
                         console.log('Co-pay status updated:', {
                             paid: data.copay_paid,
                             paid_amount: data.copay_paid_amount,
@@ -966,7 +965,7 @@
                 console.error('Error checking co-pay status:', error);
             }
         }
-        
+
         function updateCopayDisplay(isPaid, paidAmount) {
             const copayPayLink = document.getElementById('copay-pay-link');
             const copayDetailsDisplay = document.getElementById('copay-details-display');
@@ -974,7 +973,7 @@
             const copayStatusBadge = document.getElementById('copay-status-badge');
             const copayPaidAmountEl = document.getElementById('copay-paid-amount');
             const copayStatusBadgePaid = document.getElementById('copay-status-badge-paid');
-            
+
             if (isPaid) {
                 // Co-pay is paid - show details display, hide payment link
                 if (copayPayLink) {
@@ -1000,10 +999,10 @@
                 }
             }
         }
-        
+
         checkCopayStatus();
         @endif
-        
+
         // Refresh co-pay status after payment
         @if(session('success'))
         @php
@@ -1016,7 +1015,7 @@
         }, 500);
         @endif
         @endif
-        
+
         // Check payment responsibility requirements
         async function checkPaymentResponsibilityRequirements() {
             @if($client->insurance_company_id && ($client->has_deductible || $client->copay_amount))
@@ -1024,7 +1023,7 @@
                 // Get current deductible status
                 let deductibleRemaining = paymentResponsibility.deductibleRemaining;
                 let copayRequired = paymentResponsibility.copayAmount > 0;
-                
+
                 // Check deductible
                 if (paymentResponsibility.hasDeductible && deductibleRemaining > 0) {
                     return {
@@ -1041,7 +1040,7 @@
                         `
                     };
                 }
-                
+
                 // Check co-pay (if collection is immediate)
                 @if(($collectionTiming ?? 'immediate') === 'immediate')
                 if (copayRequired) {
@@ -1054,7 +1053,7 @@
                                 'Accept': 'application/json',
                             }
                         });
-                        
+
                         if (copayResponse.ok) {
                             const copayData = await copayResponse.json();
                             if (copayData.success && copayData.copay_required && !copayData.copay_paid) {
@@ -1089,7 +1088,7 @@
                     }
                 }
                 @endif
-                
+
                 return {
                     allowed: true,
                     message: 'All payment requirements met.'
@@ -1122,18 +1121,18 @@
             @endif
         }
         @endif
-        
+
         // Inline payment flow for deductible + co-pay without leaving POS page
         @if($client->insurance_company_id && ($client->has_deductible || $client->copay_amount))
         async function payClientResponsibilitiesInline() {
             try {
                 // Refresh latest deductible info
                 await calculateDeductibleUsed();
-                
+
                 let deductibleRemaining = paymentResponsibility.hasDeductible
                     ? (paymentResponsibility.deductibleRemaining || 0)
                     : 0;
-                
+
                 // Fetch latest co-pay status
                 let copayAmountDue = 0;
                 @if(($collectionTiming ?? 'immediate') === 'immediate' && $client->copay_amount)
@@ -1145,7 +1144,7 @@
                             'Accept': 'application/json',
                         }
                     });
-                    
+
                     if (copayResponse.ok) {
                         const copayData = await copayResponse.json();
                         if (copayData.success && copayData.copay_required && !copayData.copay_paid) {
@@ -1156,7 +1155,7 @@
                     console.error('Error fetching co-pay status for inline payment:', error);
                 }
                 @endif
-                
+
                 // If nothing is due, just show info and exit
                 if (deductibleRemaining <= 0 && copayAmountDue <= 0) {
                     await Swal.fire({
@@ -1166,9 +1165,9 @@
                     });
                     return;
                 }
-                
+
                 const totalClientPayment = (deductibleRemaining > 0 ? deductibleRemaining : 0) + (copayAmountDue > 0 ? copayAmountDue : 0);
-                
+
                 // Ask for payment method and (optional) mobile money phone
                 const { value: formValues } = await Swal.fire({
                     title: 'Pay Client Responsibilities',
@@ -1222,7 +1221,7 @@
                     preConfirm: () => {
                         const method = Swal.getPopup().querySelector('#pr-payment-method').value;
                         const phone = Swal.getPopup().querySelector('#pr-payment-phone').value;
-                        
+
                         if (!method) {
                             Swal.showValidationMessage('Please select a payment method');
                             return null;
@@ -1231,21 +1230,21 @@
                             Swal.showValidationMessage('Please enter a payment phone number for mobile money');
                             return null;
                         }
-                        
+
                         return { method, phone };
                     }
                 });
-                
+
                 if (!formValues) {
                     // User cancelled
                     return;
                 }
-                
+
                 const paymentMethod = formValues.method;
                 const paymentPhone = formValues.phone || '';
                 const csrfToken = document.querySelector('meta[name=\"csrf-token\"]').getAttribute('content');
                 const url = '{{ route("payment-responsibility.process", $client) }}';
-                
+
                 // Helper to send one payment
                 const sendPayment = async (type, amount) => {
                     const formData = new FormData();
@@ -1256,18 +1255,18 @@
                     if (paymentPhone) {
                         formData.append('payment_phone', paymentPhone);
                     }
-                    
+
                     const response = await fetch(url, {
                         method: 'POST',
                         body: formData,
                     });
-                    
+
                     if (!response.ok) {
                         const text = await response.text();
                         throw new Error('Payment failed (' + type + '): ' + text);
                     }
                 };
-                
+
                 // Process deductible and co-pay in one inline flow (two backend payments)
                 if (deductibleRemaining > 0) {
                     await sendPayment('deductible', deductibleRemaining);
@@ -1275,13 +1274,13 @@
                 if (copayAmountDue > 0) {
                     await sendPayment('copay', copayAmountDue);
                 }
-                
+
                 // Refresh UI status
                 await calculateDeductibleUsed();
                 @if($client->copay_amount)
                 await checkCopayStatus();
                 @endif
-                
+
                 await Swal.fire({
                     icon: 'success',
                     title: 'Payment Processed',
@@ -1297,7 +1296,7 @@
             }
         }
         @endif
-        
+
         // Credit information for credit clients
         @if($client->is_credit_eligible)
             @php
@@ -1326,7 +1325,7 @@
             if (initialPaymentMethods.includes('mobile_money')) {
                 document.getElementById('payment-phone-section').style.display = 'block';
             }
-            
+
             // Handle third-party payer section visibility for credit clients with insurance
             @if($client->is_credit_eligible)
             const insuranceCheckbox = document.querySelector('input[name="payment_methods[]"][value="insurance"]');
@@ -1334,7 +1333,7 @@
                 insuranceCheckbox.addEventListener('change', function() {
                     const thirdPartyPayerSection = document.getElementById('third-party-payer-section');
                     const thirdPartyPayerSelect = document.getElementById('third-party-payer-select');
-                    
+
                     if (this.checked && thirdPartyPayerSection) {
                         thirdPartyPayerSection.classList.remove('hidden');
                         if (thirdPartyPayerSelect) {
@@ -1350,7 +1349,7 @@
                 });
             }
             @endif
-            
+
             const quantityInputs = document.querySelectorAll('.quantity-input');
             quantityInputs.forEach(input => {
                 input.addEventListener('change', function() {
@@ -1361,7 +1360,7 @@
                     const itemPrice = parseFloat(rawPrice) || 0;
                     const quantity = parseInt(this.value) || 0;
                     const itemType = this.dataset.itemType || 'N/A';
-                    
+
                     // Debug logging
                     console.log('=== PRICING DEBUG ===');
                     console.log('Item:', itemName);
@@ -1376,7 +1375,7 @@
                         itemPrice: this.dataset.itemPrice,
                         itemName: this.dataset.itemName
                     });
-                    
+
                     if (quantity > 0) {
                         addToCart(itemId, itemName, itemPrice, quantity, itemType, itemDisplayName);
                         // Don't reset the input value - keep the state
@@ -1386,17 +1385,17 @@
                     }
                 });
             });
-            
+
             // Add search functionality
             const searchInput = document.getElementById('search-input');
             searchInput.addEventListener('input', function() {
                 const searchTerm = this.value.toLowerCase();
                 const itemRows = document.querySelectorAll('.item-row');
-                
+
                 itemRows.forEach(row => {
                     const itemName = row.dataset.itemName;
                     const itemOtherNames = row.dataset.itemOtherNames;
-                    
+
                     // Search in both item name and other names
                     if (itemName.includes(searchTerm) || itemOtherNames.includes(searchTerm)) {
                         row.style.display = '';
@@ -1405,13 +1404,13 @@
                     }
                 });
             });
-            
+
             // Add price and description display toggle functionality
             const showPricesCheckbox = document.getElementById('show-prices');
             const showDescriptionsCheckbox = document.getElementById('show-descriptions');
             const priceElements = document.querySelectorAll('.price-display');
             const descriptionElements = document.querySelectorAll('.description-display');
-            
+
             // Handle prices checkbox
             if (showPricesCheckbox) {
             showPricesCheckbox.addEventListener('change', function() {
@@ -1420,7 +1419,7 @@
                     element.style.display = this.checked ? 'block' : 'none';
                 });
             });
-            
+
                 // Initialize price display state
                 priceElements.forEach(element => {
                     element.style.display = showPricesCheckbox.checked ? 'block' : 'none';
@@ -1428,7 +1427,7 @@
             } else {
                 console.error('Show prices checkbox not found!');
             }
-            
+
             // Handle descriptions checkbox
             if (showDescriptionsCheckbox) {
                 showDescriptionsCheckbox.addEventListener('change', function() {
@@ -1437,7 +1436,7 @@
                         element.style.display = this.checked ? 'block' : 'none';
                     });
                 });
-                
+
                 // Initialize description display state (hidden by default)
                 descriptionElements.forEach(element => {
                     element.style.display = showDescriptionsCheckbox.checked ? 'block' : 'none';
@@ -1445,33 +1444,33 @@
             } else {
                 console.error('Show descriptions checkbox not found!');
             }
-            
+
         });
-        
+
         // Show client confirmation modal on page load
         document.addEventListener('DOMContentLoaded', function() {
             showClientConfirmation();
         });
-        
+
         function showClientConfirmation() {
             document.getElementById('client-confirmation-modal').classList.remove('hidden');
         }
-        
+
         function closeClientConfirmation() {
             document.getElementById('client-confirmation-modal').classList.add('hidden');
         }
-        
+
         function printClientDetails() {
             // Create a print-friendly version of client details
             const printWindow = window.open('', '_blank');
             const modalContent = document.querySelector('#client-confirmation-modal .relative').cloneNode(true);
-            
+
             // Remove action buttons from print version
             const actionButtons = modalContent.querySelector('.bg-gray-100');
             if (actionButtons) {
                 actionButtons.remove();
             }
-            
+
             // Add print-specific styling
             const printStyle = document.createElement('style');
             printStyle.textContent = `
@@ -1486,14 +1485,14 @@
                 .text-sm { font-size: 0.875rem !important; }
                 .text-gray-600 { color: #4b5563 !important; }
             `;
-            
+
             printWindow.document.head.appendChild(printStyle);
             printWindow.document.body.appendChild(modalContent);
-            
+
             printWindow.document.title = 'Client Details - Aziz';
             printWindow.print();
         }
-        
+
         function addToCart(itemId, itemName, itemPrice, quantity, itemType, displayName) {
             // Update payment responsibility when cart changes
             setTimeout(() => {
@@ -1504,7 +1503,7 @@
             // Ensure proper number types
             const price = parseFloat(itemPrice) || 0;
             const qty = parseInt(quantity) || 0;
-            
+
             // Check if item already exists in cart
             const existingItem = cart.find(item => item.id === itemId);
             if (existingItem) {
@@ -1519,15 +1518,15 @@
                     type: itemType || 'N/A'
                 });
             }
-            
+
             updateRequestOrderSummaryDisplay();
         }
-        
+
         function removeFromCartByItemId(itemId) {
             cart = cart.filter(item => item.id !== itemId);
             updateRequestOrderSummaryDisplay();
         }
-        
+
         function updateRequestOrderSummaryDisplay() {
             // Update payment responsibility when cart display updates
             @if($client->insurance_company_id && ($client->has_deductible || $client->copay_amount || $client->coinsurance_percentage))
@@ -1537,7 +1536,7 @@
             const totalItemsSpan = document.getElementById('total-items');
             const totalQuantitySpan = document.getElementById('total-quantity');
             const totalAmountSpan = document.getElementById('total-amount');
-            
+
             if (cart.length === 0) {
                 requestOrderSummaryContainer.innerHTML = '<div class="px-4 py-8"><p class="text-sm text-gray-500 text-center">No items selected</p></div>';
                 totalItemsSpan.textContent = '0';
@@ -1545,18 +1544,18 @@
                 totalAmountSpan.textContent = 'UGX 0.00';
                 return;
             }
-            
+
             let requestOrderSummaryHTML = '';
             let totalItems = 0;
             let totalQuantity = 0;
             let totalAmount = 0;
-            
+
             cart.forEach((item, index) => {
                 const itemTotal = parseFloat(item.price || 0) * parseInt(item.quantity || 0);
                 totalItems += 1; // Count unique items
                 totalQuantity += parseInt(item.quantity || 0); // Sum of all quantities
                 totalAmount += itemTotal;
-                
+
                 requestOrderSummaryHTML += `
                     <div class="px-4 py-3">
                         <div class="grid grid-cols-4 gap-4 items-center">
@@ -1578,33 +1577,33 @@
                     </div>
                 `;
             });
-            
+
             requestOrderSummaryContainer.innerHTML = requestOrderSummaryHTML;
             totalItemsSpan.textContent = totalItems; // This now shows total quantity of all items
             totalQuantitySpan.textContent = totalQuantity; // This now shows total quantity of all items
             totalAmountSpan.textContent = `UGX ${parseFloat(totalAmount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            
+
             // Update credit remaining display if client is credit eligible
             if (isCreditClient) {
                 updateCreditRemainingDisplay(totalAmount);
             }
         }
-        
+
         function updateCreditRemainingDisplay(cartTotal) {
             if (!isCreditClient) return;
-            
+
             const creditRemainingDisplay = document.getElementById('credit-remaining-display');
             if (!creditRemainingDisplay) return;
-            
+
             // Calculate estimated new credit remaining (approximate, before service charges and adjustments)
             // This gives a rough indication, final validation happens on purchase
             const currentAmountOwed = Math.max(0, -parseFloat({{ $client->available_balance ?? 0 }}));
             const estimatedNewOwed = currentAmountOwed + cartTotal;
             const estimatedCreditRemaining = Math.max(0, creditLimit - estimatedNewOwed);
-            
+
             // Update display
             creditRemainingDisplay.textContent = `UGX ${estimatedCreditRemaining.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            
+
             // Update color based on remaining credit
             if (estimatedCreditRemaining <= 0) {
                 creditRemainingDisplay.className = 'text-lg font-bold text-red-600';
@@ -1625,7 +1624,7 @@
                 }
             }
         }
-        
+
         function removeFromCart(index) {
             const removedItem = cart[index];
             cart.splice(index, 1);
@@ -1635,36 +1634,36 @@
                 updatePaymentResponsibilitySummary();
                 @endif
             }, 100);
-            
+
             // Reset the corresponding quantity input to 0
             const quantityInput = document.querySelector(`input[data-item-id="${removedItem.id}"]`);
             if (quantityInput) {
                 quantityInput.value = 0;
             }
-            
+
             updateRequestOrderSummaryDisplay();
         }
-        
+
         // Client confirmation functions - defined globally
         function showClientConfirmation() {
             document.getElementById('client-confirmation-modal').classList.remove('hidden');
         }
-        
+
         function closeClientConfirmation() {
             document.getElementById('client-confirmation-modal').classList.add('hidden');
         }
-        
+
         function printClientDetails() {
             // Create a print-friendly version of client details
             const printWindow = window.open('', '_blank');
             const modalContent = document.querySelector('#client-confirmation-modal .relative').cloneNode(true);
-            
+
             // Remove action buttons from print version
             const actionButtons = modalContent.querySelector('.bg-gray-50.px-6.py-4.rounded-b-lg');
             if (actionButtons) {
                 actionButtons.remove();
             }
-            
+
             // Add print styles
             const printStyles = `
                 <style>
@@ -1701,7 +1700,7 @@
                     }
                 </style>
             `;
-            
+
             printWindow.document.write(`
                 <!DOCTYPE html>
                 <html>
@@ -1714,10 +1713,10 @@
                 </body>
                 </html>
             `);
-            
+
             printWindow.document.close();
             printWindow.focus();
-            
+
             // Wait for content to load then print
             setTimeout(() => {
                 printWindow.print();
@@ -1734,7 +1733,7 @@
                 });
                 return;
             }
-            
+
             // Generate invoice number
             try {
                 const response = await fetch('/invoices/generate-invoice-number', {
@@ -1748,7 +1747,7 @@
                         business_id: {{ auth()->user()->business->id }}
                     })
                 });
-                
+
                 const data = await response.json();
                 if (data.invoice_number) {
                     document.getElementById('invoice-number-display').textContent = data.invoice_number;
@@ -1759,22 +1758,22 @@
                 console.error('Error generating invoice number:', error);
                 document.getElementById('invoice-number-display').textContent = 'Error generating invoice number';
             }
-            
+
             // Populate invoice items table
             const invoiceTable = document.getElementById('invoice-items-table');
             let tableHTML = '';
             let subtotal = 0;
-            
+
             cart.forEach(item => {
                 const itemTotal = (item.price || 0) * (item.quantity || 0);
                 subtotal += itemTotal;
-                
+
                 // Don't show tracking numbers for packages in cart (not yet purchased)
                 let trackingNumber = 'N/A';
                 if (item.type === 'package') {
                     trackingNumber = 'Pending';
                 }
-                
+
                 tableHTML += `
                     <tr class="bg-white">
                         <td class="border border-gray-300 px-4 py-2">${item.displayName || item.name}</td>
@@ -1785,25 +1784,25 @@
                     </tr>
                 `;
             });
-            
+
             invoiceTable.innerHTML = tableHTML;
-            
+
             // Calculate package adjustment
             const packageAdjustmentData = await calculatePackageAdjustment();
             const packageAdjustment = packageAdjustmentData.total_adjustment;
-            
+
             // Show package adjustment details if any adjustments were made
             // Commented out for debugging purposes - package adjustment details section removed
             /*
             if (packageAdjustmentData.details && packageAdjustmentData.details.length > 0) {
                 const adjustmentDetailsContainer = document.getElementById('package-adjustment-details');
                 const adjustmentList = document.getElementById('package-adjustment-list');
-                
+
                 let detailsHTML = '';
                 packageAdjustmentData.details.forEach(detail => {
                     // Use the actual tracking number from the API response
                     const packageTrackingNumber = detail.tracking_number || `PKG-${detail.package_tracking_id}-${Date.now()}`;
-                    
+
                     detailsHTML += `
                         <div class="flex justify-between items-center text-sm">
                             <div>
@@ -1818,46 +1817,46 @@
                         </div>
                     `;
                 });
-                
+
                 adjustmentList.innerHTML = detailsHTML;
                 adjustmentDetailsContainer.classList.remove('hidden');
             } else {
                 document.getElementById('package-adjustment-details').classList.add('hidden');
             }
             */
-            
+
             // Package Tracking Numbers section removed - was for testing purposes only
-            
+
             // Calculate balance adjustment first (needed for service charge calculation)
             const balanceAdjustmentData = await calculateBalanceAdjustment(subtotal);
             const balanceAdjustment = balanceAdjustmentData.balance_adjustment;
-            
+
             // Calculate totals according to correct formula:
             // Subtotal 1 = Sum of all items (already calculated as 'subtotal')
             // Subtotal 2 = Subtotal 1 - Package Adjustment - Account Balance Adjustment
             // Total = Subtotal 2 + Service Charge
             // Service Charge is calculated based on Subtotal 2
-            
+
             const subtotal1 = parseFloat(subtotal);
             let subtotal2 = subtotal1 - parseFloat(packageAdjustment) - parseFloat(balanceAdjustment);
-            
+
             // Ensure subtotal2 never goes below 0
             if (subtotal2 < 0) {
                 subtotal2 = 0;
             }
-            
+
             const serviceChargeData = await calculateServiceCharge(subtotal2);
             const serviceCharge = serviceChargeData.amount;
             let finalTotal = subtotal2 + parseFloat(serviceCharge);
-            
+
             // Ensure final total never goes below 0
             if (finalTotal < 0) {
                 finalTotal = 0;
             }
-            
+
             // Update invoice summary
             document.getElementById('invoice-subtotal').textContent = `UGX ${subtotal1.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            
+
             // Show/hide Package Adjustment based on value
             const packageAdjustmentRow = document.getElementById('package-adjustment-row');
             const packageAdjustmentValue = parseFloat(packageAdjustment);
@@ -1867,7 +1866,7 @@
             } else {
                 packageAdjustmentRow.classList.add('hidden');
             }
-            
+
             // Show/hide Account Balance Adjustment based on value
             const balanceAdjustmentRow = document.getElementById('balance-adjustment-row');
             const balanceAdjustmentValue = parseFloat(balanceAdjustment);
@@ -1877,16 +1876,16 @@
             } else {
                 balanceAdjustmentRow.classList.add('hidden');
             }
-            
+
             document.getElementById('invoice-subtotal-2').textContent = `UGX ${subtotal2.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            
+
             // Display service charge and handle note visibility
             const serviceChargeElement = document.getElementById('service-charge-display');
             const serviceChargeNote = document.getElementById('service-charge-note');
-            
+
             // Always show the service charge amount
             serviceChargeElement.textContent = `UGX ${parseFloat(serviceCharge).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            
+
             // Show/hide note based on whether service charge ranges exist
             if (serviceChargeData.hasRanges) {
                 // Service charge ranges are configured, hide the note
@@ -1895,9 +1894,9 @@
                 // No service charge ranges configured, show the note
                 serviceChargeNote.style.display = 'block';
             }
-            
+
             document.getElementById('invoice-final-total').textContent = `UGX ${finalTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            
+
             // Show/hide third-party payer section for credit clients with insurance
             @if($client->is_credit_eligible)
             const thirdPartyPayerSection = document.getElementById('third-party-payer-section');
@@ -1911,14 +1910,14 @@
                 document.getElementById('third-party-payer-select').required = false;
             }
             @endif
-            
+
             // Show modal
             document.getElementById('invoice-modal').classList.remove('hidden');
         }
-        
+
         function closeInvoicePreview() {
             document.getElementById('invoice-modal').classList.add('hidden');
-            
+
             // Reset service charge display to default state
             const serviceChargeElement = document.getElementById('service-charge-display');
             const serviceChargeNote = document.getElementById('service-charge-note');
@@ -1926,15 +1925,15 @@
                 serviceChargeElement.textContent = 'UGX 0.00';
                 serviceChargeNote.style.display = 'none'; // Keep the note hidden
             }
-            
+
             // Reset package tracking numbers
             if (window.packageTrackingNumbers) {
                 window.packageTrackingNumbers.clear();
             }
-            
+
 
         }
-        
+
         async function confirmAndSaveInvoice() {
             if (cart.length === 0) {
                 Swal.fire({
@@ -1944,7 +1943,7 @@
                 });
                 return;
             }
-            
+
             // Determine if this invoice only contains deposit items
             const isDepositOnlyInvoice = cart.length > 0 && cart.every(item => {
                 const rawName = (item.displayName || item.name || '').toString().trim().toLowerCase();
@@ -1969,7 +1968,7 @@
             const isServiceChargeNotConfigured = serviceChargeNote
                 ? window.getComputedStyle(serviceChargeNote).display !== 'none'
                 : false;
-            
+
             // Confirm with SweetAlert2
             const result = await Swal.fire({
                 title: 'Confirm Proforma Invoice',
@@ -1981,7 +1980,7 @@
                 confirmButtonText: 'Yes, save it!',
                 cancelButtonText: 'Cancel'
             });
-            
+
             if (!result.isConfirmed) {
                 return;
             }
@@ -1993,33 +1992,33 @@
                 button.textContent = 'Saving...';
                 button.disabled = true;
             }
-            
+
             try {
                 // Calculate totals
                 let subtotal = 0;
                 cart.forEach(item => {
                     subtotal += parseFloat(item.price || 0) * parseInt(item.quantity || 0);
                 });
-                
+
                 const packageAdjustmentData = await calculatePackageAdjustment();
                 const packageAdjustment = parseFloat(packageAdjustmentData.total_adjustment) || 0;
                 let adjustedSubtotal = parseFloat(subtotal) - parseFloat(packageAdjustment);
-                
+
                 // Ensure adjustedSubtotal never goes below 0
                 if (adjustedSubtotal < 0) {
                     adjustedSubtotal = 0;
                 }
-                
+
                 const serviceChargeData = await calculateServiceCharge(adjustedSubtotal);
                 const serviceCharge = serviceChargeData.amount;
-                
+
                 const subtotalWithServiceCharge = parseFloat(adjustedSubtotal) + parseFloat(serviceCharge);
-                
+
                 // Calculate balance adjustment
                 const balanceAdjustmentData = await calculateBalanceAdjustment(subtotalWithServiceCharge);
                 const balanceAdjustment = parseFloat(balanceAdjustmentData.balance_adjustment) || 0;
                 let totalAmount = parseFloat(subtotalWithServiceCharge) - parseFloat(balanceAdjustment);
-                
+
                 // Ensure totalAmount never goes below 0
                 if (totalAmount < 0) {
                     totalAmount = 0;
@@ -2032,7 +2031,7 @@
                     // We need to check: current amount owed + totalAmount <= creditLimit
                     const currentAmountOwed = Math.max(0, -parseFloat({{ $client->available_balance ?? 0 }}));
                     const newAmountOwed = currentAmountOwed + totalAmount;
-                    
+
                     if (newAmountOwed > creditLimit) {
                         const excess = newAmountOwed - creditLimit;
                         Swal.fire({
@@ -2096,7 +2095,7 @@
                     }
                     return;
                 }
-                
+
                 console.log('Calculated values:', {
                     subtotal: subtotal,
                     packageAdjustment: packageAdjustment,
@@ -2109,12 +2108,12 @@
                     totalAmountType: typeof totalAmount,
                     isNaN: isNaN(totalAmount)
                 });
-                
+
                 // Get payment phone and methods
                 const paymentPhone = document.getElementById('payment-phone-edit')?.value || '';
                 const paymentMethods = Array.from(document.querySelectorAll('input[name="payment_methods[]"]:checked'))
                     .map(cb => cb.value);
-                
+
                 // Validate third-party payer selection for credit clients with insurance
                 @if($client->is_credit_eligible)
                 if (paymentMethods.includes('insurance')) {
@@ -2134,70 +2133,27 @@
                     }
                 }
                 @endif
-                
+
                 // Check if mobile money is selected and process payment
                 let paymentResult = null;
                 let amountPaid = 0;
                 
-                // Only process mobile money payment if total amount > 0.
-                // IMPORTANT: For insurance clients (those linked to an insurance company),
-                // we NEVER send a mobile money prompt at this stage. Their client portion
-                // is handled separately after invoice authorization.
+                // Temporary local bypass: mark mobile money as paid immediately so save
+                // can drive queue creation without waiting on Yo.
                 if (!isInsuranceClient && paymentMethods.includes('mobile_money') && paymentPhone && totalAmount > 0) {
-                    console.log('=== PROCESSING MOBILE MONEY PAYMENT ===');
-                    console.log('Processing mobile money payment:', { 
-                        totalAmount, 
+                    console.log('=== BYPASSING MOBILE MONEY PAYMENT ===');
+                    console.log('Skipping Yo mobile money prompt and marking as paid:', {
+                        totalAmount,
                         paymentPhone,
                         totalAmountType: typeof totalAmount,
                         isNaN: isNaN(totalAmount),
                         parseFloatResult: parseFloat(totalAmount)
                     });
-                    
-                    // Show payment processing dialog
-                    Swal.fire({
-                        title: 'Processing Mobile Money Payment',
-                        html: `
-                            <div class="text-center">
-                                <div class="mb-4">
-                                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                                </div>
-                                <p class="text-lg font-semibold">UGX ${parseFloat(totalAmount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
-                                <p class="text-sm text-gray-600">To: ${paymentPhone}</p>
-                                <p class="text-sm text-gray-500 mt-2">Please wait while we process your payment...</p>
-                            </div>
-                        `,
-                        showConfirmButton: false,
-                        allowOutsideClick: false,
-                        allowEscapeKey: false
-                    });
-                    
-                    // Process mobile money payment
-                    paymentResult = await processMobileMoneyPayment(totalAmount, paymentPhone);
-                    
-                    if (paymentResult.success) {
-                        amountPaid = totalAmount;
-                        Swal.fire({
-                            icon: 'success',
-                            title: 'Payment Successful!',
-                            html: `
-                                <div class="text-center">
-                                    <p class="text-lg font-semibold text-green-600">UGX ${parseFloat(totalAmount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
-                                    <p class="text-sm text-gray-600">Transaction ID: ${paymentResult.transaction_id}</p>
-                                    <p class="text-sm text-gray-500">Paid via Mobile Money</p>
-                                </div>
-                            `,
-                            timer: 3000,
-                            showConfirmButton: false
-                        });
-                    } else {
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Payment Failed',
-                            text: 'Mobile money payment could not be processed. Please try again.',
-                            confirmButtonText: 'OK'
-                        });
-                        return;
-                    }
+                    paymentResult = {
+                        success: true,
+                        transaction_id: 'BYPASS-' + Date.now(),
+                    };
+                    amountPaid = totalAmount;
                 } else if (!isInsuranceClient && paymentMethods.includes('mobile_money') && totalAmount === 0) {
                     console.log('=== SKIPPING MOBILE MONEY PAYMENT - ZERO AMOUNT ===');
                     console.log('Mobile money payment skipped because total amount is 0:', {
@@ -2206,16 +2162,14 @@
                         paymentPhone: paymentPhone
                     });
                 }
-                
+
                 // Prepare cart items with total_amount for each item
                 const itemsWithTotals = cart.map(item => ({
                     ...item,
                     total_amount: parseFloat(item.price || 0) * parseInt(item.quantity || 0)
                 }));
-                
                 // Get the invoice number from the display (preview); server may assign a different number if stale.
                 let invoiceNumber = document.getElementById('invoice-number-display').textContent;
-                
                 // Validate invoice number
                 if (!invoiceNumber || invoiceNumber === 'Generating...' || invoiceNumber === 'Error generating invoice number') {
                     Swal.fire({
@@ -2225,16 +2179,16 @@
                     });
                     return;
                 }
-                
+
                 // Get third-party payer ID if insurance is selected
                 @if($client->is_credit_eligible)
-                const thirdPartyPayerId = paymentMethods.includes('insurance') 
+                const thirdPartyPayerId = paymentMethods.includes('insurance')
                     ? (document.getElementById('third-party-payer-select')?.value || null)
                     : null;
                 @else
                 const thirdPartyPayerId = null;
                 @endif
-                
+
                 // Prepare invoice data with all required fields
                 const invoiceData = {
                     invoice_number: invoiceNumber,
@@ -2295,7 +2249,7 @@
                     },
                     body: JSON.stringify(invoiceData)
                 });
-                
+
                 const data = await response.json();
                 
                 console.log('=== POS INVOICE SAVE RESPONSE ===', data);
@@ -2572,7 +2526,7 @@
                         text: 'Error saving invoice: ' + (data.message || 'Unknown error')
                     });
                 }
-                
+
             } catch (error) {
                 console.error('Error saving invoice:', error);
                 Swal.fire({
@@ -3004,24 +2958,25 @@
         }
         
 
-        
+
+
         // Payment Methods Modal Functions
         function openPaymentMethodsModal() {
             document.getElementById('payment-methods-modal').classList.remove('hidden');
         }
-        
+
         function closePaymentMethodsModal() {
             document.getElementById('payment-methods-modal').classList.add('hidden');
         }
-        
+
         function savePaymentMethods() {
             const selectedMethods = [];
             const checkboxes = document.querySelectorAll('input[name="payment_methods[]"]:checked');
-            
+
             checkboxes.forEach(checkbox => {
                 selectedMethods.push(checkbox.value);
             });
-            
+
             // Send AJAX request to update payment methods
             fetch(`/clients/{{ $client->id }}/update-payment-methods`, {
                 method: 'POST',
@@ -3040,7 +2995,7 @@
                     // Update the display
                     updatePaymentMethodsDisplay(selectedMethods);
                     closePaymentMethodsModal();
-                    
+
                     // Show success message
                     Swal.fire({
                         icon: 'success',
@@ -3066,11 +3021,11 @@
                 });
             });
         }
-        
+
         function updatePaymentMethodsDisplay(methods) {
             const container = document.querySelector('.payment-methods-display');
             if (methods.length > 0) {
-                container.innerHTML = methods.map((method, index) => 
+                container.innerHTML = methods.map((method, index) =>
                     `<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                         ${index + 1}. ${method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                     </span>`
@@ -3078,7 +3033,7 @@
             } else {
                 container.innerHTML = '<span class="text-sm text-gray-500">No payment methods specified</span>';
             }
-            
+
             // Show/hide payment phone section based on mobile money selection
             const paymentPhoneSection = document.getElementById('payment-phone-section');
             if (methods.includes('mobile_money')) {
@@ -3087,8 +3042,19 @@
                 paymentPhoneSection.style.display = 'none';
             }
         }
-        
+
         async function processMobileMoneyPayment(amount, phoneNumber) {
+            // TODO: REVERT IN PROD — API call bypassed for local testing (auto-succeeds without YoAPI)
+            return {
+                success: true,
+                transaction_id: 'LOCAL-' + Date.now(),
+                amount: amount,
+                phone: phoneNumber,
+                status: 'success',
+                message: 'Payment processed successfully (local bypass)'
+            };
+
+            /* PRODUCTION CODE — uncomment and remove the bypass above when deploying
             try {
                 // Prepare payment data
                 const paymentData = {
@@ -3099,7 +3065,7 @@
                     items: cart,
                     invoice_number: document.getElementById('invoice-number-display').textContent
                 };
-                
+
                 // Send payment request to backend
                 const response = await fetch('/invoices/mobile-money-payment', {
                     method: 'POST',
@@ -3110,9 +3076,9 @@
                     },
                     body: JSON.stringify(paymentData)
                 });
-                
+
                 const result = await response.json();
-                
+
                 if (result.success) {
                     return {
                         success: true,
@@ -3138,8 +3104,9 @@
                     error: error.message
                 };
             }
+            */
         }
-        
+
         async function calculateServiceCharge(subtotal) {
             console.log('=== CALCULATE SERVICE CHARGE START ===');
             console.log('calculateServiceCharge called with subtotal:', subtotal);
@@ -3157,7 +3124,7 @@
                         branch_id: {{ auth()->user()->currentBranch->id ?? 'null' }}
                     })
                 });
-                
+
                 const data = await response.json();
                 console.log('Service charge API response:', data);
                 if (data.success) {
@@ -3177,7 +3144,7 @@
                 return { amount: 0, hasRanges: false };
             }
         }
-        
+
         async function calculatePackageAdjustment() {
             try {
                 console.log('Cart data being sent to package adjustment:', cart);
@@ -3195,11 +3162,11 @@
                         items: cart
                     })
                 });
-                
+
                 console.log('Package adjustment response status:', response.status);
                 const data = await response.json();
                 console.log('Package adjustment response data:', data);
-                
+
                 if (data.success) {
                     console.log('Package adjustment successful:', data.total_adjustment);
                     return {
@@ -3215,7 +3182,7 @@
                 return { total_adjustment: 0, details: [] };
             }
         }
-        
+
         async function calculateBalanceAdjustment(totalAmount) {
             try {
                 const response = await fetch('/invoices/balance-adjustment', {
@@ -3230,7 +3197,7 @@
                         total_amount: totalAmount
                     })
                 });
-                
+
                 const data = await response.json();
                 if (data.success) {
                     return {
@@ -3247,7 +3214,7 @@
                 return { balance_adjustment: 0, client_balance: 0, remaining_balance: 0 };
             }
         }
-        
+
         async function refreshClientBalance() {
             try {
                 const response = await fetch('/invoices/balance-adjustment', {
@@ -3262,33 +3229,33 @@
                         total_amount: 0 // Just to get current balance
                     })
                 });
-                
+
                 const data = await response.json();
                 if (data.success) {
                     const balanceDisplay = document.getElementById('client-balance-display');
                     const totalBalanceDisplay = document.getElementById('client-total-balance');
-                    
+
                     const availableBalance = parseFloat(data.available_balance || data.client_balance || 0);
                     const totalBalance = parseFloat(data.total_balance || data.client_balance || 0);
                     const suspenseBalance = parseFloat(data.suspense_balance || 0);
-                    
+
                     const formattedAvailableBalance = `Available: UGX ${availableBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
                     const formattedTotalBalance = `Total: UGX ${totalBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-                    
+
                     balanceDisplay.innerHTML = `<span class="text-blue-600">Available:</span> UGX ${availableBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-                    
+
                     let totalBalanceText = `<span class="text-gray-600">Total:</span> UGX ${totalBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
                     if (suspenseBalance > 0) {
                         totalBalanceText += ` <span class="text-orange-600">(${suspenseBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} in suspense)</span>`;
                     }
                     totalBalanceDisplay.innerHTML = totalBalanceText;
-                    
+
                     // Update balance in invoice preview if it's open
                     const invoicePreviewBalance = document.querySelector('#invoice-preview-modal .text-blue-600.font-semibold');
                     if (invoicePreviewBalance) {
                         invoicePreviewBalance.textContent = `UGX ${availableBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
                     }
-                    
+
                     // Show success message
                     Swal.fire({
                         icon: 'success',
@@ -3314,17 +3281,17 @@
                 });
             }
         }
-        
+
         function savePaymentPhone() {
             const phoneInput = document.getElementById('payment-phone-edit');
             const phoneNumber = phoneInput.value.trim();
             const button = event.target;
             const originalText = button.textContent;
-            
+
             // Show loading state
             button.textContent = 'Saving...';
             button.disabled = true;
-            
+
             fetch(`/clients/{{ $client->id }}/update-payment-phone`, {
                 method: 'POST',
                 headers: {
@@ -3416,7 +3383,7 @@
             // Create a timestamp-based tracking number
             const timestamp = Date.now();
             const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-            
+
             // Format: PKG-YYYYMMDD-HHMMSS-RRR (Package-YearMonthDay-HourMinuteSecond-Random)
             const date = new Date(timestamp);
             const year = date.getFullYear();
@@ -3425,18 +3392,42 @@
             const hours = date.getHours().toString().padStart(2, '0');
             const minutes = date.getMinutes().toString().padStart(2, '0');
             const seconds = date.getSeconds().toString().padStart(2, '0');
-            
+
             const trackingNumber = `PKG-${year}${month}${day}-${hours}${minutes}${seconds}-${randomSuffix}`;
-            
+
             // Store the tracking number for this package (for later use if needed)
             if (!window.packageTrackingNumbers) {
                 window.packageTrackingNumbers = new Map();
             }
             window.packageTrackingNumbers.set(itemId, trackingNumber);
-            
+
             return trackingNumber;
         }
-        
+
+        function cancelAndExit() {
+            @if($servicePoint)
+            fetch('{{ route('calling.announce') }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                },
+                body: JSON.stringify({
+                    client_id: {{ $client->id }},
+                    client_name: '{{ addslashes($client->name) }}',
+                    service_point_id: {{ $servicePoint->id }},
+                    type: 'stop-serving'
+                })
+            }).then(() => {
+                window.location.href = '{{ route('service-points.show', $servicePoint) }}';
+            }).catch(() => {
+                window.location.href = '{{ route('service-points.show', $servicePoint) }}';
+            });
+            @else
+            window.location.href = '{{ route('clients.index') }}';
+            @endif
+        }
+
         function saveAndExit() {
             // Log the save and exit action
             console.log('=== POS ITEM SELECTION - SAVE AND EXIT TRIGGERED ===', {
@@ -3469,15 +3460,15 @@
                         Swal.fire('Error', 'Form not found', 'error');
                         return;
                     }
-                    
+
                     const formData = new FormData(form);
-                    
+
                     // Debug: Log form data
                     console.log('Form data being sent:', formData);
                     for (let [key, value] of formData.entries()) {
                         console.log('Form field:', key, '=', value);
                     }
-                    
+
                     // Show loading
                     Swal.fire({
                         title: 'Saving...',
@@ -3488,14 +3479,14 @@
                             Swal.showLoading();
                         }
                     });
-                    
+
                     // Send request
                     @if($servicePoint)
                     const url = '{{ route("service-points.update-statuses-and-process-money", [$servicePoint, $client->id]) }}';
                     @else
                     const url = '{{ route("service-points.update-statuses-and-process-money", [0, $client->id]) }}';
                     @endif
-                    
+
                     fetch(url, {
                         method: 'POST',
                         headers: {
@@ -3506,6 +3497,25 @@
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
+                            // Clear this client from the TV display
+                            try {
+                                fetch('{{ route("calling.announce") }}', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                                    },
+                                    body: JSON.stringify({
+                                        client_id: {{ $client->id }},
+                                        client_name: '{{ addslashes($client->name) }}',
+                                        service_point_id: {{ $servicePoint->id ?? 'null' }},
+                                        type: 'stop-serving'
+                                    })
+                                });
+                            } catch (e) {
+                                console.error('Failed to stop serving on display:', e);
+                            }
+
                             Swal.fire({
                                 title: 'Success!',
                                 text: 'Changes saved successfully',
@@ -3524,7 +3534,7 @@
                 }
             });
         }
-        
+
         // Export package tracking numbers to CSV
 
         function showAdmitModal(redirectTo = '{{ route('pos.item-selection', $client) }}') {
@@ -3552,11 +3562,11 @@
                         <label for="max_credit" class="block text-sm font-medium text-gray-700 mb-2">
                             Maximum Credit Limit (UGX) <span class="text-red-500">*</span>
                         </label>
-                        <input 
-                            type="number" 
-                            id="max_credit" 
-                            name="max_credit" 
-                            step="0.01" 
+                        <input
+                            type="number"
+                            id="max_credit"
+                            name="max_credit"
+                            step="0.01"
                             min="0"
                             value="{{ $business->max_first_party_credit_limit ?? 0 }}"
                             placeholder="Enter credit limit"
@@ -3586,11 +3596,11 @@
                     const creditLimitInput = document.getElementById('max_credit');
                     const baseVisitId = '{{ preg_replace('/\/(C\/M|C|M)$/', '', $client->visit_id) }}';
                     const defaultCreditLimit = {{ $business->max_first_party_credit_limit ?? 0 }};
-                    
+
                     function updatePreview() {
                         const hasCredit = creditCheckbox.checked;
                         const hasLongStay = longStayCheckbox.checked;
-                        
+
                         // Show/hide credit limit section
                         if (hasCredit) {
                             creditLimitSection.style.display = 'block';
@@ -3601,7 +3611,7 @@
                         } else {
                             creditLimitSection.style.display = 'none';
                         }
-                        
+
                         let suffix = '';
                         if (hasCredit && hasLongStay) {
                             suffix = '/C/M';
@@ -3610,10 +3620,10 @@
                         } else if (hasLongStay) {
                             suffix = '/M';
                         }
-                        
+
                         previewElement.textContent = baseVisitId + suffix;
                     }
-                    
+
                     creditCheckbox.addEventListener('change', updatePreview);
                     longStayCheckbox.addEventListener('change', updatePreview);
                     updatePreview(); // Initial update
@@ -3621,12 +3631,12 @@
                 preConfirm: () => {
                     const enableCredit = document.getElementById('enable_credit').checked;
                     const enableLongStay = document.getElementById('enable_long_stay').checked;
-                    
+
                     if (!enableCredit && !enableLongStay) {
                         Swal.showValidationMessage('Please select at least one option: Credit Services, Long-Stay, or both.');
                         return false;
                     }
-                    
+
                     // Validate credit limit if credit is enabled
                     if (enableCredit) {
                         const creditLimit = parseFloat(document.getElementById('max_credit').value);
@@ -3635,16 +3645,16 @@
                             return false;
                         }
                     }
-                    
+
                     const result = {
                         enable_credit: enableCredit,
                         enable_long_stay: enableLongStay
                     };
-                    
+
                     if (enableCredit) {
                         result.max_credit = document.getElementById('max_credit').value;
                     }
-                    
+
                     return result;
                 }
             }).then((result) => {
@@ -3653,20 +3663,20 @@
                     const form = document.createElement('form');
                     form.method = 'POST';
                     form.action = '{{ route('clients.admit', $client) }}';
-                    
+
                     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
                     const csrfInput = document.createElement('input');
                     csrfInput.type = 'hidden';
                     csrfInput.name = '_token';
                     csrfInput.value = csrfToken;
                     form.appendChild(csrfInput);
-                    
+
                     const redirectInput = document.createElement('input');
                     redirectInput.type = 'hidden';
                     redirectInput.name = 'redirect_to';
                     redirectInput.value = redirectTo;
                     form.appendChild(redirectInput);
-                    
+
                     if (result.value.enable_credit) {
                         const creditInput = document.createElement('input');
                         creditInput.type = 'hidden';
@@ -3674,7 +3684,7 @@
                         creditInput.value = '1';
                         form.appendChild(creditInput);
                     }
-                    
+
                     if (result.value.enable_long_stay) {
                         const longStayInput = document.createElement('input');
                         longStayInput.type = 'hidden';
@@ -3682,7 +3692,7 @@
                         longStayInput.value = '1';
                         form.appendChild(longStayInput);
                     }
-                    
+
                     if (result.value.enable_credit && result.value.max_credit) {
                         const maxCreditInput = document.createElement('input');
                         maxCreditInput.type = 'hidden';
@@ -3690,7 +3700,7 @@
                         maxCreditInput.value = result.value.max_credit;
                         form.appendChild(maxCreditInput);
                     }
-                    
+
                     document.body.appendChild(form);
                     form.submit();
                 }
@@ -3709,11 +3719,11 @@
                 confirmButtonText: 'Yes, admit patient',
                 cancelButtonText: 'Cancel'
             });
-            
+
             if (!result.isConfirmed) {
                 return;
             }
-            
+
             // Get business settings for admission
             @php
                 $business = $client->business ?? \App\Models\Business::find($client->business_id);
@@ -3721,25 +3731,25 @@
             const admitEnableCredit = {{ ($business->admit_enable_credit ?? false) ? 'true' : 'false' }};
             const admitEnableLongStay = {{ ($business->admit_enable_long_stay ?? false) ? 'true' : 'false' }};
             const defaultMaxCredit = {{ $business->max_first_party_credit_limit ?? 0 }};
-            
+
             // Create and submit the admit form directly using business settings
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = admitUrl;
-            
+
             const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
             const csrfInput = document.createElement('input');
             csrfInput.type = 'hidden';
             csrfInput.name = '_token';
             csrfInput.value = csrfToken;
             form.appendChild(csrfInput);
-            
+
             const redirectInput = document.createElement('input');
             redirectInput.type = 'hidden';
             redirectInput.name = 'redirect_to';
             redirectInput.value = redirectTo;
             form.appendChild(redirectInput);
-            
+
             // Add queue item ID to process only this specific item
             if (queueItemId) {
                 const queueItemInput = document.createElement('input');
@@ -3748,14 +3758,14 @@
                 queueItemInput.value = queueItemId;
                 form.appendChild(queueItemInput);
             }
-            
+
             if (admitEnableCredit) {
                 const creditInput = document.createElement('input');
                 creditInput.type = 'hidden';
                 creditInput.name = 'enable_credit';
                 creditInput.value = '1';
                 form.appendChild(creditInput);
-                
+
                 if (defaultMaxCredit > 0) {
                     const maxCreditInput = document.createElement('input');
                     maxCreditInput.type = 'hidden';
@@ -3764,7 +3774,7 @@
                     form.appendChild(maxCreditInput);
                 }
             }
-            
+
             if (admitEnableLongStay) {
                 const longStayInput = document.createElement('input');
                 longStayInput.type = 'hidden';
@@ -3772,7 +3782,7 @@
                 longStayInput.value = '1';
                 form.appendChild(longStayInput);
             }
-            
+
             document.body.appendChild(form);
             form.submit();
         }
@@ -3780,17 +3790,17 @@
         function confirmDischarge() {
             const dischargeRemoveCredit = {{ $business->discharge_remove_credit ? 'true' : 'false' }};
             const dischargeRemoveLongStay = {{ ($business->discharge_remove_long_stay ?? true) ? 'true' : 'false' }};
-            
+
             let dischargeText = 'This will:';
             const changes = [];
-            
+
             if (dischargeRemoveLongStay) {
                 changes.push('Remove long-stay status (<strong>/M</strong> suffix)');
             }
             if (dischargeRemoveCredit) {
                 changes.push('Remove credit services (<strong>/C</strong> suffix)');
             }
-            
+
             if (changes.length > 0) {
                 dischargeText += '<ul class="text-left mt-2 space-y-1">';
                 changes.forEach(change => {
@@ -3798,9 +3808,9 @@
                 });
                 dischargeText += '</ul>';
             }
-            
+
             dischargeText += '<p class="mt-3">The visit ID will be regenerated and made available for reissuance.</p>';
-            
+
             Swal.fire({
                 title: 'Discharge Patient?',
                 html: dischargeText,
@@ -3817,7 +3827,7 @@
             });
         }
     </script>
-    
+
     <!-- Payment Methods Modal -->
     <div id="payment-methods-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
         <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-2xl shadow-lg rounded-md bg-white">
@@ -3830,62 +3840,62 @@
                         </svg>
                     </button>
                 </div>
-                
+
                 <div class="mb-4">
                     <p class="text-sm text-gray-600 mb-3">Select payment methods in order of preference:</p>
-                    
+
                     <div class="space-y-3">
                         <label class="flex items-center">
-                            <input type="checkbox" name="payment_methods[]" value="insurance" 
+                            <input type="checkbox" name="payment_methods[]" value="insurance"
                                    {{ in_array('insurance', $client->payment_methods ?? []) ? 'checked' : '' }}
                                    class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
                             <span class="ml-3 text-sm font-medium text-gray-700">🏥 Insurance</span>
                         </label>
-                        
+
                         <label class="flex items-center">
-                            <input type="checkbox" name="payment_methods[]" value="credit_arrangement_institutions" 
+                            <input type="checkbox" name="payment_methods[]" value="credit_arrangement_institutions"
                                    {{ in_array('credit_arrangement_institutions', $client->payment_methods ?? []) ? 'checked' : '' }}
                                    class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
                             <span class="ml-3 text-sm font-medium text-gray-700">🏦 Credit Arrangement Institutions</span>
                         </label>
-                        
+
                         <label class="flex items-center">
-                            <input type="checkbox" name="payment_methods[]" value="mobile_money" 
+                            <input type="checkbox" name="payment_methods[]" value="mobile_money"
                                    {{ in_array('mobile_money', $client->payment_methods ?? []) ? 'checked' : '' }}
                                    class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
                             <span class="ml-3 text-sm font-medium text-gray-700">📱 Mobile Money</span>
                         </label>
-                        
+
                         <label class="flex items-center">
-                            <input type="checkbox" name="payment_methods[]" value="v_card" 
+                            <input type="checkbox" name="payment_methods[]" value="v_card"
                                    {{ in_array('v_card', $client->payment_methods ?? []) ? 'checked' : '' }}
                                    class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
                             <span class="ml-3 text-sm font-medium text-gray-700">💳 V Card (Virtual Card)</span>
                         </label>
-                        
+
                         <label class="flex items-center">
-                            <input type="checkbox" name="payment_methods[]" value="p_card" 
+                            <input type="checkbox" name="payment_methods[]" value="p_card"
                                    {{ in_array('p_card', $client->payment_methods ?? []) ? 'checked' : '' }}
                                    class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
                             <span class="ml-3 text-sm font-medium text-gray-700">💳 P Card (Physical Card)</span>
                         </label>
-                        
+
                         <label class="flex items-center">
-                            <input type="checkbox" name="payment_methods[]" value="bank_transfer" 
+                            <input type="checkbox" name="payment_methods[]" value="bank_transfer"
                                    {{ in_array('bank_transfer', $client->payment_methods ?? []) ? 'checked' : '' }}
                                    class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
                             <span class="ml-3 text-sm font-medium text-gray-700">🏦 Bank Transfer</span>
                         </label>
-                        
+
                         <label class="flex items-center">
-                            <input type="checkbox" name="payment_methods[]" value="cash" 
+                            <input type="checkbox" name="payment_methods[]" value="cash"
                                    {{ in_array('cash', $client->payment_methods ?? []) ? 'checked' : '' }}
                                    class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
                             <span class="ml-3 text-sm font-medium text-gray-700">💵 Cash (if enabled)</span>
                         </label>
                     </div>
                 </div>
-                
+
                 <div class="flex justify-end space-x-3">
                     <button onclick="closePaymentMethodsModal()" class="bg-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-400 transition-colors">
                         Cancel
@@ -3897,6 +3907,6 @@
             </div>
         </div>
     </div>
-    
+
     @stack('scripts')
 </x-app-layout>
