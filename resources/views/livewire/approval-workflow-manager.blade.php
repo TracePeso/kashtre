@@ -10,11 +10,11 @@
 
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
-        <p class="text-sm text-gray-500">Configure primary, secondary, and tertiary approvers for leave, coverage, and off-site duty. Each level needs at least 3 approvers, and any current-level approver can act.</p>
+        <p class="text-sm text-gray-500">Configure primary, secondary, and tertiary approvers for leave, coverage, and off-site duty. Leave workflows are scoped per client space. Staff already based in that client space use the configured chain, while linked routing-node staff use the direct superior of that client space as the primary approver. Each level needs at least 3 approvers, and any current-level approver can act.</p>
         @if($organizationId && $canAddSetup)
-        <button wire:click="openCreateModal()" class="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" @if(count($configuredCategories) >= 3) disabled @endif>
+        <button wire:click="openCreateModal()" class="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            {{ count($configuredCategories) >= 3 ? 'All Workflows Configured' : 'Add Workflow' }}
+            Add Workflow
         </button>
         @endif
     </div>
@@ -66,6 +66,16 @@
                 @endif
             </div>
 
+            <div class="mb-4 space-y-1">
+                @if($wf['approval_category'] === 'leave')
+                <p class="text-sm font-semibold text-gray-900">{{ $wf['organizational_unit']['name'] ?? 'Unscoped Client Space' }}</p>
+                <p class="text-xs text-gray-500">Scoped to this client space.</p>
+                @else
+                <p class="text-sm font-semibold text-gray-900">All Client Spaces</p>
+                <p class="text-xs text-gray-500">Organization-wide {{ strtolower($categoryLabels[$wf['approval_category']] ?? $wf['approval_category']) }} workflow.</p>
+                @endif
+            </div>
+
             <div class="space-y-3">
                 @foreach($wf['approvers'] as $approver)
                 <div class="flex items-center gap-3">
@@ -100,17 +110,34 @@
                     <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
                     <select wire:model="category" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-brand-blue focus:ring-brand-blue text-sm" {{ $editingId ? 'disabled' : '' }}>
                         @foreach($categoryLabels as $value => $label)
-                        <option value="{{ $value }}" @if(!$editingId && in_array($value, $configuredCategories, true)) disabled @endif>
-                            {{ $label }} @if(!$editingId && in_array($value, $configuredCategories, true)) (already configured) @endif
-                        </option>
+                        <option value="{{ $value }}">{{ $label }}</option>
                         @endforeach
                     </select>
                     @error('category') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                 </div>
 
+                @if($category === 'leave')
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Client Space</label>
+                    <select wire:model="clientSpaceId" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-brand-blue focus:ring-brand-blue text-sm">
+                        <option value="">Select client space</option>
+                        @foreach($clientSpaceOptions as $clientSpaceOptionId => $clientSpaceOptionName)
+                        <option value="{{ $clientSpaceOptionId }}">{{ $clientSpaceOptionName }}</option>
+                        @endforeach
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">Leave approval workflows are configured one client space at a time.</p>
+                    @error('clientSpaceId') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                </div>
+                @endif
+
                 <div class="border-t pt-4">
                     <h4 class="text-sm font-semibold text-gray-700 mb-3">Approvers</h4>
-                    <p class="mb-3 text-xs text-gray-500">Select at least 3 approvers for each level. Any one approver at the active level can approve or reject the request.</p>
+                    <p class="mb-3 text-xs text-gray-500">
+                        Select at least 3 approvers for each level. Any one approver at the active level can approve or reject the request.
+                        @if($category === 'leave')
+                        For staff already based in the client space, this primary list is used as configured. For linked routing-node staff, the direct superior of the selected client space becomes the primary approver at submission time.
+                        @endif
+                    </p>
 
                     <div class="space-y-4">
                         @foreach(['primary' => 'Primary', 'secondary' => 'Secondary', 'tertiary' => 'Tertiary'] as $level => $label)

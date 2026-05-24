@@ -123,21 +123,34 @@ class HrApprovalRequest extends Model
 
     public static function submitFromWorkflow(ApprovalWorkflow $workflow, array $data): self
     {
+        $approverOverrides = is_array($data['approver_overrides'] ?? null)
+            ? $data['approver_overrides']
+            : [];
         $validated = self::validateSubmissionData($workflow, $data);
 
-        return DB::transaction(function () use ($workflow, $validated) {
-            $approvers = $workflow->approvers()->get();
+        return DB::transaction(function () use ($workflow, $validated, $approverOverrides) {
+            $workflowApprovers = $workflow->approvers()->get();
 
-            if ($approvers->isEmpty()) {
+            if ($workflowApprovers->isEmpty()) {
                 throw new RuntimeException('The selected workflow has no approvers.');
             }
 
             $invalidLevels = collect(['primary', 'secondary', 'tertiary'])
-                ->filter(fn (string $level): bool => $approvers->where('approver_level', $level)->count() < 3)
+                ->filter(function (string $level) use ($workflowApprovers, $approverOverrides): bool {
+                    $overrideCount = collect($approverOverrides[$level] ?? [])
+                        ->filter(fn ($approver): bool => filled($approver['uuid'] ?? null))
+                        ->count();
+
+                    if ($level === 'primary' && $overrideCount > 0) {
+                        return $overrideCount < 1;
+                    }
+
+                    return $workflowApprovers->where('approver_level', $level)->count() < 3;
+                })
                 ->values();
 
             if ($invalidLevels->isNotEmpty()) {
-                throw new RuntimeException('The selected workflow must include at least 3 approvers at primary, secondary, and tertiary levels.');
+                throw new RuntimeException('The selected workflow must include at least 3 approvers at each approval level, unless the primary level is being overridden by the direct-superior leave rule.');
             }
 
             $request = self::create([
@@ -159,11 +172,26 @@ class HrApprovalRequest extends Model
             ]);
 
             foreach (['primary', 'secondary', 'tertiary'] as $level) {
-                foreach ($approvers->where('approver_level', $level)->values() as $index => $approver) {
+                $levelApprovers = collect($approverOverrides[$level] ?? [])
+                    ->filter(fn ($approver): bool => filled($approver['uuid'] ?? null))
+                    ->values();
+
+                if ($levelApprovers->isEmpty()) {
+                    $levelApprovers = $workflowApprovers
+                        ->where('approver_level', $level)
+                        ->values()
+                        ->map(fn ($approver): array => [
+                            'approver_level' => $approver->approver_level,
+                            'approver_staff_uuid' => $approver->approver_staff_uuid,
+                            'approver_name' => $approver->approver_name,
+                        ]);
+                }
+
+                foreach ($levelApprovers->values() as $index => $approver) {
                     $request->steps()->create([
-                        'approver_level' => $approver->approver_level,
-                        'approver_staff_uuid' => $approver->approver_staff_uuid,
-                        'approver_name' => $approver->approver_name,
+                        'approver_level' => $level,
+                        'approver_staff_uuid' => $approver['approver_staff_uuid'] ?? $approver['uuid'],
+                        'approver_name' => $approver['approver_name'] ?? $approver['name'],
                         'is_current' => $level === 'primary',
                         'sort_order' => $index,
                     ]);

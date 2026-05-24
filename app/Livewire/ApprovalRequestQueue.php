@@ -3,6 +3,8 @@
 namespace App\Livewire;
 
 use App\Models\ApprovalWorkflow;
+use App\Models\HrClientSpaceStaffAssignment;
+use App\Models\HrOrganizationalUnit;
 use App\Models\HrApprovalRequest;
 use App\Models\LeaveType;
 use App\Models\Organization;
@@ -12,6 +14,7 @@ use App\Services\WorkingDayCalculator;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use Livewire\Component;
@@ -27,6 +30,7 @@ class ApprovalRequestQueue extends Component
     public array $leaveTypeOptions = [];
     public array $leaveTypeClientConfig = [];
     public array $requesterAssignmentOptions = [];
+    public array $leaveClientSpaceOptions = [];
     public array $leaveSummaryAssignmentOptions = [];
     public array $leaveWorkingDayPreview = [
         'weekendDays' => [0, 6],
@@ -48,6 +52,7 @@ class ApprovalRequestQueue extends Component
     public string $details = '';
     public ?int $leaveTypeId = null;
     public ?int $staffAssignmentId = null;
+    public ?int $leaveClientSpaceId = null;
     public ?int $selectedLeaveSummaryAssignmentId = null;
     public ?string $leaveStartDate = null;
     public ?string $leaveEndDate = null;
@@ -245,6 +250,7 @@ class ApprovalRequestQueue extends Component
 
         if ($this->categoryUsesWorkingDays()) {
             $rules['leaveTypeId'] = 'required|integer';
+            $rules['leaveClientSpaceId'] = 'required|integer';
             $rules['requestedDays'] = 'required|numeric|min:0.25';
         }
 
@@ -255,19 +261,10 @@ class ApprovalRequestQueue extends Component
             return;
         }
 
-        $workflow = ApprovalWorkflow::where('organization_id', $this->organizationId)
-            ->where('approval_category', $this->category)
-            ->where('is_active', true)
-            ->with('approvers')
-            ->first();
-
-        if (!$workflow) {
-            $this->message = 'Configure an active approval workflow for this category first.';
-            return;
-        }
-
         $leaveType = null;
         $staffAssignment = null;
+        $selectedLeaveClientSpace = null;
+        $approverOverrides = [];
 
         if ($this->categoryUsesAssignmentDates()) {
             $leaveType = LeaveType::query()
@@ -295,6 +292,44 @@ class ApprovalRequestQueue extends Component
                 );
                 return;
             }
+
+            if ($this->categoryUsesWorkingDays()) {
+                $selectedLeaveClientSpace = $this->resolveSelectedLeaveClientSpace($staffAssignment);
+
+                if (! $selectedLeaveClientSpace) {
+                    $this->addError('leaveClientSpaceId', 'Select a valid client space for this leave request.');
+                    return;
+                }
+
+                if (! ($staffAssignment->organizationalUnit?->isClientSpace() ?? false)) {
+                    $primaryApprover = $this->directLeaveApproverForClientSpace($selectedLeaveClientSpace);
+
+                    if (! $primaryApprover) {
+                        $this->addError('leaveClientSpaceId', 'The selected client space does not have a direct superior approver yet.');
+                        return;
+                    }
+
+                    $approverOverrides['primary'] = [$primaryApprover];
+                }
+            }
+        }
+
+        $workflow = ApprovalWorkflow::where('organization_id', $this->organizationId)
+            ->where('approval_category', $this->category)
+            ->where('is_active', true)
+            ->when(
+                $this->categoryUsesWorkingDays(),
+                fn ($query) => $query->where('organizational_unit_id', $selectedLeaveClientSpace?->id),
+                fn ($query) => $query
+            )
+            ->with('approvers')
+            ->first();
+
+        if (! $workflow) {
+            $this->message = $this->categoryUsesWorkingDays()
+                ? 'Configure an active leave approval workflow for the selected client space first.'
+                : 'Configure an active approval workflow for this category first.';
+            return;
         }
 
         try {
@@ -308,11 +343,13 @@ class ApprovalRequestQueue extends Component
                 'start_date' => $this->categoryUsesAssignmentDates() ? $this->leaveStartDate : null,
                 'end_date' => $this->categoryUsesAssignmentDates() ? $this->leaveEndDate : null,
                 'requested_days' => $this->categoryUsesWorkingDays() ? $this->requestedDays : null,
+                'approver_overrides' => $approverOverrides,
             ]);
         } catch (ValidationException $exception) {
             $fieldMap = [
                 'leave_type_id' => 'leaveTypeId',
                 'staff_assignment_id' => 'staffAssignmentId',
+                'organizational_unit_id' => 'leaveClientSpaceId',
                 'start_date' => 'leaveStartDate',
                 'end_date' => 'leaveEndDate',
                 'requested_days' => 'requestedDays',
@@ -431,10 +468,12 @@ class ApprovalRequestQueue extends Component
 
         $this->leaveTypeId = null;
         $this->staffAssignmentId = null;
+        $this->leaveClientSpaceId = null;
         $this->leaveStartDate = null;
         $this->leaveEndDate = null;
         $this->requestedDays = null;
         $this->requesterAssignmentOptions = [];
+        $this->leaveClientSpaceOptions = [];
     }
 
     public function updatedLeaveStartDate(): void
@@ -450,6 +489,12 @@ class ApprovalRequestQueue extends Component
     public function updatedLeaveTypeId(): void
     {
         $this->syncRequestedDaysFromDates();
+    }
+
+    public function updatedStaffAssignmentId($value): void
+    {
+        $this->staffAssignmentId = $value !== null && $value !== '' ? (int) $value : null;
+        $this->syncLeaveClientSpaceOptions();
     }
 
     public function updatedSelectedLeaveSummaryAssignmentId(): void
@@ -468,10 +513,12 @@ class ApprovalRequestQueue extends Component
         $this->details = '';
         $this->leaveTypeId = null;
         $this->staffAssignmentId = null;
+        $this->leaveClientSpaceId = null;
         $this->leaveStartDate = null;
         $this->leaveEndDate = null;
         $this->requestedDays = null;
         $this->requesterAssignmentOptions = [];
+        $this->leaveClientSpaceOptions = [];
         $this->message = null;
     }
 
@@ -525,6 +572,8 @@ class ApprovalRequestQueue extends Component
 
         if (! $this->organizationId || ! $staffUuid) {
             $this->staffAssignmentId = null;
+            $this->leaveClientSpaceId = null;
+            $this->leaveClientSpaceOptions = [];
             return;
         }
 
@@ -547,6 +596,135 @@ class ApprovalRequestQueue extends Component
                 ? (int) array_key_first($options)
                 : null;
         }
+
+        $this->syncLeaveClientSpaceOptions();
+    }
+
+    private function syncLeaveClientSpaceOptions(): void
+    {
+        $this->leaveClientSpaceOptions = [];
+
+        if (! $this->categoryUsesWorkingDays() || ! $this->organizationId || ! $this->staffAssignmentId) {
+            $this->leaveClientSpaceId = null;
+            return;
+        }
+
+        $assignment = StaffAssignment::query()
+            ->where('organization_id', $this->organizationId)
+            ->with([
+                'organizationalUnit.linkedClientSpaces',
+                'organizationalUnit.parent',
+                'clientSpaceStaffAssignments' => fn ($query) => $query
+                    ->where('status', HrClientSpaceStaffAssignment::STATUS_ACTIVE)
+                    ->with('clientSpace'),
+            ])
+            ->find($this->staffAssignmentId);
+
+        if (! $assignment) {
+            $this->leaveClientSpaceId = null;
+            return;
+        }
+
+        $options = $this->leaveClientSpacesForAssignment($assignment)
+            ->mapWithKeys(fn (HrOrganizationalUnit $clientSpace): array => [$clientSpace->id => $clientSpace->name])
+            ->toArray();
+
+        $this->leaveClientSpaceOptions = $options;
+
+        if (! array_key_exists((int) $this->leaveClientSpaceId, $options)) {
+            $this->leaveClientSpaceId = count($options) === 1
+                ? (int) array_key_first($options)
+                : null;
+        }
+    }
+
+    private function leaveClientSpacesForAssignment(StaffAssignment $assignment): Collection
+    {
+        $clientSpaces = collect();
+        $unit = $assignment->organizationalUnit;
+
+        if ($unit?->isClientSpace()) {
+            $clientSpaces->push($unit);
+        }
+
+        if ($unit?->isRoutingNode()) {
+            $linkedClientSpaces = $unit->relationLoaded('linkedClientSpaces')
+                ? $unit->linkedClientSpaces
+                : $unit->linkedClientSpaces()->get();
+
+            $clientSpaces = $clientSpaces->merge($linkedClientSpaces);
+        }
+
+        $activeClientSpaceAssignments = $assignment->relationLoaded('clientSpaceStaffAssignments')
+            ? $assignment->clientSpaceStaffAssignments
+            : $assignment->clientSpaceStaffAssignments()
+                ->where('status', HrClientSpaceStaffAssignment::STATUS_ACTIVE)
+                ->with('clientSpace')
+                ->get();
+
+        return $clientSpaces
+            ->merge($activeClientSpaceAssignments->pluck('clientSpace'))
+            ->filter(fn ($clientSpace): bool => $clientSpace instanceof HrOrganizationalUnit && $clientSpace->isClientSpace())
+            ->unique('id')
+            ->sortBy(fn (HrOrganizationalUnit $clientSpace): string => mb_strtolower($clientSpace->name ?? ''))
+            ->values();
+    }
+
+    private function resolveSelectedLeaveClientSpace(StaffAssignment $assignment): ?HrOrganizationalUnit
+    {
+        if (! $this->leaveClientSpaceId) {
+            return null;
+        }
+
+        return $this->leaveClientSpacesForAssignment($assignment)
+            ->first(fn (HrOrganizationalUnit $clientSpace): bool => (int) $clientSpace->id === (int) $this->leaveClientSpaceId);
+    }
+
+    private function directLeaveApproverForClientSpace(HrOrganizationalUnit $clientSpace): ?array
+    {
+        $clientSpace->loadMissing([
+            'parent.staffAssignments',
+            'routingParents.staffAssignments',
+        ]);
+
+        $superiorUnit = $clientSpace->parent;
+
+        if (! $superiorUnit && $clientSpace->relationLoaded('routingParents')) {
+            $superiorUnit = $clientSpace->routingParents
+                ->first(fn (HrOrganizationalUnit $unit): bool => $unit->isRoutingNode());
+        }
+
+        if (! $superiorUnit) {
+            return null;
+        }
+
+        if ($superiorUnit->head_staff_uuid) {
+            return [
+                'uuid' => (string) $superiorUnit->head_staff_uuid,
+                'name' => $superiorUnit->head_name ?: (string) $superiorUnit->head_staff_uuid,
+            ];
+        }
+
+        $fallbackAssignment = $superiorUnit->relationLoaded('staffAssignments')
+            ? $superiorUnit->staffAssignments
+                ->whereNotIn('status', ['inactive', 'orphaned'])
+                ->filter(fn (StaffAssignment $assignment): bool => filled($assignment->staff_uuid))
+                ->sortBy(fn (StaffAssignment $assignment): string => mb_strtolower($assignment->staff_name ?? ''))
+                ->first()
+            : $superiorUnit->staffAssignments()
+                ->whereNotIn('status', ['inactive', 'orphaned'])
+                ->whereNotNull('staff_uuid')
+                ->orderBy('staff_name')
+                ->first();
+
+        if (! $fallbackAssignment?->staff_uuid) {
+            return null;
+        }
+
+        return [
+            'uuid' => (string) $fallbackAssignment->staff_uuid,
+            'name' => $fallbackAssignment->staff_name ?: (string) $fallbackAssignment->staff_uuid,
+        ];
     }
 
     private function syncLeaveSummaryAssignmentOptions(): void

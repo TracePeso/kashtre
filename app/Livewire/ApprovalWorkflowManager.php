@@ -3,12 +3,12 @@
 namespace App\Livewire;
 
 use App\Models\ApprovalWorkflow;
+use App\Models\HrOrganizationalUnit;
 use App\Models\Organization;
 use App\Models\StaffAssignment;
 use App\Services\KashApiService;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Validation\Rule;
 use Livewire\Component;
 
 class ApprovalWorkflowManager extends Component
@@ -20,6 +20,7 @@ class ApprovalWorkflowManager extends Component
     public $organizationId;
     public $workflows = [];
     public array $staffOptions = [];
+    public array $clientSpaceOptions = [];
     public array $configuredCategories = [];
     public ?string $message = null;
     public bool $canAddSetup = false;
@@ -29,6 +30,7 @@ class ApprovalWorkflowManager extends Component
     public bool $showModal = false;
     public ?int $editingId = null;
     public string $category = 'leave';
+    public ?int $clientSpaceId = null;
     public array $approverUuids = [];
 
     public function mount()
@@ -38,6 +40,7 @@ class ApprovalWorkflowManager extends Component
         $this->canAddSetup = Auth::user()?->canAddHrSetup() ?? false;
         $this->canEditSetup = Auth::user()?->canEditHrSetup() ?? false;
         $this->loadStaffOptions();
+        $this->loadClientSpaceOptions();
         $this->loadWorkflows();
         $this->resetForm();
     }
@@ -51,14 +54,34 @@ class ApprovalWorkflowManager extends Component
 
         $this->workflows = ApprovalWorkflow::where('organization_id', $this->organizationId)
             ->whereIn('approval_category', self::GENERIC_CATEGORIES)
-            ->with('approvers')
-            ->orderBy('approval_category')
+            ->with(['approvers', 'organizationalUnit'])
             ->get()
+            ->sortBy(fn (ApprovalWorkflow $workflow): string => sprintf(
+                '%s|%s',
+                $workflow->approval_category,
+                strtolower((string) ($workflow->organizationalUnit?->name ?? ''))
+            ))
+            ->values()
             ->toArray();
 
         $this->configuredCategories = collect($this->workflows)
             ->pluck('approval_category')
             ->all();
+    }
+
+    public function loadClientSpaceOptions(): void
+    {
+        if (! $this->organizationId) {
+            $this->clientSpaceOptions = [];
+            return;
+        }
+
+        $this->clientSpaceOptions = HrOrganizationalUnit::query()
+            ->where('organization_id', $this->organizationId)
+            ->clientSpaces()
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->toArray();
     }
 
     public function loadStaffOptions(): void
@@ -117,6 +140,7 @@ class ApprovalWorkflowManager extends Component
 
         $this->editingId = $wf->id;
         $this->category = $wf->approval_category;
+        $this->clientSpaceId = $wf->organizational_unit_id;
         $this->approverUuids = $this->defaultApproverSelections();
 
         foreach ($wf->approvers->groupBy('approver_level') as $level => $approvers) {
@@ -148,21 +172,44 @@ class ApprovalWorkflowManager extends Component
             'category' => [
                 'required',
                 'in:leave,coverage,offsite_duty',
-                Rule::unique('hr_approval_workflows', 'approval_category')
-                    ->where(fn ($query) => $query->where('organization_id', $this->organizationId))
-                    ->ignore($this->editingId),
             ],
+            'clientSpaceId' => ['nullable', 'integer'],
         ], $this->approverValidationRules()));
 
         $approverSelections = $this->normalizedApproverSelections();
+        $clientSpaceId = $this->category === 'leave' ? $this->clientSpaceId : null;
 
         if ($this->hasDuplicateApproverSelections($approverSelections)) {
+            return;
+        }
+
+        if ($this->category === 'leave' && ! $clientSpaceId) {
+            $this->addError('clientSpaceId', 'Select a client space for leave approval workflows.');
+            return;
+        }
+
+        $duplicateQuery = ApprovalWorkflow::query()
+            ->where('organization_id', $this->organizationId)
+            ->where('approval_category', $this->category)
+            ->when(
+                $clientSpaceId === null,
+                fn ($query) => $query->whereNull('organizational_unit_id'),
+                fn ($query) => $query->where('organizational_unit_id', $clientSpaceId)
+            );
+
+        if ($this->editingId) {
+            $duplicateQuery->whereKeyNot($this->editingId);
+        }
+
+        if ($duplicateQuery->exists()) {
+            $this->addError('clientSpaceId', 'An approval workflow already exists for this category and client-space scope.');
             return;
         }
 
         $data = [
             'organization_id' => $this->organizationId,
             'approval_category' => $this->category,
+            'organizational_unit_id' => $clientSpaceId,
             'is_active' => true,
         ];
 
@@ -207,10 +254,8 @@ class ApprovalWorkflowManager extends Component
     public function resetForm()
     {
         $this->editingId = null;
-        $availableCategory = collect(self::GENERIC_CATEGORIES)
-            ->first(fn ($category) => !in_array($category, $this->configuredCategories, true));
-
-        $this->category = $availableCategory ?? 'leave';
+        $this->category = 'leave';
+        $this->clientSpaceId = null;
         $this->approverUuids = $this->defaultApproverSelections();
     }
 

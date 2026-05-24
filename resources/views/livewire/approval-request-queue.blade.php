@@ -388,6 +388,24 @@
                         @error('staffAssignmentId') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                     </div>
 
+                    @if($category === 'leave')
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Client Space</label>
+                        <select wire:model="leaveClientSpaceId" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-brand-blue focus:ring-brand-blue text-sm">
+                            <option value="">Select client space</option>
+                            @foreach($leaveClientSpaceOptions as $clientSpaceId => $clientSpaceName)
+                            <option value="{{ $clientSpaceId }}">{{ $clientSpaceName }}</option>
+                            @endforeach
+                        </select>
+                        @if(empty($leaveClientSpaceOptions))
+                        <p class="text-xs text-yellow-700 mt-1">The selected assignment must belong to or be linked to at least one client space before leave can be submitted.</p>
+                        @else
+                        <p class="text-xs text-gray-500 mt-1">Leave approval is routed through the selected client space.</p>
+                        @endif
+                        @error('leaveClientSpaceId') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    @endif
+
                     <div class="grid grid-cols-1 {{ $category === 'leave' ? 'md:grid-cols-3' : 'md:grid-cols-2' }} gap-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
