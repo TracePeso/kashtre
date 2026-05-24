@@ -697,6 +697,10 @@ class BuildHrRoutingStructure extends Command
             $focusPathNodes = collect([$focusLeaf['node']]);
         }
 
+        if ($focusPathNodes->count() > 1) {
+            $focusPathNodes = $focusPathNodes->slice(1)->values();
+        }
+
         $focusLeafNode = $focusPathNodes->last();
         $focusDepartmentName = (string) ($focusLeaf['department_name'] ?: 'General Administration');
         $upstreamTargets = $focusPathNodes
