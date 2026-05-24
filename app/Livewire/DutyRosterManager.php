@@ -935,7 +935,7 @@ class DutyRosterManager extends Component
      * @param Collection<int, \App\Models\StaffAssignment> $staffRows
      * @param Collection<int, ShiftType> $shiftTypes
      * @param array<int, \Carbon\Carbon> $editorDates
-     * @return array<int, array{badges: array<int, array{label: string, class: string}>, profile_summary: string, date_statuses: array<string, array{status: string, label: string, cell_class: string, text_class: string}>}>
+     * @return array<int, array{date_statuses: array<string, array{status: string, label: string, cell_class: string, text_class: string}>}>
      */
     private function staffUiContext(Organization $organization, Collection $staffRows, Collection $shiftTypes, array $editorDates): array
     {
@@ -943,7 +943,6 @@ class DutyRosterManager extends Component
             return [];
         }
 
-        $shiftTypesById = $shiftTypes->keyBy(fn (ShiftType $shiftType): string => (string) $shiftType->id);
         $unavailabilitiesByStaff = collect();
 
         if ($editorDates !== []) {
@@ -973,47 +972,10 @@ class DutyRosterManager extends Component
         $context = [];
 
         foreach ($staffRows as $staffAssignment) {
-            $profile = $staffAssignment->rosteringProfile;
-            $badges = [];
-            $profileSummary = $this->profileSummary($profile, $shiftTypesById);
             $dateStatuses = [];
-
-            if ($profile && $profile->is_active) {
-                $badges[] = [
-                    'label' => $profile->usesFixedMode() ? 'Fixed mode' : 'Dynamic mode',
-                    'class' => $profile->usesFixedMode()
-                        ? 'bg-slate-100 text-slate-700'
-                        : 'bg-emerald-100 text-emerald-700',
-                ];
-
-                if ($profile->fixedShiftType) {
-                    $badges[] = [
-                        'label' => 'Fixed shift '.$this->shiftLabel($profile->fixedShiftType),
-                        'class' => 'bg-sky-100 text-sky-700',
-                    ];
-                }
-
-                if ($profile->max_night_shifts_per_cycle !== null) {
-                    $badges[] = [
-                        'label' => 'Max '.$profile->max_night_shifts_per_cycle.' overnight shift(s)',
-                        'class' => 'bg-violet-100 text-violet-700',
-                    ];
-                }
-            } else {
-                $badges[] = [
-                    'label' => 'Dynamic mode',
-                    'class' => 'bg-emerald-100 text-emerald-700',
-                ];
-            }
 
             foreach (($unavailabilitiesByStaff->get($staffAssignment->id) ?? collect()) as $unavailability) {
                 $status = (string) $unavailability->status;
-                $statusLabel = $unavailability->statusLabel();
-                $badges[] = [
-                    'label' => $statusLabel.' '.$this->unavailabilityRangeLabel($unavailability),
-                    'class' => $this->unavailabilityBadgeClass($unavailability),
-                ];
-
                 $cursor = \Carbon\Carbon::parse($unavailability->starts_on)->startOfDay();
                 $end = \Carbon\Carbon::parse($unavailability->ends_on ?: $unavailability->starts_on)->startOfDay();
 
@@ -1032,48 +994,11 @@ class DutyRosterManager extends Component
             }
 
             $context[$staffAssignment->id] = [
-                'badges' => $badges,
-                'profile_summary' => $profileSummary,
                 'date_statuses' => $dateStatuses,
             ];
         }
 
         return $context;
-    }
-
-    private function profileSummary(?HrStaffRosteringProfile $profile, Collection $shiftTypesById): string
-    {
-        if (! $profile || ! $profile->is_active) {
-            return 'Dynamic rotation with no custom shift constraints.';
-        }
-
-        $parts = [];
-
-        if ($profile->usesFixedMode() && $profile->fixedDays() !== []) {
-            $parts[] = 'Fixed days: '.collect($profile->fixedDays())
-                ->map(fn (int $day): string => $this->dayLabel($day))
-                ->implode(', ');
-        }
-
-        $preferred = $this->shiftLabelsForIds($profile->preferredShiftIds(), $shiftTypesById);
-
-        if ($preferred !== []) {
-            $parts[] = 'Prefers '.implode(', ', $preferred);
-        }
-
-        $excluded = $this->shiftLabelsForIds($profile->excludedShiftIds(), $shiftTypesById);
-
-        if ($excluded !== []) {
-            $parts[] = 'Excludes '.implode(', ', $excluded);
-        }
-
-        if ($parts === []) {
-            return $profile->usesFixedMode()
-                ? 'Fixed mode with no extra shift filters.'
-                : 'Dynamic rotation with no extra shift filters.';
-        }
-
-        return implode('. ', $parts).'.';
     }
 
     /**

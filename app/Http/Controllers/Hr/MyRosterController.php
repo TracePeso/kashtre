@@ -31,21 +31,45 @@ class MyRosterController extends Controller
             ? $dutyRosterService->visibleEntriesForStaff($user, $organization, $monthStart, $monthEnd)
             : collect();
 
-        $futureEntries = $organization && $user instanceof User
-            ? $dutyRosterService->visibleEntriesForStaff($user, $organization, now()->startOfDay(), now()->copy()->addDays(90)->endOfDay())
-            : collect();
+        $calendarDays = collect();
+        for ($day = $monthStart->copy(); $day->lte($monthEnd); $day->addDay()) {
+            $calendarDays->push($day->copy());
+        }
+
+        $clientSpaceRows = $entries
+            ->groupBy(function ($entry): string {
+                $clientSpaceId = $entry->dutyRoster?->organizationalUnit?->id;
+
+                return $clientSpaceId ? 'id:'.$clientSpaceId : 'name:'.($entry->dutyRoster?->organizationalUnit?->name ?: 'Unassigned Client Space');
+            })
+            ->map(function ($clientSpaceEntries, string $key) use ($calendarDays): array {
+                $firstEntry = $clientSpaceEntries->first();
+                $cells = $clientSpaceEntries
+                    ->groupBy(fn ($entry) => $entry->roster_date->toDateString())
+                    ->map(fn ($dayEntries) => $dayEntries
+                        ->map(fn ($entry): array => [
+                            'code' => $entry->shiftType?->code ?: $entry->shiftType?->name ?: 'Shift',
+                            'name' => $entry->shiftType?->name ?: 'Scheduled Shift',
+                        ])
+                        ->values()
+                        ->all()
+                    );
+
+                return [
+                    'key' => $key,
+                    'client_space_name' => $firstEntry->dutyRoster?->organizationalUnit?->name ?: 'Unassigned Client Space',
+                    'days' => $calendarDays->mapWithKeys(
+                        fn (Carbon $day): array => [$day->toDateString() => $cells->get($day->toDateString(), [])]
+                    )->all(),
+                ];
+            })
+            ->sortBy('client_space_name', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
 
         return view('hr.my-roster.index', [
             'monthStart' => $monthStart,
-            'monthEnd' => $monthEnd,
-            'entries' => $entries,
-            'entriesByDate' => $entries->groupBy(fn ($entry) => $entry->roster_date->toDateString()),
-            'nextEntry' => $futureEntries->first(),
-            'clientSpaceCount' => $entries
-                ->pluck('dutyRoster.organizationalUnit.id')
-                ->filter()
-                ->unique()
-                ->count(),
+            'calendarDays' => $calendarDays,
+            'clientSpaceRows' => $clientSpaceRows,
         ]);
     }
 }

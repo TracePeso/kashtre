@@ -457,7 +457,7 @@
 
                                                 @foreach($teamMembers as $staffAssignment)
                                                     @php
-                                                        $staffContext = $staffUiContext[$staffAssignment->id] ?? ['badges' => [], 'profile_summary' => 'Dynamic rotation with no custom shift constraints.', 'date_statuses' => []];
+                                                        $staffContext = $staffUiContext[$staffAssignment->id] ?? ['date_statuses' => []];
                                                         $cadreLabel = $staffAssignment->staff_title ?: $staffAssignment->staff_cadre ?: 'Staff';
                                                         $assignmentStatus = $staffAssignment->client_space_assignment_type === \App\Models\HrClientSpaceStaffAssignment::TYPE_SECONDARY ? 'A' : 'P';
                                                     @endphp
@@ -468,16 +468,6 @@
                                                         <td class="border border-stone-300 px-3 py-2 align-top">
                                                             <div class="text-sm font-semibold text-stone-900">{{ $staffAssignment->staff_name }}</div>
                                                             <div class="mt-1 text-[11px] text-stone-500">{{ $staffScheduledHours[$staffAssignment->id] ?? '0.0h' }} rostered</div>
-                                                            <div class="mt-2 text-[11px] leading-5 text-stone-500">
-                                                                {{ $staffContext['profile_summary'] }}
-                                                            </div>
-                                                            @if(!empty($staffContext['badges']))
-                                                                <div class="mt-2 flex flex-wrap gap-1">
-                                                                    @foreach($staffContext['badges'] as $badge)
-                                                                        <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide {{ $badge['class'] }}">{{ $badge['label'] }}</span>
-                                                                    @endforeach
-                                                                </div>
-                                                            @endif
                                                         </td>
                                                         <td class="border border-stone-300 px-3 py-2 text-sm text-stone-800">
                                                             {{ $cadreLabel }}

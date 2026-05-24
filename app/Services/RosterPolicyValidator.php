@@ -120,7 +120,8 @@ class RosterPolicyValidator
                 (int) $staffAssignmentId,
                 (string) ($entry['staff_name'] ?? 'Staff member'),
                 true,
-                (int) $roster->id
+                (int) $roster->id,
+                $roster->organizationalUnit?->name
             ));
         }
 
@@ -219,17 +220,13 @@ class RosterPolicyValidator
         $endDate = $orderedDates->last()->addDays(7);
 
         return HrDutyRosterEntry::query()
-            ->with(['shiftType', 'dutyRoster'])
+            ->with(['shiftType', 'dutyRoster.organizationalUnit'])
             ->where('organization_id', $roster->organization_id)
             ->whereIn('staff_assignment_id', $staffAssignmentIds)
             ->where('duty_roster_id', '!=', $roster->id)
             ->whereBetween('roster_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->whereHas('dutyRoster', function ($query): void {
-                $query->where(function ($inner): void {
-                    $inner
-                        ->where('status', HrDutyRoster::STATUS_PUBLISHED)
-                        ->orWhere('approval_status', HrDutyRoster::APPROVAL_PENDING);
-                });
+                $query->where('status', '!=', HrDutyRoster::STATUS_ARCHIVED);
             })
             ->get()
             ->filter(fn (HrDutyRosterEntry $entry): bool => $entry->shiftType !== null && $entry->staff_assignment_id !== null)
@@ -239,7 +236,8 @@ class RosterPolicyValidator
                 (int) $entry->staff_assignment_id,
                 (string) $entry->staff_name,
                 false,
-                (int) $entry->duty_roster_id
+                (int) $entry->duty_roster_id,
+                $entry->dutyRoster?->organizationalUnit?->name
             ))
             ->values();
     }
@@ -288,7 +286,9 @@ class RosterPolicyValidator
             }
 
             if ($row['start_at']->lessThan($previous['end_at'])) {
-                $errors[] = "{$staffName} has overlapping shifts around {$row['date']->toDateString()}.";
+                $conflictingRow = $previous['candidate'] ? $row : $previous;
+                $existingRow = $previous['candidate'] ? $previous : $row;
+                $errors[] = "{$staffName} already has {$this->shiftConflictLabel($existingRow)} and cannot also take {$this->shiftConflictLabel($conflictingRow)}.";
                 $previous = $row;
                 continue;
             }
@@ -446,7 +446,8 @@ class RosterPolicyValidator
         int $staffAssignmentId,
         string $staffName,
         bool $candidate,
-        int $rosterId
+        int $rosterId,
+        ?string $clientSpaceName = null
     ): array {
         $startAt = CarbonImmutable::parse($date->toDateString().' '.$shiftType->start_time);
         $endAt = CarbonImmutable::parse($date->toDateString().' '.$shiftType->end_time);
@@ -465,9 +466,27 @@ class RosterPolicyValidator
             'staff_name' => $staffName,
             'shift_type_id' => (int) $shiftType->id,
             'shift_name' => $shiftType->name,
+            'shift_code' => $shiftType->code,
+            'client_space_name' => $clientSpaceName,
             'shift' => $shiftType,
             'net_minutes' => $shiftType->effectiveNetMinutes(),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function shiftConflictLabel(array $row): string
+    {
+        $shiftCode = trim((string) ($row['shift_code'] ?? ''));
+        $shiftName = trim((string) ($row['shift_name'] ?? 'Shift'));
+        $label = $shiftCode !== '' ? $shiftCode : $shiftName;
+        $date = $row['date'] instanceof CarbonInterface ? $row['date']->toDateString() : 'that date';
+        $clientSpace = trim((string) ($row['client_space_name'] ?? ''));
+
+        return $clientSpace !== ''
+            ? "{$label} on {$date} in {$clientSpace}"
+            : "{$label} on {$date}";
     }
 
     private function dateInRange(CarbonInterface $date, CarbonInterface $startsOn, ?CarbonInterface $endsOn): bool
