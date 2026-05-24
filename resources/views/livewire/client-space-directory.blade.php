@@ -64,14 +64,6 @@
                                     @endif
                                 </p>
                                 <p class="mt-1 text-xs text-gray-500">{{ $clientSpace->routingParents->count() }} route{{ $clientSpace->routingParents->count() === 1 ? '' : 's' }}</p>
-                                @if($canManageClientSpacePlacement)
-                                    <button type="button" wire:click="openPlacementModal({{ $clientSpace->id }})" class="mt-2 inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                                        Manage Routes
-                                    </button>
-                                @endif
-                                <a href="{{ route('hr.rosters.index', ['client_space' => $clientSpace->uuid]) }}" class="mt-2 inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                                    Manage Rosters
-                                </a>
                                 @if(in_array($clientSpace->id, $manageableClientSpaceIds, true))
                                     <button type="button" wire:click="openAddStaffModal({{ $clientSpace->id }})" class="mt-2 inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">
                                         Add Staff
@@ -79,7 +71,7 @@
                                 @endif
                                 @if($canManageSecondaryAssignments)
                                     <button type="button" wire:click="openSecondaryAssignmentModal({{ $clientSpace->id }})" class="mt-2 inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                                        Add Additional
+                                        Secondary Additions
                                     </button>
                                 @endif
                             </div>
@@ -244,7 +236,7 @@
         <div class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-gray-500 bg-opacity-75 px-4 py-6">
             <div class="w-full max-w-lg rounded-md bg-white px-4 pb-4 pt-5 shadow-xl sm:p-6">
                 <h3 class="mb-2 text-lg font-medium leading-6 text-gray-900">
-                    Add Additional Client Space Assignment
+                    Secondary Client Space Assignment
                 </h3>
                 <p class="mb-4 text-sm text-gray-600">
                     Use this when the staff member should keep their main location unchanged. Staff parked on an attached last routing node can also be linked here.
@@ -261,13 +253,13 @@
                         </select>
                         @error('selectedSecondaryStaffAssignmentId') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                         @if($secondaryStaffOptions->isEmpty())
-                            <p class="mt-2 text-sm text-gray-500">No staff are available for an additional assignment to this client space.</p>
+                            <p class="mt-2 text-sm text-gray-500">No staff are available for a secondary assignment to this client space.</p>
                         @endif
                     </div>
 
                     <div class="mt-5 sm:flex sm:flex-row-reverse">
                         <button type="submit" class="inline-flex w-full justify-center rounded-md border border-transparent bg-gray-900 px-4 py-2 text-base font-medium text-white hover:bg-gray-800 disabled:opacity-50 sm:ml-3 sm:w-auto sm:text-sm" @disabled($secondaryStaffOptions->isEmpty())>
-                            Add Additional
+                            Save Secondary
                         </button>
                         <button type="button" wire:click="$set('showSecondaryAssignmentModal', false)" class="mt-3 inline-flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
                             Cancel
@@ -286,7 +278,7 @@
                     Add Staff to Client Space
                 </h3>
                 <p class="mb-4 text-sm text-gray-600">
-                    Only staff currently under one of this client space's attached last routing nodes can be added directly here. Staff from those last nodes stay there and are linked to this client space. Everyone else should use Additional Assignment if their main location should stay unchanged.
+                    Only staff currently under one of this client space's attached last routing nodes can be added directly here. Staff from those last nodes stay there and are linked to this client space. Everyone else should use Secondary Assignment if their main location should stay unchanged.
                 </p>
 
                 <form wire:submit.prevent="addStaffToClientSpace">

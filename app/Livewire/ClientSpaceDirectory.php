@@ -155,7 +155,7 @@ class ClientSpaceDirectory extends Component
         $this->selectedClientSpaceId = null;
         $this->selectedSecondaryStaffAssignmentId = null;
 
-        session()->flash('message', 'Additional client space assignment added.');
+        session()->flash('message', 'Secondary client space assignment added.');
     }
 
     public function addStaffToClientSpace(): void
@@ -220,7 +220,7 @@ class ClientSpaceDirectory extends Component
         if ($assignments->contains(
             fn (StaffAssignment $assignment): bool => ! $attachedRoutingUnitIds->contains((int) $assignment->organizational_unit_id)
         )) {
-            $this->addError('selectedStaffAssignmentIds', 'Only staff currently under one of this client space\'s attached last routing nodes can be added directly. Use additional assignments for everyone else.');
+            $this->addError('selectedStaffAssignmentIds', 'Only staff currently under one of this client space\'s attached last routing nodes can be added directly. Use secondary assignments for everyone else.');
 
             return;
         }
@@ -459,7 +459,7 @@ class ClientSpaceDirectory extends Component
 
         abort_unless($updated > 0, 404);
 
-        session()->flash('message', 'Additional staff removed from client space.');
+        session()->flash('message', 'Secondary staff removed from client space.');
     }
 
     public function openPlacementModal(int $clientSpaceId): void
