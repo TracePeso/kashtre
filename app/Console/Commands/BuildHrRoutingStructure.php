@@ -833,12 +833,18 @@ class BuildHrRoutingStructure extends Command
         if ($business) {
             $contexts = User::query()
                 ->where('business_id', $business->id)
+                ->with([
+                    'title:id,name',
+                    'department:id,name',
+                ])
                 ->orderBy('name')
-                ->get(['uuid', 'staff_uuid', 'name', 'status', 'deactivated_at'])
+                ->get(['id', 'uuid', 'staff_uuid', 'name', 'status', 'deactivated_at', 'title_id', 'department_id'])
                 ->mapWithKeys(fn (User $user): array => [
                     ($user->staff_uuid ?: $user->uuid) => [
                         'name' => $user->name ?: ($user->staff_uuid ?: $user->uuid),
                         'is_active' => $this->userIsActive($user),
+                        'title' => $user->title?->name,
+                        'department' => $user->department?->name,
                     ],
                 ]);
         }
@@ -846,11 +852,14 @@ class BuildHrRoutingStructure extends Command
         $assignmentContexts = StaffAssignment::query()
             ->where('organization_id', $organization->id)
             ->orderBy('staff_name')
-            ->get(['staff_uuid', 'staff_name', 'status'])
+            ->get(['staff_uuid', 'staff_name', 'status', 'staff_department', 'staff_title', 'staff_cadre'])
             ->mapWithKeys(fn (StaffAssignment $assignment): array => [
                 $assignment->staff_uuid => [
                     'name' => $assignment->staff_name ?: $assignment->staff_uuid,
                     'is_active' => $assignment->status !== 'inactive',
+                    'department' => $assignment->staff_department,
+                    'title' => $assignment->staff_title,
+                    'cadre' => $assignment->staff_cadre,
                 ],
             ]);
 
@@ -883,6 +892,9 @@ class BuildHrRoutingStructure extends Command
                 'organization_id' => $organization->id,
                 'staff_uuid' => $staffUuid,
                 'staff_name' => $context['name'] ?? $staffUuid,
+                'staff_cadre' => $context['cadre'] ?? $assignment->staff_cadre,
+                'staff_department' => $context['department'] ?? $assignment->staff_department,
+                'staff_title' => $context['title'] ?? $assignment->staff_title,
                 'assignment_type' => $assignment->assignment_type ?: 'primary',
                 'assigned_at' => $assignment->assigned_at ?? now(),
                 'status' => $normalizedStatus,
