@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             CurrencyCountrySeeder::class,
             KashtreSeeder::class,
+            HrDefaultShiftTypeSeeder::class,
         ]);
     }
 }

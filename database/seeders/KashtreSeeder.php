@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Business;
 use App\Models\Branch;
 use App\Models\User;
+use App\Models\Organization;
 use App\Models\Qualification;
 use App\Models\Department;
 use App\Models\Section;
@@ -19,6 +20,7 @@ use App\Models\Supplier;
 use App\Models\InsuranceCompany;
 use App\Models\PatientCategory;
 use App\Models\ContractorProfile;
+use App\Services\HrDefaultShiftTypeService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -44,6 +46,12 @@ class KashtreSeeder extends Seeder
             'account_number' => 'KS' . Str::random(8),
             'date' => now(),
         ]);
+
+        $organization = Organization::firstOrCreate(
+            ['external_business_uuid' => $business->uuid],
+            ['name' => $business->name]
+        );
+        app(HrDefaultShiftTypeService::class)->seedMissingDefaults($organization);
 
         // 2. Create 2 Branches
         $branches = [];
@@ -375,4 +383,4 @@ class KashtreSeeder extends Seeder
             }
         }
     }
-} 
+}

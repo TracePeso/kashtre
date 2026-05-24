@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Models\Organization;
 use App\Models\ShiftType;
+use App\Services\HrDefaultShiftTypeService;
 use Carbon\CarbonImmutable;
 use Closure;
 use Filament\Forms;
@@ -28,6 +29,11 @@ class ShiftTypeTable extends Component implements HasForms, HasTable
     public function table(Table $table): Table
     {
         $org = Organization::current();
+
+        if ($org) {
+            app(HrDefaultShiftTypeService::class)->seedMissingDefaults($org);
+        }
+
         $query = ShiftType::query()
             ->when($org, fn($q) => $q->where('organization_id', $org->id))
             ->orderByDesc('is_system_default')
@@ -312,7 +318,7 @@ class ShiftTypeTable extends Component implements HasForms, HasTable
 
     protected function hasLockedShiftName(?ShiftType $record): bool
     {
-        return strcasecmp((string) $record?->name, 'Regular working Hours') === 0;
+        return strcasecmp((string) $record?->code, 'DAY') === 0;
     }
 }
 

@@ -19,6 +19,7 @@ class HrRealDataSyncService
     public function __construct(
         private readonly KashApiService $api,
         private readonly ?ClientSpaceRoutingService $clientSpaceRoutingService = null,
+        private readonly ?HrDefaultShiftTypeService $defaultShiftTypeService = null,
     )
     {
     }
@@ -805,9 +806,13 @@ class HrRealDataSyncService
             }
         }
 
-        return Organization::updateOrCreate(
+        $organization = Organization::updateOrCreate(
             ['external_business_uuid' => $this->sourceId($business)],
             ['name' => $business['name']]
         );
+
+        $this->defaultShiftTypeService?->seedMissingDefaults($organization);
+
+        return $organization;
     }
 }
