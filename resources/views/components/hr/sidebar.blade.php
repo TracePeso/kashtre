@@ -29,7 +29,7 @@
             'route' => 'hr.ai-roster-constraints.index',
             'active' => request()->routeIs('hr.ai-roster-constraints.*'),
             'icon' => 'M9.75 3.104c.69-1.2 2.41-1.2 3.1 0l.824 1.432a1.8 1.8 0 001.554.9h1.648c1.38 0 2.24 1.494 1.55 2.694l-.824 1.432a1.8 1.8 0 000 1.8l.824 1.432c.69 1.2-.17 2.694-1.55 2.694h-1.648a1.8 1.8 0 00-1.554.9l-.824 1.432c-.69 1.2-2.41 1.2-3.1 0l-.824-1.432a1.8 1.8 0 00-1.554-.9H5.678c-1.38 0-2.24-1.494-1.55-2.694l.824-1.432a1.8 1.8 0 000-1.8l-.824-1.432c-.69-1.2.17-2.694 1.55-2.694h1.648a1.8 1.8 0 001.554-.9l.87-1.432z',
-            'visible' => $user?->canManageAiRosterConstraints() ?? false,
+            'visible' => ($user?->canViewHrSetup() ?? false) || ($user?->canManageAiRosterConstraints() ?? false),
         ],
     ];
 

@@ -35,7 +35,7 @@ Route::middleware(['web', 'auth', 'verified'])->prefix('hr')->name('hr.')->group
         ->name('client-spaces.index');
     Route::get('/rosters', [RosterController::class, 'index'])->name('rosters.index');
     Route::get('/ai-roster-constraints', [AiRosterConstraintController::class, 'index'])
-        ->middleware('hr.permission:Manage AI Roster Constraints')
+        ->middleware('hr.permission:View HR Setup,Add HR Setup,Edit HR Setup,Manage AI Roster Constraints')
         ->name('ai-roster-constraints.index');
     Route::get('/open-shifts', [OpenShiftController::class, 'index'])->name('open-shifts.index');
     Route::get('/my-roster', [MyRosterController::class, 'index'])->name('my-roster.index');
