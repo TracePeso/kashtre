@@ -83,6 +83,19 @@
                             ? ($selectedRoster->activeGenerationSource() === \App\Models\HrDutyRoster::AI_GENERATION_SOURCE_AUTO ? 'Automatic generation failed' : 'Gemini failed')
                             : ($selectedRoster->activeGenerationSource() === \App\Models\HrDutyRoster::AI_GENERATION_SOURCE_AUTO ? 'Automatic generation running' : 'Gemini running'));
                 @endphp
+                @php
+                    $activeTeamNames = $selectedRoster->isEditable()
+                        ? collect($editingTeamNames)
+                            ->map(fn ($team): string => trim((string) $team))
+                            ->filter()
+                            ->unique(fn (string $team): string => \Illuminate\Support\Str::lower($team))
+                            ->values()
+                            ->all()
+                        : $selectedRoster->teamNames();
+                    $teamsEnabledForView = $selectedRoster->isEditable()
+                        ? $editingUsesTeams && $activeTeamNames !== []
+                        : $selectedRoster->usesTeams();
+                @endphp
                 <div class="rounded-lg border border-gray-200 bg-white">
                     <div class="border-b border-gray-200 px-6 py-5">
                         <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -94,8 +107,8 @@
                                     </span>
                                 </div>
                                 <p class="mt-2 text-sm text-gray-500">{{ $selectedRoster->organizationalUnit->name }} / {{ $selectedRoster->cadre_or_discipline }}</p>
-                                @if($selectedRoster->usesTeams())
-                                    <p class="mt-2 text-xs text-gray-500">Teams: {{ implode(', ', $selectedRoster->teamNames()) }}</p>
+                                @if($teamsEnabledForView)
+                                    <p class="mt-2 text-xs text-gray-500">Teams: {{ implode(', ', $activeTeamNames) }}</p>
                                 @endif
                                 @if($selectedRoster->approvalRequest)
                                     <p class="mt-2 text-xs text-gray-500">
@@ -185,7 +198,7 @@
                                     <div class="flex flex-wrap items-center justify-between gap-3">
                                         <div>
                                             <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Teams</label>
-                                            <p class="mt-1 text-xs text-gray-500">Group roster-eligible staff into named teams for generation and display.</p>
+                                            <p class="mt-1 text-xs text-gray-500">Define team names, then assign each client-space staff row to a team manually from the roster table.</p>
                                         </div>
                                         <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                                             <input type="checkbox" wire:model.live="editingUsesTeams" @disabled(!$selectedRoster->isEditable()) class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:bg-gray-100">
@@ -213,6 +226,7 @@
                                             @endif
                                         </div>
                                         @error('team_names') <span class="mt-2 block text-xs text-rose-600">{{ $message }}</span> @enderror
+                                        @error('team_assignments') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
                                     @endif
                                 </div>
                             </div>
@@ -300,11 +314,33 @@
                                     ['label' => 'Approved leave', 'symbol' => 'H'],
                                     ['label' => 'Off / Unassigned', 'symbol' => 'X'],
                                 ];
+                                $availableStaffIds = $staffRows
+                                    ->pluck('id')
+                                    ->mapWithKeys(fn ($id): array => [(string) $id => true]);
+                                $activeTeamAssignments = $teamsEnabledForView
+                                    ? collect($selectedRoster->isEditable() ? ($editingTeamAssignments ?? []) : $selectedRoster->teamAssignments())
+                                        ->mapWithKeys(function ($team, $staffAssignmentId) use ($availableStaffIds, $activeTeamNames): array {
+                                            $staffKey = trim((string) $staffAssignmentId);
+                                            $teamName = trim((string) $team);
+
+                                            if (
+                                                $staffKey === ''
+                                                || $teamName === ''
+                                                || ! $availableStaffIds->has($staffKey)
+                                                || ! in_array($teamName, $activeTeamNames, true)
+                                            ) {
+                                                return [];
+                                            }
+
+                                            return [$staffKey => $teamName];
+                                        })
+                                        ->all()
+                                    : [];
                                 $teamGroups = collect();
-                                if ($selectedRoster->usesTeams()) {
-                                    foreach ($selectedRoster->teamNames() as $teamName) {
+                                if ($teamsEnabledForView) {
+                                    foreach ($activeTeamNames as $teamName) {
                                         $members = $staffRows
-                                            ->filter(fn ($staffAssignment) => $selectedRoster->teamLabelForStaffAssignment($staffAssignment->id) === $teamName)
+                                            ->filter(fn ($staffAssignment) => ($activeTeamAssignments[(string) $staffAssignment->id] ?? null) === $teamName)
                                             ->values();
 
                                         if ($members->isNotEmpty()) {
@@ -313,7 +349,7 @@
                                     }
 
                                     $unassignedMembers = $staffRows
-                                        ->filter(fn ($staffAssignment) => ! $selectedRoster->teamLabelForStaffAssignment($staffAssignment->id))
+                                        ->filter(fn ($staffAssignment) => ! ($activeTeamAssignments[(string) $staffAssignment->id] ?? null))
                                         ->values();
 
                                     if ($unassignedMembers->isNotEmpty()) {
@@ -366,9 +402,9 @@
                                                     <div class="border-l border-stone-300 px-3 py-1.5 text-center font-semibold uppercase">{{ $legendRow['symbol'] }}</div>
                                                 </div>
                                             @endforeach
-                                            @if($selectedRoster->usesTeams())
+                                            @if($teamsEnabledForView)
                                                 <div class="border-t border-stone-200 px-3 py-2 text-xs text-stone-600">
-                                                    Teams: {{ implode(', ', $selectedRoster->teamNames()) }}
+                                                    Teams: {{ implode(', ', $activeTeamNames) }}
                                                 </div>
                                             @endif
                                         </div>
@@ -432,7 +468,20 @@
                                                     @endphp
                                                     <tr>
                                                         <td class="border border-stone-300 px-3 py-2 text-xs uppercase tracking-[0.2em] text-stone-400">
-                                                            {{ $selectedRoster->usesTeams() ? '' : 'Roster' }}
+                                                            @if($teamsEnabledForView)
+                                                                @if($selectedRoster->isEditable())
+                                                                    <select wire:model.live="editingTeamAssignments.{{ $staffAssignment->id }}" class="w-full rounded border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold normal-case tracking-normal text-stone-700 focus:border-blue-500 focus:ring-blue-500">
+                                                                        <option value="">Unassigned</option>
+                                                                        @foreach($activeTeamNames as $teamName)
+                                                                            <option value="{{ $teamName }}">{{ $teamName }}</option>
+                                                                        @endforeach
+                                                                    </select>
+                                                                @else
+                                                                    {{ $activeTeamAssignments[(string) $staffAssignment->id] ?? 'Unassigned' }}
+                                                                @endif
+                                                            @else
+                                                                Roster
+                                                            @endif
                                                         </td>
                                                         <td class="border border-stone-300 px-3 py-2 align-top">
                                                             <div class="text-sm font-semibold text-stone-900">{{ $staffAssignment->staff_name }}</div>
@@ -511,7 +560,7 @@
                         <div class="flex flex-wrap items-center justify-between gap-3">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Teams</label>
-                                <p class="mt-1 text-xs text-gray-500">Define team names when this roster should group staff into shared teams.</p>
+                                <p class="mt-1 text-xs text-gray-500">Define team names here. After creating the draft, assign client-space staff to those teams manually.</p>
                             </div>
                             <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                                 <input type="checkbox" wire:model.live="newRosterUsesTeams" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">

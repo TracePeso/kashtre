@@ -43,6 +43,7 @@ class DutyRosterManager extends Component
     public string $editingName = '';
     public bool $editingUsesTeams = false;
     public array $editingTeamNames = [];
+    public array $editingTeamAssignments = [];
     public ?string $editingStartDate = null;
     public ?string $editingEndDate = null;
     public array $entrySelections = [];
@@ -62,6 +63,7 @@ class DutyRosterManager extends Component
         $this->editingName = '';
         $this->editingUsesTeams = false;
         $this->editingTeamNames = [];
+        $this->editingTeamAssignments = [];
         $this->editingStartDate = null;
         $this->editingEndDate = null;
         $this->entrySelections = [];
@@ -171,7 +173,20 @@ class DutyRosterManager extends Component
 
         if (! $value) {
             $this->editingTeamNames = [];
+            $this->editingTeamAssignments = [];
         }
+
+        $this->syncEditingTeamAssignments();
+    }
+
+    public function updatedEditingTeamNames(): void
+    {
+        $this->syncEditingTeamAssignments();
+    }
+
+    public function updatedEditingTeamAssignments(): void
+    {
+        $this->syncEditingTeamAssignments();
     }
 
     public function addNewRosterTeam(): void
@@ -196,6 +211,7 @@ class DutyRosterManager extends Component
     {
         unset($this->editingTeamNames[$index]);
         $this->editingTeamNames = array_values($this->editingTeamNames);
+        $this->syncEditingTeamAssignments();
     }
 
     public function createRoster(): void
@@ -214,6 +230,7 @@ class DutyRosterManager extends Component
                 'cadre_or_disciplines' => $this->newRosterDisciplines,
                 'team_grouping_enabled' => $this->newRosterUsesTeams,
                 'team_names' => $this->newRosterTeamNames,
+                'team_assignments' => [],
                 'start_date' => $this->newRosterStartDate,
                 'end_date' => $this->newRosterEndDate,
                 'entries' => [],
@@ -253,6 +270,7 @@ class DutyRosterManager extends Component
                 'name' => $this->editingName,
                 'team_grouping_enabled' => $this->editingUsesTeams,
                 'team_names' => $this->editingTeamNames,
+                'team_assignments' => $this->filteredEditingTeamAssignments(),
                 'start_date' => $this->editingStartDate,
                 'end_date' => $this->editingEndDate,
                 'entries' => $this->filteredEntrySelections(),
@@ -283,6 +301,7 @@ class DutyRosterManager extends Component
                 'name' => $this->editingName,
                 'team_grouping_enabled' => $this->editingUsesTeams,
                 'team_names' => $this->editingTeamNames,
+                'team_assignments' => $this->filteredEditingTeamAssignments(),
                 'start_date' => $this->editingStartDate,
                 'end_date' => $this->editingEndDate,
                 'entries' => $this->filteredEntrySelections(),
@@ -316,6 +335,7 @@ class DutyRosterManager extends Component
                 'name' => $this->editingName,
                 'team_grouping_enabled' => $this->editingUsesTeams,
                 'team_names' => $this->editingTeamNames,
+                'team_assignments' => $this->filteredEditingTeamAssignments(),
                 'start_date' => $this->editingStartDate,
                 'end_date' => $this->editingEndDate,
                 'entries' => $this->filteredEntrySelections(),
@@ -750,6 +770,7 @@ class DutyRosterManager extends Component
         $this->editingName = '';
         $this->editingUsesTeams = false;
         $this->editingTeamNames = [];
+        $this->editingTeamAssignments = [];
         $this->editingStartDate = null;
         $this->editingEndDate = null;
         $this->entrySelections = [];
@@ -763,6 +784,7 @@ class DutyRosterManager extends Component
         $this->editingName = $roster->name;
         $this->editingUsesTeams = $roster->usesTeams();
         $this->editingTeamNames = $roster->teamNames();
+        $this->editingTeamAssignments = $roster->teamAssignments();
         $this->editingStartDate = $roster->start_date?->toDateString();
         $this->editingEndDate = $roster->end_date?->toDateString();
         $this->hydratedAiGenerationToken = $roster->hasCompletedAiGeneration()
@@ -886,6 +908,71 @@ class DutyRosterManager extends Component
         }
 
         return $filtered;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function filteredEditingTeamAssignments(): array
+    {
+        if (! $this->editingUsesTeams) {
+            return [];
+        }
+
+        $teamNames = $this->normalizedTeamNames($this->editingTeamNames);
+
+        if ($teamNames === []) {
+            return [];
+        }
+
+        $roster = $this->selectedRoster();
+
+        if (! $roster) {
+            return [];
+        }
+
+        $eligibleAssignmentIds = $this->dutyRosterService()
+            ->eligibleAssignments($roster->organizationalUnit, $roster->disciplineTitles())
+            ->pluck('id')
+            ->mapWithKeys(fn ($id): array => [(string) $id => true]);
+        $validTeams = collect($teamNames)
+            ->mapWithKeys(fn (string $team): array => [$team => true]);
+
+        return collect($this->editingTeamAssignments)
+            ->mapWithKeys(function ($team, $staffAssignmentId) use ($eligibleAssignmentIds, $validTeams): array {
+                $staffKey = trim((string) $staffAssignmentId);
+                $teamName = trim((string) $team);
+
+                if ($staffKey === '' || $teamName === '') {
+                    return [];
+                }
+
+                if (! $eligibleAssignmentIds->has($staffKey) || ! $validTeams->has($teamName)) {
+                    return [];
+                }
+
+                return [$staffKey => $teamName];
+            })
+            ->all();
+    }
+
+    private function syncEditingTeamAssignments(): void
+    {
+        $this->editingTeamAssignments = $this->filteredEditingTeamAssignments();
+    }
+
+    /**
+     * @param array<int, string|null> $teams
+     * @return array<int, string>
+     */
+    private function normalizedTeamNames(array $teams): array
+    {
+        return collect($teams)
+            ->map(fn ($team): string => trim((string) $team))
+            ->filter(fn (string $team): bool => $team !== '')
+            ->unique(fn (string $team): string => Str::lower($team))
+            ->values()
+            ->all();
     }
 
     /**

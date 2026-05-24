@@ -171,7 +171,7 @@ class DutyRosterService
         $validated = $this->validateHeaderPayload($organization, $clientSpace, $payload);
         $this->assertCanManageRoster($user, $clientSpace, $validated['cadre_or_disciplines']);
         $eligibleAssignments = $this->eligibleAssignments($clientSpace, $validated['cadre_or_disciplines']);
-        $teamAssignments = $this->resolveTeamAssignments(null, $eligibleAssignments, $validated['team_names']);
+        $teamAssignments = $validated['team_assignments'];
 
         return DB::transaction(function () use ($organization, $user, $validated, $teamAssignments) {
             $roster = HrDutyRoster::create([
@@ -291,7 +291,7 @@ class DutyRosterService
             'cadre_or_disciplines' => $roster->disciplineTitles(),
         ]));
         $eligibleAssignments = $this->eligibleAssignments($roster->organizationalUnit, $validated['cadre_or_disciplines']);
-        $teamAssignments = $this->resolveTeamAssignments($roster->fresh(), $eligibleAssignments, $validated['team_names']);
+        $teamAssignments = $validated['team_assignments'];
 
         return DB::transaction(function () use ($roster, $validated, $teamAssignments) {
             $roster->update([
@@ -359,7 +359,7 @@ class DutyRosterService
         ?string $generationSource = null
     ): HrDutyRoster {
         $eligibleAssignments = $this->eligibleAssignments($roster->organizationalUnit, $validated['cadre_or_disciplines']);
-        $teamAssignments = $this->resolveTeamAssignments($roster->fresh(), $eligibleAssignments, $validated['team_names']);
+        $teamAssignments = $validated['team_assignments'];
 
         return DB::transaction(function () use ($roster, $validated, $generationOptions, $generationToken, $generationSource, $eligibleAssignments, $teamAssignments) {
             $roster->update([
@@ -455,7 +455,7 @@ class DutyRosterService
             'cadre_or_disciplines' => $roster->disciplineTitles(),
         ]));
         $eligibleAssignments = $this->eligibleAssignments($roster->organizationalUnit, $validated['cadre_or_disciplines']);
-        $teamAssignments = $this->resolveTeamAssignments($roster->fresh(), $eligibleAssignments, $validated['team_names']);
+        $teamAssignments = $validated['team_assignments'];
         $freshRoster = $roster->fresh(['organization', 'organizationalUnit']);
         $shiftTypes = ShiftType::query()
             ->where('organization_id', $freshRoster->organization_id)
@@ -561,7 +561,7 @@ class DutyRosterService
             'fallback_on_gemini_failure' => false,
             'ai_generation_token' => $generationToken,
         ];
-        $teamAssignments = $this->resolveTeamAssignments($roster->fresh(), $eligibleAssignments, $validated['team_names']);
+        $teamAssignments = $validated['team_assignments'];
 
         $queuedRoster = DB::transaction(function () use ($roster, $validated, $generationToken, $teamAssignments): HrDutyRoster {
             $roster->update([
@@ -616,7 +616,7 @@ class DutyRosterService
         ];
 
         $eligibleAssignments = $this->eligibleAssignments($roster->organizationalUnit, $validated['cadre_or_disciplines']);
-        $teamAssignments = $this->resolveTeamAssignments($roster->fresh(), $eligibleAssignments, $validated['team_names']);
+        $teamAssignments = $validated['team_assignments'];
 
         $queuedRoster = DB::transaction(function () use ($roster, $validated, $generationToken, $teamAssignments): HrDutyRoster {
             $roster->update([
@@ -925,6 +925,7 @@ class DutyRosterService
             'team_grouping_enabled' => 'nullable|boolean',
             'team_names' => 'array',
             'team_names.*' => 'nullable|string|max:120',
+            'team_assignments' => 'array',
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
             'entries' => 'array',
@@ -965,6 +966,9 @@ class DutyRosterService
         $validated['team_grouping_enabled'] = (bool) ($payload['team_grouping_enabled'] ?? false);
         $validated['team_names'] = $validated['team_grouping_enabled']
             ? $this->cleanTeamList($validated['team_names'] ?? [])
+            : [];
+        $validated['team_assignments'] = $validated['team_grouping_enabled']
+            ? $this->resolveTeamAssignments($eligibleAssignments, $validated['team_names'], $payload['team_assignments'] ?? [])
             : [];
 
         if ($validated['team_grouping_enabled'] && count($validated['team_names']) < 2) {
@@ -1561,46 +1565,44 @@ class DutyRosterService
     /**
      * @param Collection<int, StaffAssignment> $eligibleAssignments
      * @param array<int, string> $teamNames
+     * @param array<int|string, string|null> $submittedAssignments
      * @return array<string, string>
      */
-    private function resolveTeamAssignments(?HrDutyRoster $roster, Collection $eligibleAssignments, array $teamNames): array
+    private function resolveTeamAssignments(Collection $eligibleAssignments, array $teamNames, array $submittedAssignments): array
     {
         if ($teamNames === [] || $eligibleAssignments->isEmpty()) {
             return [];
         }
 
-        $previousAssignments = $roster?->teamAssignments() ?? [];
+        $eligibleAssignmentIds = $eligibleAssignments
+            ->pluck('id')
+            ->mapWithKeys(fn ($id): array => [(string) $id => true]);
+        $validTeams = collect($teamNames)
+            ->mapWithKeys(fn (string $team): array => [$team => true]);
+
         $resolvedAssignments = [];
-        $teamCounts = array_fill_keys($teamNames, 0);
-        $unassigned = [];
 
-        foreach ($eligibleAssignments
-            ->sortBy('staff_name', SORT_NATURAL | SORT_FLAG_CASE)
-            ->values() as $assignment) {
-            $staffKey = (string) $assignment->id;
-            $teamName = $previousAssignments[$staffKey] ?? null;
+        foreach ($submittedAssignments as $staffAssignmentId => $team) {
+            $staffKey = trim((string) $staffAssignmentId);
+            $teamName = Str::of((string) $team)->squish()->trim()->toString();
 
-            if ($teamName && in_array($teamName, $teamNames, true)) {
-                $resolvedAssignments[$staffKey] = $teamName;
-                $teamCounts[$teamName]++;
+            if ($staffKey === '' || $teamName === '') {
                 continue;
             }
 
-            $unassigned[] = $assignment;
-        }
-
-        foreach ($unassigned as $assignment) {
-            $staffKey = (string) $assignment->id;
-            $selectedTeam = collect($teamNames)
-                ->sortBy(fn (string $team): array => [$teamCounts[$team] ?? 0, array_search($team, $teamNames, true)])
-                ->first();
-
-            if (! is_string($selectedTeam) || $selectedTeam === '') {
-                continue;
+            if (! $eligibleAssignmentIds->has($staffKey)) {
+                throw ValidationException::withMessages([
+                    'team_assignments' => 'One or more selected staff members are no longer roster-eligible in this client space and title set.',
+                ]);
             }
 
-            $resolvedAssignments[$staffKey] = $selectedTeam;
-            $teamCounts[$selectedTeam] = ($teamCounts[$selectedTeam] ?? 0) + 1;
+            if (! $validTeams->has($teamName)) {
+                throw ValidationException::withMessages([
+                    'team_assignments' => 'One or more selected teams are invalid for this roster.',
+                ]);
+            }
+
+            $resolvedAssignments[$staffKey] = $teamName;
         }
 
         return $resolvedAssignments;
