@@ -243,7 +243,7 @@
                     Add Additional Client Space Assignment
                 </h3>
                 <p class="mb-4 text-sm text-gray-600">
-                    Use this for staff who are not currently under {{ $selectedClientSpace?->name }}'s primary routing node. Their main location stays unchanged.
+                    Use this when the staff member should keep their main location unchanged. Staff parked on an attached last routing node can also be linked here.
                 </p>
 
                 <form wire:submit.prevent="addSecondaryAssignment">
@@ -282,7 +282,7 @@
                     Add Staff to Client Space
                 </h3>
                 <p class="mb-4 text-sm text-gray-600">
-                    Only staff currently under this client space's primary routing node can be added directly here. Everyone else should be added through Additional Assignment instead.
+                    Only staff currently under one of this client space's attached last routing nodes can be added directly here. If their main location should stay unchanged, use Additional Assignment instead.
                 </p>
 
                 <form wire:submit.prevent="addStaffToClientSpace">
@@ -315,7 +315,7 @@
                                     </label>
                                 @empty
                                     <div class="px-3 py-4 text-sm text-gray-500">
-                                        No eligible staff are currently under this client space's primary routing node.
+                                        No eligible staff are currently under this client space's attached last routing nodes.
                                     </div>
                                 @endforelse
                             </div>

@@ -100,14 +100,19 @@ class ClientSpaceDirectory extends Component
             ->with('organizationalUnit')
             ->findOrFail($this->selectedSecondaryStaffAssignmentId);
 
+        $attachedRoutingUnitIds = $this->attachedRoutingUnitIdsForClientSpace($clientSpace);
+
         if (in_array($assignment->status, ['inactive', 'orphaned'], true)) {
             $this->addError('selectedSecondaryStaffAssignmentId', 'Inactive or orphaned staff cannot be added as secondary clinical staff.');
 
             return;
         }
 
-        if ($assignment->isOnLowestRoutingNode()) {
-            $this->addError('selectedSecondaryStaffAssignmentId', 'Staff on the last routing node must be placed directly in their client space instead of using an additional assignment.');
+        if (
+            $assignment->isOnLowestRoutingNode()
+            && ! $attachedRoutingUnitIds->contains((int) $assignment->organizational_unit_id)
+        ) {
+            $this->addError('selectedSecondaryStaffAssignmentId', 'Staff on the last routing node can only be linked to client spaces attached under that node.');
 
             return;
         }
@@ -204,16 +209,18 @@ class ClientSpaceDirectory extends Component
             return;
         }
 
-        if (! $clientSpace->parent_id) {
+        $attachedRoutingUnitIds = $this->attachedRoutingUnitIdsForClientSpace($clientSpace);
+
+        if ($attachedRoutingUnitIds->isEmpty()) {
             $this->addError('selectedStaffAssignmentIds', 'Attach this client space to a primary routing node before adding staff directly.');
 
             return;
         }
 
-        $primaryRouteId = (int) $clientSpace->parent_id;
-
-        if ($assignments->contains(fn (StaffAssignment $assignment): bool => (int) $assignment->organizational_unit_id !== $primaryRouteId)) {
-            $this->addError('selectedStaffAssignmentIds', 'Only staff currently under this client space\'s primary routing node can be added directly. Use additional assignments for everyone else.');
+        if ($assignments->contains(
+            fn (StaffAssignment $assignment): bool => ! $attachedRoutingUnitIds->contains((int) $assignment->organizational_unit_id)
+        )) {
+            $this->addError('selectedStaffAssignmentIds', 'Only staff currently under one of this client space\'s attached last routing nodes can be added directly. Use additional assignments for everyone else.');
 
             return;
         }
@@ -657,16 +664,16 @@ class ClientSpaceDirectory extends Component
             ->pluck('staff_assignment_id')
             ->map(fn ($id): int => (int) $id);
 
-        if (! $clientSpace->parent_id) {
+        $attachedRoutingUnitIds = $this->attachedRoutingUnitIdsForClientSpace($clientSpace);
+
+        if ($attachedRoutingUnitIds->isEmpty()) {
             return collect();
         }
-
-        $primaryRouteId = (int) $clientSpace->parent_id;
 
         return StaffAssignment::with('organizationalUnit')
             ->where('organization_id', $org->id)
             ->whereNotIn('status', ['inactive', 'orphaned'])
-            ->where('organizational_unit_id', $primaryRouteId)
+            ->whereIn('organizational_unit_id', $attachedRoutingUnitIds->all())
             ->whereNotIn('id', $activeLinkedAssignmentIds)
             ->orderBy('staff_name')
             ->get()
@@ -764,23 +771,24 @@ class ClientSpaceDirectory extends Component
             ->pluck('staff_assignment_id')
             ->map(fn ($id): int => (int) $id);
 
-        $primaryRouteId = $clientSpace->parent_id ? (int) $clientSpace->parent_id : null;
+        $attachedRoutingUnitIds = $this->attachedRoutingUnitIdsForClientSpace($clientSpace);
 
         return StaffAssignment::with('organizationalUnit')
             ->where('organization_id', $org->id)
-            ->eligibleForSecondaryClientSpaceAssignments()
             ->whereNotIn('status', ['inactive', 'orphaned'])
             ->whereNotIn('id', $activeLinkedAssignmentIds)
+            ->where(function ($query) use ($attachedRoutingUnitIds): void {
+                $query->eligibleForSecondaryClientSpaceAssignments();
+
+                if ($attachedRoutingUnitIds->isNotEmpty()) {
+                    $query->orWhereIn('organizational_unit_id', $attachedRoutingUnitIds->all());
+                }
+            })
             ->where(function ($query) use ($clientSpace): void {
                 $query
                     ->whereNull('organizational_unit_id')
                     ->orWhere('organizational_unit_id', '!=', $clientSpace->id);
             })
-            ->when($primaryRouteId !== null, fn ($query) => $query->where(function ($inner) use ($primaryRouteId): void {
-                $inner
-                    ->whereNull('organizational_unit_id')
-                    ->orWhere('organizational_unit_id', '!=', $primaryRouteId);
-            }))
             ->orderBy('staff_name')
             ->get()
             ->mapWithKeys(function (StaffAssignment $assignment): array {
