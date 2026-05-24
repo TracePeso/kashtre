@@ -91,27 +91,78 @@
                     <div class="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-4">
                         <div>
                             <h3 class="text-lg font-medium text-gray-900">
-                                {{ ($statementView ?? 'items') === 'items' ? 'Statement by item' : 'Statement by transaction' }}
+                                {{ ($statementView ?? 'items') === 'items' ? 'Items' : 'Invoices' }}
                             </h3>
                             <p class="text-sm text-gray-500 mt-1">
-                                Default view itemizes ledger lines against invoice items where possible; switch to transactions for raw ledger rows.
+                                {{ ($statementView ?? 'items') === 'items' ? 'Ledger activity split by invoice line items.' : 'All insurance invoices for this vendor.' }}
                             </p>
                         </div>
                         <div class="flex rounded-lg border border-gray-200 p-1 bg-gray-50 shrink-0">
                             <a href="{{ route('third-party-vendors.balance-statement', ['vendorId' => $vendor['id'], 'view' => 'items']) }}"
                                class="px-4 py-2 text-sm font-medium rounded-md {{ ($statementView ?? 'items') === 'items' ? 'bg-white shadow text-blue-700' : 'text-gray-600 hover:text-gray-900' }}">
-                                By item
+                                Items
                             </a>
-                            <a href="{{ route('third-party-vendors.balance-statement', ['vendorId' => $vendor['id'], 'view' => 'transactions']) }}"
-                               class="px-4 py-2 text-sm font-medium rounded-md {{ ($statementView ?? '') === 'transactions' ? 'bg-white shadow text-blue-700' : 'text-gray-600 hover:text-gray-900' }}">
-                                By transaction
+                            <a href="{{ route('third-party-vendors.balance-statement', ['vendorId' => $vendor['id'], 'view' => 'invoices']) }}"
+                               class="px-4 py-2 text-sm font-medium rounded-md {{ ($statementView ?? '') === 'invoices' ? 'bg-white shadow text-blue-700' : 'text-gray-600 hover:text-gray-900' }}">
+                                Invoices
                             </a>
                         </div>
                     </div>
-                    <p class="text-sm text-gray-500 mb-4">
-                        Filament table: search and column controls apply to the <strong>transactions</strong> view. The <strong>by item</strong> view paginates ledger batches (50 histories per page); debit lines are split per invoice item on each page.
-                    </p>
 
+                    @if(($statementView ?? 'items') === 'invoices')
+                        @if(count($vendorInvoices ?? []) > 0)
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Invoice</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paid</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Balance due</th>
+                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-200">
+                                    @foreach($vendorInvoices as $invoice)
+                                    @php
+                                        $payStatus = $invoice['payment_status'] ?? 'pending_payment';
+                                        $statusClass = match ($payStatus) {
+                                            'paid' => 'bg-green-100 text-green-800',
+                                            'partial' => 'bg-blue-100 text-blue-800',
+                                            'pending_payment' => 'bg-yellow-100 text-yellow-800',
+                                            default => 'bg-gray-100 text-gray-700',
+                                        };
+                                    @endphp
+                                    <tr>
+                                        <td class="px-4 py-3 whitespace-nowrap">{{ !empty($invoice['created_at']) ? \Carbon\Carbon::parse($invoice['created_at'])->format('Y-m-d H:i') : '—' }}</td>
+                                        <td class="px-4 py-3 whitespace-nowrap font-medium">
+                                            @if(!empty($invoice['id']))
+                                                <a href="{{ route('invoices.show', $invoice['id']) }}" class="text-blue-600 hover:text-blue-800">{{ $invoice['invoice_number'] ?? 'N/A' }}</a>
+                                            @else
+                                                {{ $invoice['invoice_number'] ?? 'N/A' }}
+                                            @endif
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap">{{ $invoice['client_name'] ?? 'N/A' }}</td>
+                                        <td class="px-4 py-3 whitespace-nowrap">UGX {{ number_format((float) ($invoice['total_amount'] ?? 0), 2) }}</td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-green-700">UGX {{ number_format((float) ($invoice['amount_paid'] ?? 0), 2) }}</td>
+                                        <td class="px-4 py-3 whitespace-nowrap">UGX {{ number_format((float) ($invoice['balance_due'] ?? 0), 2) }}</td>
+                                        <td class="px-4 py-3 whitespace-nowrap">
+                                            <span class="px-2 py-1 text-xs rounded-full {{ $statusClass }}">{{ ucfirst(str_replace('_', ' ', $payStatus)) }}</span>
+                                        </td>
+                                    </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                        @else
+                        <p class="text-sm text-gray-500 text-center py-8">No invoices yet for this vendor.</p>
+                        @endif
+                    @else
+                    <p class="text-sm text-gray-500 mb-4">
+                        Debit lines are split per invoice item on each page (50 ledger batches per page).
+                    </p>
                     <div class="overflow-x-auto filament-tables-wrapper">
                         <livewire:third-party-vendor-balance-statement-table
                             :third-party-payer-id="$thirdPartyPayer->id"
@@ -119,6 +170,7 @@
                             wire:key="tp-vendor-bs-{{ $thirdPartyPayer->id }}-{{ $statementView }}"
                         />
                     </div>
+                    @endif
                 </div>
             </div>
 

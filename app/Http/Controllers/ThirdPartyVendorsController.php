@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\AccountBalanceSummaryService;
+use App\Services\InsurerPortalVendorSummaryService;
 use App\Services\ThirdPartyApiService;
 use App\Services\ThirdPartyPayerStatementPresenter;
 use Illuminate\Http\Request;
@@ -181,6 +182,7 @@ class ThirdPartyVendorsController extends Controller
 
             $balanceHistories = collect();
             $itemStatementRows = collect();
+            $vendorInvoices = [];
             $balanceSummary = [
                 'available_balance' => 0.0,
                 'total_balance' => 0.0,
@@ -202,6 +204,10 @@ class ThirdPartyVendorsController extends Controller
                 $balanceHistories = app(AccountBalanceSummaryService::class)->enrichThirdPartyPayerHistories($balanceHistories);
 
                 $itemStatementRows = ThirdPartyPayerStatementPresenter::rowsFromHistories($balanceHistories);
+
+                $summaryPayload = app(InsurerPortalVendorSummaryService::class)
+                    ->buildSummaryPayload($business->id, (int) $vendorId);
+                $vendorInvoices = $summaryPayload['invoices'] ?? [];
             }
 
             return view('third-party-vendors.show', compact(
@@ -211,6 +217,7 @@ class ThirdPartyVendorsController extends Controller
                 'thirdPartyPayer',
                 'balanceHistories',
                 'itemStatementRows',
+                'vendorInvoices',
                 'balanceSummary',
             ));
         } catch (\Exception $e) {
@@ -289,11 +296,21 @@ class ThirdPartyVendorsController extends Controller
             }
 
             $statementView = $request->query('view', 'items');
-            if (! in_array($statementView, ['items', 'transactions'], true)) {
+            if ($statementView === 'transactions') {
+                $statementView = 'invoices';
+            }
+            if (! in_array($statementView, ['items', 'invoices'], true)) {
                 $statementView = 'items';
             }
 
             $balanceSummary = app(AccountBalanceSummaryService::class)->forThirdPartyPayer($thirdPartyPayer);
+
+            $vendorInvoices = [];
+            if ($statementView === 'invoices') {
+                $summaryPayload = app(InsurerPortalVendorSummaryService::class)
+                    ->buildSummaryPayload($business->id, (int) $vendorId);
+                $vendorInvoices = $summaryPayload['invoices'] ?? [];
+            }
 
             return view('third-party-vendors.balance-statement', compact(
                 'vendor',
@@ -301,6 +318,7 @@ class ThirdPartyVendorsController extends Controller
                 'thirdPartyPayer',
                 'statementView',
                 'balanceSummary',
+                'vendorInvoices',
             ));
         } catch (\Exception $e) {
             Log::error('Exception while fetching vendor balance statement', [

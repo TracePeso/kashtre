@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ThirdPartyPayer;
 use App\Models\ThirdPartyPayerBalanceHistory;
+use App\Support\InsurerPortalPaymentSettlementNotes;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -167,6 +168,15 @@ class InsurerPortalVendorPaymentService
                 $paymentMethod,
                 $reference
             );
+
+            $settledLines = InsurerPortalPaymentSettlementNotes::linesFromSettledHistories(
+                $settledVendorHistoryIds,
+                $payer
+            );
+
+            $credit->update([
+                'notes' => InsurerPortalPaymentSettlementNotes::encode($settledLines, $serviceCharge),
+            ]);
 
             $this->syncPayerBalance($payer);
         });
