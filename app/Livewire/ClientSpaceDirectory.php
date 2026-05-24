@@ -238,13 +238,30 @@ class ClientSpaceDirectory extends Component
             return;
         }
 
-        $selectedStaffAssignmentIds
+        $addResults = $selectedStaffAssignmentIds
             ->map(fn (int $id): StaffAssignment => $assignments->get($id))
-            ->each(fn (StaffAssignment $assignment) => $this->moveStaffIntoClientSpace($assignment, $clientSpace, $user));
+            ->map(fn (StaffAssignment $assignment): string => $this->addStaffToClientSpaceAssignment($assignment, $clientSpace, $user));
 
         $this->showAddStaffModal = false;
         $this->selectedClientSpaceId = null;
         $this->selectedStaffAssignmentIds = [];
+
+        $linkedCount = $addResults->filter(fn (string $result): bool => $result === 'linked')->count();
+        $movedCount = $addResults->filter(fn (string $result): bool => $result === 'moved')->count();
+
+        if ($linkedCount > 0 && $movedCount === 0) {
+            session()->flash('message', $linkedCount === 1
+                ? 'Staff linked to client space while staying on the last routing node.'
+                : 'Selected staff linked to client space while staying on the last routing node.');
+
+            return;
+        }
+
+        if ($linkedCount > 0) {
+            session()->flash('message', 'Selected staff added to client space. Last-node staff stayed linked to their routing node.');
+
+            return;
+        }
 
         session()->flash('message', $selectedStaffAssignmentIds->count() === 1
             ? 'Staff added to client space.'
@@ -278,6 +295,40 @@ class ClientSpaceDirectory extends Component
     public function clearStaffSelection(): void
     {
         $this->selectedStaffAssignmentIds = [];
+    }
+
+    private function addStaffToClientSpaceAssignment(StaffAssignment $assignment, HrOrganizationalUnit $clientSpace, $user): string
+    {
+        $assignment->loadMissing('organizationalUnit');
+        $currentUnit = $assignment->organizationalUnit;
+        $attachedRoutingUnitIds = $this->attachedRoutingUnitIdsForClientSpace($clientSpace);
+
+        if (
+            $currentUnit?->isLowestRoutingNode()
+            && $attachedRoutingUnitIds->contains((int) $currentUnit->id)
+        ) {
+            HrClientSpaceStaffAssignment::query()->updateOrCreate(
+                [
+                    'organization_id' => $assignment->organization_id,
+                    'client_space_unit_id' => $clientSpace->id,
+                    'staff_assignment_id' => $assignment->id,
+                ],
+                [
+                    'staff_uuid' => $assignment->staff_uuid,
+                    'assignment_type' => HrClientSpaceStaffAssignment::TYPE_SECONDARY,
+                    'status' => HrClientSpaceStaffAssignment::STATUS_ACTIVE,
+                    'assigned_by_user_id' => $user->id,
+                    'assigned_at' => now(),
+                    'notes' => 'Linked directly from last routing node',
+                ]
+            );
+
+            return 'linked';
+        }
+
+        $this->moveStaffIntoClientSpace($assignment, $clientSpace, $user);
+
+        return 'moved';
     }
 
     private function moveStaffIntoClientSpace(StaffAssignment $assignment, HrOrganizationalUnit $clientSpace, $user): void

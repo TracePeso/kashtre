@@ -282,7 +282,7 @@
                     Add Staff to Client Space
                 </h3>
                 <p class="mb-4 text-sm text-gray-600">
-                    Only staff currently under one of this client space's attached last routing nodes can be added directly here. If their main location should stay unchanged, use Additional Assignment instead.
+                    Only staff currently under one of this client space's attached last routing nodes can be added directly here. Staff from those last nodes stay there and are linked to this client space. Everyone else should use Additional Assignment if their main location should stay unchanged.
                 </p>
 
                 <form wire:submit.prevent="addStaffToClientSpace">
