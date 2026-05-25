@@ -13,4 +13,16 @@
     body {
         @apply bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-50;
     }
+
+    html:not(.dark) body.hr-shell input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+    html:not(.dark) body.hr-shell select,
+    html:not(.dark) body.hr-shell textarea {
+        @apply text-slate-900 placeholder:text-slate-400;
+    }
+
+    html:not(.dark) body.hr-shell option,
+    html:not(.dark) body.hr-shell optgroup {
+        color: #0f172a;
+        background-color: #ffffff;
+    }
 }

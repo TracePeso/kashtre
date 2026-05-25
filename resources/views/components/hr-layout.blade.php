@@ -17,6 +17,77 @@
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @filamentStyles
+    <style>
+        html:not(.dark) body.hr-shell .fi-btn.fi-color-gray {
+            background-color: #ffffff;
+            color: #111827;
+            box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+        }
+
+        html:not(.dark) body.hr-shell .fi-btn.fi-color-gray:hover {
+            background-color: #f8fafc;
+        }
+
+        html:not(.dark) body.hr-shell .fi-btn.fi-color-gray .fi-btn-label {
+            color: #111827 !important;
+        }
+
+        html:not(.dark) body.hr-shell .fi-btn.fi-color-gray .fi-btn-icon {
+            color: #94a3b8 !important;
+        }
+
+        html:not(.dark) body.hr-shell .fi-btn.fi-color-primary {
+            background-color: #011478 !important;
+            color: #ffffff !important;
+        }
+
+        html:not(.dark) body.hr-shell .fi-btn.fi-color-danger {
+            background-color: #b91c1c !important;
+            color: #ffffff !important;
+        }
+
+        html:not(.dark) body.hr-shell .fi-btn.fi-color-primary .fi-btn-label,
+        html:not(.dark) body.hr-shell .fi-btn.fi-color-primary .fi-btn-icon,
+        html:not(.dark) body.hr-shell .fi-btn.fi-color-danger .fi-btn-label,
+        html:not(.dark) body.hr-shell .fi-btn.fi-color-danger .fi-btn-icon {
+            color: #ffffff !important;
+        }
+
+        html:not(.dark) body.hr-shell .fi-icon-btn.fi-color-gray {
+            color: #94a3b8 !important;
+        }
+
+        html:not(.dark) body.hr-shell .fi-icon-btn.fi-color-primary {
+            color: #011478 !important;
+        }
+
+        html:not(.dark) body.hr-shell .fi-icon-btn.fi-color-danger {
+            color: #b91c1c !important;
+        }
+
+        html:not(.dark) body.hr-shell .fi-badge.fi-color-gray {
+            background-color: #f8fafc !important;
+            color: #475569 !important;
+            box-shadow: inset 0 0 0 1px rgba(71, 85, 105, 0.12);
+        }
+
+        html:not(.dark) body.hr-shell .fi-badge.fi-color-info {
+            background-color: #eff6ff !important;
+            color: #1d4ed8 !important;
+            box-shadow: inset 0 0 0 1px rgba(29, 78, 216, 0.12);
+        }
+
+        html:not(.dark) body.hr-shell .fi-badge.fi-color-primary {
+            background-color: #dbeafe !important;
+            color: #1d4ed8 !important;
+            box-shadow: inset 0 0 0 1px rgba(29, 78, 216, 0.12);
+        }
+
+        html:not(.dark) body.hr-shell .fi-badge .fi-badge-icon,
+        html:not(.dark) body.hr-shell .fi-badge span {
+            color: inherit !important;
+        }
+    </style>
     @livewireStyles
 
     <script>
@@ -30,7 +101,7 @@
     </script>
 </head>
 <body
-    class="font-inter antialiased bg-slate-50 text-slate-700 dark:bg-slate-900 dark:text-slate-50"
+    class="hr-shell font-inter antialiased bg-slate-50 text-slate-700 dark:bg-slate-900 dark:text-slate-50"
     :class="{ 'sidebar-expanded': sidebarExpanded }"
     x-data="{ sidebarOpen: false, sidebarExpanded: localStorage.getItem('hr-sidebar-expanded') == null ? true : localStorage.getItem('hr-sidebar-expanded') == 'true' }"
     x-init="$watch('sidebarExpanded', value => localStorage.setItem('hr-sidebar-expanded', value))"
