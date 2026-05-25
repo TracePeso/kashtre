@@ -30,7 +30,7 @@ class CascadeRoutingService
         DB::transaction(function () use ($assignment, $currentUnit, $targetUnit, $routedBy) {
             $fromStatus = $assignment->status;
             $routedAt = now();
-            $toStatus = $targetUnit->isClientSpace() ? 'active' : 'pending_routing';
+            $toStatus = 'active';
 
             $assignment->organizational_unit_id = $targetUnit->id;
             $assignment->routed_by_user_id = $routedBy->id;

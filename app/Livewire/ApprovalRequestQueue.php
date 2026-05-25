@@ -11,6 +11,7 @@ use App\Models\Organization;
 use App\Models\StaffAssignment;
 use App\Services\KashApiService;
 use App\Services\WorkingDayCalculator;
+use App\Support\StaffRecordData;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Arr;
@@ -71,6 +72,7 @@ class ApprovalRequestQueue extends Component
         $this->canViewAllApprovals = Auth::user()?->canViewAllApprovals() ?? false;
         $this->canManageAllApprovals = Auth::user()?->canManageAllApprovals() ?? false;
         $this->canApproveAnyRequest = Auth::user()?->canEditHrApprovals() ?? false;
+        $this->ensureCurrentStaffAssignment();
         $this->loadStaffOptions();
         $this->loadWorkflowCategories();
         $this->loadLeaveTypeOptions();
@@ -564,6 +566,56 @@ class ApprovalRequestQueue extends Component
         if ($this->categoryUsesAssignmentDates() && $this->requesterUuid) {
             $this->syncRequesterAssignmentOptions($this->requesterUuid);
         }
+    }
+
+    private function ensureCurrentStaffAssignment(): void
+    {
+        if (! $this->organizationId || ! $this->currentStaffUuid) {
+            return;
+        }
+
+        $user = Auth::user();
+
+        $assignment = StaffAssignment::query()
+            ->where('organization_id', $this->organizationId)
+            ->where('staff_uuid', $this->currentStaffUuid)
+            ->first();
+
+        if ($assignment) {
+            if ($assignment->status === 'pending_routing') {
+                $assignment->forceFill(['status' => 'active'])->save();
+            }
+
+            return;
+        }
+
+        try {
+            $staff = app(KashApiService::class)->getStaffByUuid($this->currentStaffUuid);
+        } catch (\Throwable) {
+            $staff = null;
+        }
+
+        $staffName = is_array($staff)
+            ? (StaffRecordData::name($staff) ?? $user?->name)
+            : $user?->name;
+
+        if (! $staffName) {
+            return;
+        }
+
+        StaffAssignment::query()->create([
+            'organization_id' => $this->organizationId,
+            'staff_uuid' => $this->currentStaffUuid,
+            'staff_name' => $staffName,
+            'staff_cadre' => is_array($staff) ? StaffRecordData::cadre($staff) : null,
+            'staff_department' => is_array($staff) ? StaffRecordData::department($staff) : null,
+            'staff_title' => is_array($staff) ? StaffRecordData::title($staff) : null,
+            'home_branch_external_id' => is_array($staff) ? (StaffRecordData::branchExternalId($staff) ?? '') : '',
+            'home_branch_name' => is_array($staff) ? StaffRecordData::branchName($staff) : null,
+            'assignment_type' => 'primary',
+            'status' => 'active',
+            'assigned_at' => now(),
+        ]);
     }
 
     private function syncRequesterAssignmentOptions(?string $staffUuid): void

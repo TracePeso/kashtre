@@ -118,7 +118,6 @@ class OpenShiftEligibilityService
 
         $secondaryAssignments = StaffAssignment::query()
             ->where('organization_id', $openShift->organization_id)
-            ->eligibleForSecondaryClientSpaceAssignments()
             ->whereNotIn('status', ['inactive', 'orphaned', 'pending_routing'])
             ->whereHas('clientSpaceStaffAssignments', function ($query) use ($clientSpace): void {
                 $query

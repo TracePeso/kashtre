@@ -435,7 +435,7 @@
                                                 <th class="border border-stone-300 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.25em] text-stone-600">Team</th>
                                                 <th class="border border-stone-300 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.25em] text-stone-600">Name</th>
                                                 <th class="border border-stone-300 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.25em] text-stone-600">Cadre</th>
-                                                <th class="border border-stone-300 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.25em] text-stone-600">Status</th>
+                                                <th class="border border-stone-300 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.25em] text-stone-600">Assignment Type</th>
                                                 @foreach($editorDates as $date)
                                                     @php
                                                         $dateEvents = $rosterEvents->filter(
@@ -464,7 +464,9 @@
                                                     @php
                                                         $staffContext = $staffUiContext[$staffAssignment->id] ?? ['date_statuses' => []];
                                                         $cadreLabel = $staffAssignment->staff_title ?: $staffAssignment->staff_cadre ?: 'Staff';
-                                                        $assignmentStatus = $staffAssignment->client_space_assignment_type === \App\Models\HrClientSpaceStaffAssignment::TYPE_SECONDARY ? 'A' : 'P';
+                                                        $assignmentStatus = $staffAssignment->client_space_assignment_type === \App\Models\HrClientSpaceStaffAssignment::TYPE_SECONDARY
+                                                            ? 'Additional'
+                                                            : 'Primary';
                                                     @endphp
                                                     <tr>
                                                         <td class="border border-stone-300 px-3 py-2 text-xs uppercase tracking-[0.2em] text-stone-400">
@@ -491,7 +493,7 @@
                                                             {{ $cadreLabel }}
                                                         </td>
                                                         <td class="border border-stone-300 px-3 py-2 text-center">
-                                                            <span class="inline-flex min-w-[2rem] items-center justify-center rounded border border-stone-300 bg-stone-50 px-2 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-stone-700">
+                                                            <span class="inline-flex min-w-[6.5rem] items-center justify-center rounded border border-stone-300 bg-stone-50 px-2 py-1 text-xs font-semibold text-stone-700">
                                                                 {{ $assignmentStatus }}
                                                             </span>
                                                         </td>

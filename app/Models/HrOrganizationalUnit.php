@@ -130,8 +130,7 @@ class HrOrganizationalUnit extends Model
     {
         return $this->hasMany(HrClientSpaceStaffAssignment::class, 'client_space_unit_id')
             ->where('assignment_type', HrClientSpaceStaffAssignment::TYPE_SECONDARY)
-            ->where('status', HrClientSpaceStaffAssignment::STATUS_ACTIVE)
-            ->whereHas('staffAssignment', fn (Builder $query) => $query->eligibleForSecondaryClientSpaceAssignments());
+            ->where('status', HrClientSpaceStaffAssignment::STATUS_ACTIVE);
     }
 
     public function clientSpace()

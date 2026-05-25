@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Models\HrClientSpaceStaffAssignment;
 use App\Models\HrClientSpaceRoute;
 use App\Models\HrOrganizationalUnit;
 use App\Models\HrOrganizationTierLevel;
@@ -33,6 +34,10 @@ class OrganizationalStructure extends Component
     public bool $showLeafClientSpacesModal = false;
     public ?int $selectedLeafUnitId = null;
     public array $selectedLeafClientSpaceIds = [];
+    public bool $showLeafStaffModal = false;
+    public array $selectedLeafTargetClientSpaceIds = [];
+    public array $selectedLeafStaffAssignmentIds = [];
+    public bool $canManageLeafClientSpaceStaff = false;
 
     protected $rules = [
         'newUnitTierLevelId' => 'required|exists:hr_organization_tier_levels,id',
@@ -46,6 +51,7 @@ class OrganizationalStructure extends Component
     public function mount(): void
     {
         $this->canEditRouting = $this->userCanEditRouting();
+        $this->canManageLeafClientSpaceStaff = $this->userCanManageLeafClientSpaceStaff();
     }
 
     public function openModal($parentId = null): void
@@ -376,6 +382,42 @@ class OrganizationalStructure extends Component
         $this->showLeafClientSpacesModal = true;
     }
 
+    public function openLeafStaffModal(int $unitId, ?int $clientSpaceId = null): void
+    {
+        abort_unless($this->canManageLeafClientSpaceStaff, 403);
+
+        $org = Organization::current();
+        if (! $org) {
+            return;
+        }
+
+        $leafUnit = $this->lowestRoutingUnitForOrganization($org, $unitId);
+        if (! $leafUnit) {
+            abort(404);
+        }
+
+        $attachedClientSpaceIds = $leafUnit->linkedClientSpaces()
+            ->orderBy('hr_organizational_units.name')
+            ->get(['hr_organizational_units.id'])
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->values();
+
+        if ($attachedClientSpaceIds->isEmpty()) {
+            session()->flash('error', 'Attach client spaces to this last routing node before linking staff.');
+
+            return;
+        }
+
+        $this->resetValidation();
+        $this->selectedLeafUnitId = $leafUnit->id;
+        $this->selectedLeafTargetClientSpaceIds = $clientSpaceId && $attachedClientSpaceIds->contains((int) $clientSpaceId)
+            ? [(int) $clientSpaceId]
+            : [];
+        $this->selectedLeafStaffAssignmentIds = [];
+        $this->showLeafStaffModal = true;
+    }
+
     public function saveLeafClientSpaces(ClientSpaceRoutingService $clientSpaceRoutingService): void
     {
         abort_unless($this->canEditRouting, 403);
@@ -448,6 +490,7 @@ class OrganizationalStructure extends Component
                     ->values()
                     ->all();
                 $primaryRoutingUnitId = $leafUnit->id;
+                $detachLeafStaffLinks = false;
             } else {
                 $routeIds = $existingRouteIds
                     ->reject(fn (int $routeId): bool => $routeId === (int) $leafUnit->id)
@@ -456,6 +499,7 @@ class OrganizationalStructure extends Component
                 $primaryRoutingUnitId = in_array((int) $clientSpace->parent_id, $routeIds, true)
                     ? (int) $clientSpace->parent_id
                     : ($routeIds[0] ?? null);
+                $detachLeafStaffLinks = true;
             }
 
             try {
@@ -469,15 +513,113 @@ class OrganizationalStructure extends Component
 
                 return;
             }
+
+            if ($detachLeafStaffLinks) {
+                HrClientSpaceStaffAssignment::query()
+                    ->where('organization_id', $org->id)
+                    ->where('client_space_unit_id', (int) $clientSpaceId)
+                    ->where('assignment_type', HrClientSpaceStaffAssignment::TYPE_SECONDARY)
+                    ->where('status', HrClientSpaceStaffAssignment::STATUS_ACTIVE)
+                    ->whereHas('staffAssignment', function ($query) use ($leafUnit): void {
+                        $query->where('organizational_unit_id', $leafUnit->id);
+                    })
+                    ->update([
+                        'status' => HrClientSpaceStaffAssignment::STATUS_INACTIVE,
+                        'notes' => 'Detached because the client space was removed from the last routing node',
+                    ]);
+            }
         }
 
         $this->resetLeafClientSpacesModal();
         session()->flash('message', 'Client spaces attached to the last routing node.');
     }
 
+    public function assignLeafStaffToClientSpaces(): void
+    {
+        abort_unless($this->canManageLeafClientSpaceStaff, 403);
+
+        $org = Organization::current();
+        if (! $org) {
+            return;
+        }
+
+        $this->validate([
+            'selectedLeafUnitId' => 'required|integer|exists:hr_organizational_units,id',
+            'selectedLeafTargetClientSpaceIds' => 'required|array|min:1',
+            'selectedLeafTargetClientSpaceIds.*' => 'integer|exists:hr_organizational_units,id',
+            'selectedLeafStaffAssignmentIds' => 'required|array|min:1',
+            'selectedLeafStaffAssignmentIds.*' => 'integer|exists:hr_staff_assignments,id',
+        ]);
+
+        $leafUnit = $this->lowestRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId);
+        if (! $leafUnit) {
+            $this->addError('selectedLeafUnitId', 'Choose a valid last routing node.');
+
+            return;
+        }
+
+        $targetClientSpaceIds = $this->attachedClientSpacesForSelectedLeaf($org)
+            ->whereIn('id', collect($this->selectedLeafTargetClientSpaceIds)->map(fn ($id): int => (int) $id))
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->values();
+
+        if ($targetClientSpaceIds->count() !== count(array_unique(array_map('intval', $this->selectedLeafTargetClientSpaceIds)))) {
+            $this->addError('selectedLeafTargetClientSpaceIds', 'Choose attached client spaces from this last routing node.');
+
+            return;
+        }
+
+        $staffAssignments = StaffAssignment::query()
+            ->where('organization_id', $org->id)
+            ->where('organizational_unit_id', $leafUnit->id)
+            ->whereNotIn('status', ['inactive', 'orphaned', 'pending_routing'])
+            ->whereIn('id', collect($this->selectedLeafStaffAssignmentIds)->map(fn ($id): int => (int) $id)->unique())
+            ->get()
+            ->keyBy('id');
+
+        if ($staffAssignments->count() !== count(array_unique(array_map('intval', $this->selectedLeafStaffAssignmentIds)))) {
+            $this->addError('selectedLeafStaffAssignmentIds', 'Choose staff who are currently assigned to this last routing node.');
+
+            return;
+        }
+
+        DB::transaction(function () use ($org, $targetClientSpaceIds, $staffAssignments): void {
+            foreach ($targetClientSpaceIds as $clientSpaceId) {
+                foreach ($staffAssignments as $assignment) {
+                    HrClientSpaceStaffAssignment::updateOrCreate(
+                        [
+                            'organization_id' => $org->id,
+                            'client_space_unit_id' => (int) $clientSpaceId,
+                            'staff_assignment_id' => (int) $assignment->id,
+                            'assignment_type' => HrClientSpaceStaffAssignment::TYPE_SECONDARY,
+                        ],
+                        [
+                            'staff_uuid' => $assignment->staff_uuid,
+                            'status' => HrClientSpaceStaffAssignment::STATUS_ACTIVE,
+                            'assigned_by_user_id' => Auth::id(),
+                            'assigned_at' => now(),
+                            'notes' => 'Linked directly from last routing node',
+                        ]
+                    );
+                }
+            }
+        });
+
+        $linkedClientSpaceCount = $targetClientSpaceIds->count();
+        $linkedStaffCount = $staffAssignments->count();
+
+        $this->resetLeafStaffModal();
+        session()->flash(
+            'message',
+            "{$linkedStaffCount} last-node staff linked to {$linkedClientSpaceCount} client space(s)."
+        );
+    }
+
     public function render()
     {
         $this->canEditRouting = $this->userCanEditRouting();
+        $this->canManageLeafClientSpaceStaff = $this->userCanManageLeafClientSpaceStaff();
 
         $org = Organization::current();
         $rootUnits = $org ? HrOrganizationalUnit::where('organization_id', $org->id)
@@ -528,6 +670,14 @@ class OrganizationalStructure extends Component
         $selectedLeafUnit = $org && $this->selectedLeafUnitId
             ? $this->lowestRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId)
             : null;
+        $leafClientSpaceOptions = $org && $this->selectedLeafUnitId
+            ? $this->attachedClientSpacesForSelectedLeaf($org)
+            : collect();
+        $leafStaffAssignments = $org && $this->selectedLeafUnitId
+            ? $this->availableLeafStaffAssignments($org)
+            : collect();
+        $canManageLeafClientSpaceStaff = $this->canManageLeafClientSpaceStaff;
+
         return view('livewire.organizational-structure', compact(
             'rootUnits',
             'parentOptions',
@@ -535,6 +685,9 @@ class OrganizationalStructure extends Component
             'structureSummary',
             'clientSpaceOptions',
             'selectedLeafUnit',
+            'leafClientSpaceOptions',
+            'leafStaffAssignments',
+            'canManageLeafClientSpaceStaff',
         ));
     }
 
@@ -542,6 +695,19 @@ class OrganizationalStructure extends Component
     {
         return (Auth::user()?->canAddHrSetup() ?? false)
             || (Auth::user()?->canEditHrSetup() ?? false);
+    }
+
+    private function userCanManageLeafClientSpaceStaff(): bool
+    {
+        $user = Auth::user();
+
+        return (bool) (
+            $user?->is_hr_admin
+            || $user?->canAddHrStaff()
+            || $user?->canEditHrStaff()
+            || $user?->canAddHrSetup()
+            || $user?->canEditHrSetup()
+        );
     }
 
     private function validParentFor(Organization $org, mixed $parentId): bool
@@ -669,6 +835,47 @@ class OrganizationalStructure extends Component
             ->find($unitId);
     }
 
+    private function attachedClientSpacesForSelectedLeaf(Organization $org)
+    {
+        if (! $this->selectedLeafUnitId) {
+            return collect();
+        }
+
+        $leafUnit = $this->lowestRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId);
+        if (! $leafUnit) {
+            return collect();
+        }
+
+        return $leafUnit->linkedClientSpaces()
+            ->withCount([
+                'staffAssignments as active_staff_count' => fn ($query) => $query->where('status', 'active'),
+                'secondaryStaffAssignments as secondary_staff_count',
+            ])
+            ->orderByDesc('hr_client_space_routes.is_primary')
+            ->orderBy('hr_organizational_units.name')
+            ->get();
+    }
+
+    private function availableLeafStaffAssignments(Organization $org)
+    {
+        if (! $this->selectedLeafUnitId) {
+            return collect();
+        }
+
+        return StaffAssignment::query()
+            ->where('organization_id', $org->id)
+            ->where('organizational_unit_id', (int) $this->selectedLeafUnitId)
+            ->whereNotIn('status', ['inactive', 'orphaned', 'pending_routing'])
+            ->with([
+                'clientSpaceStaffAssignments' => fn ($query) => $query
+                    ->where('assignment_type', HrClientSpaceStaffAssignment::TYPE_SECONDARY)
+                    ->where('status', HrClientSpaceStaffAssignment::STATUS_ACTIVE)
+                    ->with('clientSpace'),
+            ])
+            ->orderBy('staff_name')
+            ->get();
+    }
+
     private function attachedRoutingUnitIdsForClientSpace(HrOrganizationalUnit $clientSpace)
     {
         $routeIds = collect();
@@ -693,6 +900,14 @@ class OrganizationalStructure extends Component
         $this->showLeafClientSpacesModal = false;
         $this->selectedLeafUnitId = null;
         $this->selectedLeafClientSpaceIds = [];
+    }
+
+    private function resetLeafStaffModal(): void
+    {
+        $this->showLeafStaffModal = false;
+        $this->selectedLeafUnitId = null;
+        $this->selectedLeafTargetClientSpaceIds = [];
+        $this->selectedLeafStaffAssignmentIds = [];
     }
 
 }

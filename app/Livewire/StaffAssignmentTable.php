@@ -271,9 +271,9 @@ class StaffAssignmentTable extends Component implements HasForms, HasTable
                             ->required(),
                         Forms\Components\Select::make('status')
                             ->options([
-                                'pending_routing' => 'Pending Routing',
+                                'active' => 'Active',
                             ])
-                            ->default('pending_routing')
+                            ->default('active')
                             ->required(),
                         Forms\Components\Textarea::make('notes')
                             ->nullable(),

@@ -203,7 +203,7 @@ class TierStaffAssignmentManager extends Component
                 'home_branch_external_id' => $staff['home_branch_external_id'] ?? null,
                 'home_branch_name' => $staff['home_branch_name'] ?? null,
                 'assignment_type' => 'primary',
-                'status' => 'pending_routing',
+                'status' => 'active',
                 'assigned_at' => now(),
             ])->save();
             $assignment->refresh()->loadMissing('organizationalUnit');
@@ -302,7 +302,7 @@ class TierStaffAssignmentManager extends Component
                 'home_branch_external_id' => $staff['home_branch_external_id'] ?? null,
                 'home_branch_name' => $staff['home_branch_name'] ?? null,
                 'assignment_type' => 'primary',
-                'status' => 'pending_routing',
+                'status' => 'active',
                 'assigned_at' => now(),
             ])->save();
             $assignment->refresh()->loadMissing('organizationalUnit');

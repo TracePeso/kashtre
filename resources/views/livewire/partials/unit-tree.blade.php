@@ -20,7 +20,7 @@
             </p>
             @if($unit->isLowestRoutingNode())
                 <p class="mt-1 text-xs text-blue-600">
-                    This is the last routing node. Attach client spaces here, then place staff directly into the correct client space.
+                    This is the last routing node. Attach client spaces here, then link last-node staff directly to one or more attached client spaces.
                 </p>
             @endif
             <div class="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
@@ -38,6 +38,11 @@
                 @if($unit->isLowestRoutingNode())
                     <button wire:click="openLeafClientSpacesModal({{ $unit->id }})" class="text-sm font-medium text-emerald-600 hover:text-emerald-800">
                         Attach Client Spaces
+                    </button>
+                @endif
+                @if(($canManageLeafClientSpaceStaff ?? false) && $unit->isLowestRoutingNode())
+                    <button wire:click="openLeafStaffModal({{ $unit->id }})" class="text-sm font-medium text-sky-600 hover:text-sky-800">
+                        Assign Staff to Spaces
                     </button>
                 @endif
                 <button wire:click="openModal({{ $unit->id }})" class="text-sm font-medium text-blue-600 hover:text-blue-800">
@@ -74,10 +79,16 @@
                             <p class="mt-1 text-xs text-slate-500">
                                 {{ (int) $clientSpace->active_staff_count }} primary staff
                                 @if(($clientSpace->secondary_staff_count ?? 0) > 0)
-                                    | {{ (int) $clientSpace->secondary_staff_count }} additional staff
+                                    | {{ (int) $clientSpace->secondary_staff_count }} linked node staff
                                 @endif
                             </p>
                         </div>
+
+                        @if(($canManageLeafClientSpaceStaff ?? false) && $unit->isLowestRoutingNode())
+                            <button wire:click="openLeafStaffModal({{ $unit->id }}, {{ $clientSpace->id }})" class="text-sm font-medium text-sky-600 hover:text-sky-800">
+                                Add Node Staff
+                            </button>
+                        @endif
                     </div>
                 </li>
             @endforeach
@@ -87,7 +98,7 @@
     @if($routingChildren->isNotEmpty())
         <ul class="ml-4 space-y-2 border-l border-gray-200 pb-4 pl-4">
             @foreach($routingChildren as $child)
-                @include('livewire.partials.unit-tree', ['unit' => $child, 'canEditRouting' => $canEditRouting])
+                @include('livewire.partials.unit-tree', ['unit' => $child, 'canEditRouting' => $canEditRouting, 'canManageLeafClientSpaceStaff' => $canManageLeafClientSpaceStaff ?? false])
             @endforeach
         </ul>
     @endif
