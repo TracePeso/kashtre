@@ -136,8 +136,8 @@
 
     @if($showPlacementModal)
         @php($selectedPlacementClientSpace = $clientSpaces->firstWhere('id', $selectedPlacementClientSpaceId))
-        <div class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-gray-500 bg-opacity-75 px-4 py-6">
-            <div class="w-full max-w-2xl rounded-md bg-white px-4 pb-4 pt-5 shadow-xl sm:p-6">
+        <div class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-gray-500 bg-opacity-75 px-4 py-6 sm:items-center">
+            <div class="w-full max-w-2xl max-h-[calc(100vh-3rem)] overflow-y-auto rounded-md bg-white px-4 pb-4 pt-5 shadow-xl sm:p-6">
                 <h3 class="mb-2 text-lg font-medium leading-6 text-gray-900">
                     Manage Client Space Routes
                 </h3>
@@ -233,8 +233,8 @@
 
     @if($showSecondaryAssignmentModal)
         @php($selectedClientSpace = $clientSpaces->firstWhere('id', $selectedClientSpaceId))
-        <div class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-gray-500 bg-opacity-75 px-4 py-6">
-            <div class="w-full max-w-lg rounded-md bg-white px-4 pb-4 pt-5 shadow-xl sm:p-6">
+        <div class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-gray-500 bg-opacity-75 px-4 py-6 sm:items-center">
+            <div class="w-full max-w-lg max-h-[calc(100vh-3rem)] overflow-y-auto rounded-md bg-white px-4 pb-4 pt-5 shadow-xl sm:p-6">
                 <h3 class="mb-2 text-lg font-medium leading-6 text-gray-900">
                     Secondary Client Space Assignment
                 </h3>
@@ -272,8 +272,8 @@
 
     @if($showAddStaffModal)
         @php($selectedClientSpace = $clientSpaces->firstWhere('id', $selectedClientSpaceId))
-        <div class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-gray-500 bg-opacity-75 px-4 py-6">
-            <div class="w-full max-w-lg rounded-md bg-white px-4 pb-4 pt-5 shadow-xl sm:p-6">
+        <div class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-gray-500 bg-opacity-75 px-4 py-6 sm:items-center">
+            <div class="w-full max-w-lg max-h-[calc(100vh-3rem)] overflow-y-auto rounded-md bg-white px-4 pb-4 pt-5 shadow-xl sm:p-6">
                 <h3 class="mb-2 text-lg font-medium leading-6 text-gray-900">
                     Add Staff to Client Space
                 </h3>

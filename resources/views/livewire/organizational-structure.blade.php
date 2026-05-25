@@ -156,8 +156,8 @@
     </div>
 
     @if($showModal)
-    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center">
-        <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl sm:max-w-lg sm:w-full sm:p-6">
+    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-start justify-center px-4 py-6 sm:items-center">
+        <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-y-auto max-h-[calc(100vh-3rem)] shadow-xl sm:max-w-lg sm:w-full sm:p-6">
             <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">
                 Add {{ $newUnitParentId ? 'Sub-Unit' : 'Root Tier' }}
             </h3>
@@ -203,8 +203,8 @@
     @endif
 
     @if($showEditModal)
-    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center">
-        <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl sm:max-w-lg sm:w-full sm:p-6">
+    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-start justify-center px-4 py-6 sm:items-center">
+        <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-y-auto max-h-[calc(100vh-3rem)] shadow-xl sm:max-w-lg sm:w-full sm:p-6">
             <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">
                 Configure Routing Node
             </h3>
@@ -251,8 +251,8 @@
     @endif
 
     @if($showLeafClientSpacesModal)
-    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center px-4 py-6">
-        <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl sm:max-w-2xl sm:w-full sm:p-6">
+    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-start justify-center px-4 py-6 sm:items-center">
+        <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-y-auto max-h-[calc(100vh-3rem)] shadow-xl sm:max-w-2xl sm:w-full sm:p-6">
             <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">
                 Attach Client Spaces to Last Routing Node
             </h3>
@@ -303,8 +303,8 @@
     @endif
 
     @if($showLeafStaffModal)
-    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center px-4 py-6">
-        <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl sm:max-w-4xl sm:w-full sm:p-6">
+    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-start justify-center px-4 py-6 sm:items-center">
+        <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-y-auto max-h-[calc(100vh-3rem)] shadow-xl sm:max-w-4xl sm:w-full sm:p-6">
             <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">
                 Link Last-Node Staff to Client Spaces
             </h3>
@@ -397,8 +397,8 @@
     @endif
 
 @if($showEditTierModal)
-    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center">
-        <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl sm:max-w-lg sm:w-full sm:p-6">
+    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-start justify-center px-4 py-6 sm:items-center">
+        <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-y-auto max-h-[calc(100vh-3rem)] shadow-xl sm:max-w-lg sm:w-full sm:p-6">
             <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">
                 Edit Routing Level
             </h3>

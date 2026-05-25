@@ -249,15 +249,16 @@
     @endif
 
     @if($showCreateModal)
-    <div class="fixed inset-0 z-50 flex items-center justify-center">
+    <div class="fixed inset-0 z-50 overflow-y-auto">
         <div class="fixed inset-0 bg-gray-900/50" wire:click="$set('showCreateModal', false)"></div>
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-xl mx-4 relative z-10">
+        <div class="relative flex min-h-full items-start justify-center px-4 py-6 sm:items-center">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-xl relative z-10 flex max-h-[calc(100vh-3rem)] flex-col overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-lg font-semibold text-gray-900">{{ $modalHeading }}</h3>
             </div>
             <form
                 wire:submit.prevent="submitRequest"
-                class="p-6 space-y-4"
+                class="flex-1 overflow-y-auto p-6 space-y-4"
                 x-data="leaveRequestWorkingDays({
                     category: $wire.entangle('category').live,
                     leaveTypeId: $wire.entangle('leaveTypeId').live,
@@ -429,23 +430,26 @@
                 </div>
                 @endif
 
+                @if($category !== 'leave')
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Subject</label>
-                    <input type="text" wire:model="subject" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-brand-blue focus:ring-brand-blue text-sm" placeholder="{{ $category === 'leave' ? 'e.g. Annual leave for April roster' : ($category === 'offsite_duty' ? 'e.g. Official Workshop/Meeting - Kampala' : 'Add a short request subject') }}" required>
+                    <input type="text" wire:model="subject" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-brand-blue focus:ring-brand-blue text-sm" placeholder="{{ $category === 'offsite_duty' ? 'e.g. Official Workshop/Meeting - Kampala' : 'Add a short request subject' }}" required>
                     @error('subject') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                 </div>
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Details</label>
-                    <textarea wire:model="details" rows="4" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-brand-blue focus:ring-brand-blue text-sm" placeholder="{{ $category === 'leave' ? 'Add handover notes, coverage context, or any leave comments.' : 'Add dates, shift details, coverage notes, or off-site duty context.' }}"></textarea>
+                    <textarea wire:model="details" rows="4" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-brand-blue focus:ring-brand-blue text-sm" placeholder="Add dates, shift details, coverage notes, or off-site duty context."></textarea>
                     @error('details') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                 </div>
+                @endif
 
                 <div class="flex justify-end gap-3 pt-2">
                     <button type="button" wire:click="$set('showCreateModal', false)" class="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
                     <button type="submit" class="px-4 py-2 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-800">{{ $submitButtonLabel }}</button>
                 </div>
             </form>
+        </div>
         </div>
     </div>
     @endif

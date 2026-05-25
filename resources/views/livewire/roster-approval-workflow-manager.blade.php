@@ -72,13 +72,14 @@
     @endif
 
     @if($showModal && ($canAddSetup || $canEditSetup))
-        <div class="fixed inset-0 z-50 flex items-center justify-center">
+        <div class="fixed inset-0 z-50 overflow-y-auto">
             <div class="fixed inset-0 bg-gray-900/50" wire:click="$set('showModal', false)"></div>
-            <div class="relative z-10 mx-4 w-full max-w-lg rounded-xl bg-white shadow-xl">
+            <div class="relative flex min-h-full items-start justify-center px-4 py-6 sm:items-center">
+                <div class="relative z-10 flex w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-xl max-h-[calc(100vh-3rem)]">
                 <div class="border-b border-gray-200 px-6 py-4">
                     <h3 class="text-lg font-semibold text-gray-900">{{ $editingId ? 'Edit' : 'Create' }} Roster Approval Rule</h3>
                 </div>
-                <form wire:submit.prevent="saveRule" class="space-y-4 p-6">
+                <form wire:submit.prevent="saveRule" class="flex-1 space-y-4 overflow-y-auto p-6">
                     <div>
                         <label class="mb-1 block text-sm font-medium text-gray-700">Client Space</label>
                         <select wire:model.live="clientSpaceId" class="w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
@@ -146,6 +147,7 @@
                         <button type="submit" class="rounded-lg bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-800">{{ $editingId ? 'Update' : 'Create' }}</button>
                     </div>
                 </form>
+            </div>
             </div>
         </div>
     @endif

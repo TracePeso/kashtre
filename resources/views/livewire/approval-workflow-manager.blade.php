@@ -99,13 +99,14 @@
 
     <!-- Create/Edit Modal -->
     @if($showModal && ($canAddSetup || $canEditSetup))
-    <div class="fixed inset-0 z-50 flex items-center justify-center">
+    <div class="fixed inset-0 z-50 overflow-y-auto">
         <div class="fixed inset-0 bg-gray-900/50" wire:click="$set('showModal', false)"></div>
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 relative z-10">
+        <div class="relative flex min-h-full items-start justify-center px-4 py-6 sm:items-center">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg relative z-10 flex max-h-[calc(100vh-3rem)] flex-col overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-lg font-semibold text-gray-900">{{ $editingId ? 'Edit' : 'Create' }} Approval Workflow</h3>
             </div>
-            <form wire:submit.prevent="saveWorkflow" class="p-6 space-y-4">
+            <form wire:submit.prevent="saveWorkflow" class="flex-1 overflow-y-auto p-6 space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
                     <select wire:model="category" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-brand-blue focus:ring-brand-blue text-sm" {{ $editingId ? 'disabled' : '' }}>
@@ -177,6 +178,7 @@
                     <button type="submit" class="px-4 py-2 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-800">{{ $editingId ? 'Update' : 'Create' }}</button>
                 </div>
             </form>
+        </div>
         </div>
     </div>
     @endif

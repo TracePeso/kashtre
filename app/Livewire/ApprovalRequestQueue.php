@@ -240,7 +240,7 @@ class ApprovalRequestQueue extends Component
         $rules = [
             'category' => 'required|in:leave,roster,coverage,offsite_duty',
             'requesterUuid' => 'required|string',
-            'subject' => 'required|string|max:255',
+            'subject' => $this->category === 'leave' ? 'nullable|string|max:255' : 'required|string|max:255',
             'details' => 'nullable|string',
         ];
 
@@ -334,11 +334,13 @@ class ApprovalRequestQueue extends Component
             return;
         }
 
+        $subject = $this->buildSubmissionSubject($leaveType);
+
         try {
             HrApprovalRequest::submitFromWorkflow($workflow, [
                 'requester_staff_uuid' => $this->requesterUuid,
                 'requester_name' => $this->staffOptions[$this->requesterUuid] ?? $this->requesterName ?: $this->requesterUuid,
-                'subject' => $this->subject,
+                'subject' => $subject,
                 'details' => $this->details ?: null,
                 'leave_type_id' => $this->categoryUsesWorkingDays() ? $leaveType?->id : null,
                 'staff_assignment_id' => $staffAssignment?->id,
@@ -452,6 +454,11 @@ class ApprovalRequestQueue extends Component
             return;
         }
 
+        if ($category === 'leave') {
+            $this->subject = '';
+            $this->details = '';
+        }
+
         if ($this->categoryUsesAssignmentDates($category)) {
             $requesterUuid = $this->leaveRequestsMustBelongToCurrentUser($category)
                 ? $this->currentStaffUuid
@@ -551,6 +558,27 @@ class ApprovalRequestQueue extends Component
         }
 
         $this->leaveWorkingDayPreview = app(WorkingDayCalculator::class)->previewConfig($organization);
+    }
+
+    private function buildSubmissionSubject(?LeaveType $leaveType): string
+    {
+        if ($this->category !== 'leave') {
+            return trim($this->subject);
+        }
+
+        $leaveTypeLabel = trim($leaveType?->name ?? 'Leave');
+        $startDate = $this->leaveStartDate ? Carbon::parse($this->leaveStartDate)->format('M j, Y') : null;
+        $endDate = $this->leaveEndDate ? Carbon::parse($this->leaveEndDate)->format('M j, Y') : null;
+
+        if ($startDate && $endDate) {
+            $dateLabel = $startDate === $endDate
+                ? $startDate
+                : "{$startDate} to {$endDate}";
+
+            return "{$leaveTypeLabel}: {$dateLabel}";
+        }
+
+        return $leaveTypeLabel;
     }
 
     private function prefillRequesterContext(): void
