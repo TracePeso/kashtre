@@ -134,5 +134,79 @@ class HrFinalNodePromptFlowTest extends TestCase
             ->assertSet('selectedLeafUnitId', $leafNode->id)
             ->assertSet('selectedLeafTargetClientSpaceIds', [$clientSpace->id])
             ->assertSet('autoPromptLeafStaffAssignments', true);
+
+        $this->assertTrue($leafNode->fresh()->isMarkedAsLastRoutingNode());
+    }
+
+    public function test_last_node_setup_marks_leaf_node_and_blocks_new_child_nodes(): void
+    {
+        $user = User::factory()->create([
+            'permissions' => ['Add HR Setup'],
+        ]);
+
+        $organization = Organization::create([
+            'name' => 'Marked Last Node Org',
+            'external_business_uuid' => 'marked-last-node-org',
+            'weekend_days' => [0, 6],
+        ]);
+
+        $rootLevel = HrOrganizationTierLevel::create([
+            'organization_id' => $organization->id,
+            'name' => 'Division',
+            'level_order' => 1,
+        ]);
+
+        $leafLevel = HrOrganizationTierLevel::create([
+            'organization_id' => $organization->id,
+            'name' => 'Desk',
+            'level_order' => 2,
+        ]);
+
+        $childLevel = HrOrganizationTierLevel::create([
+            'organization_id' => $organization->id,
+            'name' => 'Unit',
+            'level_order' => 3,
+        ]);
+
+        HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => null,
+            'tier_level_id' => $rootLevel->id,
+            'name' => 'Division',
+            'type' => 'Division',
+            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+        ]);
+
+        $leafNode = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => null,
+            'tier_level_id' => $leafLevel->id,
+            'name' => 'Desk',
+            'type' => 'Desk',
+            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_organization_id' => $organization->id]);
+
+        Livewire::test(OrganizationalStructure::class)
+            ->call('openLeafClientSpacesModal', $leafNode->id)
+            ->assertSet('showLeafClientSpacesModal', true)
+            ->assertSet('selectedLeafUnitId', $leafNode->id);
+
+        $this->assertTrue($leafNode->fresh()->isMarkedAsLastRoutingNode());
+
+        Livewire::test(TierStaffAssignmentManager::class)
+            ->set('selectedTierId', $leafNode->id)
+            ->set('newSubtierTierLevelId', $childLevel->id)
+            ->call('createSubtier')
+            ->assertHasErrors(['newSubtierTierLevelId']);
+
+        $this->assertDatabaseMissing('hr_organizational_units', [
+            'organization_id' => $organization->id,
+            'parent_id' => $leafNode->id,
+            'tier_level_id' => $childLevel->id,
+            'name' => 'Unit',
+        ]);
     }
 }

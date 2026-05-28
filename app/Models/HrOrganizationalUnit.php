@@ -14,6 +14,7 @@ class HrOrganizationalUnit extends Model
 
     public const KIND_ROUTING_NODE = 'routing_node';
     public const KIND_CLIENT_SPACE = 'client_space';
+    public const METADATA_LAST_ROUTING_NODE = 'is_last_routing_node';
 
     protected $fillable = [
         'uuid', 'organization_id', 'parent_id', 'tier_level_id', 'name', 'type', 'unit_kind',
@@ -219,17 +220,44 @@ class HrOrganizationalUnit extends Model
         return $this->unit_kind === self::KIND_ROUTING_NODE;
     }
 
-    public function isLowestRoutingNode(): bool
+    public function isMarkedAsLastRoutingNode(): bool
+    {
+        return (bool) data_get($this->metadata ?? [], self::METADATA_LAST_ROUTING_NODE, false);
+    }
+
+    public function hasRoutingChildren(): bool
     {
         if (! $this->isRoutingNode()) {
             return false;
         }
 
         if ($this->relationLoaded('children')) {
-            return ! $this->children->contains(fn (self $child): bool => $child->isRoutingNode());
+            return $this->children->contains(fn (self $child): bool => $child->isRoutingNode());
         }
 
-        return ! $this->children()->routingNodes()->exists();
+        return $this->children()->routingNodes()->exists();
+    }
+
+    public function hasLinkedClientSpaces(): bool
+    {
+        if (! $this->isRoutingNode()) {
+            return false;
+        }
+
+        if ($this->relationLoaded('linkedClientSpaces')) {
+            return $this->linkedClientSpaces->isNotEmpty();
+        }
+
+        return $this->linkedClientSpaces()->exists();
+    }
+
+    public function isLowestRoutingNode(): bool
+    {
+        if (! $this->isRoutingNode()) {
+            return false;
+        }
+
+        return $this->isMarkedAsLastRoutingNode() || $this->hasLinkedClientSpaces();
     }
 
     public function hasClientSpacePlacement(): bool
@@ -300,6 +328,10 @@ class HrOrganizationalUnit extends Model
     public function scopeLowestRoutingNodes(Builder $query): Builder
     {
         return $query->routingNodes()
-            ->whereDoesntHave('children', fn (Builder $childQuery) => $childQuery->routingNodes());
+            ->where(function (Builder $lastNodeQuery): void {
+                $lastNodeQuery
+                    ->where('metadata->'.self::METADATA_LAST_ROUTING_NODE, true)
+                    ->orWhereHas('linkedClientSpaces');
+            });
     }
 }

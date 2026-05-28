@@ -99,7 +99,6 @@
                         <tr>
                             <th class="sticky left-0 z-10 border-b border-r border-gray-200 bg-white px-4 py-4 text-left align-top">
                                 <p class="text-sm font-semibold text-gray-900">Shift / Space</p>
-                                <p class="mt-1 text-xs text-gray-500">Diagonal split box</p>
                             </th>
                             @foreach($scheduleCells as $cell)
                             <td class="border-b border-r border-gray-200 px-2 py-3 align-top {{ $cell['is_today'] ? 'bg-blue-50/50' : ($cell['is_weekend'] ? 'bg-gray-50/70' : 'bg-white') }}">

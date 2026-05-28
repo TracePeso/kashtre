@@ -94,6 +94,12 @@ class TierStaffAssignmentManager extends Component
             return;
         }
 
+        if ($parent->isLowestRoutingNode()) {
+            $this->addError('newSubtierTierLevelId', 'This routing node is already marked as the last node and cannot have child tiers.');
+
+            return;
+        }
+
         $tierLevel = HrOrganizationTierLevel::where('organization_id', $org->id)
             ->whereKey($this->newSubtierTierLevelId)
             ->first();

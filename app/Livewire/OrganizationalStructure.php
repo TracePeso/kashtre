@@ -242,6 +242,12 @@ class OrganizationalStructure extends Component
             return;
         }
 
+        if (! $this->parentCanAcceptRoutingChildren($org, $this->newUnitParentId)) {
+            $this->addError('newUnitParentId', 'This node is already marked as the last node and cannot have child tiers.');
+
+            return;
+        }
+
         $name = $this->normalizedRoutingNodeName($tierLevel->name);
 
         if ($this->routingNodeExists($org->id, $this->newUnitParentId, $tierLevel->id, $name)) {
@@ -333,6 +339,12 @@ class OrganizationalStructure extends Component
             return;
         }
 
+        if (! $this->parentCanAcceptRoutingChildren($org, $this->editUnitParentId, $unit->id)) {
+            $this->addError('editUnitParentId', 'This node is already marked as the last node and cannot have child tiers.');
+
+            return;
+        }
+
         $name = $this->normalizedRoutingNodeName(
             $this->editUnitParentId ? $unit->name : $tierLevel->name
         );
@@ -368,10 +380,18 @@ class OrganizationalStructure extends Component
             return;
         }
 
-        $leafUnit = $this->lowestRoutingUnitForOrganization($org, $unitId);
+        $leafUnit = $this->routingNodeForOrganization($org, $unitId);
         if (! $leafUnit) {
             abort(404);
         }
+
+        if ($leafUnit->hasRoutingChildren()) {
+            session()->flash('error', 'Only a node without child tiers can be marked as the last node.');
+
+            return;
+        }
+
+        $markedNow = $this->ensureLastRoutingNodeFlag($leafUnit);
 
         $this->resetValidation();
         $this->selectedLeafUnitId = $leafUnit->id;
@@ -385,6 +405,10 @@ class OrganizationalStructure extends Component
         $this->autoPromptLeafClientSpaces = false;
         $this->autoPromptLeafStaffAssignments = false;
         $this->showLeafClientSpacesModal = true;
+
+        if ($markedNow) {
+            session()->flash('status', 'Last node confirmed. Attach client spaces here, then the system will prompt you to link staff immediately.');
+        }
     }
 
     public function openLeafStaffModal(int $unitId, ?int $clientSpaceId = null): void
@@ -764,6 +788,28 @@ class OrganizationalStructure extends Component
             : true;
     }
 
+    private function parentCanAcceptRoutingChildren(Organization $org, mixed $parentId, ?int $movingUnitId = null): bool
+    {
+        if (! $parentId) {
+            return true;
+        }
+
+        $parent = HrOrganizationalUnit::where('organization_id', $org->id)
+            ->routingNodes()
+            ->whereKey($parentId)
+            ->first();
+
+        if (! $parent) {
+            return false;
+        }
+
+        if ($movingUnitId !== null && (int) $parent->id === (int) $movingUnitId) {
+            return true;
+        }
+
+        return ! $parent->isLowestRoutingNode();
+    }
+
     private function normalizedRoutingNodeName(?string $name): string
     {
         return trim((string) $name);
@@ -858,6 +904,33 @@ class OrganizationalStructure extends Component
             ->lowestRoutingNodes()
             ->with(['tierLevel', 'linkedClientSpaces'])
             ->find($unitId);
+    }
+
+    private function routingNodeForOrganization(Organization $org, int $unitId): ?HrOrganizationalUnit
+    {
+        return HrOrganizationalUnit::where('organization_id', $org->id)
+            ->routingNodes()
+            ->with(['tierLevel', 'children', 'linkedClientSpaces'])
+            ->find($unitId);
+    }
+
+    private function ensureLastRoutingNodeFlag(HrOrganizationalUnit $unit): bool
+    {
+        if (! $unit->isRoutingNode()) {
+            return false;
+        }
+
+        if ($unit->isMarkedAsLastRoutingNode()) {
+            return false;
+        }
+
+        $metadata = $unit->metadata ?? [];
+        $metadata[HrOrganizationalUnit::METADATA_LAST_ROUTING_NODE] = true;
+
+        $unit->forceFill(['metadata' => $metadata])->save();
+        $unit->refresh();
+
+        return true;
     }
 
     private function attachedClientSpacesForSelectedLeaf(Organization $org)
