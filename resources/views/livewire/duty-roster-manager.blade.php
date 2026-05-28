@@ -558,6 +558,27 @@
                         @error('name') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
                     </div>
 
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Titles</label>
+                        <div class="mt-2 max-h-60 space-y-2 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-3">
+                            @forelse($disciplineOptions as $discipline)
+                                <label class="flex items-start gap-3 rounded-md border border-gray-200 bg-white px-3 py-2">
+                                    <input type="checkbox" wire:model="newRosterDisciplines" value="{{ $discipline['label'] }}" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span class="min-w-0">
+                                        <span class="block text-sm font-semibold text-gray-900">{{ $discipline['label'] }}</span>
+                                        <span class="block text-xs text-gray-500">{{ $discipline['count'] }} roster-eligible staff</span>
+                                    </span>
+                                </label>
+                            @empty
+                                <div class="rounded-md border border-dashed border-gray-300 bg-white px-3 py-4 text-sm text-gray-500">
+                                    No active titles are available in this client space.
+                                </div>
+                            @endforelse
+                        </div>
+                        <p class="mt-2 text-xs text-gray-500">Use more than one title only when you want one shared roster across those staff groups.</p>
+                        @error('cadre_or_discipline') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
+                    </div>
+
                     <div class="rounded-md border border-gray-200 bg-gray-50 px-4 py-4">
                         <div class="flex flex-wrap items-center justify-between gap-3">
                             <div>
@@ -587,27 +608,6 @@
                             </div>
                             @error('team_names') <span class="mt-2 block text-xs text-rose-600">{{ $message }}</span> @enderror
                         @endif
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Titles</label>
-                        <div class="mt-2 max-h-60 space-y-2 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-3">
-                            @forelse($disciplineOptions as $discipline)
-                                <label class="flex items-start gap-3 rounded-md border border-gray-200 bg-white px-3 py-2">
-                                    <input type="checkbox" wire:model="newRosterDisciplines" value="{{ $discipline['label'] }}" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                    <span class="min-w-0">
-                                        <span class="block text-sm font-semibold text-gray-900">{{ $discipline['label'] }}</span>
-                                        <span class="block text-xs text-gray-500">{{ $discipline['count'] }} roster-eligible staff</span>
-                                    </span>
-                                </label>
-                            @empty
-                                <div class="rounded-md border border-dashed border-gray-300 bg-white px-3 py-4 text-sm text-gray-500">
-                                    No active titles are available in this client space.
-                                </div>
-                            @endforelse
-                        </div>
-                        <p class="mt-2 text-xs text-gray-500">Use more than one title only when you want one shared roster across those staff groups.</p>
-                        @error('cadre_or_discipline') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
                     </div>
 
                     <div class="grid gap-4 sm:grid-cols-2">

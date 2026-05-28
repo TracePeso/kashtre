@@ -46,7 +46,7 @@ class MyRosterController extends Controller
         $entriesByDate = $entries
             ->groupBy(fn (HrDutyRosterEntry $entry): string => $entry->roster_date->toDateString());
 
-        $dateRows = $calendarDays
+        $scheduleCells = $calendarDays
             ->map(function (Carbon $day) use ($entriesByDate, $weekendDays): array {
                 $assignments = collect($entriesByDate->get($day->toDateString(), []))
                     ->map(fn (HrDutyRosterEntry $entry): array => $this->formatRosterAssignment($entry))
@@ -101,7 +101,8 @@ class MyRosterController extends Controller
 
         return view('hr.my-roster.index', [
             'monthStart' => $monthStart,
-            'dateRows' => $dateRows,
+            'calendarDays' => $calendarDays,
+            'scheduleCells' => $scheduleCells,
             'clientSpaceLegend' => $clientSpaceLegend,
             'shiftLegend' => $shiftLegend,
         ]);
@@ -118,10 +119,12 @@ class MyRosterController extends Controller
             'client_space_name' => $this->clientSpaceNameForEntry($entry),
             'client_space_tone' => $this->toneForSeed($clientSpaceKey),
             'shift_name' => $shiftType?->name ?: 'Scheduled Shift',
-            'shift_code' => $shiftType?->code ?: 'Shift',
             'shift_time' => $this->shiftTimeLabel($shiftType),
-            'shift_tone' => $this->toneForSeed($shiftKey, $shiftType?->color),
             'roster_status' => $rosterStatus,
+            'cell_background' => $this->diagonalSplitBackground(
+                $this->toneForSeed($shiftKey, $shiftType?->color)['background'],
+                $this->toneForSeed($clientSpaceKey)['background']
+            ),
         ];
     }
 
@@ -172,6 +175,11 @@ class MyRosterController extends Controller
             'border' => $this->rgbaFromHex($hex, 0.34),
             'text' => $this->darkenHex($hex, 0.18),
         ];
+    }
+
+    private function diagonalSplitBackground(string $shiftBackground, string $clientSpaceBackground): string
+    {
+        return "linear-gradient(135deg, {$shiftBackground} 0 49.5%, {$clientSpaceBackground} 50.5% 100%)";
     }
 
     private function paletteColorForSeed(string $seed): string

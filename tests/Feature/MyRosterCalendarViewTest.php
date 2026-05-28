@@ -15,7 +15,7 @@ class MyRosterCalendarViewTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_my_roster_page_shows_calendar_rows_and_color_key_content(): void
+    public function test_my_roster_page_shows_diagonal_roster_boxes_with_shift_and_client_space_keys(): void
     {
         $user = User::factory()->create();
 
@@ -67,11 +67,12 @@ class MyRosterCalendarViewTest extends TestCase
         $response = $this->get(route('hr.my-roster.index', ['month' => '2026-06']));
 
         $response->assertOk();
+        $response->assertSee('Diagonal Key');
         $response->assertSee('Client Space Key');
         $response->assertSee('Shift Key');
+        $response->assertSee('Shift / Space');
         $response->assertSee('Ward Alpha');
         $response->assertSee('Morning Shift');
-        $response->assertSee('08:00 to 17:00');
-        $response->assertSee('10 Jun 2026');
+        $response->assertSee('10');
     }
 }

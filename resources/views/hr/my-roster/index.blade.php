@@ -13,7 +13,7 @@
         <div class="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h2 class="text-lg font-semibold text-gray-900">{{ $monthStart->format('F Y') }}</h2>
-                <p class="mt-1 text-sm text-gray-500">Calendar-based individual roster with one row per date and separate client-space and shift-detail columns.</p>
+                <p class="mt-1 text-sm text-gray-500">Dates run across the top. Each roster box shows colour only: shift on the top-left triangle and client space on the bottom-right triangle.</p>
             </div>
             <div class="flex items-center gap-2">
                 <a href="{{ route('hr.my-roster.index', ['month' => $monthStart->copy()->subMonth()->format('Y-m')]) }}" class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Previous</a>
@@ -21,50 +21,64 @@
             </div>
         </div>
 
-        @if($clientSpaceLegend->isNotEmpty() || $shiftLegend->isNotEmpty())
-        <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            @if($clientSpaceLegend->isNotEmpty())
+        <div class="grid gap-4 xl:grid-cols-[minmax(0,19rem)_minmax(0,1fr)_minmax(0,1fr)]">
+            <section class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-900">Diagonal Key</h3>
+                <div class="mt-4 flex items-center gap-4">
+                    <div
+                        class="relative h-20 w-20 overflow-hidden rounded-xl border border-gray-300"
+                        style="background: linear-gradient(135deg, rgba(37, 99, 235, 0.18) 0 49.5%, rgba(15, 118, 110, 0.18) 50.5% 100%);"
+                    >
+                        <span class="absolute left-2 top-2 text-[11px] font-semibold text-blue-900">Shift</span>
+                        <span class="absolute bottom-2 right-2 text-[11px] font-semibold text-teal-900">Space</span>
+                    </div>
+                    <div class="space-y-2 text-sm text-gray-600">
+                        <p><span class="font-semibold text-gray-900">Top-left triangle:</span> shift colour</p>
+                        <p><span class="font-semibold text-gray-900">Bottom-right triangle:</span> client-space colour</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-900">Shift Key</h3>
+                <p class="mt-1 text-sm text-gray-500">Shift colours used in the diagonal boxes.</p>
+                <div class="mt-4 flex flex-wrap gap-2">
+                    @forelse($shiftLegend as $legend)
+                    <span
+                        class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium"
+                        style="background-color: {{ $legend['tone']['background'] }}; border-color: {{ $legend['tone']['border'] }}; color: {{ $legend['tone']['text'] }};"
+                    >
+                        <span>{{ $legend['code'] }}</span>
+                        <span class="opacity-85">{{ $legend['name'] }}</span>
+                    </span>
+                    @empty
+                    <span class="text-sm text-gray-400">No shifts scheduled this month.</span>
+                    @endforelse
+                </div>
+            </section>
+
             <section class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
                 <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-900">Client Space Key</h3>
-                <p class="mt-1 text-sm text-gray-500">Each client space keeps the same colour throughout the roster.</p>
+                <p class="mt-1 text-sm text-gray-500">Client-space colours used in the diagonal boxes.</p>
                 <div class="mt-4 flex flex-wrap gap-2">
-                    @foreach($clientSpaceLegend as $legend)
+                    @forelse($clientSpaceLegend as $legend)
                     <span
                         class="inline-flex items-center rounded-full border px-3 py-1 text-sm font-medium"
                         style="background-color: {{ $legend['tone']['background'] }}; border-color: {{ $legend['tone']['border'] }}; color: {{ $legend['tone']['text'] }};"
                     >
                         {{ $legend['name'] }}
                     </span>
-                    @endforeach
+                    @empty
+                    <span class="text-sm text-gray-400">No client spaces scheduled this month.</span>
+                    @endforelse
                 </div>
             </section>
-            @endif
-
-            @if($shiftLegend->isNotEmpty())
-            <section class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-900">Shift Key</h3>
-                <p class="mt-1 text-sm text-gray-500">Shift colours help you scan the month quickly across different client spaces.</p>
-                <div class="mt-4 flex flex-wrap gap-2">
-                    @foreach($shiftLegend as $legend)
-                    <span
-                        class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium"
-                        style="background-color: {{ $legend['tone']['background'] }}; border-color: {{ $legend['tone']['border'] }}; color: {{ $legend['tone']['text'] }};"
-                    >
-                        <span>{{ $legend['code'] }}</span>
-                        <span class="opacity-80">{{ $legend['name'] }}</span>
-                        <span class="opacity-70">{{ $legend['time'] }}</span>
-                    </span>
-                    @endforeach
-                </div>
-            </section>
-            @endif
         </div>
-        @endif
 
-        @if($dateRows->every(fn ($row) => $row['assignments'] === []))
+        @if($scheduleCells->every(fn ($cell) => $cell['assignments'] === []))
         <div class="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center">
             <p class="text-sm font-medium text-gray-700">No roster entries for {{ $monthStart->format('F Y') }}.</p>
-            <p class="mt-1 text-sm text-gray-500">Your assigned client-space shifts for this month will appear in the calendar register here.</p>
+            <p class="mt-1 text-sm text-gray-500">Your assigned client-space shifts for this month will appear in the calendar here.</p>
         </div>
         @else
         <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -72,69 +86,45 @@
                 <table class="min-w-full border-collapse text-sm">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="border-b border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">Date</th>
-                            <th class="border-b border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">Client Space</th>
-                            <th class="border-b border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">Shift Details</th>
+                            <th class="sticky left-0 z-10 min-w-[8rem] border-b border-r border-gray-200 bg-gray-50 px-4 py-3 text-left font-semibold text-gray-900">Roster</th>
+                            @foreach($calendarDays as $day)
+                            <th class="min-w-[7.5rem] border-b border-r border-gray-200 px-2 py-3 text-center align-top">
+                                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ $day->format('D') }}</div>
+                                <div class="mt-1 text-sm font-semibold text-gray-900">{{ $day->format('j') }}</div>
+                            </th>
+                            @endforeach
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach($dateRows as $row)
-                        @php($date = $row['date'])
-                        <tr class="{{ $row['is_today'] ? 'bg-blue-50/60' : ($row['is_weekend'] ? 'bg-gray-50/70' : 'bg-white') }}">
-                            <td class="border-b border-gray-200 px-4 py-4 align-top">
-                                <div class="flex flex-col">
-                                    <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ $date->format('D') }}</span>
-                                    <span class="mt-1 text-base font-semibold text-gray-900">{{ $date->format('j M Y') }}</span>
-                                    @if($row['is_today'])
-                                    <span class="mt-2 inline-flex w-fit items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">Today</span>
-                                    @elseif($row['is_weekend'])
-                                    <span class="mt-2 inline-flex w-fit items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-700">Weekend</span>
+                        <tr>
+                            <th class="sticky left-0 z-10 border-b border-r border-gray-200 bg-white px-4 py-4 text-left align-top">
+                                <p class="text-sm font-semibold text-gray-900">Shift / Space</p>
+                                <p class="mt-1 text-xs text-gray-500">Diagonal split box</p>
+                            </th>
+                            @foreach($scheduleCells as $cell)
+                            <td class="border-b border-r border-gray-200 px-2 py-3 align-top {{ $cell['is_today'] ? 'bg-blue-50/50' : ($cell['is_weekend'] ? 'bg-gray-50/70' : 'bg-white') }}">
+                                <div class="space-y-2">
+                                    @forelse($cell['assignments'] as $assignment)
+                                    <div
+                                        class="relative mx-auto h-20 w-20 overflow-hidden rounded-xl border shadow-sm"
+                                        style="background: {{ $assignment['cell_background'] }}; border-color: {{ $assignment['client_space_tone']['border'] }};"
+                                        title="{{ $assignment['shift_name'] }} ({{ $assignment['shift_time'] }}) / {{ $assignment['client_space_name'] }} / {{ $assignment['roster_status'] }}"
+                                    ></div>
+                                    @empty
+                                    <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                                        Off
+                                    </div>
+                                    @endforelse
+
+                                    @if($cell['is_today'])
+                                    <span class="block text-center text-[11px] font-semibold uppercase tracking-wide text-blue-700">Today</span>
+                                    @elseif($cell['is_weekend'])
+                                    <span class="block text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500">Weekend</span>
                                     @endif
                                 </div>
                             </td>
-                            <td class="border-b border-gray-200 px-4 py-4 align-top">
-                                @if($row['assignments'] === [])
-                                <span class="text-sm text-gray-400">No client space assigned</span>
-                                @else
-                                <div class="space-y-2">
-                                    @foreach($row['assignments'] as $assignment)
-                                    <span
-                                        class="inline-flex items-center rounded-full border px-3 py-1 text-sm font-medium"
-                                        style="background-color: {{ $assignment['client_space_tone']['background'] }}; border-color: {{ $assignment['client_space_tone']['border'] }}; color: {{ $assignment['client_space_tone']['text'] }};"
-                                    >
-                                        {{ $assignment['client_space_name'] }}
-                                    </span>
-                                    @endforeach
-                                </div>
-                                @endif
-                            </td>
-                            <td class="border-b border-gray-200 px-4 py-4 align-top">
-                                @if($row['assignments'] === [])
-                                <div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-3 text-sm text-gray-500">
-                                    No shift scheduled for this date.
-                                </div>
-                                @else
-                                <div class="space-y-3">
-                                    @foreach($row['assignments'] as $assignment)
-                                    <div class="rounded-lg border border-gray-200 bg-white px-3 py-3 shadow-sm">
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <span
-                                                class="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
-                                                style="background-color: {{ $assignment['shift_tone']['background'] }}; border-color: {{ $assignment['shift_tone']['border'] }}; color: {{ $assignment['shift_tone']['text'] }};"
-                                            >
-                                                {{ $assignment['shift_code'] }}
-                                            </span>
-                                            <span class="text-sm font-semibold text-gray-900">{{ $assignment['shift_name'] }}</span>
-                                            <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">{{ $assignment['roster_status'] }}</span>
-                                        </div>
-                                        <p class="mt-2 text-sm text-gray-600">{{ $assignment['shift_time'] }}</p>
-                                    </div>
-                                    @endforeach
-                                </div>
-                                @endif
-                            </td>
+                            @endforeach
                         </tr>
-                        @endforeach
                     </tbody>
                 </table>
             </div>
