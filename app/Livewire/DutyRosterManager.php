@@ -36,6 +36,7 @@ class DutyRosterManager extends Component
     public array $newRosterDisciplines = [];
     public bool $newRosterUsesTeams = false;
     public array $newRosterTeamNames = [];
+    public array $newRosterTeamAssignments = [];
     public string $newRosterDurationPreset = self::DURATION_MONTHLY;
     public ?string $newRosterStartDate = null;
     public ?string $newRosterEndDate = null;
@@ -70,6 +71,7 @@ class DutyRosterManager extends Component
         $this->newRosterDisciplines = [];
         $this->newRosterUsesTeams = false;
         $this->newRosterTeamNames = [];
+        $this->newRosterTeamAssignments = [];
         $this->resetValidation();
     }
 
@@ -106,6 +108,7 @@ class DutyRosterManager extends Component
         $this->newRosterName = $this->defaultRosterName($selectedClientSpace, $selectedDisciplines);
         $this->newRosterUsesTeams = false;
         $this->newRosterTeamNames = [];
+        $this->newRosterTeamAssignments = [];
         $this->newRosterDurationPreset = self::DURATION_MONTHLY;
         $this->newRosterStartDate = now()->toDateString();
         $this->syncNewRosterEndDateToDuration();
@@ -129,6 +132,7 @@ class DutyRosterManager extends Component
             ->all();
         $this->newRosterDiscipline = $this->newRosterDisciplines[0] ?? '';
         $this->syncNewRosterNameToDisciplines();
+        $this->syncNewRosterTeamAssignments();
     }
 
     public function updatedNewRosterDurationPreset(string $value): void
@@ -162,7 +166,20 @@ class DutyRosterManager extends Component
 
         if (! $value) {
             $this->newRosterTeamNames = [];
+            $this->newRosterTeamAssignments = [];
         }
+
+        $this->syncNewRosterTeamAssignments();
+    }
+
+    public function updatedNewRosterTeamNames(): void
+    {
+        $this->syncNewRosterTeamAssignments();
+    }
+
+    public function updatedNewRosterTeamAssignments(): void
+    {
+        $this->syncNewRosterTeamAssignments();
     }
 
     public function updatedEditingUsesTeams(bool $value): void
@@ -199,6 +216,7 @@ class DutyRosterManager extends Component
     {
         unset($this->newRosterTeamNames[$index]);
         $this->newRosterTeamNames = array_values($this->newRosterTeamNames);
+        $this->syncNewRosterTeamAssignments();
     }
 
     public function addEditingTeam(): void
@@ -230,7 +248,7 @@ class DutyRosterManager extends Component
                 'cadre_or_disciplines' => $this->newRosterDisciplines,
                 'team_grouping_enabled' => $this->newRosterUsesTeams,
                 'team_names' => $this->newRosterTeamNames,
-                'team_assignments' => [],
+                'team_assignments' => $this->filteredNewRosterTeamAssignments(),
                 'start_date' => $this->newRosterStartDate,
                 'end_date' => $this->newRosterEndDate,
                 'entries' => [],
@@ -539,6 +557,7 @@ class DutyRosterManager extends Component
         $staffRows = ($selectedClientSpace && $selectedRoster)
             ? $this->dutyRosterService()->eligibleAssignments($selectedClientSpace, $selectedRoster->disciplineTitles())
             : collect();
+        $newRosterStaffRows = $this->newRosterEligibleAssignments();
         $staffScheduledHours = $this->staffScheduledHours($staffRows, $shiftTypes, $editorDates);
         $staffUiContext = $this->staffUiContext($organization, $staffRows, $shiftTypes, $editorDates);
         $resolvedApprovalWorkflow = ($selectedClientSpace && $selectedRoster && ! $selectedRoster->approvalRequest)
@@ -551,6 +570,7 @@ class DutyRosterManager extends Component
             'disciplineOptions' => $disciplineOptions,
             'rosters' => $rosters,
             'selectedRoster' => $selectedRoster,
+            'newRosterStaffRows' => $newRosterStaffRows,
             'shiftTypes' => $shiftTypes,
             'editorDates' => $editorDates,
             'rosterEvents' => $rosterEvents,
@@ -956,6 +976,50 @@ class DutyRosterManager extends Component
             ->all();
     }
 
+    /**
+     * @return array<string, string>
+     */
+    private function filteredNewRosterTeamAssignments(): array
+    {
+        if (! $this->newRosterUsesTeams) {
+            return [];
+        }
+
+        $teamNames = $this->normalizedTeamNames($this->newRosterTeamNames);
+
+        if ($teamNames === []) {
+            return [];
+        }
+
+        $eligibleAssignmentIds = $this->newRosterEligibleAssignments()
+            ->pluck('id')
+            ->mapWithKeys(fn ($id): array => [(string) $id => true]);
+        $validTeams = collect($teamNames)
+            ->mapWithKeys(fn (string $team): array => [$team => true]);
+
+        return collect($this->newRosterTeamAssignments)
+            ->mapWithKeys(function ($team, $staffAssignmentId) use ($eligibleAssignmentIds, $validTeams): array {
+                $staffKey = trim((string) $staffAssignmentId);
+                $teamName = trim((string) $team);
+
+                if ($staffKey === '' || $teamName === '') {
+                    return [];
+                }
+
+                if (! $eligibleAssignmentIds->has($staffKey) || ! $validTeams->has($teamName)) {
+                    return [];
+                }
+
+                return [$staffKey => $teamName];
+            })
+            ->all();
+    }
+
+    private function syncNewRosterTeamAssignments(): void
+    {
+        $this->newRosterTeamAssignments = $this->filteredNewRosterTeamAssignments();
+    }
+
     private function syncEditingTeamAssignments(): void
     {
         $this->editingTeamAssignments = $this->filteredEditingTeamAssignments();
@@ -973,6 +1037,18 @@ class DutyRosterManager extends Component
             ->unique(fn (string $team): string => Str::lower($team))
             ->values()
             ->all();
+    }
+
+    private function newRosterEligibleAssignments(): Collection
+    {
+        $selectedClientSpace = $this->selectedClientSpace();
+
+        if (! $selectedClientSpace || $this->newRosterDisciplines === []) {
+            return collect();
+        }
+
+        return $this->dutyRosterService()
+            ->eligibleAssignments($selectedClientSpace, $this->newRosterDisciplines);
     }
 
     /**

@@ -198,7 +198,7 @@
                                     <div class="flex flex-wrap items-center justify-between gap-3">
                                         <div>
                                             <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Teams</label>
-                                            <p class="mt-1 text-xs text-gray-500">Define team names, then assign each client-space staff row to a team manually from the roster table.</p>
+                                            <p class="mt-1 text-xs text-gray-500">Define team names and adjust staff-to-team assignments for this roster draft.</p>
                                         </div>
                                         <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                                             <input type="checkbox" wire:model.live="editingUsesTeams" @disabled(!$selectedRoster->isEditable()) class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:bg-gray-100">
@@ -583,7 +583,7 @@
                         <div class="flex flex-wrap items-center justify-between gap-3">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Teams</label>
-                                <p class="mt-1 text-xs text-gray-500">Define team names here. After creating the draft, assign client-space staff to those teams manually.</p>
+                                <p class="mt-1 text-xs text-gray-500">Define team names here, then assign eligible client-space staff to those teams before creating the draft.</p>
                             </div>
                             <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                                 <input type="checkbox" wire:model.live="newRosterUsesTeams" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
@@ -606,7 +606,76 @@
                                     Add Team
                                 </button>
                             </div>
+                            @php
+                                $newRosterActiveTeamNames = collect($newRosterTeamNames)
+                                    ->map(fn ($team) => trim((string) $team))
+                                    ->filter()
+                                    ->unique(fn ($team) => \Illuminate\Support\Str::lower($team))
+                                    ->values()
+                                    ->all();
+                            @endphp
+                            @if($newRosterActiveTeamNames !== [])
+                                <div class="mt-4 rounded-md border border-gray-200 bg-white p-3">
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                            <h4 class="text-sm font-semibold text-gray-900">Assign Staff to Teams</h4>
+                                            <p class="mt-1 text-xs text-gray-500">Choose the team for each roster-eligible staff member now so the draft opens with the correct grouping.</p>
+                                        </div>
+                                        <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
+                                            {{ $newRosterStaffRows->count() }} staff
+                                        </span>
+                                    </div>
+
+                                    @if($newRosterStaffRows->isEmpty())
+                                        <div class="mt-3 rounded-md border border-dashed border-gray-300 bg-gray-50 px-3 py-4 text-sm text-gray-500">
+                                            No roster-eligible staff match the selected title set yet.
+                                        </div>
+                                    @else
+                                        <div class="mt-3 max-h-72 overflow-y-auto rounded-md border border-gray-200">
+                                            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                                                <thead class="bg-gray-50">
+                                                    <tr>
+                                                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Staff</th>
+                                                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Title</th>
+                                                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Assignment</th>
+                                                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Team</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="divide-y divide-gray-200 bg-white">
+                                                    @foreach($newRosterStaffRows as $staffAssignment)
+                                                        @php
+                                                            $staffCadreLabel = $staffAssignment->staff_title ?: $staffAssignment->staff_cadre ?: 'Staff';
+                                                            $staffAssignmentType = $staffAssignment->client_space_assignment_type === \App\Models\HrClientSpaceStaffAssignment::TYPE_SECONDARY
+                                                                ? 'Additional'
+                                                                : 'Primary';
+                                                        @endphp
+                                                        <tr>
+                                                            <td class="px-3 py-2 align-top">
+                                                                <div class="font-medium text-gray-900">{{ $staffAssignment->staff_name }}</div>
+                                                                @if($staffAssignment->staff_uuid)
+                                                                    <div class="mt-0.5 text-[11px] text-gray-500">{{ $staffAssignment->staff_uuid }}</div>
+                                                                @endif
+                                                            </td>
+                                                            <td class="px-3 py-2 text-gray-700">{{ $staffCadreLabel }}</td>
+                                                            <td class="px-3 py-2 text-gray-700">{{ $staffAssignmentType }}</td>
+                                                            <td class="px-3 py-2">
+                                                                <select wire:model.live="newRosterTeamAssignments.{{ $staffAssignment->id }}" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                                                    <option value="">Unassigned</option>
+                                                                    @foreach($newRosterActiveTeamNames as $teamName)
+                                                                        <option value="{{ $teamName }}">{{ $teamName }}</option>
+                                                                    @endforeach
+                                                                </select>
+                                                            </td>
+                                                        </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    @endif
+                                </div>
+                            @endif
                             @error('team_names') <span class="mt-2 block text-xs text-rose-600">{{ $message }}</span> @enderror
+                            @error('team_assignments') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
                         @endif
                     </div>
 
