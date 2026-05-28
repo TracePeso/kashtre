@@ -21,11 +21,11 @@
             </p>
             @if($unit->isLowestRoutingNode())
                 <p class="mt-1 text-xs text-blue-600">
-                    This is the last routing node. Attach client spaces here, then link last-node staff directly to one or more attached client spaces.
+                    Last routing node.
                 </p>
             @elseif($leafCandidate)
                 <p class="mt-1 text-xs text-amber-600">
-                    If this should be the last routing node, click Last Node? first. After that, child tiers will be locked and the client-space flow will open immediately.
+                    Click Last Node? to lock child tiers.
                 </p>
             @endif
             <div class="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
