@@ -73,7 +73,7 @@ class TierStaffAssignmentManager extends Component
         }
     }
 
-    public function createSubtier(): void
+    public function createSubtier()
     {
         $org = $this->currentOrganization();
         abort_unless($org, 404);
@@ -130,6 +130,18 @@ class TierStaffAssignmentManager extends Component
         $this->newSubtierTierLevelId = $this->defaultSubtierTierLevelId($parent);
         $this->staffTargetTierId = $subtier->id;
         $this->message = "Routing node {$name} added under {$this->routingUnitDisplayName($parent)}.";
+
+        if ($this->subtierLevelOptionsFor($subtier)->isEmpty() && $this->userCanManageHrSetup()) {
+            session()->flash(
+                'status',
+                "Routing node {$name} is now the final node. Attach client spaces next, then link staff to those spaces."
+            );
+
+            return redirect()->route('hr.organizational-structure.index', [
+                'prompt_leaf_unit' => $subtier->id,
+                'prompt_leaf_action' => 'client-spaces',
+            ]);
+        }
     }
 
     public function assignStaff(CascadeRoutingService $routingService): void

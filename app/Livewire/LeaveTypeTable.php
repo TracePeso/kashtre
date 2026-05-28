@@ -54,6 +54,10 @@ class LeaveTypeTable extends Component implements HasForms, HasTable
                     ->label('Deduct / Workday')
                     ->formatStateUsing(fn ($state): string => rtrim(rtrim(number_format((float) $state, 2, '.', ''), '0'), '.'))
                     ->alignCenter(),
+                Tables\Columns\TextColumn::make('advance_notice_days')
+                    ->label('Notice Rule')
+                    ->formatStateUsing(fn (LeaveType $record): string => $record->advanceNoticeSummary())
+                    ->wrap(),
                 Tables\Columns\TextColumn::make('max_days_per_year')
                     ->label('Entitled Days/Year')
                     ->alignCenter()
@@ -139,6 +143,19 @@ class LeaveTypeTable extends Component implements HasForms, HasTable
                 ->step('0.25')
                 ->default(1)
                 ->helperText('Use 1 for full-day leave and 0.5 for morning or afternoon absence types.'),
+            Forms\Components\Select::make('advance_notice_timing')
+                ->label('Notice Timing')
+                ->options(LeaveType::noticeTimingOptions())
+                ->required()
+                ->default(LeaveType::NOTICE_PRE),
+            Forms\Components\TextInput::make('advance_notice_days')
+                ->label('Required Notice Days')
+                ->numeric()
+                ->required()
+                ->minValue(0)
+                ->step(1)
+                ->default(0)
+                ->helperText('Set to 0 for no notice rule. Use Notice Timing to decide whether the leave must be reported before or after it starts.'),
             Forms\Components\TextInput::make('max_days_per_year')
                 ->label('Entitled Days Per Year')
                 ->numeric()
@@ -164,4 +181,3 @@ class LeaveTypeTable extends Component implements HasForms, HasTable
         return view('livewire.leave-type-table');
     }
 }
-

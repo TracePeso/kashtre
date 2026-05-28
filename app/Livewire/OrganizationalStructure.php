@@ -38,6 +38,8 @@ class OrganizationalStructure extends Component
     public array $selectedLeafTargetClientSpaceIds = [];
     public array $selectedLeafStaffAssignmentIds = [];
     public bool $canManageLeafClientSpaceStaff = false;
+    public bool $autoPromptLeafClientSpaces = false;
+    public bool $autoPromptLeafStaffAssignments = false;
 
     protected $rules = [
         'newUnitTierLevelId' => 'required|exists:hr_organization_tier_levels,id',
@@ -52,6 +54,7 @@ class OrganizationalStructure extends Component
     {
         $this->canEditRouting = $this->userCanEditRouting();
         $this->canManageLeafClientSpaceStaff = $this->userCanManageLeafClientSpaceStaff();
+        $this->applyLeafFlowPromptFromRequest();
     }
 
     public function openModal($parentId = null): void
@@ -379,6 +382,8 @@ class OrganizationalStructure extends Component
             ->map(fn ($id): int => (int) $id)
             ->values()
             ->all();
+        $this->autoPromptLeafClientSpaces = false;
+        $this->autoPromptLeafStaffAssignments = false;
         $this->showLeafClientSpacesModal = true;
     }
 
@@ -415,6 +420,8 @@ class OrganizationalStructure extends Component
             ? [(int) $clientSpaceId]
             : [];
         $this->selectedLeafStaffAssignmentIds = [];
+        $this->autoPromptLeafClientSpaces = false;
+        $this->autoPromptLeafStaffAssignments = false;
         $this->showLeafStaffModal = true;
     }
 
@@ -528,6 +535,24 @@ class OrganizationalStructure extends Component
                         'notes' => 'Detached because the client space was removed from the last routing node',
                     ]);
             }
+        }
+
+        $selectedClientSpaceIdsForStaffPrompt = $selectedClientSpaceIds
+            ->map(fn ($id): int => (int) $id)
+            ->values()
+            ->all();
+        $leafUnitId = (int) $leafUnit->id;
+
+        if (
+            $selectedClientSpaceIdsForStaffPrompt !== []
+            && $this->canManageLeafClientSpaceStaff
+        ) {
+            $this->showLeafClientSpacesModal = false;
+            $this->selectedLeafClientSpaceIds = [];
+            $this->openLeafStaffPrompt($leafUnitId, $selectedClientSpaceIdsForStaffPrompt);
+            session()->flash('status', 'Client spaces saved. Link last-node staff to the selected client spaces next.');
+
+            return;
         }
 
         $this->resetLeafClientSpacesModal();
@@ -895,11 +920,38 @@ class OrganizationalStructure extends Component
             ->values();
     }
 
+    private function applyLeafFlowPromptFromRequest(): void
+    {
+        $leafUnitId = request()->integer('prompt_leaf_unit');
+        $action = (string) request()->query('prompt_leaf_action', 'client-spaces');
+
+        if (! $leafUnitId) {
+            return;
+        }
+
+        if ($action === 'client-spaces' && $this->canEditRouting) {
+            $this->openLeafClientSpacesModal($leafUnitId);
+            $this->autoPromptLeafClientSpaces = true;
+            session()->flash('status', 'Final routing node confirmed. Attach client spaces here, then the system will prompt you to link staff immediately.');
+        }
+    }
+
+    private function openLeafStaffPrompt(int $leafUnitId, array $clientSpaceIds): void
+    {
+        $this->selectedLeafUnitId = $leafUnitId;
+        $this->selectedLeafTargetClientSpaceIds = array_values(array_unique(array_map('intval', $clientSpaceIds)));
+        $this->selectedLeafStaffAssignmentIds = [];
+        $this->autoPromptLeafClientSpaces = false;
+        $this->autoPromptLeafStaffAssignments = true;
+        $this->showLeafStaffModal = true;
+    }
+
     private function resetLeafClientSpacesModal(): void
     {
         $this->showLeafClientSpacesModal = false;
         $this->selectedLeafUnitId = null;
         $this->selectedLeafClientSpaceIds = [];
+        $this->autoPromptLeafClientSpaces = false;
     }
 
     private function resetLeafStaffModal(): void
@@ -908,6 +960,7 @@ class OrganizationalStructure extends Component
         $this->selectedLeafUnitId = null;
         $this->selectedLeafTargetClientSpaceIds = [];
         $this->selectedLeafStaffAssignmentIds = [];
+        $this->autoPromptLeafStaffAssignments = false;
     }
 
 }

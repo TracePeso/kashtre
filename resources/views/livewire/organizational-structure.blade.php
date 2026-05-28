@@ -259,6 +259,11 @@
             <p class="mb-4 text-sm text-gray-600">
                 {{ $selectedLeafUnit ? $selectedLeafUnit->name : 'This node' }} is the last routing node. Choose the client spaces that should sit under it in the organogram.
             </p>
+            @if($autoPromptLeafClientSpaces)
+                <div class="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                    Final node confirmed. Save the client spaces for this node and the staff-to-client-space assignment step will open immediately after.
+                </div>
+            @endif
 
             <form wire:submit.prevent="saveLeafClientSpaces">
                 <div>
@@ -311,6 +316,11 @@
             <p class="mb-4 text-sm text-gray-600">
                 {{ $selectedLeafUnit ? $selectedLeafUnit->name : 'This node' }} is the last routing node. Staff stay on this node and can be linked directly to more than one attached client space.
             </p>
+            @if($autoPromptLeafStaffAssignments)
+                <div class="mb-4 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                    This prompt was opened from the final-node setup flow. Choose the staff who should be linked to the selected client spaces before you leave this step.
+                </div>
+            @endif
 
             <form wire:submit.prevent="assignLeafStaffToClientSpaces">
                 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">

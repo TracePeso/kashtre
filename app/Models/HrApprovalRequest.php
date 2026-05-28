@@ -513,6 +513,17 @@ class HrApprovalRequest extends Model
                 );
             }
 
+            if ($leaveType) {
+                $noticeValidationMessage = $leaveType->advanceNoticeValidationMessage(
+                    CarbonImmutable::now(),
+                    $start
+                );
+
+                if ($noticeValidationMessage !== null) {
+                    $validator->errors()->add('start_date', $noticeValidationMessage);
+                }
+            }
+
             if (! $leaveType?->tracks_balance || ! $leaveType?->max_days_per_year) {
                 return;
             }

@@ -14,17 +14,17 @@
             'skipped' => 'bg-gray-50 text-gray-600 border-gray-200',
         ];
         $pageTitle = $leaveOnly
-            ? 'Leave Applications'
+            ? 'My Leave Applications'
             : ($canViewAllApprovals ? 'Approval Queue' : 'My Approval Queue');
         $pageDescription = $leaveOnly
-            ? 'Submit leave applications, track approval progress, and review approved or pending leave dates.'
+            ? 'View your pending and approved leave applications alongside your leave usage summary.'
             : ($canViewAllApprovals
                 ? 'Submit HR requests and review every approval stage.'
                 : 'Requests appear here when they are waiting for your approval or when you submitted them.');
         $createButtonLabel = $leaveOnly ? 'Apply for Leave' : 'New Request';
-        $emptyHeading = $leaveOnly ? 'No leave applications yet.' : 'No approval requests yet.';
+        $emptyHeading = $leaveOnly ? 'No pending or approved leave applications yet.' : 'No approval requests yet.';
         $emptyDescription = $leaveOnly
-            ? 'Submit a leave application to start the approval workflow.'
+            ? 'Approved and pending leave applications will appear here after you submit them.'
             : 'New requests will appear here as soon as they are submitted.';
         $modalHeading = $leaveOnly ? 'New Leave Application' : 'New Approval Request';
         $submitButtonLabel = $leaveOnly ? 'Submit Leave Application' : 'Submit';
@@ -69,8 +69,8 @@
         <section class="mb-6 overflow-hidden rounded-xl border border-amber-300 bg-white shadow-sm">
             <div class="flex flex-col gap-3 border-b border-amber-300 bg-amber-50 px-4 py-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                    <h3 class="text-lg font-semibold text-gray-900">Individual Leave View</h3>
-                    <p class="mt-1 text-sm text-gray-600">Personal leave register for {{ $individualLeaveSummary['staff_name'] }}.</p>
+                    <h3 class="text-lg font-semibold text-gray-900">My Leave Summary</h3>
+                    <p class="mt-1 text-sm text-gray-600">Usage summary for {{ $individualLeaveSummary['staff_name'] }} based on leave applications with actual activity.</p>
                 </div>
                 @if(count($leaveSummaryAssignmentOptions) > 1)
                 <div class="w-full max-w-sm">
@@ -87,15 +87,21 @@
             </div>
 
             <div class="overflow-x-auto bg-stone-100/40 p-3">
+                @if(empty($individualLeaveSummary['rows']))
+                <div class="rounded-lg border border-dashed border-amber-300 bg-white px-4 py-8 text-center">
+                    <p class="text-sm font-medium text-gray-700">No leave usage has been recorded for this assignment yet.</p>
+                    <p class="mt-1 text-sm text-gray-500">Pending and approved leave activity will appear here once applications exist.</p>
+                </div>
+                @else
                 <table class="min-w-full border-collapse overflow-hidden rounded-lg">
                     <thead>
                         <tr class="bg-amber-500 text-white">
                             <th class="border border-amber-300 px-3 py-3 text-left text-sm font-semibold">Leave Type</th>
                             <th class="border border-amber-300 px-3 py-3 text-center text-sm font-semibold">Leave Code</th>
-                            <th class="border border-amber-300 px-3 py-3 text-center text-sm font-semibold">Leave Start Date</th>
-                            <th class="border border-amber-300 px-3 py-3 text-center text-sm font-semibold">Leave End Date</th>
-                            <th class="border border-amber-300 px-3 py-3 text-center text-sm font-semibold">No of Leave Days Entitled</th>
-                            <th class="border border-amber-300 px-3 py-3 text-center text-sm font-semibold">No of Leave days Requested</th>
+                            <th class="border border-amber-300 px-3 py-3 text-center text-sm font-semibold">Latest Leave Start Date</th>
+                            <th class="border border-amber-300 px-3 py-3 text-center text-sm font-semibold">Latest Leave End Date</th>
+                            <th class="border border-amber-300 px-3 py-3 text-center text-sm font-semibold">Leave Days Entitled</th>
+                            <th class="border border-amber-300 px-3 py-3 text-center text-sm font-semibold">Leave Days Used</th>
                             <th class="border border-amber-300 px-3 py-3 text-center text-sm font-semibold">Balance Leave Days</th>
                         </tr>
                     </thead>
@@ -109,12 +115,13 @@
                             <td class="border border-stone-300 px-3 py-3 text-center text-sm text-gray-700">{{ $row['start_date'] }}</td>
                             <td class="border border-stone-300 px-3 py-3 text-center text-sm text-gray-700">{{ $row['end_date'] }}</td>
                             <td class="border border-stone-300 px-3 py-3 text-center text-sm text-gray-700">{{ $row['entitled_days'] }}</td>
-                            <td class="border border-stone-300 px-3 py-3 text-center text-sm text-gray-700">{{ $row['requested_days'] }}</td>
+                            <td class="border border-stone-300 px-3 py-3 text-center text-sm text-gray-700">{{ $row['used_days'] }}</td>
                             <td class="border border-stone-300 px-3 py-3 text-center text-sm text-gray-700">{{ $row['balance_days'] }}</td>
                         </tr>
                         @endforeach
                     </tbody>
                 </table>
+                @endif
             </div>
         </section>
         @elseif($currentStaffUuid)
@@ -362,6 +369,10 @@
                         <div class="rounded-lg border border-blue-200 bg-white px-3 py-3">
                             <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Deduction Rule</p>
                             <p class="mt-1 text-sm font-semibold text-gray-900">{{ $selectedLeaveTypeSummary['deduction_label'] }}</p>
+                        </div>
+                        <div class="rounded-lg border border-blue-200 bg-white px-3 py-3">
+                            <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Notice Rule</p>
+                            <p class="mt-1 text-sm font-semibold text-gray-900">{{ $selectedLeaveTypeSummary['notice_label'] }}</p>
                         </div>
                         <div class="rounded-lg border border-blue-200 bg-white px-3 py-3">
                             <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Paid Status</p>

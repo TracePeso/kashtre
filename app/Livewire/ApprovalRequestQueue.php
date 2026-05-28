@@ -88,22 +88,33 @@ class ApprovalRequestQueue extends Component
             return;
         }
 
-        $this->requests = HrApprovalRequest::where('organization_id', $this->organizationId)
-            ->when($this->leaveOnly, fn ($query) => $query->where('approval_category', 'leave'))
-            ->when(!$this->canViewAllApprovals, function ($query) {
-                $query->where(function ($requestQuery) {
-                    $requestQuery
-                        ->where('requester_staff_uuid', $this->currentStaffUuid)
-                        ->orWhere(function ($approvalQuery) {
-                            $approvalQuery->where('status', 'pending')
-                                ->whereHas('steps', function ($stepQuery) {
-                                    $stepQuery->where('status', 'pending')
-                                        ->where('is_current', true)
-                                        ->where('approver_staff_uuid', $this->currentStaffUuid);
-                                });
-                        });
+        $query = HrApprovalRequest::where('organization_id', $this->organizationId);
+
+        if ($this->leaveOnly) {
+            if (! $this->currentStaffUuid) {
+                $this->requests = [];
+                return;
+            }
+
+            $query->where('approval_category', 'leave')
+                ->where('requester_staff_uuid', $this->currentStaffUuid)
+                ->whereIn('status', ['pending', 'approved']);
+        } elseif (! $this->canViewAllApprovals) {
+            $query->where(function ($requestQuery) {
+                $requestQuery
+                    ->where('requester_staff_uuid', $this->currentStaffUuid)
+                    ->orWhere(function ($approvalQuery) {
+                        $approvalQuery->where('status', 'pending')
+                            ->whereHas('steps', function ($stepQuery) {
+                                $stepQuery->where('status', 'pending')
+                                    ->where('is_current', true)
+                                    ->where('approver_staff_uuid', $this->currentStaffUuid);
+                            });
                     });
-            })
+            });
+        }
+
+        $this->requests = $query
             ->with(['workflow', 'steps', 'events', 'leaveType', 'staffAssignment.organizationalUnit'])
             ->latest()
             ->limit(50)
@@ -206,6 +217,7 @@ class ApprovalRequestQueue extends Component
                 $leaveType->id => [
                     'daysPerWorkday' => $leaveType->deductionPerWorkday(),
                     'sessionLabel' => $leaveType->sessionLabel(),
+                    'advanceNoticeSummary' => $leaveType->advanceNoticeSummary(),
                 ],
             ])
             ->toArray();
@@ -939,6 +951,7 @@ class ApprovalRequestQueue extends Component
             'code' => $leaveType->code,
             'session_label' => $leaveType->sessionLabel(),
             'deduction_label' => $this->formatDayValue($leaveType->deductionPerWorkday()).' day(s) per working day',
+            'notice_label' => $leaveType->advanceNoticeSummary(),
             'is_paid' => $leaveType->is_paid,
             'tracks_balance' => $leaveType->tracks_balance,
             'entitled_days' => $entitledDays,
@@ -965,52 +978,62 @@ class ApprovalRequestQueue extends Component
             return null;
         }
 
-        $leaveTypes = LeaveType::query()
-            ->where('organization_id', $this->organizationId)
-            ->where('is_active', true)
-            ->orderBy('name')
-            ->get();
-
         $leaveRequests = HrApprovalRequest::query()
             ->where('organization_id', $this->organizationId)
             ->where('approval_category', 'leave')
             ->where('staff_assignment_id', $assignment->id)
             ->whereIn('status', ['pending', 'approved'])
+            ->with('leaveType')
             ->orderByDesc('start_date')
             ->orderByDesc('id')
             ->get();
 
-        $rows = $leaveTypes->map(function (LeaveType $leaveType) use ($leaveRequests, $assignment): array {
-            $requestsForType = $leaveRequests->where('leave_type_id', $leaveType->id)->values();
-            $latestRequest = $requestsForType->first();
-            $year = $latestRequest?->start_date?->year ?? now()->year;
-            $usedDays = $this->usedDaysForLeaveType(
-                $leaveType,
-                (int) $assignment->id,
-                (int) $year
-            );
-            $latestRequestedDays = $latestRequest ? (float) $latestRequest->requested_days : null;
-            $entitledDays = null;
-            $balanceDays = null;
+        $rows = $leaveRequests
+            ->groupBy('leave_type_id')
+            ->map(function (Collection $requestsForType) use ($assignment): ?array {
+                /** @var HrApprovalRequest|null $latestRequest */
+                $latestRequest = $requestsForType->first();
+                $leaveType = $latestRequest?->leaveType;
 
-            if ($leaveType->tracks_balance && $leaveType->max_days_per_year !== null) {
-                $balanceDays = max(0, (float) $leaveType->max_days_per_year - $usedDays);
-                $entitledDays = $latestRequestedDays !== null
-                    ? min((float) $leaveType->max_days_per_year, $balanceDays + $latestRequestedDays)
-                    : max(0, (float) $leaveType->max_days_per_year - $usedDays);
-            }
+                if (! $leaveType instanceof LeaveType) {
+                    return null;
+                }
 
-            return [
-                'leave_type' => $leaveType->name,
-                'leave_type_classes' => $this->leaveTypeToneClasses($leaveType),
-                'code' => $leaveType->code,
-                'start_date' => $latestRequest?->start_date?->format('d/m/Y'),
-                'end_date' => $latestRequest?->end_date?->format('d/m/Y'),
-                'entitled_days' => $entitledDays !== null ? $this->formatDayValue($entitledDays) : '',
-                'requested_days' => $latestRequestedDays !== null ? $this->formatDayValue($latestRequestedDays) : '',
-                'balance_days' => $balanceDays !== null ? $this->formatDayValue($balanceDays) : '',
-            ];
-        })->all();
+                $year = $latestRequest?->start_date?->year ?? now()->year;
+                $usedDays = $this->usedDaysForLeaveType(
+                    $leaveType,
+                    (int) $assignment->id,
+                    (int) $year
+                );
+                $entitledDays = null;
+                $balanceDays = null;
+
+                if ($leaveType->tracks_balance && $leaveType->max_days_per_year !== null) {
+                    $entitledDays = (float) $leaveType->max_days_per_year;
+                    $balanceDays = max(0, $entitledDays - $usedDays);
+                }
+
+                return [
+                    'leave_type' => $leaveType->name,
+                    'leave_type_classes' => $this->leaveTypeToneClasses($leaveType),
+                    'code' => $leaveType->code,
+                    'start_date' => $latestRequest?->start_date?->format('d/m/Y'),
+                    'end_date' => $latestRequest?->end_date?->format('d/m/Y'),
+                    'entitled_days' => $entitledDays !== null ? $this->formatDayValue($entitledDays) : '',
+                    'used_days' => $this->formatDayValue($usedDays),
+                    'balance_days' => $balanceDays !== null ? $this->formatDayValue($balanceDays) : '',
+                    'sort_date' => optional($latestRequest?->start_date)->timestamp ?? 0,
+                ];
+            })
+            ->filter()
+            ->sortByDesc('sort_date')
+            ->values()
+            ->map(function (array $row): array {
+                unset($row['sort_date']);
+
+                return $row;
+            })
+            ->all();
 
         return [
             'staff_name' => $assignment->staff_name,
@@ -1098,4 +1121,3 @@ class ApprovalRequestQueue extends Component
         return ['cell' => 'bg-gray-300', 'text' => 'text-gray-900'];
     }
 }
-

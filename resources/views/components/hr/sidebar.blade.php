@@ -35,7 +35,7 @@
 
     $navSections = [
         [
-            'label' => 'Workforce',
+            'label' => 'People',
             'icon' => 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z',
             'items' => [
                 [
@@ -51,13 +51,13 @@
                     'visible' => ($user?->canViewHrStaff() ?? false) || ($user?->canViewHrSetup() ?? false),
                 ],
                 [
-                    'label' => 'Tier Pool',
+                    'label' => 'Tier Staff Assignments',
                     'href' => route('hr.tier-staff-assignments.index'),
                     'active' => request()->routeIs('hr.tier-staff-assignments.*'),
                     'visible' => ($user?->canViewHrStaff() ?? false) || $belongsToRoutingTier,
                 ],
                 [
-                    'label' => 'Routing Structure',
+                    'label' => 'Organizational Structure',
                     'href' => route('hr.organizational-structure.index'),
                     'active' => request()->routeIs('hr.organizational-structure.*'),
                     'visible' => $user?->canViewHrSetup() ?? false,
@@ -87,9 +87,9 @@
                     'visible' => (bool) ($user?->staff_uuid),
                 ],
                 [
-                    'label' => 'Shift Types',
-                    'href' => route('hr.shift-types.index'),
-                    'active' => request()->routeIs('hr.shift-types.*'),
+                    'label' => 'Calendar',
+                    'href' => route('hr.calendar.index'),
+                    'active' => request()->routeIs('hr.calendar.*'),
                     'visible' => $user?->canViewHrSetup() ?? false,
                 ],
             ],
@@ -110,34 +110,22 @@
                     'active' => request()->routeIs('hr.biometrics.attendance'),
                     'visible' => $user?->canViewHrBiometrics() ?? false,
                 ],
-                [
-                    'label' => 'Biometric Settings',
-                    'href' => route('hr.biometrics.settings'),
-                    'active' => request()->routeIs('hr.biometrics.settings'),
-                    'visible' => $user?->canManageHrBiometrics() ?? false,
-                ],
+            ],
+        ],
+        [
+            'label' => 'Leave',
+            'icon' => 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
+            'items' => [
                 [
                     'label' => 'Leave Applications',
                     'href' => route('hr.leave-applications.index'),
                     'active' => request()->routeIs('hr.leave-applications.*'),
                     'visible' => (bool) ($user?->staff_uuid) || ($user?->canViewHrStaff() ?? false) || ($user?->canViewHrSetup() ?? false),
                 ],
-                [
-                    'label' => 'Leave Types',
-                    'href' => route('hr.leave-types.index'),
-                    'active' => request()->routeIs('hr.leave-types.*'),
-                    'visible' => $user?->canViewHrSetup() ?? false,
-                ],
-                [
-                    'label' => 'Calendar',
-                    'href' => route('hr.calendar.index'),
-                    'active' => request()->routeIs('hr.calendar.*'),
-                    'visible' => $user?->canViewHrSetup() ?? false,
-                ],
             ],
         ],
         [
-            'label' => 'Governance',
+            'label' => 'Approvals',
             'icon' => 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
             'items' => [
                 [
@@ -146,6 +134,12 @@
                     'active' => request()->routeIs('hr.approval-requests.*'),
                     'visible' => true,
                 ],
+            ],
+        ],
+        [
+            'label' => 'Configuration',
+            'icon' => 'M9.75 3.104c.69-1.2 2.41-1.2 3.1 0l.824 1.432a1.8 1.8 0 001.554.9h1.648c1.38 0 2.24 1.494 1.55 2.694l-.824 1.432a1.8 1.8 0 000 1.8l.824 1.432c.69 1.2-.17 2.694-1.55 2.694h-1.648a1.8 1.8 0 00-1.554.9l-.824 1.432c-.69 1.2-2.41 1.2-3.1 0l-.824-1.432a1.8 1.8 0 00-1.554-.9H5.678c-1.38 0-2.24-1.494-1.55-2.694l.824-1.432a1.8 1.8 0 000-1.8l-.824-1.432c-.69-1.2.17-2.694 1.55-2.694h1.648a1.8 1.8 0 001.554-.9l.87-1.432z',
+            'items' => [
                 [
                     'label' => 'Approval Workflows',
                     'href' => route('hr.approval-workflows.index'),
@@ -157,6 +151,24 @@
                     'href' => route('hr.policies.index'),
                     'active' => request()->routeIs('hr.policies.*'),
                     'visible' => $user?->canViewHrSetup() ?? false,
+                ],
+                [
+                    'label' => 'Shift Types',
+                    'href' => route('hr.shift-types.index'),
+                    'active' => request()->routeIs('hr.shift-types.*'),
+                    'visible' => $user?->canViewHrSetup() ?? false,
+                ],
+                [
+                    'label' => 'Leave Types',
+                    'href' => route('hr.leave-types.index'),
+                    'active' => request()->routeIs('hr.leave-types.*'),
+                    'visible' => $user?->canViewHrSetup() ?? false,
+                ],
+                [
+                    'label' => 'Biometric Settings',
+                    'href' => route('hr.biometrics.settings'),
+                    'active' => request()->routeIs('hr.biometrics.settings'),
+                    'visible' => $user?->canManageHrBiometrics() ?? false,
                 ],
             ],
         ],
