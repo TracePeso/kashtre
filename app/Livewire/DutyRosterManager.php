@@ -22,8 +22,6 @@ use Livewire\Component;
 
 class DutyRosterManager extends Component
 {
-    private const DURATION_WEEKLY = 'weekly';
-    private const DURATION_BIWEEKLY = 'biweekly';
     private const DURATION_MONTHLY = 'monthly';
     private const DURATION_CUSTOM = 'custom';
 
@@ -859,8 +857,6 @@ class DutyRosterManager extends Component
     private function durationPresetValues(): array
     {
         return [
-            self::DURATION_WEEKLY,
-            self::DURATION_BIWEEKLY,
             self::DURATION_MONTHLY,
             self::DURATION_CUSTOM,
         ];
@@ -890,8 +886,6 @@ class DutyRosterManager extends Component
         }
 
         return match ($durationPreset) {
-            self::DURATION_WEEKLY => $start->copy()->addDays(6)->toDateString(),
-            self::DURATION_BIWEEKLY => $start->copy()->addDays(13)->toDateString(),
             self::DURATION_MONTHLY => $start->copy()->addMonthNoOverflow()->subDay()->toDateString(),
             default => null,
         };

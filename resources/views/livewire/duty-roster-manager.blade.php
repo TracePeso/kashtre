@@ -683,8 +683,6 @@
                         <div class="sm:col-span-2">
                             <label class="block text-sm font-medium text-gray-700">Duration</label>
                             <select wire:model="newRosterDurationPreset" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                                <option value="weekly">Weekly</option>
-                                <option value="biweekly">Biweekly</option>
                                 <option value="monthly">Monthly</option>
                                 <option value="custom">Custom</option>
                             </select>
