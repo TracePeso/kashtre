@@ -59,6 +59,9 @@ use App\Http\Controllers\MaturationPeriodController;
 use App\Http\Controllers\ServiceChargeMaturationPeriodController;
 use App\Http\Controllers\PaymentMethodAccountController;
 use App\Http\Controllers\CallingModuleConfigController;
+use App\Http\Controllers\InventoryModuleConfigController;
+use App\Http\Controllers\GoodsReceivedNoteController;
+use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\ServicePointCallerController;
 use App\Http\Controllers\CallingController;
 use App\Http\Controllers\EmergencyController;
@@ -269,6 +272,24 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     Route::post("calling-module-configs/{callingModuleConfig}/toggle-status", [CallingModuleConfigController::class, 'toggleStatus'])->name('calling-module-configs.toggle-status');
     Route::post("calling-module-configs/{callingModuleConfig}/toggle-audio", [CallingModuleConfigController::class, 'toggleAudio'])->name('calling-module-configs.toggle-audio');
     Route::post("calling-module-configs/{callingModuleConfig}/toggle-video", [CallingModuleConfigController::class, 'toggleVideo'])->name('calling-module-configs.toggle-video');
+
+    // Inventory Module Config (Kashtre admin only)
+    Route::resource("inventory-module-configs", InventoryModuleConfigController::class)->except(['show']);
+    Route::post("inventory-module-configs/{inventoryModuleConfig}/toggle-status", [InventoryModuleConfigController::class, 'toggleStatus'])->name('inventory-module-configs.toggle-status');
+
+    Route::prefix('inventory')->name('inventory.')->group(function () {
+        Route::get('/', [InventoryController::class, 'index'])->name('index');
+        Route::get('/receive', [InventoryController::class, 'receive'])->name('receive');
+        Route::get('/receive/create', [GoodsReceivedNoteController::class, 'create'])->name('receive.create');
+        Route::post('/receive', [GoodsReceivedNoteController::class, 'store'])->name('receive.store');
+        Route::get('/receive/{goodsReceivedNote}', [GoodsReceivedNoteController::class, 'show'])->name('receive.show');
+        Route::post('/receive/{goodsReceivedNote}/submit', [GoodsReceivedNoteController::class, 'submit'])->name('receive.submit');
+        Route::post('/receive/{goodsReceivedNote}/approve', [GoodsReceivedNoteController::class, 'approve'])->name('receive.approve');
+        Route::post('/receive/{goodsReceivedNote}/reject', [GoodsReceivedNoteController::class, 'reject'])->name('receive.reject');
+        Route::get('/monitor', [InventoryController::class, 'monitor'])->name('monitor');
+        Route::get('/approvers', [InventoryController::class, 'approvers'])->name('approvers');
+        Route::put('/approvers', [InventoryController::class, 'updateApprovers'])->name('approvers.update');
+    });
     
     // Payment Method Account Transactions
     Route::get("payment-method-accounts/{paymentMethodAccount}/transactions", [PaymentMethodAccountController::class, 'transactions'])->name('payment-method-accounts.transactions');

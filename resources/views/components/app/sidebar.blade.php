@@ -45,7 +45,7 @@
         <!-- Links -->
         <div class="space-y-8">
             <div>
-                <ul class="mt-3 space-y-2" x-data="{ openGroup: '' }">
+                <ul class="mt-3 space-y-2" x-data="{ openGroup: '{{ request()->routeIs('inventory.*') ? 'inventory' : '' }}' }">
 
                     <!-- Dashboard: usually visible to all -->
                     <li>
@@ -117,6 +117,41 @@
                             <li>
                                 <a href="{{ route('service-point-callers.emergency-settings-index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
                                     Emergency Calling
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                    @endif
+
+                    @if(Auth::user()->business_id != 1 && isset($inventoryModuleEnabled) && $inventoryModuleEnabled)
+                    <li>
+                        <button @click="openGroup === 'inventory' ? openGroup = '' : openGroup = 'inventory'"
+                                :class="openGroup === 'inventory' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'"
+                                class="flex items-center justify-between w-full text-left pl-4 pr-3 py-2 rounded-md">
+                            <span class="flex items-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                                </svg>
+                                <span class="ml-3 text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">Inventory</span>
+                            </span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100" :class="{ 'rotate-180': openGroup === 'inventory' }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        <ul x-show="openGroup === 'inventory'" x-collapse class="mt-1 space-y-1 pl-10">
+                            <li>
+                                <a href="{{ route('inventory.receive') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.receive') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Receive Goods
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.monitor') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.monitor') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Monitor Stock
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.approvers') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.approvers') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    GRN Approvers
                                 </a>
                             </li>
                         </ul>
@@ -627,6 +662,10 @@
 
                             @if(in_array('View Calling Module', $permissions))
                             <li><a href="{{ route('calling-module-configs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Calling</a></li>
+                            @endif
+
+                            @if(in_array('View Inventory Module', $permissions))
+                            <li><a href="{{ route('inventory-module-configs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Inventory</a></li>
                             @endif
 
                             @if(in_array('View Credit Note Workflows', $permissions))

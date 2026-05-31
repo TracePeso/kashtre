@@ -247,6 +247,8 @@ class GoodsServicesTemplateImport implements ToModel, WithHeadingRow, SkipsOnErr
             // Create the item with default pricing as fallback
             $description = $row['description'] ?? null;
             $otherNames = $row['other_names'] ?? null;
+            $genericName = $row['generic_name'] ?? null;
+            $category = $row['category'] ?? null;
             
             Log::info("Row {$rowNumber}: Creating item with data:");
             Log::info("  - Name: '{$row['name']}'");
@@ -264,6 +266,8 @@ class GoodsServicesTemplateImport implements ToModel, WithHeadingRow, SkipsOnErr
             
             $item = new Item([
                 'name' => trim($row['name']),
+                'generic_name' => ! empty($genericName) ? trim($genericName) : null,
+                'category' => ! empty($category) ? trim($category) : null,
                 'code' => $code, // Will be auto-generated if empty
                 'type' => strtolower($typeValue),
                 'description' => !empty($description) ? trim($description) : null,

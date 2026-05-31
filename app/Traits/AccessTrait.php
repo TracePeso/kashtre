@@ -98,6 +98,11 @@ trait AccessTrait
         "Callers" => ['View Callers', 'Add Callers', 'Edit Callers', 'Manage Callers', 'Broadcast Announcements'],
     ];
 
+    public static $inventoryModule = [
+        "Inventory Module" => ['View Inventory Module', 'Add Inventory Module', 'Edit Inventory Module', 'Manage Inventory Module', 'Delete Inventory Module'],
+        "Inventory" => ['View Inventory', 'Add Inventory', 'Edit Inventory', 'Manage Inventory'],
+    ];
+
     public static $adminAccess = [
         "Admin Users" => ['View Admin Users', 'Edit Admin Users', 'Add Admin Users', 'Assign Roles', 'Bulk Admin Upload'],
         "Audit Logs" => ['View Audit Logs'],
@@ -204,6 +209,7 @@ trait AccessTrait
                 static::$stock,
                 static::$masters,
                 static::$callers,
+                static::$inventoryModule,
                 static::$adminAccess,
                 static::$businessAccess,
                 static::$clientAccess,
@@ -239,6 +245,7 @@ trait AccessTrait
         "Stock" => self::$stock,
         "Masters" => self::$masters,
         "Callers" => self::$callers,
+        "Inventory" => self::$inventoryModule,
         "Admin" => self::$adminAccess,
         "Business" => self::$businessAccess,
         "Client" => self::$clientAccess,

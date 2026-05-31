@@ -98,6 +98,10 @@
                                             }
                                             
                                             // Add category if available
+                                            if ($item->generic_name && !empty(trim($item->generic_name))) {
+                                                $descriptionParts[] = "Generic: {$item->generic_name}";
+                                            }
+
                                             if ($item->category && !empty(trim($item->category))) {
                                                 $descriptionParts[] = "Category: {$item->category}";
                                             }

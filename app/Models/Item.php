@@ -14,6 +14,8 @@ class Item extends Model
 
     protected $fillable = [
         'name',
+        'generic_name',
+        'category',
         'code',
         'type',
         'description',
@@ -109,6 +111,11 @@ class Item extends Model
     public function itemUnit()
     {
         return $this->belongsTo(ItemUnit::class, 'uom_id');
+    }
+
+    public function inventoryStockLevel()
+    {
+        return $this->hasOne(InventoryStockLevel::class);
     }
 
     public function contractor()

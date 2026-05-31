@@ -45,6 +45,14 @@ class CompositeItems extends Component implements HasForms, HasTable
                 TextColumn::make('name')
                     ->label('Name')
                     ->searchable(),
+                TextColumn::make('generic_name')
+                    ->label('Generic Name')
+                    ->searchable()
+                    ->toggleable(),
+                TextColumn::make('category')
+                    ->label('Category')
+                    ->searchable()
+                    ->toggleable(),
                 TextColumn::make('code')
                     ->searchable(),
                 TextColumn::make('type')

@@ -111,6 +111,8 @@ class ItemController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'generic_name' => 'nullable|string|max:255',
+            'category' => 'nullable|string|max:255',
             'code' => 'nullable|string|unique:items,code',
             'type' => 'required|in:service,good,package,bulk',
             'description' => 'nullable|string',
@@ -337,6 +339,8 @@ class ItemController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'generic_name' => 'nullable|string|max:255',
+            'category' => 'nullable|string|max:255',
             'code' => 'nullable|string|unique:items,code,' . $item->id,
             'type' => 'required|in:service,good,package,bulk',
             'description' => 'nullable|string',

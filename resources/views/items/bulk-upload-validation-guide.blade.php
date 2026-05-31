@@ -20,7 +20,7 @@
                             </li>
                             <li class="flex items-start">
                                 <span class="text-red-500 mr-2">•</span>
-                                <span><strong>Optional Fields:</strong> Code (auto-generated if empty), Description, VAT Rate, Other Names</span>
+                                <span><strong>Optional Fields:</strong> Code (auto-generated if empty), Generic Name, Category, Description, VAT Rate, Other Names</span>
                             </li>
                             <li class="flex items-start">
                                 <span class="text-red-500 mr-2">•</span>

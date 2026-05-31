@@ -36,6 +36,8 @@ class GoodsServicesTemplateExport implements FromArray, WithHeadings, WithStyles
     {
         $baseHeaders = [
             'Name',
+            'Generic Name',
+            'Category',
             'Code (Auto-generated if empty)',
             'Type (service/good)',
             'Description',
@@ -123,42 +125,42 @@ class GoodsServicesTemplateExport implements FromArray, WithHeadings, WithStyles
         
         // Column mappings for the new structure
         $columns = [
-            'C' => 'Type',        // Type (service/good)
-            'E' => 'Group',       // Group Name
-            'F' => 'Subgroup',    // Subgroup Name
-            'G' => 'Department',  // Department Name
-            'H' => 'Unit',        // Unit of Measure
-            'I' => 'DefaultPrice', // Default Price
-            'J' => 'VATRate',     // VAT Rate (%)
-            'K' => 'HospitalShare', // Hospital Share (%)
-            'L' => 'Contractor',  // Contractor Username
+            'E' => 'Type',        // Type (service/good)
+            'G' => 'Group',       // Group Name
+            'H' => 'Subgroup',    // Subgroup Name
+            'I' => 'Department',  // Department Name
+            'J' => 'Unit',        // Unit of Measure
+            'K' => 'DefaultPrice', // Default Price
+            'L' => 'VATRate',     // VAT Rate (%)
+            'M' => 'HospitalShare', // Hospital Share (%)
+            'N' => 'Contractor',  // Contractor Username
         ];
         
-        // Add data validation for Type column (C)
-        $this->addValidationToColumn($worksheet, 'C', $startRow, $endRow, '"service,good"', 'Type', false);
+        // Add data validation for Type column (E)
+        $this->addValidationToColumn($worksheet, 'E', $startRow, $endRow, '"service,good"', 'Type', false);
         
-        // Add data validation for Group Name column (E)
+        // Add data validation for Group Name column (G)
         if (!empty($groups)) {
             $groupList = '"' . implode(',', $groups) . '"';
-            $this->addValidationToColumn($worksheet, 'E', $startRow, $endRow, $groupList, 'Group');
+            $this->addValidationToColumn($worksheet, 'G', $startRow, $endRow, $groupList, 'Group');
         }
         
-        // Add data validation for Subgroup Name column (F)
+        // Add data validation for Subgroup Name column (H)
         if (!empty($subGroups)) {
             $subgroupList = '"' . implode(',', $subGroups) . '"';
-            $this->addValidationToColumn($worksheet, 'F', $startRow, $endRow, $subgroupList, 'Subgroup');
+            $this->addValidationToColumn($worksheet, 'H', $startRow, $endRow, $subgroupList, 'Subgroup');
         }
         
-        // Add data validation for Department Name column (G)
+        // Add data validation for Department Name column (I)
         if (!empty($departments)) {
             $departmentList = '"' . implode(',', $departments) . '"';
-            $this->addValidationToColumn($worksheet, 'G', $startRow, $endRow, $departmentList, 'Department');
+            $this->addValidationToColumn($worksheet, 'I', $startRow, $endRow, $departmentList, 'Department');
         }
         
-        // Add data validation for Unit of Measure column (H)
+        // Add data validation for Unit of Measure column (J)
         if (!empty($units)) {
             $unitList = '"' . implode(',', $units) . '"';
-            $this->addValidationToColumn($worksheet, 'H', $startRow, $endRow, $unitList, 'Unit');
+            $this->addValidationToColumn($worksheet, 'J', $startRow, $endRow, $unitList, 'Unit');
         }
         
         // Add conditional validation for hospital share and contractor relationship

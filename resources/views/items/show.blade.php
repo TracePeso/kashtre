@@ -27,6 +27,16 @@
                         </div>
 
                         <div>
+                            <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">Generic Name</label>
+                            <p class="mt-1 text-sm text-gray-900 dark:text-white">{{ $item->generic_name ?: '—' }}</p>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">Category</label>
+                            <p class="mt-1 text-sm text-gray-900 dark:text-white">{{ $item->category ?: '—' }}</p>
+                        </div>
+
+                        <div>
                             <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">Code</label>
                             <p class="mt-1 text-sm text-gray-900 dark:text-white">{{ $item->code }}</p>
                         </div>

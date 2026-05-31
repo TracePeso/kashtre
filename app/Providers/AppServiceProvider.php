@@ -5,6 +5,7 @@ namespace App\Providers;
 
 use App\Models\Business;
 use App\Models\CallingModuleConfig;
+use App\Models\InventoryModuleConfig;
 use App\Models\Caller;
 use App\Models\Transaction;
 use App\Services\EmergencyAlertService;
@@ -73,6 +74,17 @@ class AppServiceProvider extends ServiceProvider
             $view->with('callingModuleEnabled', $callingModuleEnabled);
             $view->with('callingModuleConfig', $callingModuleConfig);
             $view->with('userIsACaller', $userIsACaller);
+
+            $inventoryModuleEnabled = false;
+            $inventoryModuleConfig = null;
+            if ($user) {
+                $inventoryModuleConfig = InventoryModuleConfig::where('business_id', $user->business_id)
+                    ->where('is_active', true)
+                    ->first();
+                $inventoryModuleEnabled = (bool) $inventoryModuleConfig;
+            }
+            $view->with('inventoryModuleEnabled', $inventoryModuleEnabled);
+            $view->with('inventoryModuleConfig', $inventoryModuleConfig);
 
             $activeEmergencyAlert = ($user && $callingModuleEnabled)
                 ? app(EmergencyAlertService::class)->resolveActiveAlertForBusiness($user->business_id)

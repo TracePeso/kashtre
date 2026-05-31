@@ -380,6 +380,11 @@
                                                             $descriptionParts[] = 'Standard quality variant';
                                                         }
 
+                                                        // Add generic name if available
+                                                        if ($item->generic_name && !empty(trim($item->generic_name))) {
+                                                            $descriptionParts[] = "Generic: {$item->generic_name}";
+                                                        }
+
                                                         // Add category if available
                                                         if ($item->category && !empty(trim($item->category))) {
                                                             $descriptionParts[] = "Category: {$item->category}";

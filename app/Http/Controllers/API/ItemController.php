@@ -29,7 +29,7 @@ class ItemController extends Controller
 
         $items = $query
             ->orderBy('name')
-            ->get(['id', 'name', 'code', 'type']);
+            ->get(['id', 'name', 'generic_name', 'category', 'code', 'type']);
 
         Log::info('API/ItemController@index: items fetched', [
             'business_id' => $businessId,

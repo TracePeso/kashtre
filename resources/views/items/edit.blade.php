@@ -40,6 +40,16 @@
                             <input type="text" name="name" id="name" value="{{ old('name', $item->name) }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required placeholder="Enter item name">
                         </div>
 
+                        <div>
+                            <label for="generic_name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Generic Name</label>
+                            <input type="text" name="generic_name" id="generic_name" value="{{ old('generic_name', $item->generic_name) }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="e.g. Paracetamol">
+                        </div>
+
+                        <div>
+                            <label for="category" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Category</label>
+                            <input type="text" name="category" id="category" value="{{ old('category', $item->category) }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="e.g. Analgesic, Laboratory">
+                        </div>
+
                         <!-- Code -->
                         <div>
                             <label for="code" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Code</label>
