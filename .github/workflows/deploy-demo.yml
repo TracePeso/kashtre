@@ -1,17 +1,17 @@
-name: Deploy Demo
+name: Deploy Demo Branch to Hostinger (Root)
 
 on:
   push:
     branches:
       - demo
 
-concurrency:
-  group: deploy-demo
-  cancel-in-progress: true
-
 jobs:
   deploy:
+    name: Deploy Demo Branch
     runs-on: ubuntu-latest
+    env:
+      ACTIONS_RUNNER_DEBUG: true
+      ACTIONS_STEP_DEBUG: true
 
     steps:
       - name: Checkout code
