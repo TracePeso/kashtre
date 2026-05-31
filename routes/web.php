@@ -97,6 +97,7 @@ use Illuminate\Http\Request;
 
 Route::redirect('/', 'login');
 
+
 Route::match(['get', 'post'], '/reverb/auth', BroadcastAuthController::class)
     ->middleware(['auth'])
     ->withoutMiddleware([
