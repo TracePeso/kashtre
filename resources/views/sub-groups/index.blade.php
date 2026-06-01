@@ -24,7 +24,7 @@
                     </div>
                 @endif
 
-                @livewire('SubGroups.ListSubGroups')
+                @livewire('sub-groups.list-sub-groups')
                 
                 @php
                     \Log::info('Livewire component rendered successfully');
