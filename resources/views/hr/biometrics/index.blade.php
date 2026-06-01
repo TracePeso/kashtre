@@ -670,6 +670,8 @@
                 </table>
             </div>
         </div>
+        @endif
+
         @if ($activeBiometricPage === 'attendance')
         <div class="rounded-lg border border-gray-200 bg-white shadow-sm">
             <div class="border-b border-gray-200 p-5">

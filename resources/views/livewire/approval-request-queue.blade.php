@@ -400,7 +400,7 @@
                         @error('staffAssignmentId') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                     </div>
 
-                    @if($category === 'leave')
+                    @if(in_array($category, ['leave', 'offsite_duty'], true))
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Client Space</label>
                         <select wire:model="leaveClientSpaceId" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-brand-blue focus:ring-brand-blue text-sm">
@@ -410,9 +410,13 @@
                             @endforeach
                         </select>
                         @if(empty($leaveClientSpaceOptions))
-                        <p class="text-xs text-yellow-700 mt-1">The selected assignment must belong to or be linked to at least one client space before leave can be submitted.</p>
+                        <p class="text-xs text-yellow-700 mt-1">The selected assignment must belong to or be linked to at least one client space before this request can be submitted.</p>
                         @else
-                        <p class="text-xs text-gray-500 mt-1">Leave approval is routed through the selected client space.</p>
+                        <p class="text-xs text-gray-500 mt-1">
+                            {{ $category === 'leave'
+                                ? 'Leave approval is routed through the selected client space.'
+                                : 'Official workshop/meeting approval uses the selected client space workflow, and that client space leader becomes the primary approver.' }}
+                        </p>
                         @endif
                         @error('leaveClientSpaceId') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                     </div>

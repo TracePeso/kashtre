@@ -14,6 +14,7 @@ use Livewire\Component;
 class ApprovalWorkflowManager extends Component
 {
     private const GENERIC_CATEGORIES = ['leave', 'coverage', 'offsite_duty'];
+    private const CLIENT_SPACE_SCOPED_CATEGORIES = ['leave', 'offsite_duty'];
     private const APPROVER_LEVELS = ['primary', 'secondary', 'tertiary'];
     private const MIN_APPROVERS_PER_LEVEL = 3;
 
@@ -177,14 +178,19 @@ class ApprovalWorkflowManager extends Component
         ], $this->approverValidationRules()));
 
         $approverSelections = $this->normalizedApproverSelections();
-        $clientSpaceId = $this->category === 'leave' ? $this->clientSpaceId : null;
+        $clientSpaceId = $this->categoryRequiresClientSpace()
+            ? $this->clientSpaceId
+            : null;
 
         if ($this->hasDuplicateApproverSelections($approverSelections)) {
             return;
         }
 
-        if ($this->category === 'leave' && ! $clientSpaceId) {
-            $this->addError('clientSpaceId', 'Select a client space for leave approval workflows.');
+        if ($this->categoryRequiresClientSpace() && ! $clientSpaceId) {
+            $this->addError('clientSpaceId', sprintf(
+                'Select a client space for %s approval workflows.',
+                $this->categoryLabel($this->category)
+            ));
             return;
         }
 
@@ -301,6 +307,21 @@ class ApprovalWorkflowManager extends Component
         return $rules;
     }
 
+    public function categoryRequiresClientSpace(?string $category = null): bool
+    {
+        return in_array($category ?? $this->category, self::CLIENT_SPACE_SCOPED_CATEGORIES, true);
+    }
+
+    public function categoryLabel(?string $category = null): string
+    {
+        return match ($category ?? $this->category) {
+            'leave' => 'leave',
+            'offsite_duty' => 'official workshop/meeting',
+            'coverage' => 'coverage',
+            default => 'this',
+        };
+    }
+
     private function defaultApproverSelections(): array
     {
         return collect(self::APPROVER_LEVELS)
@@ -359,4 +380,3 @@ class ApprovalWorkflowManager extends Component
         return $hasDuplicates;
     }
 }
-

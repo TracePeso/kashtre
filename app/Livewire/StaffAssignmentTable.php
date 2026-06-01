@@ -2,9 +2,7 @@
 
 namespace App\Livewire;
 
-use App\Models\HrStaffRosteringProfile;
 use App\Models\Organization;
-use App\Models\ShiftType;
 use App\Models\StaffAssignment;
 use App\Services\KashApiService;
 use App\Support\StaffRecordData;
@@ -31,7 +29,7 @@ class StaffAssignmentTable extends Component implements HasForms, HasTable
         $org = Organization::current();
         $query = StaffAssignment::query()
             ->when($org, fn($q) => $q->where('organization_id', $org->id))
-            ->with(['organizationalUnit', 'rosteringProfile.fixedShiftType'])
+            ->with('organizationalUnit')
             ->latest();
 
         $staffDirectory = $this->getStaffDirectory();
@@ -68,27 +66,6 @@ class StaffAssignmentTable extends Component implements HasForms, HasTable
                     ->label('Title')
                     ->placeholder('Not set')
                     ->searchable()
-                    ->toggleable(),
-
-                Tables\Columns\TextColumn::make('rosteringProfile.rostering_mode')
-                    ->label('Rostering')
-                    ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state === HrStaffRosteringProfile::MODE_FIXED ? 'Fixed' : 'Dynamic')
-                    ->color(fn (?string $state): string => $state === HrStaffRosteringProfile::MODE_FIXED ? 'gray' : 'success')
-                    ->toggleable(),
-
-                Tables\Columns\TextColumn::make('rosteringProfile.fixedShiftType.code')
-                    ->label('Fixed Shift')
-                    ->placeholder('Flexible')
-                    ->formatStateUsing(fn ($state, StaffAssignment $record): string => $record->rosteringProfile?->fixedShiftType
-                        ? $this->shiftTypeLabel($record->rosteringProfile->fixedShiftType)
-                        : 'Flexible')
-                    ->toggleable(),
-
-                Tables\Columns\TextColumn::make('shift_preference_summary')
-                    ->label('Shift Preference')
-                    ->state(fn (StaffAssignment $record): string => $this->shiftPreferenceSummary($record))
-                    ->wrap()
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('home_branch_name')
@@ -157,18 +134,6 @@ class StaffAssignmentTable extends Component implements HasForms, HasTable
                         } catch (\Exception $e) {
                             Notification::make()->danger()->title('Routing failed: ' . $e->getMessage())->send();
                         }
-                    }),
-                Tables\Actions\Action::make('rosteringProfile')
-                    ->visible(fn (): bool => $this->canManageShiftPreferences())
-                    ->button()
-                    ->label('Shift Preference')
-                    ->color('gray')
-                    ->modalHeading('Edit Shift Preference')
-                    ->fillForm(fn (StaffAssignment $record): array => $this->rosteringProfileFormData($record))
-                    ->form($this->rosteringProfileFormSchema())
-                    ->action(function (StaffAssignment $record, array $data): void {
-                        $this->saveRosteringProfile($record, $data);
-                        Notification::make()->success()->title('Shift preference updated.')->send();
                     }),
                 Tables\Actions\EditAction::make()
                     ->visible(fn (): bool => Auth::user()?->canEditHrStaff() ?? false)
@@ -350,173 +315,5 @@ class StaffAssignmentTable extends Component implements HasForms, HasTable
         }
 
         return $user->is_hr_admin || $record->organizationalUnit->hasRoutingMember($user);
-    }
-
-    protected function rosteringProfileFormSchema(): array
-    {
-        return [
-            Forms\Components\Select::make('rostering_mode')
-                ->label('Rostering Mode')
-                ->options([
-                    HrStaffRosteringProfile::MODE_DYNAMIC => 'Dynamic',
-                    HrStaffRosteringProfile::MODE_FIXED => 'Fixed',
-                ])
-                ->default(HrStaffRosteringProfile::MODE_DYNAMIC)
-                ->required(),
-            Forms\Components\Select::make('fixed_shift_type_id')
-                ->label('Fixed Shift')
-                ->options($this->shiftTypeOptions())
-                ->searchable()
-                ->placeholder('No fixed shift'),
-            Forms\Components\CheckboxList::make('fixed_days_of_week')
-                ->label('Fixed Days')
-                ->options($this->dayOfWeekOptions())
-                ->columns(4)
-                ->helperText('Used when the staff member follows a fixed weekly pattern.'),
-            Forms\Components\CheckboxList::make('preferred_shift_type_ids')
-                ->label('Preferred Shifts')
-                ->options($this->shiftTypeOptions())
-                ->columns(2),
-            Forms\Components\CheckboxList::make('excluded_shift_type_ids')
-                ->label('Excluded Shifts')
-                ->options($this->shiftTypeOptions())
-                ->columns(2),
-            Forms\Components\TextInput::make('max_night_shifts_per_cycle')
-                ->label('Max Overnight Shifts Per Cycle')
-                ->numeric()
-                ->minValue(0)
-                ->helperText('Night counts use shifts that run past midnight.'),
-            Forms\Components\Textarea::make('notes')
-                ->label('Rostering Notes')
-                ->rows(3),
-            Forms\Components\Toggle::make('is_active')
-                ->label('Use This Profile')
-                ->default(true),
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    protected function rosteringProfileFormData(StaffAssignment $record): array
-    {
-        $profile = $record->rosteringProfile;
-
-        return [
-            'rostering_mode' => $profile?->rostering_mode ?? HrStaffRosteringProfile::MODE_DYNAMIC,
-            'fixed_shift_type_id' => $profile?->fixed_shift_type_id,
-            'fixed_days_of_week' => $profile?->fixedDays() ?? [],
-            'preferred_shift_type_ids' => $profile?->preferredShiftIds() ?? [],
-            'excluded_shift_type_ids' => $profile?->excludedShiftIds() ?? [],
-            'max_night_shifts_per_cycle' => $profile?->max_night_shifts_per_cycle,
-            'notes' => $profile?->notes,
-            'is_active' => $profile?->is_active ?? true,
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $data
-     */
-    protected function saveRosteringProfile(StaffAssignment $record, array $data): void
-    {
-        $record->rosteringProfile()->updateOrCreate(
-            [],
-            [
-                'organization_id' => $record->organization_id,
-                'rostering_mode' => $data['rostering_mode'] ?? HrStaffRosteringProfile::MODE_DYNAMIC,
-                'fixed_shift_type_id' => $data['fixed_shift_type_id'] ?: null,
-                'fixed_days_of_week' => array_values(array_map('intval', $data['fixed_days_of_week'] ?? [])),
-                'preferred_shift_type_ids' => array_values(array_map('intval', $data['preferred_shift_type_ids'] ?? [])),
-                'excluded_shift_type_ids' => array_values(array_map('intval', $data['excluded_shift_type_ids'] ?? [])),
-                'max_night_shifts_per_cycle' => filled($data['max_night_shifts_per_cycle'] ?? null)
-                    ? (int) $data['max_night_shifts_per_cycle']
-                    : null,
-                'notes' => $data['notes'] ?: null,
-                'is_active' => (bool) ($data['is_active'] ?? true),
-            ]
-        );
-    }
-
-    protected function shiftPreferenceSummary(StaffAssignment $record): string
-    {
-        $profile = $record->rosteringProfile;
-
-        if (! $profile || ! $profile->is_active) {
-            return 'No preference set';
-        }
-
-        if ($profile->fixedShiftType) {
-            return 'Fixed: '.$this->shiftTypeLabel($profile->fixedShiftType);
-        }
-
-        $preferredLabels = collect($profile->preferredShiftIds())
-            ->map(fn (int $shiftId): ?string => $this->shiftTypeOptions()[(string) $shiftId] ?? null)
-            ->filter()
-            ->values();
-
-        if ($preferredLabels->isNotEmpty()) {
-            return 'Preferred: '.$preferredLabels->implode(', ');
-        }
-
-        return $profile->rostering_mode === HrStaffRosteringProfile::MODE_FIXED
-            ? 'Fixed pattern'
-            : 'Dynamic rotation';
-    }
-
-    protected function canManageShiftPreferences(): bool
-    {
-        $user = Auth::user();
-
-        return (bool) (
-            $user?->canEditHrStaff()
-            || $user?->canViewHrStaff()
-            || $user?->canViewHrSetup()
-        );
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    protected function shiftTypeOptions(): array
-    {
-        $organization = Organization::current();
-
-        if (! $organization) {
-            return [];
-        }
-
-        return ShiftType::query()
-            ->where('organization_id', $organization->id)
-            ->where('is_active', true)
-            ->orderBy('start_time')
-            ->orderBy('name')
-            ->get()
-            ->mapWithKeys(fn (ShiftType $shiftType): array => [
-                $shiftType->id => $this->shiftTypeLabel($shiftType),
-            ])
-            ->toArray();
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    protected function dayOfWeekOptions(): array
-    {
-        return [
-            1 => 'Mon',
-            2 => 'Tue',
-            3 => 'Wed',
-            4 => 'Thu',
-            5 => 'Fri',
-            6 => 'Sat',
-            0 => 'Sun',
-        ];
-    }
-
-    protected function shiftTypeLabel(ShiftType $shiftType): string
-    {
-        return $shiftType->code
-            ? $shiftType->code.' - '.$shiftType->name
-            : $shiftType->name;
     }
 }

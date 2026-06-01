@@ -264,7 +264,13 @@ class ApprovalRequestQueue extends Component
 
         if ($this->categoryUsesWorkingDays()) {
             $rules['leaveTypeId'] = 'required|integer';
+        }
+
+        if ($this->categoryUsesClientSpaceWorkflow()) {
             $rules['leaveClientSpaceId'] = 'required|integer';
+        }
+
+        if ($this->categoryUsesWorkingDays()) {
             $rules['requestedDays'] = 'required|numeric|min:0.25';
         }
 
@@ -307,19 +313,29 @@ class ApprovalRequestQueue extends Component
                 return;
             }
 
-            if ($this->categoryUsesWorkingDays()) {
+            if ($this->categoryUsesClientSpaceWorkflow()) {
                 $selectedLeaveClientSpace = $this->resolveSelectedLeaveClientSpace($staffAssignment);
 
                 if (! $selectedLeaveClientSpace) {
-                    $this->addError('leaveClientSpaceId', 'Select a valid client space for this leave request.');
+                    $this->addError(
+                        'leaveClientSpaceId',
+                        $this->categoryUsesWorkingDays()
+                            ? 'Select a valid client space for this leave request.'
+                            : 'Select a valid client space for this Official Workshop/Meeting request.'
+                    );
                     return;
                 }
 
-                if (! ($staffAssignment->organizationalUnit?->isClientSpace() ?? false)) {
-                    $primaryApprover = $this->directLeaveApproverForClientSpace($selectedLeaveClientSpace);
+                if ($this->category === 'offsite_duty' || ! ($staffAssignment->organizationalUnit?->isClientSpace() ?? false)) {
+                    $primaryApprover = $this->directClientSpaceApprover($selectedLeaveClientSpace);
 
                     if (! $primaryApprover) {
-                        $this->addError('leaveClientSpaceId', 'The selected client space does not have a direct superior approver yet.');
+                        $this->addError(
+                            'leaveClientSpaceId',
+                            $this->category === 'offsite_duty'
+                                ? 'The selected client space does not have a leader configured in the routing structure yet.'
+                                : 'The selected client space does not have a direct superior approver yet.'
+                        );
                         return;
                     }
 
@@ -332,7 +348,7 @@ class ApprovalRequestQueue extends Component
             ->where('approval_category', $this->category)
             ->where('is_active', true)
             ->when(
-                $this->categoryUsesWorkingDays(),
+                $this->categoryUsesClientSpaceWorkflow(),
                 fn ($query) => $query->where('organizational_unit_id', $selectedLeaveClientSpace?->id),
                 fn ($query) => $query
             )
@@ -340,8 +356,8 @@ class ApprovalRequestQueue extends Component
             ->first();
 
         if (! $workflow) {
-            $this->message = $this->categoryUsesWorkingDays()
-                ? 'Configure an active leave approval workflow for the selected client space first.'
+            $this->message = $this->categoryUsesClientSpaceWorkflow()
+                ? sprintf('Configure an active %s approval workflow for the selected client space first.', $this->requestCategoryLabel())
                 : 'Configure an active approval workflow for this category first.';
             return;
         }
@@ -696,7 +712,7 @@ class ApprovalRequestQueue extends Component
     {
         $this->leaveClientSpaceOptions = [];
 
-        if (! $this->categoryUsesWorkingDays() || ! $this->organizationId || ! $this->staffAssignmentId) {
+        if (! $this->categoryUsesClientSpaceWorkflow() || ! $this->organizationId || ! $this->staffAssignmentId) {
             $this->leaveClientSpaceId = null;
             return;
         }
@@ -772,7 +788,7 @@ class ApprovalRequestQueue extends Component
             ->first(fn (HrOrganizationalUnit $clientSpace): bool => (int) $clientSpace->id === (int) $this->leaveClientSpaceId);
     }
 
-    private function directLeaveApproverForClientSpace(HrOrganizationalUnit $clientSpace): ?array
+    private function directClientSpaceApprover(HrOrganizationalUnit $clientSpace): ?array
     {
         $clientSpace->loadMissing([
             'parent.staffAssignments',
@@ -904,9 +920,25 @@ class ApprovalRequestQueue extends Component
         return ($category ?? $this->category) === 'leave';
     }
 
+    private function categoryUsesClientSpaceWorkflow(?string $category = null): bool
+    {
+        return in_array($category ?? $this->category, ['leave', 'offsite_duty'], true);
+    }
+
     private function leaveRequestsMustBelongToCurrentUser(?string $category = null): bool
     {
         return $this->categoryUsesWorkingDays($category);
+    }
+
+    private function requestCategoryLabel(?string $category = null): string
+    {
+        return match ($category ?? $this->category) {
+            'leave' => 'leave',
+            'offsite_duty' => 'Official Workshop/Meeting',
+            'roster' => 'roster',
+            'coverage' => 'coverage',
+            default => 'request',
+        };
     }
 
     private function selectedLeaveType(): ?LeaveType

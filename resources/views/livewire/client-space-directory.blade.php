@@ -93,10 +93,22 @@
                                                         <p class="text-xs font-medium text-gray-500">{{ $departmentGroup['department'] }}</p>
                                                         <div class="mt-1 flex flex-wrap gap-2">
                                                             @foreach($departmentGroup['staff'] as $staffEntry)
-                                                                <span class="inline-flex items-center gap-1 rounded {{ $staffEntry['assignment_scope'] === 'Additional' ? 'border border-amber-200 bg-amber-50 text-amber-800' : 'bg-white text-gray-700' }} px-2 py-1 text-xs font-medium">
-                                                                    {{ $staffEntry['staff_name'] }}
+                                                                <div class="inline-flex items-center gap-1 rounded {{ $staffEntry['assignment_scope'] === 'Additional' ? 'border border-amber-200 bg-amber-50 text-amber-800' : 'bg-white text-gray-700 border border-gray-200' }} px-2 py-1 text-xs font-medium">
+                                                                    <span>{{ $staffEntry['staff_name'] }}</span>
                                                                     @if($staffEntry['assignment_scope'] === 'Additional')
                                                                         <span class="text-amber-600">/ Additional</span>
+                                                                    @endif
+                                                                    <span class="text-[11px] font-normal {{ $staffEntry['assignment_scope'] === 'Additional' ? 'text-amber-700' : 'text-gray-500' }}">
+                                                                        / {{ $staffEntry['shift_preference_summary'] }}
+                                                                    </span>
+                                                                    @if($canManageShiftPreferences)
+                                                                        <button
+                                                                            type="button"
+                                                                            wire:click="openShiftPreferenceModal({{ $clientSpace->id }}, {{ $staffEntry['assignment_id'] }})"
+                                                                            class="ml-1 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                                                                        >
+                                                                            Shift Preference
+                                                                        </button>
                                                                     @endif
                                                                     @if($staffEntry['assignment_scope'] === 'Primary' && in_array($clientSpace->id, $manageableClientSpaceIds, true))
                                                                         <button
@@ -117,7 +129,7 @@
                                                                             Remove
                                                                         </button>
                                                                     @endif
-                                                                </span>
+                                                                </div>
                                                             @endforeach
                                                         </div>
                                                     </div>
@@ -325,6 +337,119 @@
                             Add Staff
                         </button>
                         <button type="button" wire:click="$set('showAddStaffModal', false)" class="mt-3 inline-flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    @endif
+
+    @if($showShiftPreferenceModal)
+        @php($selectedClientSpace = $clientSpaces->firstWhere('id', $selectedClientSpaceId))
+        <div class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-gray-500 bg-opacity-75 px-4 py-6 sm:items-center">
+            <div class="w-full max-w-2xl max-h-[calc(100vh-3rem)] overflow-y-auto rounded-md bg-white px-4 pb-4 pt-5 shadow-xl sm:p-6">
+                <h3 class="mb-2 text-lg font-medium leading-6 text-gray-900">
+                    Edit Shift Preference
+                </h3>
+                <p class="mb-4 text-sm text-gray-600">
+                    Update the roster shift preference for this staff member from the client space where they are currently roster-visible.
+                </p>
+
+                @if($selectedClientSpace)
+                    <p class="mb-4 text-xs font-medium uppercase tracking-wide text-gray-500">
+                        Client Space: {{ $selectedClientSpace->name }}
+                    </p>
+                @endif
+
+                <form wire:submit.prevent="saveShiftPreference" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Rostering Mode</label>
+                        <select wire:model="shiftPreferenceForm.rostering_mode" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <option value="dynamic">Dynamic</option>
+                            <option value="fixed">Fixed</option>
+                        </select>
+                        @error('shiftPreferenceForm.rostering_mode') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Fixed Shift</label>
+                        <select wire:model="shiftPreferenceForm.fixed_shift_type_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <option value="">No fixed shift</option>
+                            @foreach($shiftTypeOptions as $shiftTypeId => $shiftTypeLabel)
+                                <option value="{{ $shiftTypeId }}">{{ $shiftTypeLabel }}</option>
+                            @endforeach
+                        </select>
+                        @error('shiftPreferenceForm.fixed_shift_type_id') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Fixed Days</label>
+                        <div class="mt-2 grid grid-cols-4 gap-2">
+                            @foreach($dayOfWeekOptions as $dayValue => $dayLabel)
+                                <label class="flex items-center gap-2 rounded-md border border-gray-200 px-2 py-2 text-sm text-gray-700">
+                                    <input type="checkbox" wire:model="shiftPreferenceForm.fixed_days_of_week" value="{{ $dayValue }}" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>{{ $dayLabel }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">Used when the staff member follows a fixed weekly pattern.</p>
+                        @error('shiftPreferenceForm.fixed_days_of_week') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                        @error('shiftPreferenceForm.fixed_days_of_week.*') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Preferred Shifts</label>
+                        <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            @foreach($shiftTypeOptions as $shiftTypeId => $shiftTypeLabel)
+                                <label class="flex items-center gap-2 rounded-md border border-gray-200 px-2 py-2 text-sm text-gray-700">
+                                    <input type="checkbox" wire:model="shiftPreferenceForm.preferred_shift_type_ids" value="{{ $shiftTypeId }}" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>{{ $shiftTypeLabel }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                        @error('shiftPreferenceForm.preferred_shift_type_ids') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                        @error('shiftPreferenceForm.preferred_shift_type_ids.*') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Excluded Shifts</label>
+                        <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            @foreach($shiftTypeOptions as $shiftTypeId => $shiftTypeLabel)
+                                <label class="flex items-center gap-2 rounded-md border border-gray-200 px-2 py-2 text-sm text-gray-700">
+                                    <input type="checkbox" wire:model="shiftPreferenceForm.excluded_shift_type_ids" value="{{ $shiftTypeId }}" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>{{ $shiftTypeLabel }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                        @error('shiftPreferenceForm.excluded_shift_type_ids') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                        @error('shiftPreferenceForm.excluded_shift_type_ids.*') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Max Overnight Shifts Per Cycle</label>
+                        <input type="number" min="0" wire:model="shiftPreferenceForm.max_night_shifts_per_cycle" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <p class="mt-1 text-xs text-gray-500">Night counts use shifts that run past midnight.</p>
+                        @error('shiftPreferenceForm.max_night_shifts_per_cycle') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Rostering Notes</label>
+                        <textarea wire:model="shiftPreferenceForm.notes" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"></textarea>
+                        @error('shiftPreferenceForm.notes') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                    </div>
+
+                    <label class="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700">
+                        <input type="checkbox" wire:model="shiftPreferenceForm.is_active" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        <span>Use This Profile</span>
+                    </label>
+                    @error('shiftPreferenceForm.is_active') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+
+                    <div class="mt-5 sm:flex sm:flex-row-reverse">
+                        <button type="submit" class="inline-flex w-full justify-center rounded-md border border-transparent bg-gray-900 px-4 py-2 text-base font-medium text-white hover:bg-gray-800 sm:ml-3 sm:w-auto sm:text-sm">
+                            Save Shift Preference
+                        </button>
+                        <button type="button" wire:click="$set('showShiftPreferenceModal', false)" class="mt-3 inline-flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
                             Cancel
                         </button>
                     </div>

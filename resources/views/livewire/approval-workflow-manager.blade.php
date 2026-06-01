@@ -10,7 +10,7 @@
 
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
-        <p class="text-sm text-gray-500">Configure primary, secondary, and tertiary approvers for leave, coverage, and off-site duty. Leave workflows are scoped per client space. Staff already based in that client space use the configured chain, while linked routing-node staff use the direct superior of that client space as the primary approver. Each level needs at least 3 approvers, and any current-level approver can act.</p>
+        <p class="text-sm text-gray-500">Configure primary, secondary, and tertiary approvers for leave, coverage, and off-site duty. Leave and off-site duty workflows are scoped per client space. Leave keeps the current client-space chain for staff based there, while linked routing-node staff use the direct superior of that client space as the primary approver. Off-site duty always routes its primary approval to that client space leader, then continues with the configured secondary and tertiary approvers. Each level needs at least 3 approvers, and any current-level approver can act.</p>
         @if($organizationId && $canAddSetup)
         <button wire:click="openCreateModal()" class="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
@@ -67,7 +67,7 @@
             </div>
 
             <div class="mb-4 space-y-1">
-                @if($wf['approval_category'] === 'leave')
+                @if(in_array($wf['approval_category'], ['leave', 'offsite_duty'], true))
                 <p class="text-sm font-semibold text-gray-900">{{ $wf['organizational_unit']['name'] ?? 'Unscoped Client Space' }}</p>
                 <p class="text-xs text-gray-500">Scoped to this client space.</p>
                 @else
@@ -117,7 +117,7 @@
                     @error('category') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                 </div>
 
-                @if($category === 'leave')
+                @if($this->categoryRequiresClientSpace())
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Client Space</label>
                     <select wire:model="clientSpaceId" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-brand-blue focus:ring-brand-blue text-sm">
@@ -126,7 +126,11 @@
                         <option value="{{ $clientSpaceOptionId }}">{{ $clientSpaceOptionName }}</option>
                         @endforeach
                     </select>
-                    <p class="mt-1 text-xs text-gray-500">Leave approval workflows are configured one client space at a time.</p>
+                    <p class="mt-1 text-xs text-gray-500">
+                        {{ $category === 'leave'
+                            ? 'Leave approval workflows are configured one client space at a time.'
+                            : 'Official workshop/meeting approval workflows are configured one client space at a time so the correct client-space leader can act first.' }}
+                    </p>
                     @error('clientSpaceId') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                 </div>
                 @endif
@@ -137,6 +141,8 @@
                         Select at least 3 approvers for each level. Any one approver at the active level can approve or reject the request.
                         @if($category === 'leave')
                         For staff already based in the client space, this primary list is used as configured. For linked routing-node staff, the direct superior of the selected client space becomes the primary approver at submission time.
+                        @elseif($category === 'offsite_duty')
+                        For off-site duty, the selected client space leader becomes the live primary approver at submission time. The configured secondary and tertiary approvers still apply after that.
                         @endif
                     </p>
 

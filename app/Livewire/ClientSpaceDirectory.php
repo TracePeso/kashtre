@@ -2,9 +2,11 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\InteractsWithStaffShiftPreferences;
 use App\Models\HrClientSpaceStaffAssignment;
 use App\Models\HrClientSpaceRoute;
 use App\Models\HrOrganizationalUnit;
+use App\Models\HrStaffRosteringProfile;
 use App\Models\HrStaffRoutingEvent;
 use App\Models\Organization;
 use App\Models\StaffAssignment;
@@ -16,15 +18,21 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Rule;
 use Livewire\Component;
 
 class ClientSpaceDirectory extends Component
 {
+    use InteractsWithStaffShiftPreferences;
+
     public bool $showAddStaffModal = false;
     public bool $showSecondaryAssignmentModal = false;
+    public bool $showShiftPreferenceModal = false;
     public ?int $selectedClientSpaceId = null;
     public array $selectedStaffAssignmentIds = [];
     public ?int $selectedSecondaryStaffAssignmentId = null;
+    public ?int $selectedShiftPreferenceAssignmentId = null;
+    public array $shiftPreferenceForm = [];
     public bool $showPlacementModal = false;
     public ?int $selectedPlacementClientSpaceId = null;
     public ?int $primaryRoutingUnitId = null;
@@ -33,10 +41,12 @@ class ClientSpaceDirectory extends Component
     public bool $canManageClientSpaceStaff = false;
     public bool $canManageSecondaryAssignments = false;
     public bool $canManageClientSpacePlacement = false;
+    public bool $canManageShiftPreferences = false;
 
     public function mount(): void
     {
         $this->setPermissions();
+        $this->shiftPreferenceForm = $this->defaultShiftPreferenceFormState();
     }
 
     public function openAddStaffModal(int $clientSpaceId): void
@@ -76,6 +86,30 @@ class ClientSpaceDirectory extends Component
         $this->selectedClientSpaceId = $clientSpace->id;
         $this->selectedSecondaryStaffAssignmentId = null;
         $this->showSecondaryAssignmentModal = true;
+    }
+
+    public function openShiftPreferenceModal(int $clientSpaceId, int $staffAssignmentId): void
+    {
+        $org = Organization::current();
+        if (! $org) {
+            return;
+        }
+
+        abort_unless($this->userCanManageShiftPreferences(), 403);
+
+        $clientSpace = HrOrganizationalUnit::where('organization_id', $org->id)
+            ->clientSpaces()
+            ->findOrFail($clientSpaceId);
+
+        $assignment = $this->assignmentVisibleInClientSpace($org, $clientSpace->id, $staffAssignmentId);
+
+        abort_unless($assignment, 404);
+
+        $this->resetValidation();
+        $this->selectedClientSpaceId = $clientSpace->id;
+        $this->selectedShiftPreferenceAssignmentId = $assignment->id;
+        $this->shiftPreferenceForm = $this->staffShiftPreferenceFormData($assignment);
+        $this->showShiftPreferenceModal = true;
     }
 
     public function addSecondaryAssignment(): void
@@ -151,6 +185,27 @@ class ClientSpaceDirectory extends Component
         $this->selectedSecondaryStaffAssignmentId = null;
 
         session()->flash('message', 'Secondary client space assignment added.');
+    }
+
+    public function saveShiftPreference(): void
+    {
+        $org = Organization::current();
+        if (! $org || ! $this->selectedClientSpaceId || ! $this->selectedShiftPreferenceAssignmentId) {
+            return;
+        }
+
+        abort_unless($this->userCanManageShiftPreferences(), 403);
+
+        $assignment = $this->assignmentVisibleInClientSpace($org, $this->selectedClientSpaceId, $this->selectedShiftPreferenceAssignmentId);
+
+        abort_unless($assignment, 404);
+
+        $validated = $this->validate($this->shiftPreferenceValidationRules());
+
+        $this->saveStaffShiftPreference($assignment, $validated['shiftPreferenceForm']);
+        $this->resetShiftPreferenceModal();
+
+        session()->flash('message', 'Shift preference updated.');
     }
 
     public function addStaffToClientSpace(): void
@@ -648,8 +703,10 @@ class ClientSpaceDirectory extends Component
                         ->orderBy('hr_organizational_units.name'),
                     'staffAssignments' => fn ($query) => $query
                         ->where('status', 'active')
+                        ->with('rosteringProfile.fixedShiftType')
                         ->orderBy('staff_name'),
                     'secondaryStaffAssignments.staffAssignment' => fn ($query) => $query
+                        ->with('rosteringProfile.fixedShiftType')
                         ->orderBy('staff_name'),
                 ])
                 ->withCount([
@@ -671,6 +728,7 @@ class ClientSpaceDirectory extends Component
         $this->canManageClientSpaceStaff = ! empty($manageableClientSpaceIds);
         $this->canManageSecondaryAssignments = $this->canManageSecondaryAssignments();
         $this->canManageClientSpacePlacement = $this->canManagePlacement();
+        $this->canManageShiftPreferences = $this->userCanManageShiftPreferences();
 
         $staffOptions = $org ? $this->availableStaffOptions($org) : collect();
         $secondaryStaffOptions = $org ? $this->availableSecondaryStaffOptions($org) : collect();
@@ -684,7 +742,19 @@ class ClientSpaceDirectory extends Component
         $routingUnitOptions = $org && $this->canManageClientSpacePlacement
             ? $this->routingUnitOptionsForOrganization($org)
             : collect();
-        return view('livewire.client-space-directory', compact('clientSpaces', 'staffOptions', 'secondaryStaffOptions', 'manageableClientSpaceIds', 'lowestRoutingUnitOptions', 'routingUnitOptions'));
+        $shiftTypeOptions = $this->shiftTypeOptions();
+        $dayOfWeekOptions = $this->dayOfWeekOptions();
+
+        return view('livewire.client-space-directory', compact(
+            'clientSpaces',
+            'staffOptions',
+            'secondaryStaffOptions',
+            'manageableClientSpaceIds',
+            'lowestRoutingUnitOptions',
+            'routingUnitOptions',
+            'shiftTypeOptions',
+            'dayOfWeekOptions'
+        ));
     }
 
     private function setPermissions(): void
@@ -694,6 +764,7 @@ class ClientSpaceDirectory extends Component
         $this->canManageClientSpaceStaff = $user?->is_hr_admin ?? false;
         $this->canManageSecondaryAssignments = $this->canManageSecondaryAssignments();
         $this->canManageClientSpacePlacement = $this->canManagePlacement();
+        $this->canManageShiftPreferences = $this->userCanManageShiftPreferences();
     }
 
     private function availableStaffOptions(Organization $org): Collection
@@ -788,6 +859,7 @@ class ClientSpaceDirectory extends Component
             'title' => $this->staffTitleForClientSpace($assignment),
             'department' => filled($assignment->staff_department) ? $assignment->staff_department : 'Unspecified department',
             'assignment_scope' => $assignmentScope,
+            'shift_preference_summary' => $this->shiftPreferenceSummary($assignment),
         ];
     }
 
@@ -859,6 +931,13 @@ class ClientSpaceDirectory extends Component
         $this->routingUnitSearch = '';
     }
 
+    private function resetShiftPreferenceModal(): void
+    {
+        $this->showShiftPreferenceModal = false;
+        $this->selectedShiftPreferenceAssignmentId = null;
+        $this->shiftPreferenceForm = $this->defaultShiftPreferenceFormState();
+    }
+
     private function routingUnitOptionsForOrganization(Organization $org): Collection
     {
         $routingUnitOptions = HrOrganizationalUnit::where('organization_id', $org->id)
@@ -907,6 +986,56 @@ class ClientSpaceDirectory extends Component
         }
 
         return $normalizedRoutingUnitIds->all();
+    }
+
+    private function assignmentVisibleInClientSpace(Organization $org, int $clientSpaceId, int $staffAssignmentId): ?StaffAssignment
+    {
+        return StaffAssignment::query()
+            ->where('organization_id', $org->id)
+            ->with(['rosteringProfile.fixedShiftType', 'organizationalUnit'])
+            ->whereKey($staffAssignmentId)
+            ->where(function ($query) use ($clientSpaceId): void {
+                $query
+                    ->where('organizational_unit_id', $clientSpaceId)
+                    ->orWhereHas('clientSpaceStaffAssignments', function ($mappingQuery) use ($clientSpaceId): void {
+                        $mappingQuery
+                            ->where('client_space_unit_id', $clientSpaceId)
+                            ->where('status', HrClientSpaceStaffAssignment::STATUS_ACTIVE);
+                    });
+            })
+            ->first();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function shiftPreferenceValidationRules(): array
+    {
+        $organizationId = Organization::current()?->id;
+        $shiftTypeExistsRule = Rule::exists('hr_shift_types', 'id');
+
+        if ($organizationId) {
+            $shiftTypeExistsRule = $shiftTypeExistsRule->where(fn ($query) => $query
+                ->where('organization_id', $organizationId)
+                ->where('is_active', true));
+        }
+
+        return [
+            'shiftPreferenceForm.rostering_mode' => ['required', Rule::in([
+                HrStaffRosteringProfile::MODE_DYNAMIC,
+                HrStaffRosteringProfile::MODE_FIXED,
+            ])],
+            'shiftPreferenceForm.fixed_shift_type_id' => ['nullable', 'integer', $shiftTypeExistsRule],
+            'shiftPreferenceForm.fixed_days_of_week' => ['nullable', 'array'],
+            'shiftPreferenceForm.fixed_days_of_week.*' => ['integer', Rule::in(array_keys($this->dayOfWeekOptions()))],
+            'shiftPreferenceForm.preferred_shift_type_ids' => ['nullable', 'array'],
+            'shiftPreferenceForm.preferred_shift_type_ids.*' => ['integer', 'distinct', $shiftTypeExistsRule],
+            'shiftPreferenceForm.excluded_shift_type_ids' => ['nullable', 'array'],
+            'shiftPreferenceForm.excluded_shift_type_ids.*' => ['integer', 'distinct', $shiftTypeExistsRule],
+            'shiftPreferenceForm.max_night_shifts_per_cycle' => ['nullable', 'integer', 'min:0'],
+            'shiftPreferenceForm.notes' => ['nullable', 'string'],
+            'shiftPreferenceForm.is_active' => ['nullable', 'boolean'],
+        ];
     }
 
     private function selectedClientSpace(Organization $org): ?HrOrganizationalUnit

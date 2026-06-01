@@ -150,7 +150,7 @@ class HrApprovalRequest extends Model
                 ->values();
 
             if ($invalidLevels->isNotEmpty()) {
-                throw new RuntimeException('The selected workflow must include at least 3 approvers at each approval level, unless the primary level is being overridden by the direct-superior leave rule.');
+                throw new RuntimeException('The selected workflow must include at least 3 approvers at each approval level, unless the primary level is being overridden by the client-space leader rule.');
             }
 
             $request = self::create([
