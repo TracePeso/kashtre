@@ -420,7 +420,7 @@ class OrganizationalStructure extends Component
             return;
         }
 
-        $leafUnit = $this->lowestRoutingUnitForOrganization($org, $unitId);
+        $leafUnit = $this->selectedLeafRoutingUnitForOrganization($org, $unitId);
         if (! $leafUnit) {
             abort(404);
         }
@@ -464,7 +464,7 @@ class OrganizationalStructure extends Component
             'selectedLeafClientSpaceIds.*' => 'integer|exists:hr_organizational_units,id',
         ]);
 
-        $leafUnit = $this->lowestRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId);
+        $leafUnit = $this->selectedLeafRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId);
         if (! $leafUnit) {
             $this->addError('selectedLeafUnitId', 'Choose a valid last routing node.');
 
@@ -622,7 +622,7 @@ class OrganizationalStructure extends Component
         $staffAssignments = StaffAssignment::query()
             ->where('organization_id', $org->id)
             ->where('organizational_unit_id', $leafUnit->id)
-            ->whereNotIn('status', ['inactive', 'orphaned', 'pending_routing'])
+            ->whereNotIn('status', ['inactive', 'orphaned'])
             ->whereIn('id', collect($this->selectedLeafStaffAssignmentIds)->map(fn ($id): int => (int) $id)->unique())
             ->get()
             ->keyBy('id');
@@ -717,7 +717,7 @@ class OrganizationalStructure extends Component
             ->orderBy('name')
             ->get() : collect();
         $selectedLeafUnit = $org && $this->selectedLeafUnitId
-            ? $this->lowestRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId)
+            ? $this->selectedLeafRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId)
             : null;
         $leafClientSpaceOptions = $org && $this->selectedLeafUnitId
             ? $this->attachedClientSpacesForSelectedLeaf($org)
@@ -906,6 +906,20 @@ class OrganizationalStructure extends Component
             ->find($unitId);
     }
 
+    private function selectedLeafRoutingUnitForOrganization(Organization $org, int $unitId): ?HrOrganizationalUnit
+    {
+        $unit = HrOrganizationalUnit::where('organization_id', $org->id)
+            ->routingNodes()
+            ->with(['tierLevel', 'linkedClientSpaces'])
+            ->find($unitId);
+
+        if (! $unit?->isLowestRoutingNode()) {
+            return null;
+        }
+
+        return $unit;
+    }
+
     private function routingNodeForOrganization(Organization $org, int $unitId): ?HrOrganizationalUnit
     {
         return HrOrganizationalUnit::where('organization_id', $org->id)
@@ -939,7 +953,7 @@ class OrganizationalStructure extends Component
             return collect();
         }
 
-        $leafUnit = $this->lowestRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId);
+        $leafUnit = $this->selectedLeafRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId);
         if (! $leafUnit) {
             return collect();
         }
@@ -963,7 +977,7 @@ class OrganizationalStructure extends Component
         return StaffAssignment::query()
             ->where('organization_id', $org->id)
             ->where('organizational_unit_id', (int) $this->selectedLeafUnitId)
-            ->whereNotIn('status', ['inactive', 'orphaned', 'pending_routing'])
+            ->whereNotIn('status', ['inactive', 'orphaned'])
             ->with([
                 'clientSpaceStaffAssignments' => fn ($query) => $query
                     ->where('assignment_type', HrClientSpaceStaffAssignment::TYPE_SECONDARY)
