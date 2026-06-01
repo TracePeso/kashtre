@@ -7,6 +7,7 @@ use App\Models\GoodsReceivedNoteApproval;
 use App\Models\GoodsReceivedNoteLine;
 use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
+use App\Models\InventoryStockMovement;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -27,6 +28,12 @@ class GoodsReceivedNoteService
             ]);
         }
 
+        if (! $grn->store_id) {
+            throw ValidationException::withMessages([
+                'store_id' => 'Select the receiving store before submitting this GRN.',
+            ]);
+        }
+
         $approvers = $this->configuredApprovers($grn->business_id);
 
         if ($approvers->isEmpty()) {
@@ -35,10 +42,12 @@ class GoodsReceivedNoteService
             ]);
         }
 
-        return DB::transaction(function () use ($grn, $user, $approvers) {
+        $firstApprovalOrder = (int) $approvers->min('approval_order');
+
+        return DB::transaction(function () use ($grn, $user, $approvers, $firstApprovalOrder) {
             $grn->update([
                 'status' => GoodsReceivedNote::STATUS_PENDING,
-                'current_approval_order' => 1,
+                'current_approval_order' => $firstApprovalOrder,
                 'submitted_by_user_id' => $user->id,
                 'submitted_at' => now(),
                 'entry_by_user_id' => $grn->entry_by_user_id ?? $user->id,
@@ -87,14 +96,14 @@ class GoodsReceivedNoteService
                 'acted_at' => now(),
             ]);
 
-            $nextOrder = $grn->current_approval_order + 1;
-            $hasNext = $grn->approvals()
-                ->where('approval_order', $nextOrder)
-                ->exists();
+            $nextPending = $grn->approvals()
+                ->where('status', GoodsReceivedNoteApproval::STATUS_PENDING)
+                ->orderBy('approval_order')
+                ->first();
 
-            if ($hasNext) {
+            if ($nextPending) {
                 $grn->update([
-                    'current_approval_order' => $nextOrder,
+                    'current_approval_order' => $nextPending->approval_order,
                     'updated_by' => $user->id,
                 ]);
 
@@ -141,14 +150,40 @@ class GoodsReceivedNoteService
         });
     }
 
+    public function applyStockIfNeeded(GoodsReceivedNote $grn): void
+    {
+        $grn->refresh();
+
+        if ($grn->stock_applied_at || ! $grn->isApproved()) {
+            return;
+        }
+
+        $this->applyStock($grn);
+
+        $grn->update(['stock_applied_at' => now()]);
+    }
+
     public function applyStock(GoodsReceivedNote $grn): void
     {
-        $grn->load('lines');
+        $grn->loadMissing('lines');
+
+        if (! $grn->store_id) {
+            throw ValidationException::withMessages([
+                'store_id' => 'A receiving store is required before stock can be posted.',
+            ]);
+        }
 
         foreach ($grn->lines as $line) {
+            $saleUnits = (float) $line->sale_units_purchased;
+
+            if ($saleUnits <= 0) {
+                continue;
+            }
+
             $stock = InventoryStockLevel::firstOrCreate(
                 [
                     'business_id' => $grn->business_id,
+                    'store_id' => $grn->store_id,
                     'item_id' => $line->item_id,
                 ],
                 [
@@ -156,9 +191,37 @@ class GoodsReceivedNoteService
                 ]
             );
 
-            $stock->quantity_suom = (float) $stock->quantity_suom + (float) $line->sale_units_purchased;
-            $stock->last_purchase_price = $line->purchase_price;
+            $unitPrice = (float) $line->purchase_price;
+            $balanceBefore = (float) $stock->quantity_suom;
+            $balanceAfter = $balanceBefore + $saleUnits;
+            $valueBefore = $balanceBefore * (float) ($stock->weighted_avg_cost ?? $stock->last_purchase_price ?? $unitPrice);
+            $lineValuation = round($saleUnits * $unitPrice, 2);
+            $balanceValuation = round($valueBefore + $lineValuation, 2);
+            $weightedAvgCost = $balanceAfter > 0
+                ? round($balanceValuation / $balanceAfter, 2)
+                : 0.0;
+
+            $stock->quantity_suom = $balanceAfter;
+            $stock->last_purchase_price = $unitPrice;
+            $stock->weighted_avg_cost = $weightedAvgCost;
             $stock->save();
+
+            InventoryStockMovement::create([
+                'business_id' => $grn->business_id,
+                'item_id' => $line->item_id,
+                'store_id' => $grn->store_id,
+                'movement_type' => InventoryStockMovement::TYPE_GRN_RECEIPT,
+                'quantity_delta' => $saleUnits,
+                'balance_after' => $balanceAfter,
+                'unit_price' => $unitPrice,
+                'line_valuation' => $lineValuation,
+                'balance_valuation' => $balanceValuation,
+                'goods_received_note_id' => $grn->id,
+                'goods_received_note_line_id' => $line->id,
+                'reference_label' => $grn->grn_number,
+                'recorded_by_user_id' => $grn->entry_by_user_id,
+                'occurred_at' => now(),
+            ]);
         }
     }
 
@@ -183,21 +246,21 @@ class GoodsReceivedNoteService
 
     private function finalizeApproval(GoodsReceivedNote $grn, User $user): void
     {
-        $this->applyStock($grn);
-
         $grn->update([
             'status' => GoodsReceivedNote::STATUS_APPROVED,
             'approved_at' => now(),
             'current_approval_order' => null,
             'updated_by' => $user->id,
         ]);
+
+        $this->applyStockIfNeeded($grn->fresh());
     }
 
     private function currentPendingApproval(GoodsReceivedNote $grn): ?GoodsReceivedNoteApproval
     {
         return $grn->approvals()
-            ->where('approval_order', $grn->current_approval_order)
             ->where('status', GoodsReceivedNoteApproval::STATUS_PENDING)
+            ->orderBy('approval_order')
             ->first();
     }
 

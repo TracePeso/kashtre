@@ -35,6 +35,7 @@ class GoodsReceivedNote extends Model
         'submitted_by_user_id',
         'submitted_at',
         'approved_at',
+        'stock_applied_at',
         'rejection_reason',
         'created_by',
         'updated_by',
@@ -45,6 +46,7 @@ class GoodsReceivedNote extends Model
         'date_of_delivery' => 'date',
         'submitted_at' => 'datetime',
         'approved_at' => 'datetime',
+        'stock_applied_at' => 'datetime',
         'lead_time_days' => 'integer',
         'current_approval_order' => 'integer',
     ];

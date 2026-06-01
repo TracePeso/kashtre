@@ -150,6 +150,16 @@
                                 </a>
                             </li>
                             <li>
+                                <a href="{{ route('inventory.duoms.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.duoms.*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    DUOM
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.suoms.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.suoms.*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    SUOM
+                                </a>
+                            </li>
+                            <li>
                                 <a href="{{ route('inventory.approvers') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.approvers') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
                                     GRN Approvers
                                 </a>

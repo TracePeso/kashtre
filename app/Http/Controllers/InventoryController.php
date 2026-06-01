@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\InventoryModuleApprover;
 use App\Models\InventoryModuleConfig;
+use App\Models\Item;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -44,9 +45,34 @@ class InventoryController extends Controller
         return view('inventory.receive');
     }
 
+    public function duoms()
+    {
+        return view('inventory.duoms.index');
+    }
+
+    public function suoms()
+    {
+        return view('inventory.suoms.index');
+    }
+
     public function monitor()
     {
         return view('inventory.monitor');
+    }
+
+    public function stockHistory(Item $item)
+    {
+        if ((int) $item->business_id !== (int) Auth::user()->business_id) {
+            abort(403);
+        }
+
+        if ($item->type !== 'good') {
+            abort(404);
+        }
+
+        $item->load('itemUnit');
+
+        return view('inventory.monitor.history', compact('item'));
     }
 
     public function approvers()

@@ -28,6 +28,19 @@
             <div class="mt-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">{{ session('success') }}</div>
         @endif
 
+        @if($goodsReceivedNote->isPending())
+            <div class="mt-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded text-sm">
+                <strong>Awaiting approval.</strong> Stock is updated only after every configured approver has approved this GRN.
+                @php
+                    $pendingApprovals = $goodsReceivedNote->approvals->where('status', 'pending');
+                @endphp
+                @if($pendingApprovals->isNotEmpty())
+                    Still waiting on:
+                    {{ $pendingApprovals->map(fn ($a) => ($a->approver->name ?? 'Approver').' (step '.$a->approval_order.')')->join(', ') }}.
+                @endif
+            </div>
+        @endif
+
         @if($goodsReceivedNote->isRejected() && $goodsReceivedNote->rejection_reason)
             <div class="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
                 <strong>Rejection reason:</strong> {{ $goodsReceivedNote->rejection_reason }}
@@ -49,9 +62,16 @@
                             <dt class="text-gray-500">Delivery note file</dt>
                             <dd class="font-medium text-gray-900 mt-1">
                                 @if($goodsReceivedNote->delivery_note_path)
-                                    <a href="{{ asset('storage/' . $goodsReceivedNote->delivery_note_path) }}" target="_blank" class="text-blue-600 hover:text-blue-800">
+                                    @php
+                                        $deliveryNoteUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($goodsReceivedNote->delivery_note_path);
+                                        $isImage = preg_match('/\.(jpe?g|png|gif|webp)$/i', $goodsReceivedNote->delivery_note_path);
+                                    @endphp
+                                    <a href="{{ $deliveryNoteUrl }}" target="_blank" class="text-blue-600 hover:text-blue-800">
                                         {{ $goodsReceivedNote->delivery_note_original_name ?? 'View attachment' }}
                                     </a>
+                                    @if($isImage)
+                                        <img src="{{ $deliveryNoteUrl }}" alt="Delivery note" class="mt-2 max-h-48 rounded border border-gray-200">
+                                    @endif
                                 @else
                                     —
                                 @endif
@@ -61,8 +81,13 @@
                 </div>
 
                 <div class="bg-white shadow sm:rounded-lg overflow-hidden">
-                    <div class="px-6 py-4 border-b border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200 flex flex-wrap items-end justify-between gap-4">
                         <h3 class="text-lg font-medium text-gray-900">Line items</h3>
+                        <div class="text-sm">
+                            <span class="text-gray-500">Lead time (days):</span>
+                            <span class="ml-1 font-semibold text-gray-900 tabular-nums">{{ $goodsReceivedNote->lead_time_days }}</span>
+                            <span class="ml-1 text-xs text-gray-400">(delivery − order)</span>
+                        </div>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200 text-sm">
@@ -71,10 +96,12 @@
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expiry</th>
-                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">QTY</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SUOM</th>
+                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">No. sale units / purchase</th>
+                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Quantity</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">DUOM</th>
                                     <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Price</th>
-                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Sale units (J)</th>
+                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Sale units purchased</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200">
@@ -82,15 +109,15 @@
                                     <tr>
                                         <td class="px-4 py-3">
                                             <div class="font-medium text-gray-900">{{ $line->item_name }}</div>
-                                            @if($line->category)<div class="text-xs text-gray-500">{{ $line->category }}</div>@endif
-                                            <div class="text-xs text-gray-400">SUOM: {{ $line->suom ?? '—' }}</div>
                                         </td>
                                         <td class="px-4 py-3 text-gray-600">{{ $line->batch_number ?? '—' }}</td>
                                         <td class="px-4 py-3 text-gray-600">{{ $line->expiry_date?->format('M d, Y') ?? '—' }}</td>
+                                        <td class="px-4 py-3 text-gray-600">{{ $line->suom ?? '—' }}</td>
+                                        <td class="px-4 py-3 text-right tabular-nums text-gray-600">{{ number_format($line->sale_units_per_purchase_unit, 4) }}</td>
                                         <td class="px-4 py-3 text-right tabular-nums">{{ number_format($line->quantity, 4) }}</td>
                                         <td class="px-4 py-3 text-gray-600">{{ $line->duom ?? '—' }}</td>
                                         <td class="px-4 py-3 text-right tabular-nums">{{ number_format($line->purchase_price, 2) }}</td>
-                                        <td class="px-4 py-3 text-right tabular-nums font-medium">{{ number_format($line->sale_units_purchased, 4) }}</td>
+                                        <td class="px-4 py-3 text-right tabular-nums font-semibold text-emerald-900">{{ number_format($line->sale_units_purchased, 4) }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -154,7 +181,12 @@
 
                 @if($goodsReceivedNote->isApproved())
                     <div class="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-800">
-                        Stock was updated on {{ $goodsReceivedNote->approved_at?->format('M d, Y H:i') }}.
+                        @if($goodsReceivedNote->stock_applied_at)
+                            Stock was updated on {{ $goodsReceivedNote->stock_applied_at->format('M d, Y H:i') }}
+                            (qty of sale units purchased per line).
+                        @else
+                            Approved on {{ $goodsReceivedNote->approved_at?->format('M d, Y H:i') }} — stock will post shortly.
+                        @endif
                         <a href="{{ route('inventory.monitor') }}" class="underline font-medium">View Monitor Stock</a>
                     </div>
                 @endif

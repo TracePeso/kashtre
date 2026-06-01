@@ -115,7 +115,12 @@ class Item extends Model
 
     public function inventoryStockLevel()
     {
-        return $this->hasOne(InventoryStockLevel::class);
+        return $this->hasOne(InventoryStockLevel::class, 'item_id');
+    }
+
+    public function inventoryStockMovements()
+    {
+        return $this->hasMany(InventoryStockMovement::class)->orderByDesc('occurred_at');
     }
 
     public function contractor()

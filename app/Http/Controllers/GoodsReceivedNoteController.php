@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Duom;
 use App\Models\GoodsReceivedNote;
+use App\Models\Suom;
 use App\Models\GoodsReceivedNoteLine;
 use App\Models\InventoryModuleConfig;
 use App\Models\Item;
@@ -46,6 +48,16 @@ class GoodsReceivedNoteController extends Controller
         return view('inventory.receive.create', [
             'suppliers' => Supplier::where('business_id', $businessId)->orderBy('name')->get(),
             'stores' => Store::where('business_id', $businessId)->orderBy('name')->get(),
+            'duoms' => Duom::query()
+                ->where('business_id', $businessId)
+                ->active()
+                ->orderBy('name')
+                ->get(),
+            'suoms' => Suom::query()
+                ->where('business_id', $businessId)
+                ->active()
+                ->orderBy('name')
+                ->get(),
             'items' => Item::where('business_id', $businessId)
                 ->where('type', 'good')
                 ->with('itemUnit')
@@ -173,7 +185,7 @@ class GoodsReceivedNoteController extends Controller
     {
         return $request->validate([
             'supplier_id' => 'nullable|exists:suppliers,id',
-            'store_id' => 'nullable|exists:stores,id',
+            'store_id' => 'required|exists:stores,id',
             'date_of_order' => 'required|date',
             'date_of_delivery' => 'required|date|after_or_equal:date_of_order',
             'delivery_note' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
@@ -182,7 +194,8 @@ class GoodsReceivedNoteController extends Controller
             'lines.*.quantity' => 'required|numeric|min:0.0001',
             'lines.*.batch_number' => 'nullable|string|max:100',
             'lines.*.expiry_date' => 'nullable|date',
-            'lines.*.duom' => 'nullable|string|max:50',
+            'lines.*.duom' => 'required|string|max:50',
+            'lines.*.suom' => 'required|string|max:50',
             'lines.*.purchase_price' => 'required|numeric|min:0',
             'lines.*.sale_units_per_purchase_unit' => 'required|numeric|min:0.0001',
         ]);
@@ -208,14 +221,13 @@ class GoodsReceivedNoteController extends Controller
             GoodsReceivedNoteLine::create([
                 'goods_received_note_id' => $grn->id,
                 'item_id' => $item->id,
-                'category' => $item->category,
                 'item_name' => $item->name,
                 'quantity' => $quantity,
                 'batch_number' => $line['batch_number'] ?? null,
                 'expiry_date' => $line['expiry_date'] ?? null,
-                'duom' => $line['duom'] ?? $item->itemUnit?->name,
+                'duom' => $line['duom'],
                 'purchase_price' => $line['purchase_price'],
-                'suom' => $item->itemUnit?->name,
+                'suom' => $line['suom'],
                 'sale_units_per_purchase_unit' => $conversion,
                 'sale_units_purchased' => $saleUnits,
             ]);
