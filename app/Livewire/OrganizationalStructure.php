@@ -913,7 +913,7 @@ class OrganizationalStructure extends Component
             ->with(['tierLevel', 'linkedClientSpaces'])
             ->find($unitId);
 
-        if (! $unit?->isLowestRoutingNode()) {
+        if (! $unit || $unit->hasRoutingChildren()) {
             return null;
         }
 
@@ -965,7 +965,28 @@ class OrganizationalStructure extends Component
             ])
             ->orderByDesc('hr_client_space_routes.is_primary')
             ->orderBy('hr_organizational_units.name')
-            ->get();
+            ->get()
+            ->whenEmpty(function ($collection) use ($org) {
+                $selectedIds = collect($this->selectedLeafTargetClientSpaceIds)
+                    ->filter(fn ($id): bool => filled($id))
+                    ->map(fn ($id): int => (int) $id)
+                    ->unique()
+                    ->values();
+
+                if ($selectedIds->isEmpty()) {
+                    return $collection;
+                }
+
+                return HrOrganizationalUnit::where('organization_id', $org->id)
+                    ->clientSpaces()
+                    ->whereIn('id', $selectedIds)
+                    ->withCount([
+                        'staffAssignments as active_staff_count' => fn ($query) => $query->where('status', 'active'),
+                        'secondaryStaffAssignments as secondary_staff_count',
+                    ])
+                    ->orderBy('name')
+                    ->get();
+            });
     }
 
     private function availableLeafStaffAssignments(Organization $org)
