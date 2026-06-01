@@ -131,6 +131,13 @@ class ShiftType extends Model
         return $end->lessThanOrEqualTo($start);
     }
 
+    public function isRegularWorkingHoursDefault(): bool
+    {
+        return $this->is_system_default
+            || strcasecmp((string) $this->code, 'RWH') === 0
+            || strcasecmp((string) $this->name, 'Regular working Hours') === 0;
+    }
+
     public function getBreakDurationsMinutesAttribute($value): array
     {
         return self::normalizeBreakDurations($value, (int) ($this->attributes['break_duration_minutes'] ?? 0));

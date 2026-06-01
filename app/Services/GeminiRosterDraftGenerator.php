@@ -551,7 +551,7 @@ class GeminiRosterDraftGenerator
                 'net_minutes' => $shiftType->effectiveNetMinutes(),
                 'is_night_shift' => $shiftType->crossesMidnight(),
             ])->values()->all(),
-            'eligible_staff' => $this->eligibleStaffForPrompt($eligibleAssignments, $roster),
+            'eligible_staff' => $this->eligibleStaffForPrompt($eligibleAssignments, $roster, $shiftTypes),
             'existing_assignments' => $this->existingAssignmentsForPrompt($selections),
             'current_workload' => $this->currentWorkloadForPrompt($currentSelections, $shiftTypeById, $eligibleAssignments, $weekendDays),
             'previous_assignments_to_avoid' => $this->existingAssignmentsForPrompt($avoidSelections),
@@ -629,10 +629,12 @@ class GeminiRosterDraftGenerator
      * @param Collection<int, StaffAssignment> $eligibleAssignments
      * @return array<int, array<string, mixed>>
      */
-    private function eligibleStaffForPrompt(Collection $eligibleAssignments, HrDutyRoster $roster): array
+    private function eligibleStaffForPrompt(Collection $eligibleAssignments, HrDutyRoster $roster, Collection $shiftTypes): array
     {
+        $regularWorkingHoursShiftId = $this->regularWorkingHoursShiftId($shiftTypes);
+
         return $eligibleAssignments
-            ->map(function (StaffAssignment $assignment) use ($roster): array {
+            ->map(function (StaffAssignment $assignment) use ($roster, $regularWorkingHoursShiftId): array {
                 $payload = [
                     'id' => (int) $assignment->id,
                     'team' => $roster->teamLabelForStaffAssignment($assignment->id),
@@ -646,7 +648,7 @@ class GeminiRosterDraftGenerator
                     $payload['assignment_type'] = $assignment->client_space_assignment_type;
                 }
 
-                $profile = $this->profileForPrompt($assignment);
+                $profile = $this->profileForPrompt($assignment, $regularWorkingHoursShiftId);
 
                 if ($profile !== null) {
                     $payload['rostering_profile'] = $profile;
@@ -661,7 +663,7 @@ class GeminiRosterDraftGenerator
     /**
      * @return array<string, mixed>
      */
-    private function profileForPrompt(StaffAssignment $assignment): ?array
+    private function profileForPrompt(StaffAssignment $assignment, ?int $regularWorkingHoursShiftId = null): ?array
     {
         $profile = $assignment->rosteringProfile;
 
@@ -682,7 +684,7 @@ class GeminiRosterDraftGenerator
             $payload['fixed_days_of_week'] = $fixedDays;
         }
 
-        $preferredShiftIds = $profile->preferredShiftIds();
+        $preferredShiftIds = $profile->preferredShiftIdsForPrompt($regularWorkingHoursShiftId);
         if ($preferredShiftIds !== []) {
             $payload['preferred_shift_type_ids'] = $preferredShiftIds;
         }
@@ -697,6 +699,14 @@ class GeminiRosterDraftGenerator
         }
 
         return $payload === ['mode' => 'dynamic'] ? null : $payload;
+    }
+
+    private function regularWorkingHoursShiftId(Collection $shiftTypes): ?int
+    {
+        $regularShiftType = $shiftTypes
+            ->first(fn (ShiftType $shiftType): bool => $shiftType->isRegularWorkingHoursDefault());
+
+        return $regularShiftType instanceof ShiftType ? (int) $regularShiftType->id : null;
     }
 
     /**

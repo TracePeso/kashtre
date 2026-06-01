@@ -85,6 +85,17 @@ class HrStaffRosteringProfile extends Model
         return $this->normalizeIntegerList($this->preferred_shift_type_ids)->all();
     }
 
+    public function preferredShiftIdsForPrompt(?int $regularWorkingHoursShiftId = null): array
+    {
+        $preferredShiftIds = $this->preferredShiftIds();
+
+        if ($preferredShiftIds !== [] || ! $this->is_active || $this->fixed_shift_type_id) {
+            return $preferredShiftIds;
+        }
+
+        return $regularWorkingHoursShiftId ? [$regularWorkingHoursShiftId] : [];
+    }
+
     /**
      * @return array<int, int>
      */
@@ -96,6 +107,11 @@ class HrStaffRosteringProfile extends Model
     public function usesFixedMode(): bool
     {
         return $this->is_active && $this->rostering_mode === self::MODE_FIXED;
+    }
+
+    public function hasExplicitShiftPreference(): bool
+    {
+        return (bool) $this->fixed_shift_type_id || $this->preferredShiftIds() !== [];
     }
 
     public function allowsDate(CarbonInterface $date): bool
@@ -113,6 +129,14 @@ class HrStaffRosteringProfile extends Model
         return in_array((int) $date->dayOfWeek, $fixedDays, true);
     }
 
+    public function defaultsToRegularWorkingHours(?ShiftType $shiftType): bool
+    {
+        return $this->is_active
+            && $shiftType !== null
+            && ! $this->hasExplicitShiftPreference()
+            && $shiftType->isRegularWorkingHoursDefault();
+    }
+
     public function prefersShift(?ShiftType $shiftType): bool
     {
         if (! $shiftType || ! $this->is_active) {
@@ -120,7 +144,8 @@ class HrStaffRosteringProfile extends Model
         }
 
         return (int) $this->fixed_shift_type_id === (int) $shiftType->id
-            || in_array((int) $shiftType->id, $this->preferredShiftIds(), true);
+            || in_array((int) $shiftType->id, $this->preferredShiftIds(), true)
+            || $this->defaultsToRegularWorkingHours($shiftType);
     }
 
     public function excludesShift(?ShiftType $shiftType): bool
