@@ -595,9 +595,9 @@ class OrganizationalStructure extends Component
         $this->validate([
             'selectedLeafUnitId' => 'required|integer|exists:hr_organizational_units,id',
             'selectedLeafTargetClientSpaceIds' => 'required|array|min:1',
-            'selectedLeafTargetClientSpaceIds.*' => 'integer|exists:hr_organizational_units,id',
+            'selectedLeafTargetClientSpaceIds.*' => 'integer|distinct|exists:hr_organizational_units,id',
             'selectedLeafStaffAssignmentIds' => 'required|array|min:1',
-            'selectedLeafStaffAssignmentIds.*' => 'integer|exists:hr_staff_assignments,id',
+            'selectedLeafStaffAssignmentIds.*' => 'integer|distinct|exists:hr_staff_assignments,id',
         ]);
 
         $leafUnit = $this->lowestRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId);

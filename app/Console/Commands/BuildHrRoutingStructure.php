@@ -17,7 +17,7 @@ use RuntimeException;
 
 class BuildHrRoutingStructure extends Command
 {
-    private const LAYOUT_VERSION = 'synthetic_organogram_v2';
+    private const LAYOUT_VERSION = 'synthetic_organogram_v3';
 
     protected $signature = 'hr:build-routing-structure
         {--organization-id= : Existing HR organization id}
@@ -549,6 +549,40 @@ class BuildHrRoutingStructure extends Command
                         ],
                     ],
                     ['name' => 'Procurement & Logistics'],
+                    [
+                        'name' => 'ICT & Records',
+                        'children' => [
+                            ['name' => 'Systems Support'],
+                            [
+                                'name' => 'Health Records',
+                                'children' => [
+                                    ['name' => 'Records Unit'],
+                                ],
+                            ],
+                        ],
+                    ],
+                    [
+                        'name' => 'Facilities & Security',
+                        'children' => [
+                            [
+                                'name' => 'Estate Management',
+                                'children' => [
+                                    [
+                                        'name' => 'Maintenance Unit',
+                                        'children' => [
+                                            [
+                                                'name' => 'Utilities Team',
+                                                'children' => [
+                                                    ['name' => 'Control Desk'],
+                                                ],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                            ['name' => 'Security Coordination'],
+                        ],
+                    ],
                 ],
             ],
             [
@@ -622,45 +656,6 @@ class BuildHrRoutingStructure extends Command
                                 ],
                             ],
                             ['name' => 'Imaging'],
-                        ],
-                    ],
-                ],
-            ],
-            [
-                'name' => 'Operations & Support',
-                'children' => [
-                    [
-                        'name' => 'ICT & Records',
-                        'children' => [
-                            ['name' => 'Systems Support'],
-                            [
-                                'name' => 'Health Records',
-                                'children' => [
-                                    ['name' => 'Records Unit'],
-                                ],
-                            ],
-                        ],
-                    ],
-                    [
-                        'name' => 'Facilities & Security',
-                        'children' => [
-                            [
-                                'name' => 'Estate Management',
-                                'children' => [
-                                    [
-                                        'name' => 'Maintenance Unit',
-                                        'children' => [
-                                            [
-                                                'name' => 'Utilities Team',
-                                                'children' => [
-                                                    ['name' => 'Control Desk'],
-                                                ],
-                                            ],
-                                        ],
-                                    ],
-                                ],
-                            ],
-                            ['name' => 'Security Coordination'],
                         ],
                     ],
                 ],

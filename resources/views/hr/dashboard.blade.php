@@ -237,6 +237,12 @@
             <h3 class="font-semibold text-gray-900 group-hover:text-blue-700">Approval Requests</h3>
             <p class="text-sm text-gray-500 mt-1">Review pending HR requests and move them through each approval level.</p>
         </a>
+        @if($user?->canViewHrApprovals())
+        <a href="{{ route('hr.organization-leaves.index') }}" class="block bg-white rounded-lg shadow-sm border border-gray-300 p-5 hover:border-blue-500 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition-colors group">
+            <h3 class="font-semibold text-gray-900 group-hover:text-blue-700">Leave Dashboard</h3>
+            <p class="text-sm text-gray-500 mt-1">See all pending and approved leave requests across the organization and act on the ones assigned to you.</p>
+        </a>
+        @endif
         @if($user?->staff_uuid)
         <a href="{{ route('hr.my-roster.index') }}" class="block bg-white rounded-lg shadow-sm border border-gray-300 p-5 hover:border-blue-500 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition-colors group">
             <h3 class="font-semibold text-gray-900 group-hover:text-blue-700">My Roster</h3>

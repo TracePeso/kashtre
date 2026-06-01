@@ -139,14 +139,14 @@
             @endif
         </div>
 
-        <div class="p-5">
+        <div class="p-4 sm:p-5">
         @if($rootUnits->isEmpty())
             <div class="rounded-md border border-dashed border-gray-300 px-4 py-8 text-center">
                 <p class="text-sm font-medium text-gray-900">No routing nodes yet</p>
                 <p class="mt-1 text-sm text-gray-500">Add the first root node in the hierarchy, then add sibling and child nodes under the right levels.</p>
             </div>
         @else
-            <ul class="space-y-3">
+            <ul class="space-y-2">
                 @foreach($rootUnits as $unit)
                     @include('livewire.partials.unit-tree', ['unit' => $unit, 'canEditRouting' => $canEditRouting, 'canManageLeafClientSpaceStaff' => $canManageLeafClientSpaceStaff])
                 @endforeach

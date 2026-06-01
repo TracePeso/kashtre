@@ -12,6 +12,7 @@ use App\Http\Controllers\Hr\LeaveApplicationController;
 use App\Http\Controllers\Hr\LeaveTypeController;
 use App\Http\Controllers\Hr\MyRosterController;
 use App\Http\Controllers\Hr\OpenShiftController;
+use App\Http\Controllers\Hr\OrganizationLeaveController;
 use App\Http\Controllers\Hr\OrganizationalStructureController;
 use App\Http\Controllers\Hr\RosterController;
 use App\Http\Controllers\Hr\ShiftTypeController;
@@ -85,6 +86,9 @@ Route::middleware(['web', 'auth', 'verified'])->prefix('hr')->name('hr.')->group
         ->name('organizational-structure.index');
     Route::get('/approval-requests', [ApprovalRequestController::class, 'index'])->name('approval-requests.index');
     Route::get('/leave-applications', [LeaveApplicationController::class, 'index'])->name('leave-applications.index');
+    Route::get('/organization-leaves', [OrganizationLeaveController::class, 'index'])
+        ->middleware('hr.permission:View HR Approvals,Edit HR Approvals')
+        ->name('organization-leaves.index');
     Route::get('/shift-types', [ShiftTypeController::class, 'index'])
         ->middleware('hr.permission:View HR Setup,Add HR Setup,Edit HR Setup')
         ->name('shift-types.index');
