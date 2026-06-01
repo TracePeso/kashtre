@@ -271,9 +271,9 @@ class HrPolicyManager extends Component
             'anchorWindowHours' => ['required', 'numeric', 'min:0'],
             'overtimeTriggerHours' => ['nullable', 'numeric', 'min:0'],
             'crossingHolidayCreditRule' => ['required', Rule::in(array_keys(HrPolicyVersion::holidayCompensatoryCreditPolicyOptions()))],
-            'crossingHolidayCreditDays' => ['required', 'numeric', 'min:0', 'multiple_of:0.5'],
+            'crossingHolidayCreditDays' => ['required', 'numeric', 'min:0', 'multiple_of:0.25'],
             'withinHolidayCreditRule' => ['required', Rule::in(array_keys(HrPolicyVersion::holidayCompensatoryCreditPolicyOptions()))],
-            'withinHolidayCreditDays' => ['required', 'numeric', 'min:0', 'multiple_of:0.5'],
+            'withinHolidayCreditDays' => ['required', 'numeric', 'min:0', 'multiple_of:0.25'],
             'versionNotes' => ['nullable', 'string', 'max:2000'],
         ]);
 
@@ -345,11 +345,11 @@ class HrPolicyManager extends Component
                     'holiday_compensatory_credit_settings' => [
                         HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY => [
                             'rule' => $validated['crossingHolidayCreditRule'],
-                            'credit_days' => (float) $validated['crossingHolidayCreditDays'],
+                            'credit_days' => HrPolicyVersion::normalizeHolidayCompensatoryCreditDays((float) $validated['crossingHolidayCreditDays']),
                         ],
                         HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_WITHIN_PUBLIC_HOLIDAY => [
                             'rule' => $validated['withinHolidayCreditRule'],
-                            'credit_days' => (float) $validated['withinHolidayCreditDays'],
+                            'credit_days' => HrPolicyVersion::normalizeHolidayCompensatoryCreditDays((float) $validated['withinHolidayCreditDays']),
                         ],
                     ],
                 ]),
@@ -478,9 +478,9 @@ class HrPolicyManager extends Component
         $crossingSetting = $version->holidayCompensatoryCreditSettingFor(HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY);
         $withinSetting = $version->holidayCompensatoryCreditSettingFor(HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_WITHIN_PUBLIC_HOLIDAY);
         $this->crossingHolidayCreditRule = $crossingSetting['rule'];
-        $this->crossingHolidayCreditDays = (float) $crossingSetting['credit_days'];
+        $this->crossingHolidayCreditDays = HrPolicyVersion::normalizeHolidayCompensatoryCreditDays((float) $crossingSetting['credit_days']);
         $this->withinHolidayCreditRule = $withinSetting['rule'];
-        $this->withinHolidayCreditDays = (float) $withinSetting['credit_days'];
+        $this->withinHolidayCreditDays = HrPolicyVersion::normalizeHolidayCompensatoryCreditDays((float) $withinSetting['credit_days']);
         $this->versionNotes = (string) ($version->notes ?? '');
     }
 

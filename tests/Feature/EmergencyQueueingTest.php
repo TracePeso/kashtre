@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Branch;
 use App\Models\Business;
 use App\Models\CallingModuleConfig;
 use App\Models\EmergencyAlert;
@@ -48,7 +49,18 @@ class EmergencyQueueingTest extends TestCase
                 ]);
             });
 
-            $user = User::unguarded(function () use ($business, $suffix) {
+            $branch = Branch::unguarded(function () use ($business, $suffix) {
+                return Branch::create([
+                    'uuid' => (string) Str::uuid(),
+                    'business_id' => $business->id,
+                    'name' => 'Main Branch',
+                    'email' => 'branch+' . $suffix . '@example.com',
+                    'phone' => '0700000001',
+                    'address' => 'Kampala',
+                ]);
+            });
+
+            $user = User::unguarded(function () use ($business, $branch, $suffix) {
                 return User::create([
                     'uuid' => (string) Str::uuid(),
                     'name' => 'Cashier',
@@ -58,7 +70,7 @@ class EmergencyQueueingTest extends TestCase
                     'password' => \Illuminate\Support\Facades\Hash::make('password'),
                     'status' => 'active',
                     'business_id' => $business->id,
-                    'branch_id' => 1,
+                    'branch_id' => $branch->id,
                     'permissions' => ['Cashier'],
                 ]);
             });

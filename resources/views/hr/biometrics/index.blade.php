@@ -476,11 +476,11 @@
             </div>
         @endif
 
-        @if ($activeBiometricPage === 'enrollment')
+        @if ($activeBiometricPage === 'attendance')
         <div class="mb-8 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <div class="mb-5">
-                <h2 class="text-base font-semibold text-gray-900">Verify Staff</h2>
-                <p class="mt-1 text-sm text-gray-500">Identify against active profiles, or choose an expected staff member for a stricter check.</p>
+                <h2 class="text-base font-semibold text-gray-900">Attendance Login / Logout</h2>
+                <p class="mt-1 text-sm text-gray-500">Complete clock-in or clock-out from this page. The attendance action only completes after the office network and enabled geofence checks pass.</p>
             </div>
 
             <form method="POST" action="{{ route('hr.biometrics.verify') }}" class="space-y-4" data-biometric-form>
@@ -497,11 +497,12 @@
                 <input type="hidden" name="face_quality_average" id="verify_face_quality_average">
                 <input type="hidden" name="fingerprint_assertion" id="verify_fingerprint_assertion">
                 <input type="hidden" name="capture_source" value="browser_camera">
+                <input type="hidden" name="punch_type" id="verify_punch_type" value="{{ old('punch_type', 'in') }}">
                 <input type="hidden" name="geo_latitude" data-geo-latitude>
                 <input type="hidden" name="geo_longitude" data-geo-longitude>
                 <input type="hidden" name="geo_accuracy" data-geo-accuracy>
 
-                <div class="grid grid-cols-1 gap-4 lg:grid-cols-4">
+                <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
                     <div>
                         <label class="block text-sm font-medium text-gray-700" for="verify_modality">Mode</label>
                         <select id="verify_modality" name="modality" required class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
@@ -519,13 +520,6 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700" for="verify_punch_type">Punch Type</label>
-                        <select id="verify_punch_type" name="punch_type" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                            <option value="in">Clock In</option>
-                            <option value="out">Clock Out</option>
-                        </select>
-                    </div>
-                    <div>
                         <label class="block text-sm font-medium text-gray-700" for="verify_profile_uuid">Specific Profile</label>
                         <select id="verify_profile_uuid" name="profile_uuid" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
                             <option value="">Use best match</option>
@@ -536,13 +530,30 @@
                     </div>
                 </div>
 
+                <div class="rounded-lg border border-sky-200 bg-sky-50 p-4">
+                    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <p class="text-sm font-semibold text-sky-900">Fingerprint attendance actions</p>
+                            <p class="mt-1 text-sm text-sky-800">Use the buttons below to authenticate with the staff member's fingerprint and complete `Login / Clock In` or `Logout / Clock Out` directly from Attendance.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-3">
+                            <button type="submit" data-punch-submit data-punch-type="in" data-punch-label="Login / Clock In" class="inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
+                                Login / Clock In
+                            </button>
+                            <button type="submit" data-punch-submit data-punch-type="out" data-punch-label="Logout / Clock Out" class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
+                                Logout / Clock Out
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <div class="rounded-md border border-gray-200 bg-gray-50 p-3">
                         <p class="text-sm font-semibold text-gray-900">Phone fingerprint check</p>
-                        <p class="mt-1 text-sm text-gray-500">Use the staff member's mobile device to approve the fingerprint/passkey prompt.</p>
+                        <p class="mt-1 text-sm text-gray-500">Use the staff member's mobile device to approve the fingerprint/passkey prompt before Attendance completes.</p>
                         <p id="verify_fingerprint_status" class="mt-2 text-xs text-gray-500">No phone fingerprint check captured yet.</p>
                         <button type="button" data-mobile-fingerprint-verify class="mt-3 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">
-                            Use Phone Fingerprint
+                            Capture Fingerprint Only
                         </button>
                     </div>
 
@@ -581,12 +592,15 @@
                     </div>
                 </div>
 
-                <button type="submit" class="inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
-                    Run Verification
+                <button type="submit" class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
+                    Run Manual Verification
                 </button>
             </form>
         </div>
 
+        @endif
+
+        @if ($activeBiometricPage === 'enrollment')
         <div class="mb-8 rounded-lg border border-gray-200 bg-white shadow-sm">
             <div class="border-b border-gray-200 p-5">
                 <h2 class="text-base font-semibold text-gray-900">Enrolled Profiles</h2>
@@ -656,8 +670,6 @@
                 </table>
             </div>
         </div>
-        @endif
-
         @if ($activeBiometricPage === 'attendance')
         <div class="rounded-lg border border-gray-200 bg-white shadow-sm">
             <div class="border-b border-gray-200 p-5">
@@ -1339,25 +1351,53 @@
                     }
                 });
 
+                async function runPhoneFingerprintVerification(form, successMessage = 'Phone fingerprint approved. Run verification to finish.') {
+                    if (!window.PublicKeyCredential || !navigator.credentials?.get) {
+                        throw new Error('Phone fingerprint verification is not available in this browser.');
+                    }
+
+                    form.querySelector('[name="modality"]').value = 'fingerprint';
+                    mobileFingerprintStatus('verify_fingerprint_status', 'Waiting for the phone fingerprint prompt...');
+                    const publicKey = await mobileFingerprintOptions('verify', form);
+                    const credential = await navigator.credentials.get({ publicKey });
+                    document.getElementById('verify_fingerprint_assertion').value = JSON.stringify(credentialToJson(credential));
+                    document.getElementById('verify_external_reference').value = credential.id;
+                    mobileFingerprintStatus('verify_fingerprint_status', successMessage, true);
+                    form.dataset.geolocationReady = '1';
+                }
+
                 document.querySelector('[data-mobile-fingerprint-verify]')?.addEventListener('click', async (event) => {
                     const form = event.currentTarget.closest('form');
 
-                    if (!window.PublicKeyCredential || !navigator.credentials?.get) {
-                        mobileFingerprintStatus('verify_fingerprint_status', 'Phone fingerprint verification is not available in this browser.');
-                        return;
-                    }
-
                     try {
-                        form.querySelector('[name="modality"]').value = 'fingerprint';
-                        mobileFingerprintStatus('verify_fingerprint_status', 'Waiting for the phone fingerprint prompt...');
-                        const publicKey = await mobileFingerprintOptions('verify', form);
-                        const credential = await navigator.credentials.get({ publicKey });
-                        document.getElementById('verify_fingerprint_assertion').value = JSON.stringify(credentialToJson(credential));
-                        document.getElementById('verify_external_reference').value = credential.id;
-                        mobileFingerprintStatus('verify_fingerprint_status', 'Phone fingerprint approved. Run verification to finish.', true);
+                        await runPhoneFingerprintVerification(form);
                     } catch (error) {
                         mobileFingerprintStatus('verify_fingerprint_status', error.message || 'Phone fingerprint verification failed.');
                     }
+                });
+
+                document.querySelectorAll('[data-punch-submit]').forEach((button) => {
+                    button.addEventListener('click', async (event) => {
+                        event.preventDefault();
+
+                        const form = event.currentTarget.closest('form');
+                        const punchType = event.currentTarget.dataset.punchType || 'in';
+                        const punchLabel = event.currentTarget.dataset.punchLabel || 'Attendance';
+                        const punchInput = form?.querySelector('#verify_punch_type');
+
+                        if (!form || !punchInput) {
+                            return;
+                        }
+
+                        punchInput.value = punchType;
+
+                        try {
+                            await runPhoneFingerprintVerification(form, `${punchLabel} fingerprint approved. Finishing attendance check...`);
+                            form.requestSubmit();
+                        } catch (error) {
+                            mobileFingerprintStatus('verify_fingerprint_status', error.message || 'Phone fingerprint verification failed.');
+                        }
+                    });
                 });
             })();
         </script>

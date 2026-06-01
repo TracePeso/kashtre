@@ -15,6 +15,7 @@ class ClientSpace extends Model
         'uuid',
         'business_id',
         'name',
+        'custom_business_name',
         'description',
         'branch_id',
     ];
@@ -45,5 +46,12 @@ class ClientSpace extends Model
     public function getRouteKeyName()
     {
         return 'uuid';
+    }
+
+    public function getDisplayNameAttribute(): string
+    {
+        $customName = trim((string) ($this->custom_business_name ?? ''));
+
+        return $customName !== '' ? $customName : (string) $this->name;
     }
 }

@@ -111,6 +111,7 @@ class User extends Authenticatable
         'Edit HR Setup',
         'View HR Approvals',
         'Edit HR Approvals',
+        'Designate HR Roster Approvers',
         'Manage HR Biometrics',
         'Manage AI Roster Constraints',
     ];
@@ -343,6 +344,11 @@ class User extends Authenticatable
     public function canEditHrApprovals(): bool
     {
         return $this->hasHrPermission('Edit HR Approvals');
+    }
+
+    public function canDesignateHrRosterApprovers(): bool
+    {
+        return $this->hasHrPermission('Designate HR Roster Approvers');
     }
 
     public function canViewAllApprovals(): bool

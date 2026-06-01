@@ -204,6 +204,12 @@ class FixExistingTables extends Command
             'pa_sections tables already exist'
         );
 
+        $this->markMigrationAsRunIf(
+            '2026_04_12_200000_create_client_spaces_table',
+            Schema::hasTable('client_spaces'),
+            'client_spaces table already exists'
+        );
+
         $this->info('Existing tables check completed');
 
         return 0;

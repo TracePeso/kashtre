@@ -275,7 +275,10 @@ class HrRealDataSyncService
     private function upsertClientSpace(Organization $organization, array $clientSpace): HrOrganizationalUnit
     {
         $externalUuid = (string) $this->sourceId($clientSpace);
-        $sourceName = $clientSpace['name'] ?? 'Unnamed Client Space';
+        $displayName = trim((string) ($clientSpace['name'] ?? ''));
+        $displayName = $displayName !== '' ? $displayName : 'Unnamed Client Space';
+        $sourceName = trim((string) ($clientSpace['source_name'] ?? ''));
+        $sourceName = $sourceName !== '' ? $sourceName : $displayName;
 
         $import = HrClientSpace::withTrashed()
             ->where('organization_id', $organization->id)
@@ -298,7 +301,7 @@ class HrRealDataSyncService
 
         $unit->fill([
             'organization_id' => $organization->id,
-            'name' => $sourceName,
+            'name' => $displayName,
             'type' => 'Client Space',
             'unit_kind' => HrOrganizationalUnit::KIND_CLIENT_SPACE,
         ]);

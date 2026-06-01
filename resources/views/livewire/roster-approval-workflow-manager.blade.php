@@ -3,8 +3,11 @@
         <div>
             <h3 class="text-lg font-semibold text-gray-900">Roster Approval Rules</h3>
             <p class="mt-1 text-sm text-gray-500">Assign different approvers per client space and, when needed, per title. Single-title rosters use title-specific rules first, then fall back to the client-space rule. Each level needs at least 3 approvers, and any current-level approver can act.</p>
+            @unless($canDesignateRosterApprovers)
+                <p class="mt-2 text-xs font-medium text-amber-700">Only users with `Designate HR Roster Approvers` can assign or change primary, secondary, and tertiary roster approvers.</p>
+            @endunless
         </div>
-        @if($organizationId && $canAddSetup)
+        @if($organizationId && $canDesignateRosterApprovers)
             <button wire:click="openCreateModal()" class="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                 Add Roster Rule
@@ -39,7 +42,7 @@
                             <p class="mt-1 text-xs text-gray-500">{{ $rule['discipline_title'] ?: 'All Titles In This Client Space' }}</p>
                         </div>
 
-                        @if($canEditSetup)
+                        @if($canDesignateRosterApprovers)
                             <div class="flex gap-1">
                                 <button wire:click="openEditModal({{ $rule['id'] }})" class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-2 text-gray-700 shadow-sm hover:bg-blue-50 hover:text-blue-700" title="Edit rule">
                                     <span class="sr-only">Edit rule</span>
@@ -71,7 +74,7 @@
         </div>
     @endif
 
-    @if($showModal && ($canAddSetup || $canEditSetup))
+    @if($showModal && $canDesignateRosterApprovers)
         <div class="fixed inset-0 z-50 overflow-y-auto">
             <div class="fixed inset-0 bg-gray-900/50" wire:click="$set('showModal', false)"></div>
             <div class="relative flex min-h-full items-start justify-center px-4 py-6 sm:items-center">

@@ -154,7 +154,9 @@ class KashApiService
         $paginator->getCollection()->transform(fn (ClientSpace $clientSpace): array => [
             'id' => $clientSpace->id,
             'uuid' => $clientSpace->uuid,
-            'name' => $clientSpace->name,
+            'name' => $clientSpace->display_name,
+            'source_name' => $clientSpace->name,
+            'custom_business_name' => $clientSpace->custom_business_name,
             'description' => $clientSpace->description,
             'business_id' => $clientSpace->business_id,
             'business_uuid' => $clientSpace->business?->uuid,

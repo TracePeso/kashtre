@@ -298,7 +298,7 @@
                             </div>
                             <div class="lg:col-span-3">
                                 <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Holiday Compensation Settings</label>
-                                <p class="mt-1 text-xs text-gray-500">Configure crossing-holiday shifts and within-holiday shifts separately. Credit values use 0.5-day increments and are stored in policy metadata.</p>
+                                <p class="mt-1 text-xs text-gray-500">Configure crossing-holiday shifts and within-holiday shifts separately. Crossing-holiday shifts use dynamic 25%, 50%, 75% or 100% of the configured whole-day credit, and stored values use 0.25-day increments.</p>
                                 <div class="mt-3 grid gap-4 lg:grid-cols-2">
                                     <div class="rounded-md border border-gray-200 bg-white p-4">
                                         <p class="text-sm font-semibold text-gray-900">{{ $holidayCompensatoryCreditScopeOptions[\App\Models\HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY] }}</p>
@@ -312,9 +312,9 @@
                                             @error('crossingHolidayCreditRule') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
                                         </div>
                                         <div class="mt-3">
-                                            <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Credit Days</label>
-                                            <input type="number" min="0" step="0.5" wire:model="crossingHolidayCreditDays" @disabled(! $canAddPolicies && ! $canEditPolicies) class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 sm:text-sm">
-                                            <p class="mt-1 text-xs text-gray-500">Applies once per shift or once per matched holiday date, depending on the selected rule.</p>
+                                            <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Whole-Day Credit Days</label>
+                                            <input type="number" min="0" step="0.25" wire:model="crossingHolidayCreditDays" @disabled(! $canAddPolicies && ! $canEditPolicies) class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 sm:text-sm">
+                                            <p class="mt-1 text-xs text-gray-500">Crossing-holiday shifts earn 25%, 50%, 75% or 100% of this amount dynamically, based on how much of the shift falls on public-holiday dates.</p>
                                             @error('crossingHolidayCreditDays') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
                                         </div>
                                     </div>
@@ -331,7 +331,7 @@
                                         </div>
                                         <div class="mt-3">
                                             <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Credit Days</label>
-                                            <input type="number" min="0" step="0.5" wire:model="withinHolidayCreditDays" @disabled(! $canAddPolicies && ! $canEditPolicies) class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 sm:text-sm">
+                                            <input type="number" min="0" step="0.25" wire:model="withinHolidayCreditDays" @disabled(! $canAddPolicies && ! $canEditPolicies) class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 sm:text-sm">
                                             <p class="mt-1 text-xs text-gray-500">Use this when the entire worked shift falls inside a public holiday period.</p>
                                             @error('withinHolidayCreditDays') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
                                         </div>

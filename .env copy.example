@@ -2,13 +2,34 @@ APP_NAME=eSave
 APP_ENV=local
 APP_KEY=
 APP_DEBUG=true
-APP_URL=http://localhost
+APP_URL=https://staging.kashtre.com
+
+BROADCAST_DRIVER=reverb
+
+REVERB_APP_ID=kashtre
+REVERB_APP_KEY=kashtre-reverb-key
+REVERB_APP_SECRET=7c4b4e2f6e5f28f3d8c1a96bb4a8f6f2c3b7e1d94f8a2c6e5d1b7a9c3e4f2d6
+
+CALLING_SERVICE_URL=https://seagreen-mink-868371.hostingersite.com
+CALLING_SERVICE_SYNC_SECRET=1f8b7d6a4c93e25f9a1d7c6b3e8f4a2c5d9e7b1a6f3c8d2e4b7a9c1d5e6f8a0b
+
+VITE_WEBRTC_STUN_URLS=stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302
+VITE_WEBRTC_TURN_URL=turn:187.124.117.169:3478?transport=tcp
+VITE_WEBRTC_TURN_USERNAME=kashtre_turn_user
+VITE_WEBRTC_TURN_CREDENTIAL=KashtreTurnStrongPass2026!
+VITE_WEBRTC_ICE_TRANSPORT_POLICY=all
+
+
+REVERB_HOST=reverb.kashtre.com
+REVERB_PORT=443
+REVERB_SCHEME=https
+REVERB_VERIFY_TLS=false
 
 # Calling service integration
 # Local: http://127.0.0.1:8001
 # Hosted/Hostinger: use the public HTTPS URL of your calling service
 CALLING_SERVICE_URL=http://127.0.0.1:8001
-CALLING_SERVICE_SYNC_SECRET=
+CALLING_SERVICE_SYNC_SECRET=89f3f5cf803cc1c38d038ac4da636aec77eee02d2c74b81e6b3670f63fd2a5a6
 
 LOG_CHANNEL=stack
 LOG_DEPRECATIONS_CHANNEL=null

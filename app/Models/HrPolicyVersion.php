@@ -10,6 +10,11 @@ class HrPolicyVersion extends Model
 {
     use SoftDeletes;
 
+    public const HOLIDAY_COMPENSATORY_DYNAMIC_PERCENTAGE_25 = 0.25;
+    public const HOLIDAY_COMPENSATORY_DYNAMIC_PERCENTAGE_50 = 0.50;
+    public const HOLIDAY_COMPENSATORY_DYNAMIC_PERCENTAGE_75 = 0.75;
+    public const HOLIDAY_COMPENSATORY_DYNAMIC_PERCENTAGE_100 = 1.00;
+
     public const HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY = 'crossing_public_holiday';
     public const HOLIDAY_COMPENSATORY_SCOPE_WITHIN_PUBLIC_HOLIDAY = 'within_public_holiday';
 
@@ -92,6 +97,19 @@ class HrPolicyVersion extends Model
     }
 
     /**
+     * @return array<string, string>
+     */
+    public static function holidayCompensatoryDynamicPercentageOptions(): array
+    {
+        return [
+            '0.25' => '25%',
+            '0.50' => '50%',
+            '0.75' => '75%',
+            '1.00' => '100%',
+        ];
+    }
+
+    /**
      * @return array<string, array{rule: string, credit_days: float}>
      */
     public static function defaultHolidayCompensatoryCreditSettings(): array
@@ -138,7 +156,7 @@ class HrPolicyVersion extends Model
                     $rule = $defaultConfig['rule'];
                 }
 
-                $creditDays = max(0.0, round($creditDays * 2) / 2);
+                $creditDays = self::normalizeHolidayCompensatoryCreditDays($creditDays);
 
                 return [
                     $scope => [
@@ -181,9 +199,23 @@ class HrPolicyVersion extends Model
                 $ruleLabel = self::holidayCompensatoryCreditPolicyOptions()[$setting['rule']] ?? $setting['rule'];
                 $creditDays = rtrim(rtrim(number_format((float) $setting['credit_days'], 2, '.', ''), '0'), '.');
 
+                if ($scope === self::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY) {
+                    return sprintf(
+                        '%s: %s with dynamic 25%%/50%%/75%%/100%% of %s whole-day credit',
+                        $scopeLabel,
+                        $ruleLabel,
+                        $creditDays
+                    );
+                }
+
                 return sprintf('%s: %s at %s day(s)', $scopeLabel, $ruleLabel, $creditDays);
             })
             ->values()
             ->all();
+    }
+
+    public static function normalizeHolidayCompensatoryCreditDays(float $creditDays): float
+    {
+        return max(0.0, round($creditDays * 4) / 4);
     }
 }

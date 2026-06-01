@@ -15,6 +15,7 @@ class HrModule
         'Edit HR Setup',
         'View HR Approvals',
         'Edit HR Approvals',
+        'Designate HR Roster Approvers',
         'Manage HR Biometrics',
         'Manage AI Roster Constraints',
     ];

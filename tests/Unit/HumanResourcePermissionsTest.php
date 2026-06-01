@@ -18,6 +18,7 @@ class HumanResourcePermissionsTest extends TestCase
         'Edit HR Setup',
         'View HR Approvals',
         'Edit HR Approvals',
+        'Designate HR Roster Approvers',
         'Manage HR Biometrics',
         'Manage AI Roster Constraints',
     ];
@@ -48,6 +49,7 @@ class HumanResourcePermissionsTest extends TestCase
             'Human Resource',
             'View HR Staff',
             'Manage HR Biometrics',
+            'Designate HR Roster Approvers',
             'Manage AI Roster Constraints',
             'Unrelated Permission',
         ];
@@ -55,6 +57,7 @@ class HumanResourcePermissionsTest extends TestCase
         $this->assertSame(
             [
                 'View HR Staff',
+                'Designate HR Roster Approvers',
                 'Manage HR Biometrics',
                 'Manage AI Roster Constraints',
             ],

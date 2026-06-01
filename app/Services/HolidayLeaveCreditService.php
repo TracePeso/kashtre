@@ -71,7 +71,7 @@ class HolidayLeaveCreditService
                     $holiday,
                     $holidayDate,
                     $this->creditNotes([$holiday->title], $creditSetting, $scope),
-                    (float) ($creditSetting['credit_days'] ?? 0)
+                    $this->resolvedCreditDays($holidayMatches, $outPunch, $inPunch, $creditSetting, $scope, $match['date_key'])
                 );
             }
 
@@ -105,7 +105,7 @@ class HolidayLeaveCreditService
             $anchorMatch['holiday'],
             $anchorMatch['date'],
             $this->creditNotes($holidayTitles, $creditSetting, $scope),
-            (float) ($creditSetting['credit_days'] ?? 0)
+            $this->resolvedCreditDays($holidayMatches, $outPunch, $inPunch, $creditSetting, $scope)
         );
     }
 
@@ -116,16 +116,6 @@ class HolidayLeaveCreditService
         array $creditSetting,
         string $scope
     ): void {
-        $holidayMatches
-            ->groupBy('date_key')
-            ->each(function (Collection $dateMatches): void {
-                $dateMatches->sortBy(fn (array $match): string => sprintf(
-                    '%s|%s',
-                    $match['holiday']->starts_on?->toDateString() ?? '',
-                    $match['holiday']->id
-                ));
-            });
-
         foreach ($holidayMatches->groupBy('date_key') as $dateMatches) {
             $match = $dateMatches
                 ->sortBy(fn (array $entry): string => sprintf(
@@ -151,7 +141,7 @@ class HolidayLeaveCreditService
                 $match['holiday'],
                 $match['date'],
                 $this->creditNotes($holidayTitles, $creditSetting, $scope),
-                (float) ($creditSetting['credit_days'] ?? 0)
+                $this->resolvedCreditDays($dateMatches, $outPunch, $inPunch, $creditSetting, $scope, $match['date_key'])
             );
         }
     }
@@ -332,6 +322,100 @@ class HolidayLeaveCreditService
     }
 
     /**
+     * @param Collection<int, array{holiday: HrCalendarEvent, date: Carbon, date_key: string}> $holidayMatches
+     * @param array{rule?: string, credit_days?: float} $creditSetting
+     */
+    private function resolvedCreditDays(
+        Collection $holidayMatches,
+        HrAttendanceLedger $outPunch,
+        HrAttendanceLedger $inPunch,
+        array $creditSetting,
+        string $scope,
+        ?string $targetDateKey = null
+    ): float {
+        $baseCreditDays = (float) ($creditSetting['credit_days'] ?? 0);
+
+        if ($baseCreditDays <= 0) {
+            return 0.0;
+        }
+
+        if ($scope !== HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY) {
+            return $baseCreditDays;
+        }
+
+        [$shiftStart, $shiftEnd] = $this->shiftWindow($inPunch, $outPunch);
+
+        if (! $shiftStart || ! $shiftEnd) {
+            return 0.0;
+        }
+
+        $shiftMinutes = max(1, $shiftStart->diffInMinutes($shiftEnd));
+        $holidayMinutes = $this->holidayOverlapMinutes($holidayMatches, $shiftStart, $shiftEnd, $targetDateKey);
+
+        if ($holidayMinutes <= 0) {
+            return 0.0;
+        }
+
+        $ratio = min(1.0, $holidayMinutes / $shiftMinutes);
+        $bucket = min(1.0, ceil($ratio * 4) / 4);
+
+        return round($baseCreditDays * $bucket, 2);
+    }
+
+    /**
+     * @return array{0: Carbon|null, 1: Carbon|null}
+     */
+    private function shiftWindow(HrAttendanceLedger $inPunch, HrAttendanceLedger $outPunch): array
+    {
+        $start = $inPunch->occurred_at?->copy();
+        $end = $outPunch->occurred_at?->copy();
+
+        if (! $start || ! $end) {
+            return [null, null];
+        }
+
+        if ($end->lt($start)) {
+            [$start, $end] = [$end, $start];
+        }
+
+        return [$start, $end];
+    }
+
+    /**
+     * @param Collection<int, array{holiday: HrCalendarEvent, date: Carbon, date_key: string}> $holidayMatches
+     */
+    private function holidayOverlapMinutes(
+        Collection $holidayMatches,
+        Carbon $shiftStart,
+        Carbon $shiftEnd,
+        ?string $targetDateKey = null
+    ): int {
+        $dateKeys = $holidayMatches
+            ->pluck('date_key')
+            ->filter()
+            ->unique()
+            ->when(
+                $targetDateKey !== null,
+                fn (Collection $keys): Collection => $keys->filter(fn (string $key): bool => $key === $targetDateKey)
+            )
+            ->values();
+
+        return $dateKeys
+            ->reduce(function (int $minutes, string $dateKey) use ($shiftStart, $shiftEnd): int {
+                $holidayStart = Carbon::parse($dateKey)->startOfDay();
+                $holidayEnd = $holidayStart->copy()->addDay();
+                $overlapStart = $shiftStart->greaterThan($holidayStart) ? $shiftStart->copy() : $holidayStart;
+                $overlapEnd = $shiftEnd->lessThan($holidayEnd) ? $shiftEnd->copy() : $holidayEnd;
+
+                if ($overlapEnd->lte($overlapStart)) {
+                    return $minutes;
+                }
+
+                return $minutes + $overlapStart->diffInMinutes($overlapEnd);
+            }, 0);
+    }
+
+    /**
      * @param array<int, string> $holidayTitles
      * @param array{rule?: string, credit_days?: float} $creditSetting
      */
@@ -342,6 +426,16 @@ class HolidayLeaveCreditService
         $ruleLabel = HrPolicyVersion::holidayCompensatoryCreditPolicyOptions()[$ruleKey] ?? $ruleKey;
         $creditDays = rtrim(rtrim(number_format((float) ($creditSetting['credit_days'] ?? 0), 2, '.', ''), '0'), '.');
         $holidayLabel = implode(' and ', array_values(array_unique($holidayTitles)));
+
+        if ($scope === HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY) {
+            return sprintf(
+                'Earned by working on %s. Policy applied: %s using %s with dynamic 25%%/50%%/75%%/100%% of %s whole-day credit.',
+                $holidayLabel,
+                $scopeLabel,
+                $ruleLabel,
+                $creditDays
+            );
+        }
 
         return sprintf(
             'Earned by working on %s. Policy applied: %s using %s at %s day(s).',

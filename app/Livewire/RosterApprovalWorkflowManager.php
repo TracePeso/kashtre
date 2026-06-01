@@ -6,6 +6,7 @@ use App\Models\ApprovalWorkflow;
 use App\Models\HrOrganizationalUnit;
 use App\Models\Organization;
 use App\Models\StaffAssignment;
+use App\Models\User;
 use App\Services\DutyRosterService;
 use App\Services\KashApiService;
 use Illuminate\Support\Arr;
@@ -24,8 +25,7 @@ class RosterApprovalWorkflowManager extends Component
     public array $clientSpaceOptions = [];
     public array $disciplineOptions = [];
     public ?string $message = null;
-    public bool $canAddSetup = false;
-    public bool $canEditSetup = false;
+    public bool $canDesignateRosterApprovers = false;
 
     public bool $showModal = false;
     public ?int $editingId = null;
@@ -37,8 +37,7 @@ class RosterApprovalWorkflowManager extends Component
     {
         $org = Organization::current();
         $this->organizationId = $org?->id;
-        $this->canAddSetup = Auth::user()?->canAddHrSetup() ?? false;
-        $this->canEditSetup = Auth::user()?->canEditHrSetup() ?? false;
+        $this->canDesignateRosterApprovers = Auth::user()?->canDesignateHrRosterApprovers() ?? false;
         $this->loadStaffOptions();
         $this->loadClientSpaceOptions();
         $this->loadRules();
@@ -123,10 +122,7 @@ class RosterApprovalWorkflowManager extends Component
 
     public function openCreateModal(): void
     {
-        if (! $this->canAddSetup) {
-            $this->message = 'You do not have permission to manage HR setup.';
-            return;
-        }
+        $this->authorizeRosterApproverDesignation();
 
         $this->resetForm();
         $this->message = null;
@@ -135,10 +131,7 @@ class RosterApprovalWorkflowManager extends Component
 
     public function openEditModal(int $id): void
     {
-        if (! $this->canEditSetup) {
-            $this->message = 'You do not have permission to manage HR setup.';
-            return;
-        }
+        $this->authorizeRosterApproverDesignation();
 
         $workflow = ApprovalWorkflow::with('approvers')->find($id);
 
@@ -172,10 +165,7 @@ class RosterApprovalWorkflowManager extends Component
 
     public function saveRule(): void
     {
-        if (($this->editingId && ! $this->canEditSetup) || (! $this->editingId && ! $this->canAddSetup)) {
-            $this->message = 'You do not have permission to manage HR setup.';
-            return;
-        }
+        $this->authorizeRosterApproverDesignation();
 
         $validated = $this->validate(array_merge([
             'clientSpaceId' => ['nullable', 'integer'],
@@ -253,10 +243,7 @@ class RosterApprovalWorkflowManager extends Component
 
     public function deleteRule(int $id): void
     {
-        if (! $this->canEditSetup) {
-            $this->message = 'You do not have permission to manage HR setup.';
-            return;
-        }
+        $this->authorizeRosterApproverDesignation();
 
         $workflow = ApprovalWorkflow::find($id);
 
@@ -281,6 +268,8 @@ class RosterApprovalWorkflowManager extends Component
 
     public function addApproverSlot(string $level): void
     {
+        $this->authorizeRosterApproverDesignation();
+
         if (! in_array($level, self::APPROVER_LEVELS, true)) {
             return;
         }
@@ -290,6 +279,8 @@ class RosterApprovalWorkflowManager extends Component
 
     public function removeApproverSlot(string $level, int $index): void
     {
+        $this->authorizeRosterApproverDesignation();
+
         if (! in_array($level, self::APPROVER_LEVELS, true)) {
             return;
         }
@@ -401,5 +392,12 @@ class RosterApprovalWorkflowManager extends Component
         }
 
         return $hasDuplicates;
+    }
+
+    private function authorizeRosterApproverDesignation(): void
+    {
+        $user = Auth::user();
+
+        abort_unless($user instanceof User && $user->canDesignateHrRosterApprovers(), 403);
     }
 }

@@ -129,10 +129,10 @@ class BiometricController extends Controller
         abort_unless($request->user()?->canManageHrBiometrics(), 403);
 
         $organization = $this->currentOrganizationOrFail($request);
-        $networkPolicy->assertAllowed($request, $organization, ['allow_offsite_bypass' => false]);
+        $networkPolicy->assertAllowed($request, $organization, ['allow_offsite_bypass' => true]);
 
         $data = $request->validate($this->enrollmentRules());
-        $geofencePolicy->assertAllowed($request, $organization, ['allow_offsite_bypass' => false]);
+        $geofencePolicy->assertAllowed($request, $organization, ['allow_offsite_bypass' => true]);
         $staffAssignment = $this->staffAssignmentForOrganization($organization, (int) $data['staff_assignment_id']);
 
         if (($data['modality'] ?? null) === HrBiometricProfile::MODALITY_FINGERPRINT && ! empty($data['fingerprint_credential'])) {

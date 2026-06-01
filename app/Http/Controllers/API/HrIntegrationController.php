@@ -96,7 +96,7 @@ class HrIntegrationController extends Controller
     {
         $query = ClientSpace::query()
             ->where('business_id', '!=', 1)
-            ->select('id', 'uuid', 'name', 'description', 'business_id', 'branch_id')
+            ->select('id', 'uuid', 'name', 'custom_business_name', 'description', 'business_id', 'branch_id')
             ->with('branch:id,name');
 
         if ($request->has('business_id')) {
@@ -107,7 +107,22 @@ class HrIntegrationController extends Controller
             $query->where('branch_id', $request->branch_id);
         }
 
-        return response()->json($query->get());
+        return response()->json(
+            $query->get()->map(fn (ClientSpace $clientSpace): array => [
+                'id' => $clientSpace->id,
+                'uuid' => $clientSpace->uuid,
+                'name' => $clientSpace->display_name,
+                'source_name' => $clientSpace->name,
+                'custom_business_name' => $clientSpace->custom_business_name,
+                'description' => $clientSpace->description,
+                'business_id' => $clientSpace->business_id,
+                'branch_id' => $clientSpace->branch_id,
+                'branch' => $clientSpace->branch ? [
+                    'id' => $clientSpace->branch->id,
+                    'name' => $clientSpace->branch->name,
+                ] : null,
+            ])->values()
+        );
     }
 
     public function qualifications(Request $request)

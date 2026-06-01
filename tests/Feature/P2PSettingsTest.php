@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Branch;
 use App\Models\Business;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -12,9 +13,9 @@ class P2PSettingsTest extends TestCase
 {
     use DatabaseTransactions;
 
-    protected function createTestUser($suffix, $businessId)
+    protected function createTestUser($suffix, $businessId, $branchId)
     {
-        return User::unguarded(function () use ($suffix, $businessId) {
+        return User::unguarded(function () use ($suffix, $businessId, $branchId) {
             return User::create([
                 'uuid' => (string) Str::uuid(),
                 'name' => 'User ' . $suffix,
@@ -24,7 +25,7 @@ class P2PSettingsTest extends TestCase
                 'password' => \Illuminate\Support\Facades\Hash::make('password'),
                 'status' => 'active',
                 'business_id' => $businessId,
-                'branch_id' => 1,
+                'branch_id' => $branchId,
                 'permissions' => ['View Callers', 'Edit Callers', 'Manage Callers'],
             ]);
         });
@@ -46,13 +47,24 @@ class P2PSettingsTest extends TestCase
                 'date' => now()->toDateString(),
             ]);
         });
-        
+
+        $branch = Branch::unguarded(function () use ($business, $suffix) {
+            return Branch::create([
+                'uuid' => (string) Str::uuid(),
+                'business_id' => $business->id,
+                'name' => 'Main Branch',
+                'email' => 'branch+' . $suffix . '@example.com',
+                'phone' => '0700000001',
+                'address' => 'Test',
+            ]);
+        });
+
         \App\Models\CallingModuleConfig::create([
             'business_id' => $business->id,
             'is_active' => true,
         ]);
-        
-        $user = $this->createTestUser($suffix, $business->id);
+
+        $user = $this->createTestUser($suffix, $business->id, $branch->id);
 
         $response = $this->actingAs($user)->post(route('service-point-callers.save-p2p-settings'), [
             'p2p_display_name' => 'Alias ' . $suffix,
@@ -85,27 +97,36 @@ class P2PSettingsTest extends TestCase
                 'date' => now()->toDateString(),
             ]);
         });
-        
+
+        $branch = Branch::unguarded(function () use ($business, $suffix) {
+            return Branch::create([
+                'uuid' => (string) Str::uuid(),
+                'business_id' => $business->id,
+                'name' => 'Main Branch',
+                'email' => 'branch-online+' . $suffix . '@example.com',
+                'phone' => '0700000001',
+                'address' => 'Test',
+            ]);
+        });
+
         \App\Models\CallingModuleConfig::create([
             'business_id' => $business->id,
             'is_active' => true,
         ]);
 
-        $user1 = $this->createTestUser('Alice' . $suffix, $business->id);
-        $user2 = $this->createTestUser('Bob' . $suffix, $business->id);
+        $user1 = $this->createTestUser('Alice' . $suffix, $business->id, $branch->id);
+        $user2 = $this->createTestUser('Bob' . $suffix, $business->id, $branch->id);
 
-        // Bob sets his P2P Display name
         $this->actingAs($user2)->post(route('service-point-callers.save-p2p-settings'), [
             'p2p_display_name' => 'Bobby P2P',
             'p2p_ringtone' => 'deep',
         ]);
 
-        // Alice fetches online users
         $response = $this->actingAs($user1)->getJson(route('calls.online-users'));
-        
+
         $response->assertOk();
         $data = $response->json();
-        
+
         $bobRecord = collect($data)->firstWhere('uuid', $user2->uuid);
         $this->assertNotNull($bobRecord);
         $this->assertEquals('Bobby P2P', $bobRecord['name']);
