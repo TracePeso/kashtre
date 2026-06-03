@@ -551,7 +551,47 @@
         <div class="mb-8 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <div class="mb-5">
                 <h2 class="text-base font-semibold text-gray-900">Clocking</h2>
-                <p class="mt-1 text-sm text-gray-500">Complete clock-in or clock-out from this page. The clocking action only completes after the office network and enabled geofence checks pass.</p>
+                <p class="mt-1 text-sm text-gray-500">Use this page only to register attendance when staff clock in or clock out. The action completes after the office network and enabled geofence checks pass.</p>
+            </div>
+
+            <form method="POST" action="{{ route('hr.biometrics.verify') }}" class="space-y-4" data-biometric-form>
+                @csrf
+                <input type="hidden" name="modality" value="fingerprint">
+                <input type="hidden" name="fingerprint_assertion" id="verify_fingerprint_assertion">
+                <input type="hidden" name="external_reference" id="verify_external_reference">
+                <input type="hidden" name="capture_source" value="mobile_fingerprint">
+                <input type="hidden" name="punch_type" id="verify_punch_type" value="{{ old('punch_type', 'in') }}">
+                <input type="hidden" name="geo_latitude" data-geo-latitude>
+                <input type="hidden" name="geo_longitude" data-geo-longitude>
+                <input type="hidden" name="geo_accuracy" data-geo-accuracy>
+
+                <div class="rounded-lg border border-sky-200 bg-sky-50 p-4">
+                    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <p class="text-sm font-semibold text-sky-900">Fingerprint attendance actions</p>
+                            <p class="mt-1 text-sm text-sky-800">Use the buttons below to authenticate with the staff member's fingerprint and register `Clock In` or `Clock Out`.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-3">
+                            <button type="submit" data-punch-submit data-punch-type="in" data-punch-label="Clock In" class="inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
+                                Clock In
+                            </button>
+                            <button type="submit" data-punch-submit data-punch-type="out" data-punch-label="Clock Out" class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
+                                Clock Out
+                            </button>
+                        </div>
+                    </div>
+                    <p id="verify_fingerprint_status" class="mt-3 text-xs text-sky-800">Choose `Clock In` or `Clock Out` to start the fingerprint prompt.</p>
+                </div>
+            </form>
+        </div>
+
+        @endif
+
+        @if ($activeBiometricPage === 'attendance')
+        <div class="mb-8 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <div class="mb-5">
+                <h2 class="text-base font-semibold text-gray-900">Biometric Attendance</h2>
+                <p class="mt-1 text-sm text-gray-500">Use this page for biometric attendance verification details, staff/profile matching, and manual verification support.</p>
             </div>
 
             <form method="POST" action="{{ route('hr.biometrics.verify') }}" class="space-y-4" data-biometric-form>
@@ -601,27 +641,10 @@
                     </div>
                 </div>
 
-                <div class="rounded-lg border border-sky-200 bg-sky-50 p-4">
-                    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                        <div>
-                            <p class="text-sm font-semibold text-sky-900">Fingerprint attendance actions</p>
-                            <p class="mt-1 text-sm text-sky-800">Use the buttons below to authenticate with the staff member's fingerprint and complete `Clock In` or `Clock Out` directly from Clocking.</p>
-                        </div>
-                        <div class="flex flex-wrap gap-3">
-                            <button type="submit" data-punch-submit data-punch-type="in" data-punch-label="Clock In" class="inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
-                                Clock In
-                            </button>
-                            <button type="submit" data-punch-submit data-punch-type="out" data-punch-label="Clock Out" class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
-                                Clock Out
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
                 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <div class="rounded-md border border-gray-200 bg-gray-50 p-3">
                         <p class="text-sm font-semibold text-gray-900">Phone fingerprint check</p>
-                        <p class="mt-1 text-sm text-gray-500">Use the staff member's mobile device to approve the fingerprint/passkey prompt before Attendance completes.</p>
+                        <p class="mt-1 text-sm text-gray-500">Use the staff member's mobile device to approve the fingerprint/passkey prompt before manual verification completes.</p>
                         <p id="verify_fingerprint_status" class="mt-2 text-xs text-gray-500">No phone fingerprint check captured yet.</p>
                         <button type="button" data-mobile-fingerprint-verify class="mt-3 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">
                             Capture Fingerprint Only
@@ -668,7 +691,6 @@
                 </button>
             </form>
         </div>
-
         @endif
 
         @if ($activeBiometricPage === 'enrollment')
