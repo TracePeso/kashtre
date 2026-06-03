@@ -48,35 +48,37 @@
             No active organization is available for biometric enrollment.
         </div>
     @else
-        <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
-            <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-                <p class="text-sm text-gray-500">Fingerprint Profiles</p>
-                <p class="mt-1 text-2xl font-bold text-gray-900">{{ number_format($fingerprintCount) }}</p>
+        @if ($activeBiometricPage === 'attendance')
+            <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+                <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                    <p class="text-sm text-gray-500">Fingerprint Profiles</p>
+                    <p class="mt-1 text-2xl font-bold text-gray-900">{{ number_format($fingerprintCount) }}</p>
+                </div>
+                <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                    <p class="text-sm text-gray-500">Face Profiles</p>
+                    <p class="mt-1 text-2xl font-bold text-gray-900">{{ number_format($faceCount) }}</p>
+                </div>
+                <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                    <p class="text-sm text-gray-500">Verified Today</p>
+                    <p class="mt-1 text-2xl font-bold text-gray-900">{{ number_format($successfulToday) }}</p>
+                </div>
+                <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                    <p class="text-sm text-gray-500">Office Network</p>
+                    <p class="mt-1 text-2xl font-bold {{ $networkStatusClasses }}">{{ $networkStatus }}</p>
+                    <p class="mt-1 text-xs text-gray-500">{{ $networkAccess['ip'] ?? 'IP unavailable' }}</p>
+                </div>
+                <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                    <p class="text-sm text-gray-500">Office Geofence</p>
+                    <p class="mt-1 text-2xl font-bold {{ $geofenceStatusClasses }}">{{ $geofenceStatus }}</p>
+                    <p class="mt-1 text-xs text-gray-500">{{ number_format($geofenceAccess['radius_meters'] ?? 100) }}m radius</p>
+                </div>
+                <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                    <p class="text-sm text-gray-500">Repeated Late Flags</p>
+                    <p class="mt-1 text-2xl font-bold {{ $flaggedLateCount > 0 ? 'text-amber-700' : 'text-gray-900' }}">{{ number_format($flaggedLateCount) }}</p>
+                    <p class="mt-1 text-xs text-gray-500">Clock-in arrivals beyond the configured late threshold at least {{ $lateFlagTriggerCount }} time(s).</p>
+                </div>
             </div>
-            <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-                <p class="text-sm text-gray-500">Face Profiles</p>
-                <p class="mt-1 text-2xl font-bold text-gray-900">{{ number_format($faceCount) }}</p>
-            </div>
-            <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-                <p class="text-sm text-gray-500">Verified Today</p>
-                <p class="mt-1 text-2xl font-bold text-gray-900">{{ number_format($successfulToday) }}</p>
-            </div>
-            <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-                <p class="text-sm text-gray-500">Office Network</p>
-                <p class="mt-1 text-2xl font-bold {{ $networkStatusClasses }}">{{ $networkStatus }}</p>
-                <p class="mt-1 text-xs text-gray-500">{{ $networkAccess['ip'] ?? 'IP unavailable' }}</p>
-            </div>
-            <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-                <p class="text-sm text-gray-500">Office Geofence</p>
-                <p class="mt-1 text-2xl font-bold {{ $geofenceStatusClasses }}">{{ $geofenceStatus }}</p>
-                <p class="mt-1 text-xs text-gray-500">{{ number_format($geofenceAccess['radius_meters'] ?? 100) }}m radius</p>
-            </div>
-            <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-                <p class="text-sm text-gray-500">Repeated Late Flags</p>
-                <p class="mt-1 text-2xl font-bold {{ $flaggedLateCount > 0 ? 'text-amber-700' : 'text-gray-900' }}">{{ number_format($flaggedLateCount) }}</p>
-                <p class="mt-1 text-xs text-gray-500">Clock-in arrivals beyond the configured late threshold at least {{ $lateFlagTriggerCount }} time(s).</p>
-            </div>
-        </div>
+        @endif
 
         @if ($errors->any())
             <div class="mb-6 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
