@@ -13,13 +13,49 @@ class InventoryModuleConfig extends Model
         'business_id',
         'is_active',
         'description',
+        'fixed_daily_average_suom',
+        'safety_stock_days',
+        'buffer_stock_days',
         'created_by',
         'updated_by',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'fixed_daily_average_suom' => 'decimal:4',
+        'safety_stock_days' => 'decimal:2',
+        'buffer_stock_days' => 'decimal:2',
     ];
+
+    /**
+     * Daily usage for stock calculations: item-level value, or fixed average when item usage is zero.
+     */
+    public function effectiveDailyUsageSuom(?float $itemDailyUsageSuom): float
+    {
+        $usage = (float) ($itemDailyUsageSuom ?? 0);
+
+        if ($usage > 0) {
+            return $usage;
+        }
+
+        return (float) ($this->fixed_daily_average_suom ?? 0);
+    }
+
+    public function safetyStockSuom(?float $itemDailyUsageSuom): float
+    {
+        return round(
+            $this->effectiveDailyUsageSuom($itemDailyUsageSuom) * (float) ($this->safety_stock_days ?? 0),
+            4
+        );
+    }
+
+    public function bufferStockSuom(?float $itemDailyUsageSuom): float
+    {
+        return round(
+            $this->effectiveDailyUsageSuom($itemDailyUsageSuom) * (float) ($this->buffer_stock_days ?? 0),
+            4
+        );
+    }
 
     public function business()
     {

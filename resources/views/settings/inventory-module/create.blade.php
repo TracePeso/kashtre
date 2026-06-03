@@ -8,7 +8,7 @@
         return this.businessId ? (this.usersByBusiness[this.businessId] || []) : [];
     }
 }">
-    <div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="mb-6">
             <a href="{{ route('inventory-module-configs.index') }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to Inventory Module Configurations</a>
         </div>
@@ -57,6 +57,8 @@
                         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                     @enderror
                 </div>
+
+                @include('settings.inventory-module._stock-settings-fields')
 
                 <div class="border border-gray-200 rounded-lg p-4 space-y-4" x-show="businessId" x-cloak>
                     <div>

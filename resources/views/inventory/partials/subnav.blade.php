@@ -2,8 +2,6 @@
     $tabs = [
         ['route' => 'inventory.receive', 'label' => 'Receive Goods'],
         ['route' => 'inventory.monitor', 'label' => 'Monitor Stock'],
-        ['route' => 'inventory.duoms.index', 'label' => 'DUOM'],
-        ['route' => 'inventory.suoms.index', 'label' => 'SUOM'],
         ['route' => 'inventory.approvers', 'label' => 'GRN Approvers'],
     ];
 @endphp

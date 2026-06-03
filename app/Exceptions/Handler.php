@@ -3,6 +3,11 @@
 namespace App\Exceptions;
 
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Http\Request;
+use Illuminate\Session\TokenMismatchException;
+use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -19,6 +24,13 @@ class Handler extends ExceptionHandler
     ];
 
     /**
+     * @var array<int, class-string<\Throwable>>
+     */
+    protected $dontReport = [
+        TokenMismatchException::class,
+    ];
+
+    /**
      * Register the exception handling callbacks for the application.
      */
     public function register(): void
@@ -26,5 +38,51 @@ class Handler extends ExceptionHandler
         $this->reportable(function (Throwable $e) {
             //
         });
+
+        $this->renderable(function (HttpException $e, Request $request) {
+            if ($e->getStatusCode() !== 419) {
+                return null;
+            }
+
+            return $this->sessionExpiredResponse($request);
+        });
+    }
+
+    /**
+     * Redirect to login when the session or CSRF token has expired (419 Page Expired).
+     */
+    protected function sessionExpiredResponse(Request $request): Response
+    {
+        Auth::logout();
+
+        if ($request->hasSession()) {
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
+
+        $message = 'Your session has expired. Please sign in again.';
+        $loginUrl = $this->loginUrlForExpiredSession($request);
+
+        if ($request->expectsJson() && ! $request->header('X-Livewire')) {
+            return response()->json([
+                'message' => $message,
+                'redirect' => $loginUrl,
+            ], 419);
+        }
+
+        return redirect()->guest($loginUrl)->with('status', $message);
+    }
+
+    protected function loginUrlForExpiredSession(Request $request): string
+    {
+        if ($request->is('third-party-payer*', 'third-party-payer-dashboard*')) {
+            return route('third-party-payer.login');
+        }
+
+        if ($request->is('cashier*', 'cashier-dashboard*')) {
+            return route('cashier.login');
+        }
+
+        return route('login');
     }
 }

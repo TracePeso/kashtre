@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Inventory;
 
+use App\Models\InventoryModuleConfig;
 use App\Models\Item;
 use App\Models\Store;
 use Filament\Tables\Filters\SelectFilter;
@@ -22,8 +23,20 @@ class MonitorStockTable extends Component implements HasForms, HasTable
     use InteractsWithForms;
     use InteractsWithTable;
 
+    public ?InventoryModuleConfig $moduleConfig = null;
+
+    public function mount(): void
+    {
+        $this->moduleConfig = InventoryModuleConfig::query()
+            ->forBusiness((int) Auth::user()->business_id)
+            ->active()
+            ->first();
+    }
+
     public function table(Table $table): Table
     {
+        $config = $this->moduleConfig;
+
         return $table
             ->query($this->baseQuery())
             ->columns([
@@ -66,6 +79,27 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->state(fn (Item $record): float => $this->stockDays($record))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 1)),
 
+                TextColumn::make('effective_daily_usage')
+                    ->label('Daily avg (SUOM)')
+                    ->alignEnd()
+                    ->visible($config !== null)
+                    ->state(fn (Item $record): float => $this->effectiveDailyUsage($record))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
+
+                TextColumn::make('safety_stock_suom')
+                    ->label('Safety stock (SUOM)')
+                    ->alignEnd()
+                    ->visible($config !== null)
+                    ->state(fn (Item $record): float => $config->safetyStockSuom($this->dailyUsage($record)))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
+
+                TextColumn::make('buffer_stock_suom')
+                    ->label('Buffer stock (SUOM)')
+                    ->alignEnd()
+                    ->visible($config !== null)
+                    ->state(fn (Item $record): float => $config->bufferStockSuom($this->dailyUsage($record)))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
+
                 TextColumn::make('stock_last_purchase_price')
                     ->label('Last price')
                     ->alignEnd()
@@ -94,11 +128,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
             ->filters([
                 SelectFilter::make('store_id')
                     ->label('Store')
-                    ->options(fn (): array => Store::query()
-                        ->where('business_id', Auth::user()->business_id)
-                        ->orderBy('name')
-                        ->pluck('name', 'id')
-                        ->all())
+                    ->options(fn (): array => Store::optionsForSelect((int) Auth::user()->business_id))
                     ->query(function (Builder $query, array $data): Builder {
                         if (empty($data['value'])) {
                             return $query;
@@ -188,9 +218,18 @@ class MonitorStockTable extends Component implements HasForms, HasTable
         );
     }
 
+    private function effectiveDailyUsage(Item $item): float
+    {
+        if (! $this->moduleConfig) {
+            return $this->dailyUsage($item);
+        }
+
+        return $this->moduleConfig->effectiveDailyUsageSuom($this->dailyUsage($item));
+    }
+
     private function stockDays(Item $item): float
     {
-        $usage = $this->dailyUsage($item);
+        $usage = $this->effectiveDailyUsage($item);
 
         if ($usage <= 0) {
             return 0.0;

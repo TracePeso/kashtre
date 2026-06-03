@@ -45,16 +45,6 @@ class InventoryController extends Controller
         return view('inventory.receive');
     }
 
-    public function duoms()
-    {
-        return view('inventory.duoms.index');
-    }
-
-    public function suoms()
-    {
-        return view('inventory.suoms.index');
-    }
-
     public function monitor()
     {
         return view('inventory.monitor');

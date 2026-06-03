@@ -2,12 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Duom;
 use App\Models\GoodsReceivedNote;
-use App\Models\Suom;
 use App\Models\GoodsReceivedNoteLine;
 use App\Models\InventoryModuleConfig;
 use App\Models\Item;
+use App\Models\ItemUnit;
 use App\Models\Store;
 use App\Models\Supplier;
 use App\Services\GoodsReceivedNoteService;
@@ -15,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class GoodsReceivedNoteController extends Controller
@@ -47,15 +47,14 @@ class GoodsReceivedNoteController extends Controller
 
         return view('inventory.receive.create', [
             'suppliers' => Supplier::where('business_id', $businessId)->orderBy('name')->get(),
-            'stores' => Store::where('business_id', $businessId)->orderBy('name')->get(),
-            'duoms' => Duom::query()
-                ->where('business_id', $businessId)
-                ->active()
+            'stores' => Store::query()
+                ->forBusiness($businessId)
+                ->with('parent')
+                ->orderByRaw('CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END')
                 ->orderBy('name')
                 ->get(),
-            'suoms' => Suom::query()
+            'itemUnits' => ItemUnit::query()
                 ->where('business_id', $businessId)
-                ->active()
                 ->orderBy('name')
                 ->get(),
             'items' => Item::where('business_id', $businessId)
@@ -183,6 +182,12 @@ class GoodsReceivedNoteController extends Controller
 
     private function validateGrn(Request $request): array
     {
+        $businessId = Auth::user()->business_id;
+        $itemUnitNames = ItemUnit::query()
+            ->where('business_id', $businessId)
+            ->pluck('name')
+            ->all();
+
         return $request->validate([
             'supplier_id' => 'nullable|exists:suppliers,id',
             'store_id' => 'required|exists:stores,id',
@@ -194,8 +199,8 @@ class GoodsReceivedNoteController extends Controller
             'lines.*.quantity' => 'required|numeric|min:0.0001',
             'lines.*.batch_number' => 'nullable|string|max:100',
             'lines.*.expiry_date' => 'nullable|date',
-            'lines.*.duom' => 'required|string|max:50',
-            'lines.*.suom' => 'required|string|max:50',
+            'lines.*.duom' => ['required', 'string', 'max:50', Rule::in($itemUnitNames)],
+            'lines.*.suom' => ['required', 'string', 'max:50', Rule::in($itemUnitNames)],
             'lines.*.purchase_price' => 'required|numeric|min:0',
             'lines.*.sale_units_per_purchase_unit' => 'required|numeric|min:0.0001',
         ]);

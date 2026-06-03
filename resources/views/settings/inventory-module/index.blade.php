@@ -50,6 +50,11 @@
                                             @if($config->description)
                                                 <p class="text-sm text-gray-400 mt-0.5">{{ $config->description }}</p>
                                             @endif
+                                            <p class="text-xs text-gray-500 mt-0.5">
+                                                Fixed daily avg: {{ number_format((float) $config->fixed_daily_average_suom, 4) }} SUOM ·
+                                                Safety: {{ number_format((float) $config->safety_stock_days, 1) }} days ·
+                                                Buffer: {{ number_format((float) $config->buffer_stock_days, 1) }} days
+                                            </p>
                                             @if($config->approvers->count() > 0)
                                                 <p class="text-xs text-gray-500 mt-0.5">
                                                     GRN approvers:

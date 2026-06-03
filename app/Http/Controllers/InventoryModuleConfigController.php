@@ -68,13 +68,13 @@ class InventoryModuleConfigController extends Controller
             abort(403, 'Access denied. You do not have permission to add inventory module configurations.');
         }
 
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'business_id' => 'required|exists:businesses,id',
             'description' => 'nullable|string|max:1000',
             'is_active' => 'boolean',
             'approver_1' => 'required|exists:users,id',
             'approver_2' => 'nullable|exists:users,id|different:approver_1',
-        ]);
+        ], $this->stockSettingsRules()));
 
         if (InventoryModuleConfig::where('business_id', $validated['business_id'])->exists()) {
             return redirect()->back()
@@ -91,6 +91,9 @@ class InventoryModuleConfigController extends Controller
             $config = InventoryModuleConfig::create([
                 'business_id' => $validated['business_id'],
                 'description' => $validated['description'] ?? null,
+                'fixed_daily_average_suom' => $validated['fixed_daily_average_suom'],
+                'safety_stock_days' => $validated['safety_stock_days'],
+                'buffer_stock_days' => $validated['buffer_stock_days'],
                 'is_active' => $request->boolean('is_active', true),
                 'created_by' => Auth::id(),
             ]);
@@ -125,11 +128,11 @@ class InventoryModuleConfigController extends Controller
             abort(403, 'Access denied. You do not have permission to edit inventory module configurations.');
         }
 
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'description' => 'nullable|string|max:1000',
             'approver_1' => 'required|exists:users,id',
             'approver_2' => 'nullable|exists:users,id|different:approver_1',
-        ]);
+        ], $this->stockSettingsRules()));
 
         $this->assertApproversBelongToBusiness(
             (int) $inventoryModuleConfig->business_id,
@@ -139,6 +142,9 @@ class InventoryModuleConfigController extends Controller
         DB::transaction(function () use ($inventoryModuleConfig, $validated) {
             $inventoryModuleConfig->update([
                 'description' => $validated['description'] ?? null,
+                'fixed_daily_average_suom' => $validated['fixed_daily_average_suom'],
+                'safety_stock_days' => $validated['safety_stock_days'],
+                'buffer_stock_days' => $validated['buffer_stock_days'],
                 'updated_by' => Auth::id(),
             ]);
 
@@ -195,6 +201,18 @@ class InventoryModuleConfigController extends Controller
                 'approval_order' => 2,
             ]);
         }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function stockSettingsRules(): array
+    {
+        return [
+            'fixed_daily_average_suom' => 'required|numeric|min:0',
+            'safety_stock_days' => 'required|numeric|min:0',
+            'buffer_stock_days' => 'required|numeric|min:0',
+        ];
     }
 
     /**

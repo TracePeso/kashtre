@@ -48,8 +48,12 @@ jobs:
             echo "Resetting to staging branch..."
             git reset --hard origin/staging
 
+            echo "Fixing Livewire folder casing for Linux..."
+            bash scripts/fix-livewire-case-folders.sh "$DEPLOY_PATH"
+
             echo "Installing PHP dependencies..."
             composer install --no-dev --optimize-autoloader --no-interaction
+            composer dump-autoload -o --no-interaction
 
             echo "Installing Node dependencies..."
             npm install --no-audit --no-fund

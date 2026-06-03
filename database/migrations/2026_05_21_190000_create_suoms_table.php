@@ -1,9 +1,9 @@
 <?php
 
 use App\Models\ItemUnit;
-use App\Models\Suom;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -27,7 +27,7 @@ return new class extends Migration
         ItemUnit::query()
             ->where('business_id', '!=', 1)
             ->each(function (ItemUnit $unit) {
-                Suom::query()->firstOrCreate(
+                DB::table('suoms')->updateOrInsert(
                     [
                         'business_id' => $unit->business_id,
                         'name' => $unit->name,
@@ -36,6 +36,8 @@ return new class extends Migration
                         'uuid' => (string) Str::uuid(),
                         'description' => $unit->description,
                         'is_active' => true,
+                        'created_at' => now(),
+                        'updated_at' => now(),
                     ]
                 );
             });
