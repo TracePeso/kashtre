@@ -228,6 +228,83 @@ class HrLastNodeStaffAssignmentTest extends TestCase
         ]);
     }
 
+    public function test_last_node_staff_prompt_stays_populated_if_client_space_modal_unit_state_is_cleared(): void
+    {
+        $user = User::factory()->create([
+            'is_hr_admin' => true,
+            'permissions' => ['Add HR Setup'],
+        ]);
+
+        $organization = Organization::create([
+            'name' => 'Leaf Prompt Persistence Org',
+            'external_business_uuid' => 'leaf-prompt-persistence-org',
+            'weekend_days' => [0, 6],
+        ]);
+
+        $rootLevel = HrOrganizationTierLevel::create([
+            'organization_id' => $organization->id,
+            'name' => 'Division',
+            'level_order' => 1,
+        ]);
+
+        $leafLevel = HrOrganizationTierLevel::create([
+            'organization_id' => $organization->id,
+            'name' => 'Unit',
+            'level_order' => 2,
+        ]);
+
+        $rootNode = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => null,
+            'tier_level_id' => $rootLevel->id,
+            'name' => 'Division',
+            'type' => 'Division',
+            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+        ]);
+
+        $leafNode = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => $rootNode->id,
+            'tier_level_id' => $leafLevel->id,
+            'name' => 'Unit A',
+            'type' => 'Unit',
+            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+        ]);
+
+        $clientSpace = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => null,
+            'name' => 'Ward A',
+            'type' => 'Client Space',
+            'unit_kind' => HrOrganizationalUnit::KIND_CLIENT_SPACE,
+        ]);
+
+        $staffAssignment = StaffAssignment::create([
+            'organization_id' => $organization->id,
+            'organizational_unit_id' => $leafNode->id,
+            'staff_uuid' => 'prompt-persistence-staff',
+            'staff_name' => 'Prompt Nurse',
+            'staff_title' => 'Nurse',
+            'assignment_type' => 'primary',
+            'status' => 'active',
+            'assigned_at' => now(),
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_organization_id' => $organization->id]);
+
+        Livewire::test(OrganizationalStructure::class)
+            ->call('openLeafClientSpacesModal', $leafNode->id)
+            ->set('selectedLeafClientSpaceIds', [$clientSpace->id])
+            ->call('saveLeafClientSpaces')
+            ->assertSet('showLeafStaffModal', true)
+            ->assertSet('selectedLeafStaffUnitId', $leafNode->id)
+            ->set('selectedLeafUnitId', null)
+            ->assertSee($leafNode->name)
+            ->assertSee($clientSpace->name)
+            ->assertSee($staffAssignment->staff_name);
+    }
+
     public function test_dl_test_staa_assignment_validates_single_staff_member_can_link_to_multiple_client_spaces_with_conflict_checks(): void
     {
         $user = User::factory()->create([

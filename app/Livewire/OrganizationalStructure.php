@@ -35,6 +35,7 @@ class OrganizationalStructure extends Component
     public ?int $selectedLeafUnitId = null;
     public array $selectedLeafClientSpaceIds = [];
     public bool $showLeafStaffModal = false;
+    public ?int $selectedLeafStaffUnitId = null;
     public array $selectedLeafTargetClientSpaceIds = [];
     public array $selectedLeafStaffAssignmentIds = [];
     public bool $canManageLeafClientSpaceStaff = false;
@@ -440,6 +441,7 @@ class OrganizationalStructure extends Component
 
         $this->resetValidation();
         $this->selectedLeafUnitId = $leafUnit->id;
+        $this->selectedLeafStaffUnitId = $leafUnit->id;
         $this->selectedLeafTargetClientSpaceIds = $clientSpaceId && $attachedClientSpaceIds->contains((int) $clientSpaceId)
             ? [(int) $clientSpaceId]
             : [];
@@ -593,16 +595,16 @@ class OrganizationalStructure extends Component
         }
 
         $this->validate([
-            'selectedLeafUnitId' => 'required|integer|exists:hr_organizational_units,id',
+            'selectedLeafStaffUnitId' => 'required|integer|exists:hr_organizational_units,id',
             'selectedLeafTargetClientSpaceIds' => 'required|array|min:1',
             'selectedLeafTargetClientSpaceIds.*' => 'integer|distinct|exists:hr_organizational_units,id',
             'selectedLeafStaffAssignmentIds' => 'required|array|min:1',
             'selectedLeafStaffAssignmentIds.*' => 'integer|distinct|exists:hr_staff_assignments,id',
         ]);
 
-        $leafUnit = $this->lowestRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId);
+        $leafUnit = $this->lowestRoutingUnitForOrganization($org, $this->activeLeafStaffUnitId() ?? 0);
         if (! $leafUnit) {
-            $this->addError('selectedLeafUnitId', 'Choose a valid last routing node.');
+            $this->addError('selectedLeafStaffUnitId', 'Choose a valid last routing node.');
 
             return;
         }
@@ -716,13 +718,16 @@ class OrganizationalStructure extends Component
             ])
             ->orderBy('name')
             ->get() : collect();
-        $selectedLeafUnit = $org && $this->selectedLeafUnitId
-            ? $this->selectedLeafRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId)
+        $selectedLeafUnitId = $this->showLeafStaffModal
+            ? $this->activeLeafStaffUnitId()
+            : $this->selectedLeafUnitId;
+        $selectedLeafUnit = $org && $selectedLeafUnitId
+            ? $this->selectedLeafRoutingUnitForOrganization($org, (int) $selectedLeafUnitId)
             : null;
-        $leafClientSpaceOptions = $org && $this->selectedLeafUnitId
+        $leafClientSpaceOptions = $org && $selectedLeafUnitId
             ? $this->attachedClientSpacesForSelectedLeaf($org)
             : collect();
-        $leafStaffAssignments = $org && $this->selectedLeafUnitId
+        $leafStaffAssignments = $org && $selectedLeafUnitId
             ? $this->availableLeafStaffAssignments($org)
             : collect();
         $canManageLeafClientSpaceStaff = $this->canManageLeafClientSpaceStaff;
@@ -949,11 +954,12 @@ class OrganizationalStructure extends Component
 
     private function attachedClientSpacesForSelectedLeaf(Organization $org)
     {
-        if (! $this->selectedLeafUnitId) {
+        $leafUnitId = $this->activeLeafStaffUnitId();
+        if (! $leafUnitId) {
             return collect();
         }
 
-        $leafUnit = $this->selectedLeafRoutingUnitForOrganization($org, (int) $this->selectedLeafUnitId);
+        $leafUnit = $this->selectedLeafRoutingUnitForOrganization($org, $leafUnitId);
         if (! $leafUnit) {
             return collect();
         }
@@ -991,13 +997,14 @@ class OrganizationalStructure extends Component
 
     private function availableLeafStaffAssignments(Organization $org)
     {
-        if (! $this->selectedLeafUnitId) {
+        $leafUnitId = $this->activeLeafStaffUnitId();
+        if (! $leafUnitId) {
             return collect();
         }
 
         return StaffAssignment::query()
             ->where('organization_id', $org->id)
-            ->where('organizational_unit_id', (int) $this->selectedLeafUnitId)
+            ->where('organizational_unit_id', $leafUnitId)
             ->whereNotIn('status', ['inactive', 'orphaned'])
             ->with([
                 'clientSpaceStaffAssignments' => fn ($query) => $query
@@ -1047,11 +1054,17 @@ class OrganizationalStructure extends Component
     private function openLeafStaffPrompt(int $leafUnitId, array $clientSpaceIds): void
     {
         $this->selectedLeafUnitId = $leafUnitId;
+        $this->selectedLeafStaffUnitId = $leafUnitId;
         $this->selectedLeafTargetClientSpaceIds = array_values(array_unique(array_map('intval', $clientSpaceIds)));
         $this->selectedLeafStaffAssignmentIds = [];
         $this->autoPromptLeafClientSpaces = false;
         $this->autoPromptLeafStaffAssignments = true;
         $this->showLeafStaffModal = true;
+    }
+
+    private function activeLeafStaffUnitId(): ?int
+    {
+        return $this->selectedLeafStaffUnitId ?? $this->selectedLeafUnitId;
     }
 
     private function resetLeafClientSpacesModal(): void
@@ -1066,6 +1079,7 @@ class OrganizationalStructure extends Component
     {
         $this->showLeafStaffModal = false;
         $this->selectedLeafUnitId = null;
+        $this->selectedLeafStaffUnitId = null;
         $this->selectedLeafTargetClientSpaceIds = [];
         $this->selectedLeafStaffAssignmentIds = [];
         $this->autoPromptLeafStaffAssignments = false;
