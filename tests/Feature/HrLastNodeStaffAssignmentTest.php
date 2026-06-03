@@ -307,6 +307,7 @@ class HrLastNodeStaffAssignmentTest extends TestCase
             ->call('saveLeafClientSpaces')
             ->assertSet('showLeafStaffModal', true)
             ->assertSet('selectedLeafStaffUnitId', $leafNode->id)
+            ->assertSet('selectedLeafClientSpaceIds', [$clientSpace->id, $clientSpaceB->id])
             ->assertSet('selectedLeafTargetClientSpaceId', null)
             ->set('selectedLeafUnitId', null)
             ->assertSee($leafNode->name)

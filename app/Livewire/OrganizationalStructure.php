@@ -606,6 +606,7 @@ class OrganizationalStructure extends Component
         $this->resetValidation();
         $this->selectedLeafUnitId = $leafUnit->id;
         $this->selectedLeafStaffUnitId = $leafUnit->id;
+        $this->selectedLeafClientSpaceIds = $attachedClientSpaceIds->all();
         $this->selectedLeafTargetClientSpaceId = $clientSpaceId && $attachedClientSpaceIds->contains((int) $clientSpaceId)
             ? (int) $clientSpaceId
             : null;
@@ -766,7 +767,6 @@ class OrganizationalStructure extends Component
             && $this->canManageLeafClientSpaceStaff
         ) {
             $this->showLeafClientSpacesModal = false;
-            $this->selectedLeafClientSpaceIds = [];
             $this->openLeafStaffPrompt($leafUnitId, $selectedClientSpaceIdsForStaffPrompt);
             session()->flash('status', 'Client spaces saved. Choose a client space, then link last-node staff to it.');
 
@@ -1341,30 +1341,41 @@ class OrganizationalStructure extends Component
             return collect();
         }
 
-        return $leafUnit->linkedClientSpaces()
+        $attachedClientSpaces = $leafUnit->linkedClientSpaces()
             ->withCount([
                 'staffAssignments as active_staff_count' => fn ($query) => $query->where('status', 'active'),
                 'secondaryStaffAssignments as secondary_staff_count',
             ])
             ->orderBy('hr_organizational_units.name')
-            ->get()
-            ->whenEmpty(function ($collection) use ($org) {
-                $selectedId = $this->selectedLeafTargetClientSpaceId ? (int) $this->selectedLeafTargetClientSpaceId : null;
+            ->get();
 
-                if (! $selectedId) {
-                    return $collection;
-                }
+        if ($attachedClientSpaces->isNotEmpty()) {
+            return $attachedClientSpaces;
+        }
 
-                return HrOrganizationalUnit::where('organization_id', $org->id)
-                    ->clientSpaces()
-                    ->whereKey($selectedId)
-                    ->withCount([
-                        'staffAssignments as active_staff_count' => fn ($query) => $query->where('status', 'active'),
-                        'secondaryStaffAssignments as secondary_staff_count',
-                    ])
-                    ->orderBy('name')
-                    ->get();
-            });
+        $fallbackClientSpaceIds = collect($this->selectedLeafClientSpaceIds)
+            ->filter(fn ($id): bool => filled($id))
+            ->map(fn ($id): int => (int) $id)
+            ->when(
+                filled($this->selectedLeafTargetClientSpaceId),
+                fn ($ids) => $ids->push((int) $this->selectedLeafTargetClientSpaceId)
+            )
+            ->unique()
+            ->values();
+
+        if ($fallbackClientSpaceIds->isEmpty()) {
+            return $attachedClientSpaces;
+        }
+
+        return HrOrganizationalUnit::where('organization_id', $org->id)
+            ->clientSpaces()
+            ->whereIn('id', $fallbackClientSpaceIds)
+            ->withCount([
+                'staffAssignments as active_staff_count' => fn ($query) => $query->where('status', 'active'),
+                'secondaryStaffAssignments as secondary_staff_count',
+            ])
+            ->orderBy('name')
+            ->get();
     }
 
     private function availableLeafStaffAssignments(Organization $org)
@@ -1425,8 +1436,16 @@ class OrganizationalStructure extends Component
 
     private function openLeafStaffPrompt(int $leafUnitId, array $clientSpaceIds): void
     {
+        $normalizedClientSpaceIds = collect($clientSpaceIds)
+            ->filter(fn ($id): bool => filled($id))
+            ->map(fn ($id): int => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
         $this->selectedLeafUnitId = $leafUnitId;
         $this->selectedLeafStaffUnitId = $leafUnitId;
+        $this->selectedLeafClientSpaceIds = $normalizedClientSpaceIds;
         $this->selectedLeafTargetClientSpaceId = null;
         $this->selectedLeafStaffAssignmentIds = [];
         $this->autoPromptLeafClientSpaces = false;
