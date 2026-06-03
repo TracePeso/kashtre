@@ -444,11 +444,39 @@ class OrganizationalStructure extends Component
         $this->selectedLeafStaffUnitId = $leafUnit->id;
         $this->selectedLeafTargetClientSpaceId = $clientSpaceId && $attachedClientSpaceIds->contains((int) $clientSpaceId)
             ? (int) $clientSpaceId
-            : (int) $attachedClientSpaceIds->first();
+            : null;
         $this->selectedLeafStaffAssignmentIds = [];
         $this->autoPromptLeafClientSpaces = false;
         $this->autoPromptLeafStaffAssignments = false;
         $this->showLeafStaffModal = true;
+    }
+
+    public function selectLeafTargetClientSpace(int $clientSpaceId): void
+    {
+        $org = Organization::current();
+        if (! $org) {
+            return;
+        }
+
+        $clientSpace = $this->attachedClientSpacesForSelectedLeaf($org)
+            ->first(fn (HrOrganizationalUnit $unit): bool => (int) $unit->id === $clientSpaceId);
+
+        if (! $clientSpace) {
+            $this->addError('selectedLeafTargetClientSpaceId', 'Choose an attached client space from this last routing node.');
+
+            return;
+        }
+
+        $this->resetValidation();
+        $this->selectedLeafTargetClientSpaceId = (int) $clientSpace->id;
+        $this->selectedLeafStaffAssignmentIds = [];
+    }
+
+    public function backToLeafClientSpacePicker(): void
+    {
+        $this->resetValidation();
+        $this->selectedLeafTargetClientSpaceId = null;
+        $this->selectedLeafStaffAssignmentIds = [];
     }
 
     public function saveLeafClientSpaces(ClientSpaceRoutingService $clientSpaceRoutingService): void
@@ -962,7 +990,6 @@ class OrganizationalStructure extends Component
                 'staffAssignments as active_staff_count' => fn ($query) => $query->where('status', 'active'),
                 'secondaryStaffAssignments as secondary_staff_count',
             ])
-            ->orderByDesc('hr_client_space_routes.is_primary')
             ->orderBy('hr_organizational_units.name')
             ->get()
             ->whenEmpty(function ($collection) use ($org) {
@@ -1044,8 +1071,7 @@ class OrganizationalStructure extends Component
     {
         $this->selectedLeafUnitId = $leafUnitId;
         $this->selectedLeafStaffUnitId = $leafUnitId;
-        $clientSpaceIds = array_values(array_unique(array_map('intval', $clientSpaceIds)));
-        $this->selectedLeafTargetClientSpaceId = $clientSpaceIds[0] ?? null;
+        $this->selectedLeafTargetClientSpaceId = null;
         $this->selectedLeafStaffAssignmentIds = [];
         $this->autoPromptLeafClientSpaces = false;
         $this->autoPromptLeafStaffAssignments = true;

@@ -88,7 +88,7 @@ class HrLastNodeStaffAssignmentTest extends TestCase
             ->set('selectedLeafClientSpaceIds', [$clientSpace->id])
             ->call('saveLeafClientSpaces')
             ->assertSet('showLeafStaffModal', true)
-            ->assertSet('selectedLeafTargetClientSpaceId', $clientSpace->id);
+            ->assertSet('selectedLeafTargetClientSpaceId', null);
 
         $this->assertTrue($leafNode->fresh()->isMarkedAsLastRoutingNode());
         $this->assertTrue($clientSpace->fresh()->isLinkedToRoutingNode($leafNode->fresh()));
@@ -307,18 +307,22 @@ class HrLastNodeStaffAssignmentTest extends TestCase
             ->call('saveLeafClientSpaces')
             ->assertSet('showLeafStaffModal', true)
             ->assertSet('selectedLeafStaffUnitId', $leafNode->id)
+            ->assertSet('selectedLeafTargetClientSpaceId', null)
             ->set('selectedLeafUnitId', null)
             ->assertSee($leafNode->name)
             ->assertSee($clientSpace->name)
             ->assertSee($clientSpaceB->name)
+            ->assertDontSee('primary staff')
+            ->call('selectLeafTargetClientSpace', $clientSpace->id)
             ->assertSee($staffAssignment->staff_name)
-            ->set('selectedLeafTargetClientSpaceId', $clientSpace->id)
             ->set('selectedLeafStaffAssignmentIds', [$staffAssignment->id])
             ->call('assignLeafStaffToClientSpaces')
             ->assertHasNoErrors()
             ->assertSet('showLeafStaffModal', true)
             ->assertSet('selectedLeafStaffAssignmentIds', [])
-            ->set('selectedLeafTargetClientSpaceId', $clientSpaceB->id)
+            ->call('backToLeafClientSpacePicker')
+            ->assertSet('selectedLeafTargetClientSpaceId', null)
+            ->call('selectLeafTargetClientSpace', $clientSpaceB->id)
             ->set('selectedLeafStaffAssignmentIds', [$staffAssignment->id])
             ->call('assignLeafStaffToClientSpaces')
             ->assertHasNoErrors()
@@ -328,6 +332,14 @@ class HrLastNodeStaffAssignmentTest extends TestCase
         $this->assertDatabaseHas('hr_client_space_staff_assignments', [
             'organization_id' => $organization->id,
             'client_space_unit_id' => $clientSpace->id,
+            'staff_assignment_id' => $staffAssignment->id,
+            'assignment_type' => HrClientSpaceStaffAssignment::TYPE_SECONDARY,
+            'status' => HrClientSpaceStaffAssignment::STATUS_ACTIVE,
+        ]);
+
+        $this->assertDatabaseHas('hr_client_space_staff_assignments', [
+            'organization_id' => $organization->id,
+            'client_space_unit_id' => $clientSpaceB->id,
             'staff_assignment_id' => $staffAssignment->id,
             'assignment_type' => HrClientSpaceStaffAssignment::TYPE_SECONDARY,
             'status' => HrClientSpaceStaffAssignment::STATUS_ACTIVE,
@@ -419,7 +431,8 @@ class HrLastNodeStaffAssignmentTest extends TestCase
             ->set('selectedLeafClientSpaceIds', [$clientSpaceA->id, $clientSpaceB->id])
             ->call('saveLeafClientSpaces')
             ->assertSet('showLeafStaffModal', true)
-            ->assertSet('selectedLeafTargetClientSpaceId', $clientSpaceA->id)
+            ->assertSet('selectedLeafTargetClientSpaceId', null)
+            ->call('selectLeafTargetClientSpace', $clientSpaceA->id)
             ->set('selectedLeafStaffAssignmentIds', [$staffAssignment->id])
             ->call('assignLeafStaffToClientSpaces')
             ->assertHasNoErrors();

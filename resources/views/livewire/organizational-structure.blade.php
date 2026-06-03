@@ -318,57 +318,71 @@
             </p>
             @if($autoPromptLeafStaffAssignments)
                 <div class="mb-4 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-                    This prompt was opened from the final-node setup flow. Choose a client space, then select the staff who should be linked to it before you leave this step.
+                    This prompt was opened from the final-node setup flow. Choose a client space first, then add the last-node staff who should be linked to it before you leave this step.
                 </div>
             @endif
 
-            <form wire:submit.prevent="assignLeafStaffToClientSpaces">
-                <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Attached client spaces</label>
-                        <div class="mt-1 max-h-80 overflow-y-auto rounded-md border border-gray-300">
-                            @forelse($leafClientSpaceOptions as $clientSpace)
-                                @php($isSelectedClientSpace = (int) $selectedLeafTargetClientSpaceId === (int) $clientSpace->id)
-                                <button
-                                    type="button"
-                                    wire:click="$set('selectedLeafTargetClientSpaceId', {{ $clientSpace->id }})"
-                                    class="flex w-full items-start gap-3 border-b border-gray-100 px-3 py-2 text-left hover:bg-gray-50 {{ $isSelectedClientSpace ? 'bg-blue-50 ring-1 ring-inset ring-blue-200' : '' }}"
-                                >
-                                    <span class="mt-1 inline-flex h-4 w-4 items-center justify-center rounded-full border {{ $isSelectedClientSpace ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300 bg-white' }}">
-                                        @if($isSelectedClientSpace)
-                                            <span class="h-1.5 w-1.5 rounded-full bg-white"></span>
+            @if(! $selectedLeafTargetClientSpaceId)
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Client spaces on this node</label>
+                    <p class="mt-1 text-xs text-gray-500">
+                        Choose a client space to open staff linking for it.
+                    </p>
+                    <div class="mt-1 max-h-80 overflow-y-auto rounded-md border border-gray-300">
+                        @forelse($leafClientSpaceOptions as $clientSpace)
+                            <button
+                                type="button"
+                                wire:click="selectLeafTargetClientSpace({{ $clientSpace->id }})"
+                                class="flex w-full items-start justify-between gap-3 border-b border-gray-100 px-3 py-3 text-left hover:bg-gray-50"
+                            >
+                                <span class="min-w-0 text-sm text-gray-700">
+                                    <span class="block font-medium text-gray-900">{{ $clientSpace->name }}</span>
+                                    <span class="block text-xs text-gray-500">
+                                        @if(($clientSpace->secondary_staff_count ?? 0) > 0)
+                                            {{ (int) $clientSpace->secondary_staff_count }} staff linked here
+                                        @else
+                                            No staff linked here yet
                                         @endif
                                     </span>
-                                    <span class="min-w-0 text-sm text-gray-700">
-                                        <span class="block font-medium text-gray-900">{{ $clientSpace->name }}</span>
-                                        <span class="block text-xs text-gray-500">
-                                            {{ (int) $clientSpace->active_staff_count }} primary staff
-                                            @if(($clientSpace->secondary_staff_count ?? 0) > 0)
-                                                | {{ (int) $clientSpace->secondary_staff_count }} linked node staff
-                                            @endif
-                                        </span>
-                                    </span>
-                                </button>
-                            @empty
-                                <div class="px-3 py-4 text-sm text-gray-500">
-                                    No client spaces are attached to this last routing node yet.
-                                </div>
-                            @endforelse
+                                </span>
+                                <span class="shrink-0 text-xs font-semibold uppercase tracking-wide text-blue-600">
+                                    Add Staff
+                                </span>
+                            </button>
+                        @empty
+                            <div class="px-3 py-4 text-sm text-gray-500">
+                                No client spaces are attached to this last routing node yet.
+                            </div>
+                        @endforelse
+                    </div>
+                    @error('selectedLeafTargetClientSpaceId') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                </div>
+
+                <div class="mt-5 sm:flex sm:flex-row-reverse">
+                    <button type="button" wire:click="$set('showLeafStaffModal', false)" class="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:w-auto sm:text-sm">
+                        Close
+                    </button>
+                </div>
+            @else
+                <form wire:submit.prevent="assignLeafStaffToClientSpaces">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Add staff to client space</label>
+                            <p class="mt-1 text-sm text-gray-600">
+                                {{ optional($leafClientSpaceOptions->firstWhere('id', $selectedLeafTargetClientSpaceId))->name ?? 'Selected client space' }}
+                            </p>
                         </div>
-                        @error('selectedLeafTargetClientSpaceId') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                        <button type="button" wire:click="backToLeafClientSpacePicker" class="shrink-0 text-sm font-medium text-blue-600 hover:text-blue-800">
+                            Back to Client Spaces
+                        </button>
                     </div>
 
-                    <div>
+                    <div class="mt-4">
                         <label class="block text-sm font-medium text-gray-700">Last-node staff</label>
-                        @if($selectedLeafTargetClientSpaceId)
-                            <p class="mt-1 text-xs text-gray-500">
-                                Linking to:
-                                <span class="font-medium text-gray-700">
-                                    {{ optional($leafClientSpaceOptions->firstWhere('id', $selectedLeafTargetClientSpaceId))->name ?? 'Selected client space' }}
-                                </span>
-                            </p>
-                        @endif
-                        <div class="mt-1 max-h-80 overflow-y-auto rounded-md border border-gray-300">
+                        <p class="mt-1 text-xs text-gray-500">
+                            These staff remain primary on {{ $selectedLeafUnit?->name ?? 'this last node' }} and are additionally linked to the selected client space.
+                        </p>
+                        <div class="mt-2 max-h-80 overflow-y-auto rounded-md border border-gray-300">
                             @forelse($leafStaffAssignments as $assignment)
                                 @php($linkedSpaceNames = $assignment->clientSpaceStaffAssignments->pluck('clientSpace.name')->filter()->unique()->values())
                                 <label class="flex cursor-pointer items-start gap-3 border-b border-gray-100 px-3 py-2 hover:bg-gray-50">
@@ -402,17 +416,17 @@
                         @error('selectedLeafStaffAssignmentIds') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                         @error('selectedLeafStaffAssignmentIds.*') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                     </div>
-                </div>
 
-                <div class="mt-5 sm:flex sm:flex-row-reverse">
-                    <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent px-4 py-2 bg-gray-900 text-base font-medium text-white hover:bg-gray-800 disabled:opacity-50 sm:ml-3 sm:w-auto sm:text-sm" @disabled(! $selectedLeafTargetClientSpaceId || empty($selectedLeafStaffAssignmentIds))>
-                        Link Staff
-                    </button>
-                    <button type="button" wire:click="$set('showLeafStaffModal', false)" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
-                        Cancel
-                    </button>
-                </div>
-            </form>
+                    <div class="mt-5 sm:flex sm:flex-row-reverse">
+                        <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent px-4 py-2 bg-gray-900 text-base font-medium text-white hover:bg-gray-800 disabled:opacity-50 sm:ml-3 sm:w-auto sm:text-sm" @disabled(empty($selectedLeafStaffAssignmentIds))>
+                            Link Staff
+                        </button>
+                        <button type="button" wire:click="$set('showLeafStaffModal', false)" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            @endif
         </div>
     </div>
     @endif

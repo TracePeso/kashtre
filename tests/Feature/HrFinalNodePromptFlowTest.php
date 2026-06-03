@@ -132,7 +132,7 @@ class HrFinalNodePromptFlowTest extends TestCase
             ->assertSet('showLeafClientSpacesModal', false)
             ->assertSet('showLeafStaffModal', true)
             ->assertSet('selectedLeafUnitId', $leafNode->id)
-            ->assertSet('selectedLeafTargetClientSpaceId', $clientSpace->id)
+            ->assertSet('selectedLeafTargetClientSpaceId', null)
             ->assertSet('autoPromptLeafStaffAssignments', true);
 
         $this->assertTrue($leafNode->fresh()->isMarkedAsLastRoutingNode());
