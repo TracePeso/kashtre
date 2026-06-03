@@ -4,11 +4,13 @@ namespace Tests\Feature;
 
 use App\Http\Middleware\VerifyCsrfToken;
 use App\Models\Business;
+use App\Models\HrBiometricDevice;
 use App\Models\HrStaffUnavailability;
 use App\Models\Organization;
 use App\Models\StaffAssignment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
 
 class HrBiometricAttendanceFlowTest extends TestCase
@@ -22,17 +24,21 @@ class HrBiometricAttendanceFlowTest extends TestCase
         $this->withoutMiddleware(VerifyCsrfToken::class);
     }
 
-    public function test_attendance_template_shows_explicit_login_and_logout_actions(): void
+    public function test_biometric_template_shows_clocking_actions_without_login_and_logout_wording(): void
     {
         $view = file_get_contents(resource_path('views/hr/biometrics/index.blade.php'));
 
         $this->assertIsString($view);
-        $this->assertStringContainsString("Attendance Login / Logout", $view);
-        $this->assertStringContainsString("Login / Clock In", $view);
-        $this->assertStringContainsString("Logout / Clock Out", $view);
+        $this->assertStringContainsString("Clocking", $view);
+        $this->assertStringContainsString("Clock In", $view);
+        $this->assertStringContainsString("Clock Out", $view);
+        $this->assertStringNotContainsString("Attendance Clocking", $view);
+        $this->assertStringNotContainsString("Attendance Login / Logout", $view);
+        $this->assertStringNotContainsString("Login / Clock In", $view);
+        $this->assertStringNotContainsString("Logout / Clock Out", $view);
         $this->assertLessThan(
             strpos($view, 'Enrolled Profiles'),
-            strpos($view, 'Attendance Login / Logout')
+            strpos($view, 'Clocking')
         );
     }
 
@@ -181,16 +187,118 @@ class HrBiometricAttendanceFlowTest extends TestCase
         $response->assertJsonStructure(['publicKey' => ['challenge', 'rpId', 'timeout', 'userVerification', 'allowCredentials']]);
     }
 
-    public function test_hr_sidebar_lists_attendance_before_people(): void
+    public function test_hr_sidebar_lists_clocking_before_people(): void
     {
         $sidebar = file_get_contents(resource_path('views/components/hr/sidebar.blade.php'));
 
+        $dashboardPosition = strpos($sidebar, "'label' => 'Dashboard'");
+        $clockingPosition = strpos($sidebar, "'label' => 'Clocking'");
         $attendancePosition = strpos($sidebar, "'label' => 'Attendance'");
+        $biometricAttendancePosition = strpos($sidebar, "'label' => 'Biometric Attendance'");
         $peoplePosition = strpos($sidebar, "'label' => 'People'");
 
+        $this->assertNotFalse($dashboardPosition);
+        $this->assertNotFalse($clockingPosition);
         $this->assertNotFalse($attendancePosition);
+        $this->assertNotFalse($biometricAttendancePosition);
         $this->assertNotFalse($peoplePosition);
-        $this->assertLessThan($peoplePosition, $attendancePosition);
+        $this->assertLessThan($clockingPosition, $dashboardPosition);
+        $this->assertLessThan($attendancePosition, $clockingPosition);
+        $this->assertLessThan($biometricAttendancePosition, $attendancePosition);
+        $this->assertLessThan($peoplePosition, $clockingPosition);
+    }
+
+    public function test_hr_user_can_register_legacy_biometric_machine(): void
+    {
+        [$user, $organization] = $this->createHrBiometricContext(['Manage HR Biometrics']);
+
+        $this->actingAs($user);
+
+        $response = $this
+            ->from(route('hr.biometrics.attendance'))
+            ->post(route('hr.biometrics.legacy-devices.store'), [
+                'legacy_device_name' => 'Main Door Terminal',
+                'legacy_device_provider' => 'ZKTeco',
+                'legacy_device_identifier' => 'ZK-MAIN-001',
+                'legacy_device_location' => 'Main Entrance',
+                'legacy_device_notes' => 'Front office device',
+            ]);
+
+        $response->assertRedirect(route('hr.biometrics.attendance'));
+        $response->assertSessionHas('status', 'Biometric machine registered.');
+        $this->assertDatabaseHas('hr_biometric_devices', [
+            'organization_id' => $organization->id,
+            'name' => 'Main Door Terminal',
+            'provider' => 'zkteco',
+            'device_id' => 'ZK-MAIN-001',
+            'location' => 'Main Entrance',
+            'registered_by_user_id' => $user->id,
+            'is_active' => true,
+        ]);
+    }
+
+    public function test_offline_clocking_upload_uses_selected_registered_machine(): void
+    {
+        [$user, $organization] = $this->createHrBiometricContext(['Manage HR Biometrics']);
+
+        $assignment = StaffAssignment::create([
+            'organization_id' => $organization->id,
+            'staff_uuid' => 'staff-001',
+            'staff_name' => 'Jane Doe',
+            'assignment_type' => 'primary',
+            'status' => 'active',
+            'assigned_at' => now(),
+        ]);
+
+        $device = HrBiometricDevice::create([
+            'organization_id' => $organization->id,
+            'name' => 'Main Door Terminal',
+            'provider' => 'zkteco',
+            'device_id' => 'ZK-MAIN-001',
+            'location' => 'Main Entrance',
+            'is_active' => true,
+            'registered_by_user_id' => $user->id,
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('legacy-clocking.csv', implode("\n", [
+            'uid,user_id,name,timestamp,verify_type,punch_type,result',
+            '1,staff-001,Jane Doe,2026-06-03 08:05:00,fingerprint,in,success',
+        ]));
+
+        $this->actingAs($user);
+
+        $response = $this
+            ->from(route('hr.biometrics.attendance'))
+            ->post(route('hr.biometrics.legacy-device-import'), [
+                'legacy_biometric_device_id' => $device->id,
+                'legacy_device_file' => $file,
+            ]);
+
+        $response->assertRedirect(route('hr.biometrics.attendance'));
+        $response->assertSessionHas('status', fn (string $status): bool => str_contains($status, 'Imported 1 offline clocking events from Main Door Terminal.'));
+
+        $this->assertDatabaseHas('hr_biometric_verifications', [
+            'organization_id' => $organization->id,
+            'staff_assignment_id' => $assignment->id,
+            'staff_uuid' => 'staff-001',
+            'modality' => 'fingerprint',
+            'result' => 'success',
+            'provider' => 'zkteco',
+            'device_id' => 'ZK-MAIN-001',
+            'source_event_id' => '1',
+        ]);
+
+        $this->assertDatabaseHas('hr_attendance_ledger', [
+            'organization_id' => $organization->id,
+            'staff_assignment_id' => $assignment->id,
+            'staff_uuid' => 'staff-001',
+            'punch_type' => 'in',
+            'provider' => 'zkteco',
+            'device_id' => 'ZK-MAIN-001',
+            'source_event_id' => '1',
+        ]);
+
+        $this->assertNotNull($device->fresh()?->last_synced_at);
     }
 
     /**

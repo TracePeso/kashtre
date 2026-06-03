@@ -171,9 +171,6 @@
                                             <td class="px-4 py-3 align-top">
                                                 <p class="text-sm font-semibold text-gray-900">{{ $version->version_label }}</p>
                                                 <p class="mt-1 text-xs text-gray-500">Abs: {{ $this->formatHours($version->weekly_absolute_ceiling_minutes) }}</p>
-                                                @foreach($version->holidayCompensatoryCreditSettingLabels() as $holidayCreditLabel)
-                                                    <p class="mt-1 text-xs text-gray-500">Holiday credit: {{ $holidayCreditLabel }}</p>
-                                                @endforeach
                                             </td>
                                             <td class="px-4 py-3 align-top text-sm text-gray-700">{{ $this->formatDateRange($version) }}</td>
                                             <td class="px-4 py-3 align-top text-sm text-gray-700">{{ $this->formatHours($version->weekly_standard_minutes) }}</td>
@@ -224,9 +221,6 @@
                                     <p class="text-sm text-gray-700">Daily cap: {{ $this->formatHours($currentVersion->daily_net_cap_minutes) }}</p>
                                     <p class="text-sm text-gray-700">Rest gap: {{ $this->formatHours($currentVersion->minimum_rest_gap_minutes) }}</p>
                                     <p class="text-sm text-gray-700">Anchor window: {{ $this->formatHours($currentVersion->anchor_window_minutes) }}</p>
-                                    @foreach($currentVersion->holidayCompensatoryCreditSettingLabels() as $holidayCreditLabel)
-                                        <p class="text-sm text-gray-700">Holiday credit: {{ $holidayCreditLabel }}</p>
-                                    @endforeach
                                 </div>
                             @elseif($selectedPolicy->is_active)
                                 <p class="mt-3 text-sm text-amber-700">This policy is active, but there is no active version covering today.</p>
@@ -303,15 +297,6 @@
                                     <div class="rounded-md border border-gray-200 bg-white p-4">
                                         <p class="text-sm font-semibold text-gray-900">{{ $holidayCompensatoryCreditScopeOptions[\App\Models\HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY] }}</p>
                                         <div class="mt-3">
-                                            <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Credit Rule</label>
-                                            <select wire:model="crossingHolidayCreditRule" @disabled(! $canAddPolicies && ! $canEditPolicies) class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 sm:text-sm">
-                                                @foreach($holidayCompensatoryCreditPolicyOptions as $policyValue => $policyLabel)
-                                                    <option value="{{ $policyValue }}">{{ $policyLabel }}</option>
-                                                @endforeach
-                                            </select>
-                                            @error('crossingHolidayCreditRule') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
-                                        </div>
-                                        <div class="mt-3">
                                             <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Whole-Day Credit Days</label>
                                             <input type="number" min="0" step="0.25" wire:model="crossingHolidayCreditDays" @disabled(! $canAddPolicies && ! $canEditPolicies) class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 sm:text-sm">
                                             <p class="mt-1 text-xs text-gray-500">Crossing-holiday shifts earn 25%, 50%, 75% or 100% of this amount dynamically, based on how much of the shift falls on public-holiday dates.</p>
@@ -320,15 +305,6 @@
                                     </div>
                                     <div class="rounded-md border border-gray-200 bg-white p-4">
                                         <p class="text-sm font-semibold text-gray-900">{{ $holidayCompensatoryCreditScopeOptions[\App\Models\HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_WITHIN_PUBLIC_HOLIDAY] }}</p>
-                                        <div class="mt-3">
-                                            <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Credit Rule</label>
-                                            <select wire:model="withinHolidayCreditRule" @disabled(! $canAddPolicies && ! $canEditPolicies) class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 sm:text-sm">
-                                                @foreach($holidayCompensatoryCreditPolicyOptions as $policyValue => $policyLabel)
-                                                    <option value="{{ $policyValue }}">{{ $policyLabel }}</option>
-                                                @endforeach
-                                            </select>
-                                            @error('withinHolidayCreditRule') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
-                                        </div>
                                         <div class="mt-3">
                                             <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Credit Days</label>
                                             <input type="number" min="0" step="0.25" wire:model="withinHolidayCreditDays" @disabled(! $canAddPolicies && ! $canEditPolicies) class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 sm:text-sm">

@@ -289,43 +289,114 @@
         @endif
 
         @if ($canManageBiometrics && $activeBiometricPage === 'attendance')
-            <form method="POST" action="{{ route('hr.biometrics.legacy-device-import') }}" enctype="multipart/form-data" class="mb-8 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-                @csrf
-                <div class="grid grid-cols-1 gap-5 lg:grid-cols-3">
+            <div class="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
+                <form method="POST" action="{{ route('hr.biometrics.legacy-devices.store') }}" class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                    @csrf
+                    <div class="mb-5">
+                        <h2 class="text-base font-semibold text-gray-900">Register Biometric Machine</h2>
+                        <p class="mt-1 text-sm text-gray-500">Save each legacy clocking machine once so users can pick it during offline clocking uploads instead of retyping provider and terminal details.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700" for="legacy_device_name">Machine Name</label>
+                            <input id="legacy_device_name" name="legacy_device_name" value="{{ old('legacy_device_name') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue" placeholder="Main Door Terminal">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700" for="legacy_device_provider">Provider</label>
+                            <input id="legacy_device_provider" name="legacy_device_provider" value="{{ old('legacy_device_provider', 'zkteco') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700" for="legacy_device_identifier">Device ID</label>
+                            <input id="legacy_device_identifier" name="legacy_device_identifier" value="{{ old('legacy_device_identifier') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue" placeholder="ZK-MAIN-001">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700" for="legacy_device_location">Location</label>
+                            <input id="legacy_device_location" name="legacy_device_location" value="{{ old('legacy_device_location') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue" placeholder="Main Entrance">
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <label class="block text-sm font-medium text-gray-700" for="legacy_device_notes">Notes</label>
+                        <textarea id="legacy_device_notes" name="legacy_device_notes" rows="3" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue" placeholder="Optional machine notes">{{ old('legacy_device_notes') }}</textarea>
+                    </div>
+
+                    <button type="submit" class="mt-4 inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
+                        Register Machine
+                    </button>
+                </form>
+
+                <form method="POST" action="{{ route('hr.biometrics.legacy-device-import') }}" enctype="multipart/form-data" class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                    @csrf
+                    <div class="mb-5">
+                        <h2 class="text-base font-semibold text-gray-900">Upload Offline Clocking Data</h2>
+                        <p class="mt-1 text-sm text-gray-500">Choose a registered machine and upload the CSV export generated from that device.</p>
+                    </div>
+
                     <div>
-                        <h2 class="text-base font-semibold text-gray-900">Legacy Door Device Sync</h2>
-                        <p class="mt-1 text-sm text-gray-500">Import ZKTeco-style CSV/JSON access logs into the same verification history.</p>
+                        <label class="block text-sm font-medium text-gray-700" for="legacy_biometric_device_id">Registered Machine</label>
+                        <select id="legacy_biometric_device_id" name="legacy_biometric_device_id" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue" @disabled($legacyDevices->isEmpty())>
+                            <option value="">Select machine</option>
+                            @foreach ($legacyDevices as $legacyDevice)
+                                <option value="{{ $legacyDevice->id }}" @selected((string) old('legacy_biometric_device_id') === (string) $legacyDevice->id)>
+                                    {{ $legacyDevice->name }} | {{ strtoupper($legacyDevice->provider) }} | {{ $legacyDevice->device_id }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @if($legacyDevices->isEmpty())
+                            <p class="mt-2 text-xs text-amber-700">Register at least one machine before uploading offline clocking data.</p>
+                        @endif
                     </div>
 
-                    <div class="lg:col-span-2">
-                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="legacy_device_provider">Provider</label>
-                                <input id="legacy_device_provider" name="legacy_device_provider" value="{{ old('legacy_device_provider', 'zkteco') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="legacy_device_id">Device ID</label>
-                                <input id="legacy_device_id" name="legacy_device_id" value="{{ old('legacy_device_id') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue" placeholder="Main door terminal">
-                            </div>
-                        </div>
-
-                        <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="legacy_device_file">CSV / JSON Export</label>
-                                <input id="legacy_device_file" name="legacy_device_file" type="file" accept=".csv,.txt,.json,text/csv,application/json" class="mt-1 block w-full rounded-md border border-gray-300 text-sm shadow-sm file:mr-4 file:border-0 file:bg-gray-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white focus:border-brand-blue focus:ring-brand-blue">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="legacy_device_payload">Paste Events</label>
-                                <textarea id="legacy_device_payload" name="legacy_device_payload" rows="4" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue" placeholder="uid,user_id,name,timestamp,verify_type&#10;1001,42,Jane Doe,2026-04-27 08:05:00,fingerprint">{{ old('legacy_device_payload') }}</textarea>
-                            </div>
-                        </div>
-
-                        <button type="submit" class="mt-4 inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
-                            Sync Device Events
-                        </button>
+                    <div class="mt-4">
+                        <label class="block text-sm font-medium text-gray-700" for="legacy_device_file">Clocking CSV File</label>
+                        <input id="legacy_device_file" name="legacy_device_file" type="file" accept=".csv,.txt,text/csv" class="mt-1 block w-full rounded-md border border-gray-300 text-sm shadow-sm file:mr-4 file:border-0 file:bg-gray-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white focus:border-brand-blue focus:ring-brand-blue">
                     </div>
+
+                    <button type="submit" class="mt-4 inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2" @disabled($legacyDevices->isEmpty())>
+                        Upload Clocking Data
+                    </button>
+                </form>
+            </div>
+
+            <div class="mb-8 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-base font-semibold text-gray-900">Registered Machines</h2>
+                        <p class="mt-1 text-sm text-gray-500">Saved biometric machines available for offline clocking uploads.</p>
+                    </div>
+                    <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{{ $legacyDevices->count() }}</span>
                 </div>
-            </form>
+
+                @if ($legacyDevices->isEmpty())
+                    <p class="mt-4 text-sm text-gray-500">No biometric machines have been registered yet.</p>
+                @else
+                    <div class="mt-4 space-y-3">
+                        @foreach ($legacyDevices as $legacyDevice)
+                            <div class="rounded-md border border-gray-200 bg-gray-50 px-4 py-3">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <p class="text-sm font-semibold text-gray-900">{{ $legacyDevice->name }}</p>
+                                    <span class="rounded-full {{ $legacyDevice->is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700' }} px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide">
+                                        {{ $legacyDevice->is_active ? 'Active' : 'Inactive' }}
+                                    </span>
+                                </div>
+                                <p class="mt-1 text-xs text-gray-500">
+                                    {{ strtoupper($legacyDevice->provider) }} / {{ $legacyDevice->device_id }}
+                                    @if($legacyDevice->location)
+                                        / {{ $legacyDevice->location }}
+                                    @endif
+                                </p>
+                                @if($legacyDevice->last_synced_at)
+                                    <p class="mt-1 text-xs text-gray-500">Last upload: {{ $legacyDevice->last_synced_at->format('M j, Y H:i') }}</p>
+                                @endif
+                                @if($legacyDevice->notes)
+                                    <p class="mt-2 text-sm text-gray-600">{{ $legacyDevice->notes }}</p>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
         @endif
 
         @if ($canManageBiometrics && $activeBiometricPage === 'enrollment')
@@ -476,11 +547,11 @@
             </div>
         @endif
 
-        @if ($activeBiometricPage === 'attendance')
+        @if ($activeBiometricPage === 'clocking')
         <div class="mb-8 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <div class="mb-5">
-                <h2 class="text-base font-semibold text-gray-900">Attendance Clocking</h2>
-                <p class="mt-1 text-sm text-gray-500">Complete clock-in or clock-out from this page. The attendance action only completes after the office network and enabled geofence checks pass.</p>
+                <h2 class="text-base font-semibold text-gray-900">Clocking</h2>
+                <p class="mt-1 text-sm text-gray-500">Complete clock-in or clock-out from this page. The clocking action only completes after the office network and enabled geofence checks pass.</p>
             </div>
 
             <form method="POST" action="{{ route('hr.biometrics.verify') }}" class="space-y-4" data-biometric-form>
@@ -534,7 +605,7 @@
                     <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div>
                             <p class="text-sm font-semibold text-sky-900">Fingerprint attendance actions</p>
-                            <p class="mt-1 text-sm text-sky-800">Use the buttons below to authenticate with the staff member's fingerprint and complete `Clock In` or `Clock Out` directly from Attendance.</p>
+                            <p class="mt-1 text-sm text-sky-800">Use the buttons below to authenticate with the staff member's fingerprint and complete `Clock In` or `Clock Out` directly from Clocking.</p>
                         </div>
                         <div class="flex flex-wrap gap-3">
                             <button type="submit" data-punch-submit data-punch-type="in" data-punch-label="Clock In" class="inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">

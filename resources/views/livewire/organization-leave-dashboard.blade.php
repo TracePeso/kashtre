@@ -50,7 +50,7 @@
     </div>
     @endif
 
-    <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <div class="rounded-xl border border-amber-200 bg-white p-5 shadow-sm">
             <p class="text-sm text-gray-500">Pending Requests</p>
             <p class="mt-2 text-3xl font-bold text-amber-700">{{ number_format($stats['pending_count']) }}</p>
@@ -60,11 +60,6 @@
             <p class="text-sm text-gray-500">Approved Requests</p>
             <p class="mt-2 text-3xl font-bold text-emerald-700">{{ number_format($stats['approved_count']) }}</p>
             <p class="mt-1 text-xs text-gray-500">Approved leaves recorded for this organization.</p>
-        </div>
-        <div class="rounded-xl border border-sky-200 bg-white p-5 shadow-sm">
-            <p class="text-sm text-gray-500">Pending Leave Days</p>
-            <p class="mt-2 text-3xl font-bold text-sky-700">{{ $stats['pending_days'] }}</p>
-            <p class="mt-1 text-xs text-gray-500">Total requested days awaiting approval.</p>
         </div>
         <div class="rounded-xl border border-rose-200 bg-white p-5 shadow-sm">
             <p class="text-sm text-gray-500">Away Today</p>

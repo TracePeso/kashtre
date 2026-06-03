@@ -121,6 +121,11 @@ class Organization extends Model
         return $this->hasMany(HrBiometricVerification::class);
     }
 
+    public function biometricDevices()
+    {
+        return $this->hasMany(HrBiometricDevice::class);
+    }
+
     public function clientSpaces()
     {
         return $this->hasMany(HrClientSpace::class);

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Hr;
 
 use App\Http\Controllers\Controller;
 
+use App\Models\HrBiometricDevice;
 use App\Models\HrBiometricProfile;
 use App\Models\HrBiometricVerification;
 use App\Models\Organization;
@@ -38,6 +39,11 @@ class BiometricController extends Controller
         return $this->page($request, $networkPolicy, $geofencePolicy, 'attendance');
     }
 
+    public function clocking(Request $request, BiometricNetworkPolicy $networkPolicy, BiometricGeofencePolicy $geofencePolicy)
+    {
+        return $this->page($request, $networkPolicy, $geofencePolicy, 'clocking');
+    }
+
     public function settings(Request $request, BiometricNetworkPolicy $networkPolicy, BiometricGeofencePolicy $geofencePolicy)
     {
         return $this->page($request, $networkPolicy, $geofencePolicy, 'settings');
@@ -49,6 +55,7 @@ class BiometricController extends Controller
         $staffAssignments = collect();
         $profiles = collect();
         $verifications = collect();
+        $legacyDevices = collect();
         $networkEntries = [];
         $flaggedLateStaff = collect();
 
@@ -73,6 +80,12 @@ class BiometricController extends Controller
                 ->where('organization_id', $organization->id)
                 ->latest('verified_at')
                 ->limit(15)
+                ->get();
+
+            $legacyDevices = HrBiometricDevice::query()
+                ->where('organization_id', $organization->id)
+                ->orderByDesc('is_active')
+                ->orderBy('name')
                 ->get();
 
             $networkEntries = $networkPolicy->normalizeNetworkEntries($organization->biometric_allowed_networks ?? []);
@@ -110,6 +123,7 @@ class BiometricController extends Controller
             'staffAssignments' => $staffAssignments,
             'profiles' => $profiles,
             'verifications' => $verifications,
+            'legacyDevices' => $legacyDevices,
             'canManageBiometrics' => $request->user()?->canManageHrBiometrics() ?? false,
             'networkAccess' => $networkPolicy->status($request, $organization),
             'networkEntries' => $networkEntries,
@@ -259,11 +273,15 @@ class BiometricController extends Controller
 
         $organization = $this->currentOrganizationOrFail($request);
         $data = $request->validate([
-            'legacy_device_provider' => ['nullable', 'string', 'max:80'],
-            'legacy_device_id' => ['nullable', 'string', 'max:120'],
+            'legacy_biometric_device_id' => ['required', 'integer', 'exists:hr_biometric_devices,id'],
             'legacy_device_file' => ['nullable', 'file', 'max:2048'],
             'legacy_device_payload' => ['nullable', 'string', 'max:200000'],
         ]);
+
+        $device = HrBiometricDevice::query()
+            ->where('organization_id', $organization->id)
+            ->active()
+            ->findOrFail((int) $data['legacy_biometric_device_id']);
 
         $rows = [];
 
@@ -290,17 +308,62 @@ class BiometricController extends Controller
 
         $stats = $deviceSync->import($organization, $rows, [
             'actor' => $request->user(),
-            'provider' => $data['legacy_device_provider'] ?? null,
-            'device_id' => $data['legacy_device_id'] ?? null,
+            'provider' => $device->provider,
+            'device_id' => $device->device_id,
         ]);
 
+        $device->forceFill(['last_synced_at' => now()])->save();
+
         return back()->with('status', sprintf(
-            'Imported %d legacy biometric device events. %d duplicate, %d unmatched, %d failed.',
+            'Imported %d offline clocking events from %s. %d duplicate, %d unmatched, %d failed.',
             $stats['imported'],
+            $device->name,
             $stats['duplicates'],
             $stats['unmatched'],
             $stats['failed']
         ));
+    }
+
+    public function storeLegacyDevice(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()?->canManageHrBiometrics(), 403);
+
+        $organization = $this->currentOrganizationOrFail($request);
+        $data = $request->validate([
+            'legacy_device_name' => ['required', 'string', 'max:120'],
+            'legacy_device_provider' => ['required', 'string', 'max:80'],
+            'legacy_device_identifier' => ['required', 'string', 'max:120'],
+            'legacy_device_location' => ['nullable', 'string', 'max:160'],
+            'legacy_device_notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $normalizedProvider = strtolower(trim($data['legacy_device_provider']));
+        $normalizedDeviceId = trim($data['legacy_device_identifier']);
+
+        $exists = HrBiometricDevice::query()
+            ->where('organization_id', $organization->id)
+            ->where('provider', $normalizedProvider)
+            ->where('device_id', $normalizedDeviceId)
+            ->exists();
+
+        if ($exists) {
+            throw ValidationException::withMessages([
+                'legacy_device_identifier' => 'This biometric machine is already registered for the current organization.',
+            ]);
+        }
+
+        HrBiometricDevice::create([
+            'organization_id' => $organization->id,
+            'name' => trim($data['legacy_device_name']),
+            'provider' => $normalizedProvider,
+            'device_id' => $normalizedDeviceId,
+            'location' => filled($data['legacy_device_location'] ?? null) ? trim($data['legacy_device_location']) : null,
+            'notes' => filled($data['legacy_device_notes'] ?? null) ? trim($data['legacy_device_notes']) : null,
+            'is_active' => true,
+            'registered_by_user_id' => $request->user()?->id,
+        ]);
+
+        return back()->with('status', 'Biometric machine registered.');
     }
 
     public function updateNetworkPolicy(Request $request, BiometricNetworkPolicy $networkPolicy): RedirectResponse
