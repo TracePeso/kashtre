@@ -66,12 +66,33 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->sortable(),
 
                 TextColumn::make('stock_quantity_suom')
-                    ->label('Current stock')
+                    ->label('System stock')
                     ->alignEnd()
                     ->sortable(query: function (Builder $query, string $direction): Builder {
                         return $query->orderBy('stock.quantity_suom', $direction);
                     })
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+
+                TextColumn::make('stock_physical_quantity_suom')
+                    ->label('Physical stock')
+                    ->alignEnd()
+                    ->placeholder('—')
+                    ->sortable(query: function (Builder $query, string $direction): Builder {
+                        return $query->orderBy('stock.physical_quantity_suom', $direction);
+                    })
+                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 0) : '—'),
+
+                TextColumn::make('usable_stock_display')
+                    ->label('Usable')
+                    ->alignEnd()
+                    ->state(fn (Item $record): float => $this->usableStock($record))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+
+                TextColumn::make('shrinkage_display')
+                    ->label('Shrinkage')
+                    ->alignEnd()
+                    ->state(fn (Item $record): ?float => $this->shrinkagePercent($record))
+                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 2).'%' : '—'),
 
                 TextColumn::make('stock_days_display')
                     ->label('Stock (days)')
@@ -84,6 +105,12 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->alignEnd()
                     ->visible($config !== null)
                     ->state(fn (Item $record): float => $this->effectiveDailyUsage($record))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
+
+                TextColumn::make('stock_ma_30_days')
+                    ->label('MA 30d')
+                    ->alignEnd()
+                    ->state(fn (Item $record): float => $this->movingAverage($record, 30))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
 
                 TextColumn::make('safety_stock_suom')
@@ -166,7 +193,12 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                 'items.*',
                 'stock.store_id as stock_store_id',
                 'stock.quantity_suom as stock_quantity_suom',
+                'stock.physical_quantity_suom as stock_physical_quantity_suom',
+                'stock.damaged_quantity_suom as stock_damaged_quantity_suom',
                 'stock.daily_usage_suom as stock_daily_usage_suom',
+                'stock.safety_stock_days as stock_safety_stock_days',
+                'stock.buffer_stock_days as stock_buffer_stock_days',
+                'stock.ma_30_days as stock_ma_30_days',
                 'stock.last_purchase_price as stock_last_purchase_price',
                 'stock.weighted_avg_cost as stock_weighted_avg_cost',
                 'stores.name as store_name',
@@ -181,11 +213,56 @@ class MonitorStockTable extends Component implements HasForms, HasTable
 
     private function currentStock(Item $item): float
     {
+        return $this->usableStock($item);
+    }
+
+    private function usableStock(Item $item): float
+    {
         if ($this->usesJoinedStock($item)) {
-            return (float) $item->stock_quantity_suom;
+            $physical = $item->stock_physical_quantity_suom;
+            $base = $physical !== null
+                ? (float) $physical
+                : (float) $item->stock_quantity_suom;
+            $damaged = (float) ($item->stock_damaged_quantity_suom ?? 0);
+
+            return max(0, round($base - $damaged, 4));
         }
 
-        return (float) ($item->inventoryStockLevel?->quantity_suom ?? 0);
+        $level = $item->inventoryStockLevel;
+
+        if (! $level) {
+            return 0.0;
+        }
+
+        return $level->usableQuantitySuom();
+    }
+
+    private function shrinkagePercent(Item $item): ?float
+    {
+        if ($this->usesJoinedStock($item)) {
+            if ($item->stock_physical_quantity_suom === null) {
+                return null;
+            }
+
+            $system = (float) $item->stock_quantity_suom;
+
+            if ($system <= 0) {
+                return null;
+            }
+
+            return round((($system - (float) $item->stock_physical_quantity_suom) / $system) * 100, 2);
+        }
+
+        return $item->inventoryStockLevel?->shrinkagePercent();
+    }
+
+    private function movingAverage(Item $item, int $days): float
+    {
+        if ($this->usesJoinedStock($item) && $days === 30 && $item->stock_ma_30_days !== null) {
+            return (float) $item->stock_ma_30_days;
+        }
+
+        return $this->dailyUsage($item);
     }
 
     private function dailyUsage(Item $item): float
@@ -235,11 +312,11 @@ class MonitorStockTable extends Component implements HasForms, HasTable
             return 0.0;
         }
 
-        return round($this->currentStock($item) / $usage, 1);
+        return round($this->usableStock($item) / $usage, 1);
     }
 
     private function valuation(Item $item): float
     {
-        return round($this->currentStock($item) * $this->averageCost($item), 2);
+        return round($this->usableStock($item) * $this->averageCost($item), 2);
     }
 }

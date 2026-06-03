@@ -1,0 +1,51 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class InventoryOrderLine extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'inventory_order_id',
+        'item_id',
+        'supplier_id',
+        'daily_average_suom',
+        'lead_time_days',
+        'system_quantity_suom',
+        'suggested_quantity_suom',
+        'order_quantity_suom',
+        'order_quantity_ouom',
+        'unit_price',
+        'line_total',
+    ];
+
+    protected $casts = [
+        'daily_average_suom' => 'decimal:4',
+        'system_quantity_suom' => 'decimal:4',
+        'suggested_quantity_suom' => 'decimal:4',
+        'order_quantity_suom' => 'decimal:4',
+        'order_quantity_ouom' => 'decimal:4',
+        'unit_price' => 'decimal:2',
+        'line_total' => 'decimal:2',
+    ];
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(InventoryOrder::class, 'inventory_order_id');
+    }
+
+    public function item(): BelongsTo
+    {
+        return $this->belongsTo(Item::class);
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+}

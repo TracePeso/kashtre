@@ -11,6 +11,8 @@ class InventoryStockMovement extends Model
     use HasFactory;
 
     public const TYPE_GRN_RECEIPT = 'grn_receipt';
+    public const TYPE_STOCK_COUNT = 'stock_count';
+    public const TYPE_CONSUMPTION = 'consumption';
 
     protected $fillable = [
         'business_id',
@@ -95,6 +97,8 @@ class InventoryStockMovement extends Model
     {
         return match ($this->movement_type) {
             self::TYPE_GRN_RECEIPT => 'GRN receipt',
+            self::TYPE_STOCK_COUNT => 'Stock count adjustment',
+            self::TYPE_CONSUMPTION => 'Consumption',
             default => ucfirst(str_replace('_', ' ', $this->movement_type)),
         };
     }

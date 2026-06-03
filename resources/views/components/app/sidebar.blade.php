@@ -145,8 +145,18 @@
                                 </a>
                             </li>
                             <li>
-                                <a href="{{ route('inventory.monitor') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.monitor') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                <a href="{{ route('inventory.monitor') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.monitor*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
                                     Monitor Stock
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.stock-counts.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.stock-counts*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Stock Counts
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.consumption.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.consumption*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Consumption
                                 </a>
                             </li>
                             <li>

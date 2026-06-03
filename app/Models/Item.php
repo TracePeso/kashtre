@@ -12,17 +12,23 @@ class Item extends Model
     use HasFactory;
     use SoftDeletes;
 
+    public const IMPORTANCE_ESSENTIAL = 'essential';
+    public const IMPORTANCE_NON_ESSENTIAL = 'non_essential';
+
     protected $fillable = [
         'name',
         'generic_name',
         'category',
         'code',
         'type',
+        'importance_category',
         'description',
         'group_id',
         'subgroup_id',
         'department_id',
         'uom_id',
+        'order_unit_id',
+        'suom_per_ouom',
         'default_price',
         'vat_rate',
         'validity_days',
@@ -35,6 +41,7 @@ class Item extends Model
 
     protected $casts = [
         'max_qty' => 'integer',
+        'suom_per_ouom' => 'decimal:4',
     ];
     
     protected static function booted()
@@ -111,6 +118,19 @@ class Item extends Model
     public function itemUnit()
     {
         return $this->belongsTo(ItemUnit::class, 'uom_id');
+    }
+
+    public function orderUnit()
+    {
+        return $this->belongsTo(ItemUnit::class, 'order_unit_id');
+    }
+
+    public static function importanceOptions(): array
+    {
+        return [
+            self::IMPORTANCE_ESSENTIAL => 'Essential',
+            self::IMPORTANCE_NON_ESSENTIAL => 'Non-essential',
+        ];
     }
 
     public function inventoryStockLevel()
