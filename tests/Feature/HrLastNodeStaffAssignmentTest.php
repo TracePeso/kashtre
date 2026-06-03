@@ -459,4 +459,147 @@ class HrLastNodeStaffAssignmentTest extends TestCase
             'status' => HrClientSpaceStaffAssignment::STATUS_ACTIVE,
         ]);
     }
+
+    public function test_routing_structure_manage_staff_modal_can_add_staff_to_a_leaf_node(): void
+    {
+        $user = User::factory()->create([
+            'permissions' => ['Add HR Staff'],
+        ]);
+
+        $organization = Organization::create([
+            'name' => 'Routing Node Staff Org',
+            'external_business_uuid' => 'routing-node-staff-org',
+            'weekend_days' => [0, 6],
+        ]);
+
+        $rootLevel = HrOrganizationTierLevel::create([
+            'organization_id' => $organization->id,
+            'name' => 'Division',
+            'level_order' => 1,
+        ]);
+
+        $leafLevel = HrOrganizationTierLevel::create([
+            'organization_id' => $organization->id,
+            'name' => 'Unit',
+            'level_order' => 2,
+        ]);
+
+        $rootNode = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => null,
+            'tier_level_id' => $rootLevel->id,
+            'name' => 'Division',
+            'type' => 'Division',
+            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+        ]);
+
+        $leafNode = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => $rootNode->id,
+            'tier_level_id' => $leafLevel->id,
+            'name' => 'Unit',
+            'type' => 'Unit',
+            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+        ]);
+
+        $poolAssignment = StaffAssignment::create([
+            'organization_id' => $organization->id,
+            'organizational_unit_id' => null,
+            'staff_uuid' => 'routing-node-pool-staff',
+            'staff_name' => 'Pool Nurse',
+            'staff_title' => 'Nurse',
+            'assignment_type' => 'primary',
+            'status' => 'active',
+            'assigned_at' => now(),
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_organization_id' => $organization->id]);
+
+        Livewire::test(OrganizationalStructure::class)
+            ->call('openRoutingNodeStaffModal', $leafNode->id)
+            ->assertSet('showRoutingNodeStaffModal', true)
+            ->assertSet('selectedRoutingNodeStaffUnitId', $leafNode->id)
+            ->set('selectedRoutingNodeStaffAssignmentId', $poolAssignment->id)
+            ->call('assignRoutingNodeStaff')
+            ->assertHasNoErrors()
+            ->assertSet('selectedRoutingNodeStaffAssignmentId', null)
+            ->assertSet('showRoutingNodeStaffModal', true);
+
+        $this->assertDatabaseHas('hr_staff_assignments', [
+            'id' => $poolAssignment->id,
+            'organizational_unit_id' => $leafNode->id,
+            'status' => 'active',
+        ]);
+    }
+
+    public function test_routing_structure_manage_staff_modal_can_remove_staff_from_a_node(): void
+    {
+        $user = User::factory()->create([
+            'permissions' => ['Add HR Staff'],
+        ]);
+
+        $organization = Organization::create([
+            'name' => 'Routing Node Removal Org',
+            'external_business_uuid' => 'routing-node-removal-org',
+            'weekend_days' => [0, 6],
+        ]);
+
+        $rootLevel = HrOrganizationTierLevel::create([
+            'organization_id' => $organization->id,
+            'name' => 'Division',
+            'level_order' => 1,
+        ]);
+
+        $leafLevel = HrOrganizationTierLevel::create([
+            'organization_id' => $organization->id,
+            'name' => 'Unit',
+            'level_order' => 2,
+        ]);
+
+        $rootNode = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => null,
+            'tier_level_id' => $rootLevel->id,
+            'name' => 'Division',
+            'type' => 'Division',
+            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+        ]);
+
+        $leafNode = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => $rootNode->id,
+            'tier_level_id' => $leafLevel->id,
+            'name' => 'Unit',
+            'type' => 'Unit',
+            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+        ]);
+
+        $assignedStaff = StaffAssignment::create([
+            'organization_id' => $organization->id,
+            'organizational_unit_id' => $leafNode->id,
+            'staff_uuid' => 'routing-node-remove-staff',
+            'staff_name' => 'Node Nurse',
+            'staff_title' => 'Nurse',
+            'assignment_type' => 'primary',
+            'status' => 'active',
+            'assigned_at' => now(),
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_organization_id' => $organization->id]);
+
+        Livewire::test(OrganizationalStructure::class)
+            ->call('openRoutingNodeStaffModal', $leafNode->id)
+            ->assertSet('showRoutingNodeStaffModal', true)
+            ->call('removeRoutingNodeStaff', $assignedStaff->id)
+            ->assertHasNoErrors()
+            ->assertSet('showRoutingNodeStaffModal', true);
+
+        $this->assertDatabaseHas('hr_staff_assignments', [
+            'id' => $assignedStaff->id,
+            'organizational_unit_id' => null,
+            'status' => 'orphaned',
+        ]);
+    }
 }

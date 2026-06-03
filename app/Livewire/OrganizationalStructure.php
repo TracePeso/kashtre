@@ -6,8 +6,10 @@ use App\Models\HrClientSpaceStaffAssignment;
 use App\Models\HrClientSpaceRoute;
 use App\Models\HrOrganizationalUnit;
 use App\Models\HrOrganizationTierLevel;
+use App\Models\HrStaffRoutingEvent;
 use App\Models\Organization;
 use App\Models\StaffAssignment;
+use App\Services\CascadeRoutingService;
 use App\Services\ClientSpaceRoutingService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +43,11 @@ class OrganizationalStructure extends Component
     public bool $canManageLeafClientSpaceStaff = false;
     public bool $autoPromptLeafClientSpaces = false;
     public bool $autoPromptLeafStaffAssignments = false;
+    public bool $showRoutingNodeStaffModal = false;
+    public ?int $selectedRoutingNodeStaffUnitId = null;
+    public ?int $routingNodeStaffTargetUnitId = null;
+    public ?int $selectedRoutingNodeStaffAssignmentId = null;
+    public ?string $routingNodeStaffMessage = null;
 
     protected $rules = [
         'newUnitTierLevelId' => 'required|exists:hr_organization_tier_levels,id',
@@ -372,6 +379,163 @@ class OrganizationalStructure extends Component
         session()->flash('message', 'Routing tier successfully updated.');
     }
 
+    public function openRoutingNodeStaffModal(int $unitId): void
+    {
+        $org = Organization::current();
+        if (! $org) {
+            return;
+        }
+
+        $unit = HrOrganizationalUnit::where('organization_id', $org->id)
+            ->routingNodes()
+            ->with(['parent', 'tierLevel'])
+            ->findOrFail($unitId);
+
+        $this->resetValidation();
+        $this->selectedRoutingNodeStaffUnitId = $unit->id;
+        $this->routingNodeStaffTargetUnitId = $this->directRoutingChildrenFor($unit)->first()?->id ?? $unit->id;
+        $this->selectedRoutingNodeStaffAssignmentId = null;
+        $this->routingNodeStaffMessage = null;
+        $this->showRoutingNodeStaffModal = true;
+    }
+
+    public function assignRoutingNodeStaff(CascadeRoutingService $routingService): void
+    {
+        $org = Organization::current();
+        if (! $org) {
+            return;
+        }
+
+        $this->validate([
+            'selectedRoutingNodeStaffUnitId' => 'required|integer|exists:hr_organizational_units,id',
+            'routingNodeStaffTargetUnitId' => 'nullable|integer|exists:hr_organizational_units,id',
+            'selectedRoutingNodeStaffAssignmentId' => 'required|integer|exists:hr_staff_assignments,id',
+        ]);
+
+        $selectedUnit = HrOrganizationalUnit::where('organization_id', $org->id)
+            ->routingNodes()
+            ->with(['parent', 'tierLevel'])
+            ->findOrFail($this->selectedRoutingNodeStaffUnitId);
+
+        $directChildren = $this->directRoutingChildrenFor($selectedUnit);
+        $targetUnit = $directChildren->isEmpty()
+            ? $selectedUnit
+            : $directChildren->firstWhere('id', (int) $this->routingNodeStaffTargetUnitId);
+
+        if (! $targetUnit) {
+            $this->addError('routingNodeStaffTargetUnitId', 'Choose a direct routing node under the selected node.');
+
+            return;
+        }
+
+        if (! $this->canAssignStaffToRoutingUnit($targetUnit)) {
+            $this->addError('selectedRoutingNodeStaffAssignmentId', $this->assignRoutingNodeStaffDeniedMessage($targetUnit));
+
+            return;
+        }
+
+        $assignment = StaffAssignment::with('organizationalUnit')
+            ->where('organization_id', $org->id)
+            ->find($this->selectedRoutingNodeStaffAssignmentId);
+
+        if (! $assignment) {
+            $this->addError('selectedRoutingNodeStaffAssignmentId', 'Choose a staff member from the synced staff pool.');
+
+            return;
+        }
+
+        if ($reason = $this->routingNodeStaffBlockReason($assignment, $targetUnit)) {
+            $this->addError('selectedRoutingNodeStaffAssignmentId', $reason);
+
+            return;
+        }
+
+        $user = Auth::user();
+        abort_unless($user, 403);
+
+        try {
+            $routingService->routeStaff($assignment, $targetUnit, $user);
+        } catch (ValidationException $e) {
+            foreach ($e->errors() as $messages) {
+                foreach ((array) $messages as $message) {
+                    $this->addError('selectedRoutingNodeStaffAssignmentId', $message);
+                }
+            }
+
+            return;
+        }
+
+        $this->selectedRoutingNodeStaffAssignmentId = null;
+        $this->routingNodeStaffMessage = $directChildren->isEmpty()
+            ? "Staff added to {$this->routingNodeDisplayName($targetUnit)}."
+            : "Staff routed to {$this->routingNodeDisplayName($targetUnit)}.";
+    }
+
+    public function removeRoutingNodeStaff(int $assignmentId): void
+    {
+        $org = Organization::current();
+        if (! $org) {
+            return;
+        }
+
+        $selectedUnit = $this->selectedRoutingNodeStaffUnit($org);
+        if (! $selectedUnit) {
+            $this->addError('selectedRoutingNodeStaffUnitId', 'Choose a valid routing node.');
+
+            return;
+        }
+
+        $assignment = StaffAssignment::with('organizationalUnit')
+            ->where('organization_id', $org->id)
+            ->findOrFail($assignmentId);
+
+        if ((int) $assignment->organizational_unit_id !== (int) $selectedUnit->id) {
+            $this->addError('selectedRoutingNodeStaffUnitId', 'Choose staff who are currently assigned to this routing node.');
+
+            return;
+        }
+
+        if (! $this->canRemoveStaffFromRoutingUnit($selectedUnit)) {
+            $this->addError('selectedRoutingNodeStaffUnitId', 'You do not have permission to remove staff from this node.');
+
+            return;
+        }
+
+        DB::transaction(function () use ($assignment, $selectedUnit): void {
+            $user = Auth::user();
+            $fromStatus = $assignment->status;
+            $routedAt = now();
+
+            $assignment->forceFill([
+                'organizational_unit_id' => null,
+                'status' => 'orphaned',
+                'routed_by_user_id' => $user?->id,
+                'routed_by_staff_uuid' => $user?->staff_uuid,
+                'routed_at' => $routedAt,
+            ])->save();
+
+            HrStaffRoutingEvent::create([
+                'staff_assignment_id' => $assignment->id,
+                'organization_id' => $assignment->organization_id,
+                'from_unit_id' => $selectedUnit->id,
+                'to_unit_id' => null,
+                'routed_by_user_id' => $user?->id,
+                'routed_by_staff_uuid' => $user?->staff_uuid,
+                'from_status' => $fromStatus,
+                'to_status' => 'orphaned',
+                'routed_at' => $routedAt,
+            ]);
+        });
+
+        $this->routingNodeStaffMessage = 'Staff removed from node.';
+    }
+
+    public function closeRoutingNodeStaffModal(): void
+    {
+        $this->resetValidation();
+        $this->resetRoutingNodeStaffModal();
+    }
+
     public function openLeafClientSpacesModal(int $unitId): void
     {
         abort_unless($this->canEditRouting, 403);
@@ -700,20 +864,13 @@ class OrganizationalStructure extends Component
                                                 ->with([
                                                     'childrenRecursive',
                                                     'tierLevel',
-                                                    'linkedClientSpaces' => fn ($query) => $query
-                                                        ->with('routingParents')
-                                                        ->withCount([
-                                                            'staffAssignments as active_staff_count' => fn ($staffQuery) => $staffQuery->where('status', 'active'),
-                                                        ])
-                                                        ->withCount([
-                                                            'secondaryStaffAssignments as secondary_staff_count',
-                                                        ])
-                                                        ->orderByDesc('hr_client_space_routes.is_primary')
-                                                        ->orderBy('hr_organizational_units.name'),
                                                 ])
-                                                ->withCount(['staffAssignments as routing_staff_count' => fn ($query) => $query->whereNotIn('status', ['inactive', 'orphaned'])])
+                                                ->withCount([
+                                                    'staffAssignments as routing_staff_count' => fn ($query) => $query->whereNotIn('status', ['inactive', 'orphaned']),
+                                                    'linkedClientSpaces as linked_client_spaces_count',
+                                                ])
                                                 ->get() : collect();
-        $parentOptions = $org ? HrOrganizationalUnit::where('organization_id', $org->id)
+        $parentOptions = $org && ($this->showModal || $this->showEditModal) ? HrOrganizationalUnit::where('organization_id', $org->id)
                                                 ->routingNodes()
                                                 ->with('tierLevel')
                                                 ->orderBy('name')
@@ -730,7 +887,7 @@ class OrganizationalStructure extends Component
             'root_nodes' => 0,
             'staff_pool' => 0,
         ];
-        $clientSpaceOptions = $org ? HrOrganizationalUnit::where('organization_id', $org->id)
+        $clientSpaceOptions = $org && $this->showLeafClientSpacesModal ? HrOrganizationalUnit::where('organization_id', $org->id)
             ->clientSpaces()
             ->with(['parent', 'routingParents'])
             ->withCount([
@@ -741,17 +898,52 @@ class OrganizationalStructure extends Component
             ->get() : collect();
         $selectedLeafUnitId = $this->showLeafStaffModal
             ? $this->activeLeafStaffUnitId()
-            : $this->selectedLeafUnitId;
+            : ($this->showLeafClientSpacesModal ? $this->selectedLeafUnitId : null);
         $selectedLeafUnit = $org && $selectedLeafUnitId
             ? $this->selectedLeafRoutingUnitForOrganization($org, (int) $selectedLeafUnitId)
             : null;
-        $leafClientSpaceOptions = $org && $selectedLeafUnitId
+        $leafClientSpaceOptions = $org && $this->showLeafStaffModal && $selectedLeafUnitId
             ? $this->attachedClientSpacesForSelectedLeaf($org)
             : collect();
-        $leafStaffAssignments = $org && $selectedLeafUnitId
+        $leafStaffAssignments = $org && $this->showLeafStaffModal && $selectedLeafUnitId
             ? $this->availableLeafStaffAssignments($org)
             : collect();
         $canManageLeafClientSpaceStaff = $this->canManageLeafClientSpaceStaff;
+        $canManageRoutingNodeStaffTools = $this->userCanSeeRoutingNodeStaffTools();
+        $selectedRoutingNodeStaffUnit = $org && $this->showRoutingNodeStaffModal
+            ? $this->selectedRoutingNodeStaffUnit($org)
+            : null;
+        $routingNodeStaffDirectChildren = $selectedRoutingNodeStaffUnit
+            ? $this->directRoutingChildrenFor($selectedRoutingNodeStaffUnit)
+            : collect();
+
+        if ($selectedRoutingNodeStaffUnit) {
+            if ($routingNodeStaffDirectChildren->isEmpty()) {
+                $this->routingNodeStaffTargetUnitId = $selectedRoutingNodeStaffUnit->id;
+            } elseif (! $routingNodeStaffDirectChildren->contains('id', (int) $this->routingNodeStaffTargetUnitId)) {
+                $this->routingNodeStaffTargetUnitId = $routingNodeStaffDirectChildren->first()->id;
+            }
+        }
+
+        $routingNodeAssignedStaff = $selectedRoutingNodeStaffUnit
+            ? StaffAssignment::where('organization_id', $selectedRoutingNodeStaffUnit->organization_id)
+                ->where('organizational_unit_id', $selectedRoutingNodeStaffUnit->id)
+                ->where('status', '!=', 'inactive')
+                ->orderBy('staff_name')
+                ->get()
+            : collect();
+        $routingNodeStaffOptions = $org && $selectedRoutingNodeStaffUnit
+            ? $this->availableRoutingNodeStaffOptions($org)
+            : collect();
+        $routingNodeStaffTarget = $selectedRoutingNodeStaffUnit
+            ? $this->previewRoutingNodeStaffTarget($selectedRoutingNodeStaffUnit, $routingNodeStaffDirectChildren)
+            : null;
+        $canAssignRoutingNodeStaff = $routingNodeStaffTarget
+            ? $this->canAssignStaffToRoutingUnit($routingNodeStaffTarget)
+            : false;
+        $canRemoveRoutingNodeStaff = $selectedRoutingNodeStaffUnit
+            ? $this->canRemoveStaffFromRoutingUnit($selectedRoutingNodeStaffUnit)
+            : false;
 
         return view('livewire.organizational-structure', compact(
             'rootUnits',
@@ -763,6 +955,14 @@ class OrganizationalStructure extends Component
             'leafClientSpaceOptions',
             'leafStaffAssignments',
             'canManageLeafClientSpaceStaff',
+            'canManageRoutingNodeStaffTools',
+            'selectedRoutingNodeStaffUnit',
+            'routingNodeStaffDirectChildren',
+            'routingNodeAssignedStaff',
+            'routingNodeStaffOptions',
+            'routingNodeStaffTarget',
+            'canAssignRoutingNodeStaff',
+            'canRemoveRoutingNodeStaff',
         ));
     }
 
@@ -783,6 +983,20 @@ class OrganizationalStructure extends Component
             || $user?->canAddHrSetup()
             || $user?->canEditHrSetup()
         );
+    }
+
+    private function userCanManageHrStaff(): bool
+    {
+        $user = Auth::user();
+
+        return (bool) ($user?->canAddHrStaff() || $user?->canEditHrStaff());
+    }
+
+    private function userCanSeeRoutingNodeStaffTools(): bool
+    {
+        $user = Auth::user();
+
+        return (bool) ($this->userCanManageHrStaff() || filled($user?->staff_uuid));
     }
 
     private function validParentFor(Organization $org, mixed $parentId): bool
@@ -954,6 +1168,147 @@ class OrganizationalStructure extends Component
             ->find($unitId);
     }
 
+    private function selectedRoutingNodeStaffUnit(Organization $org): ?HrOrganizationalUnit
+    {
+        if (! $this->selectedRoutingNodeStaffUnitId) {
+            return null;
+        }
+
+        return HrOrganizationalUnit::where('organization_id', $org->id)
+            ->routingNodes()
+            ->with(['parent', 'tierLevel'])
+            ->find($this->selectedRoutingNodeStaffUnitId);
+    }
+
+    private function directRoutingChildrenFor(HrOrganizationalUnit $unit)
+    {
+        return HrOrganizationalUnit::where('organization_id', $unit->organization_id)
+            ->routingNodes()
+            ->with(['parent', 'tierLevel'])
+            ->where('parent_id', $unit->id)
+            ->get()
+            ->sortBy(fn (HrOrganizationalUnit $child): string => str_pad((string) ($child->tierLevel?->level_order ?? 999), 4, '0', STR_PAD_LEFT).'|'.strtolower($child->name))
+            ->values();
+    }
+
+    private function previewRoutingNodeStaffTarget(HrOrganizationalUnit $selectedUnit, $directChildren): ?HrOrganizationalUnit
+    {
+        if ($directChildren->isEmpty()) {
+            return $selectedUnit;
+        }
+
+        return $directChildren->firstWhere('id', (int) $this->routingNodeStaffTargetUnitId)
+            ?? $directChildren->first();
+    }
+
+    private function canAssignStaffToRoutingUnit(HrOrganizationalUnit $unit): bool
+    {
+        $user = Auth::user();
+
+        if (! $user || ! $unit->isRoutingNode()) {
+            return false;
+        }
+
+        if ($this->userCanManageHrStaff()) {
+            return true;
+        }
+
+        $parent = $this->parentRoutingNode($unit);
+
+        return $parent?->hasRoutingMember($user) ?? false;
+    }
+
+    private function canRemoveStaffFromRoutingUnit(HrOrganizationalUnit $unit): bool
+    {
+        $user = Auth::user();
+
+        if (! $user || ! $unit->isRoutingNode()) {
+            return false;
+        }
+
+        if ($this->userCanManageHrStaff() || $unit->hasRoutingMember($user)) {
+            return true;
+        }
+
+        $parent = $this->parentRoutingNode($unit);
+
+        return $parent?->hasRoutingMember($user) ?? false;
+    }
+
+    private function assignRoutingNodeStaffDeniedMessage(HrOrganizationalUnit $targetUnit): string
+    {
+        $parent = $this->parentRoutingNode($targetUnit);
+
+        if (! $parent) {
+            return 'Add HR Staff or Edit HR Staff permission is required to add staff to a root node.';
+        }
+
+        return "Only staff assigned to {$this->routingNodeDisplayName($parent)} or users with Add HR Staff/Edit HR Staff can route staff to {$this->routingNodeDisplayName($targetUnit)}.";
+    }
+
+    private function availableRoutingNodeStaffOptions(Organization $org)
+    {
+        return StaffAssignment::where('organization_id', $org->id)
+            ->whereNull('organizational_unit_id')
+            ->where('status', 'active')
+            ->orderBy('staff_name')
+            ->get(['id', 'staff_name', 'staff_title', 'staff_department'])
+            ->map(fn (StaffAssignment $assignment): array => [
+                'id' => (int) $assignment->id,
+                'label' => $this->routingNodeStaffOptionLabel($assignment),
+            ]);
+    }
+
+    private function routingNodeStaffOptionLabel(StaffAssignment $assignment): string
+    {
+        $details = collect([$assignment->staff_title, $assignment->staff_department])
+            ->filter()
+            ->implode(' - ');
+
+        return $details ? "{$assignment->staff_name} ({$details})" : $assignment->staff_name;
+    }
+
+    private function routingNodeStaffBlockReason(StaffAssignment $assignment, HrOrganizationalUnit $targetUnit): ?string
+    {
+        if (! $targetUnit->isRoutingNode()) {
+            return 'Staff can only be added to routing nodes from this screen.';
+        }
+
+        if ($assignment->status === 'inactive') {
+            return 'Inactive staff cannot be added to a routing node.';
+        }
+
+        if ($assignment->status === 'orphaned') {
+            return 'Already routed before.';
+        }
+
+        if ($assignment->organizational_unit_id) {
+            $currentUnit = $assignment->organizationalUnit;
+
+            return $currentUnit
+                ? "Already routed to {$this->routingNodeDisplayName($currentUnit)}."
+                : 'Current assignment is linked to a missing routing node.';
+        }
+
+        return null;
+    }
+
+    private function parentRoutingNode(HrOrganizationalUnit $unit): ?HrOrganizationalUnit
+    {
+        return $unit->relationLoaded('parent') ? $unit->parent : $unit->parent()->first();
+    }
+
+    private function routingNodeDisplayName(HrOrganizationalUnit $unit): string
+    {
+        if (! $unit->parent_id) {
+            $tierLevel = $unit->relationLoaded('tierLevel') ? $unit->tierLevel : $unit->tierLevel()->first();
+
+            return $tierLevel?->name ?? $unit->name;
+        }
+
+        return $unit->name;
+    }
+
     private function ensureLastRoutingNodeFlag(HrOrganizationalUnit $unit): bool
     {
         if (! $unit->isRoutingNode()) {
@@ -1099,6 +1454,15 @@ class OrganizationalStructure extends Component
         $this->selectedLeafTargetClientSpaceId = null;
         $this->selectedLeafStaffAssignmentIds = [];
         $this->autoPromptLeafStaffAssignments = false;
+    }
+
+    private function resetRoutingNodeStaffModal(): void
+    {
+        $this->showRoutingNodeStaffModal = false;
+        $this->selectedRoutingNodeStaffUnitId = null;
+        $this->routingNodeStaffTargetUnitId = null;
+        $this->selectedRoutingNodeStaffAssignmentId = null;
+        $this->routingNodeStaffMessage = null;
     }
 
 }

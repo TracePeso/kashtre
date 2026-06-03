@@ -104,17 +104,11 @@ class HrOrganizationalUnit extends Model
             ->with([
                 'tierLevel',
                 'childrenRecursive',
-                'linkedClientSpaces' => fn ($query) => $query
-                    ->with('routingParents')
-                    ->withCount([
-                        'staffAssignments as active_staff_count' => fn ($staffQuery) => $staffQuery->where('status', 'active'),
-                    ])
-                    ->withCount([
-                        'secondaryStaffAssignments as secondary_staff_count',
-                    ])
-                    ->orderBy('hr_organizational_units.name'),
             ])
-            ->withCount(['staffAssignments as routing_staff_count' => fn ($query) => $query->whereNotIn('status', ['inactive', 'orphaned'])]);
+            ->withCount([
+                'staffAssignments as routing_staff_count' => fn ($query) => $query->whereNotIn('status', ['inactive', 'orphaned']),
+                'linkedClientSpaces as linked_client_spaces_count',
+            ]);
     }
 
     public function staffAssignments()
@@ -242,6 +236,10 @@ class HrOrganizationalUnit extends Model
     {
         if (! $this->isRoutingNode()) {
             return false;
+        }
+
+        if (array_key_exists('linked_client_spaces_count', $this->attributes)) {
+            return (int) $this->attributes['linked_client_spaces_count'] > 0;
         }
 
         if ($this->relationLoaded('linkedClientSpaces')) {

@@ -1,4 +1,4 @@
-<li class="rounded-md border border-gray-200 bg-white shadow-sm">
+<li wire:key="routing-node-{{ $unit->id }}" class="rounded-md border border-gray-200 bg-white shadow-sm">
     @php($leafCandidate = ! $unit->hasRoutingChildren() && ! $unit->isLowestRoutingNode())
     <div class="flex flex-col gap-2 p-3 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0">
@@ -55,6 +55,11 @@
                         Assign Staff to Spaces
                     </button>
                 @endif
+                @if(($canManageRoutingNodeStaffTools ?? false))
+                    <button wire:click="openRoutingNodeStaffModal({{ $unit->id }})" class="text-sm font-medium text-indigo-600 hover:text-indigo-800">
+                        Manage Staff
+                    </button>
+                @endif
                 @if(! $unit->isLowestRoutingNode())
                     <button wire:click="openModal({{ $unit->id }})" class="text-sm font-medium text-blue-600 hover:text-blue-800">
                         Add Child
@@ -68,7 +73,7 @@
     @if($routingChildren->isNotEmpty())
         <ul class="ml-3 space-y-2 border-l border-gray-200 pb-3 pl-3 sm:ml-4 sm:pl-4">
             @foreach($routingChildren as $child)
-                @include('livewire.partials.unit-tree', ['unit' => $child, 'canEditRouting' => $canEditRouting, 'canManageLeafClientSpaceStaff' => $canManageLeafClientSpaceStaff ?? false])
+                @include('livewire.partials.unit-tree', ['unit' => $child, 'canEditRouting' => $canEditRouting, 'canManageLeafClientSpaceStaff' => $canManageLeafClientSpaceStaff ?? false, 'canManageRoutingNodeStaffTools' => $canManageRoutingNodeStaffTools ?? false])
             @endforeach
         </ul>
     @endif
