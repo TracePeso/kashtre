@@ -318,7 +318,7 @@
             </p>
             @if($autoPromptLeafStaffAssignments)
                 <div class="mb-4 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-                    This prompt was opened from the final-node setup flow. Choose the staff who should be linked to the selected client spaces before you leave this step.
+                    This prompt was opened from the final-node setup flow. Choose a client space, then select the staff who should be linked to it before you leave this step.
                 </div>
             @endif
 
@@ -328,13 +328,17 @@
                         <label class="block text-sm font-medium text-gray-700">Attached client spaces</label>
                         <div class="mt-1 max-h-80 overflow-y-auto rounded-md border border-gray-300">
                             @forelse($leafClientSpaceOptions as $clientSpace)
-                                <label class="flex cursor-pointer items-start gap-3 border-b border-gray-100 px-3 py-2 hover:bg-gray-50">
-                                    <input
-                                        type="checkbox"
-                                        wire:model.live="selectedLeafTargetClientSpaceIds"
-                                        value="{{ $clientSpace->id }}"
-                                        class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    >
+                                @php($isSelectedClientSpace = (int) $selectedLeafTargetClientSpaceId === (int) $clientSpace->id)
+                                <button
+                                    type="button"
+                                    wire:click="$set('selectedLeafTargetClientSpaceId', {{ $clientSpace->id }})"
+                                    class="flex w-full items-start gap-3 border-b border-gray-100 px-3 py-2 text-left hover:bg-gray-50 {{ $isSelectedClientSpace ? 'bg-blue-50 ring-1 ring-inset ring-blue-200' : '' }}"
+                                >
+                                    <span class="mt-1 inline-flex h-4 w-4 items-center justify-center rounded-full border {{ $isSelectedClientSpace ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300 bg-white' }}">
+                                        @if($isSelectedClientSpace)
+                                            <span class="h-1.5 w-1.5 rounded-full bg-white"></span>
+                                        @endif
+                                    </span>
                                     <span class="min-w-0 text-sm text-gray-700">
                                         <span class="block font-medium text-gray-900">{{ $clientSpace->name }}</span>
                                         <span class="block text-xs text-gray-500">
@@ -344,19 +348,26 @@
                                             @endif
                                         </span>
                                     </span>
-                                </label>
+                                </button>
                             @empty
                                 <div class="px-3 py-4 text-sm text-gray-500">
                                     No client spaces are attached to this last routing node yet.
                                 </div>
                             @endforelse
                         </div>
-                        @error('selectedLeafTargetClientSpaceIds') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
-                        @error('selectedLeafTargetClientSpaceIds.*') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                        @error('selectedLeafTargetClientSpaceId') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                     </div>
 
                     <div>
                         <label class="block text-sm font-medium text-gray-700">Last-node staff</label>
+                        @if($selectedLeafTargetClientSpaceId)
+                            <p class="mt-1 text-xs text-gray-500">
+                                Linking to:
+                                <span class="font-medium text-gray-700">
+                                    {{ optional($leafClientSpaceOptions->firstWhere('id', $selectedLeafTargetClientSpaceId))->name ?? 'Selected client space' }}
+                                </span>
+                            </p>
+                        @endif
                         <div class="mt-1 max-h-80 overflow-y-auto rounded-md border border-gray-300">
                             @forelse($leafStaffAssignments as $assignment)
                                 @php($linkedSpaceNames = $assignment->clientSpaceStaffAssignments->pluck('clientSpace.name')->filter()->unique()->values())
@@ -394,7 +405,7 @@
                 </div>
 
                 <div class="mt-5 sm:flex sm:flex-row-reverse">
-                    <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent px-4 py-2 bg-gray-900 text-base font-medium text-white hover:bg-gray-800 sm:ml-3 sm:w-auto sm:text-sm">
+                    <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent px-4 py-2 bg-gray-900 text-base font-medium text-white hover:bg-gray-800 disabled:opacity-50 sm:ml-3 sm:w-auto sm:text-sm" @disabled(! $selectedLeafTargetClientSpaceId || empty($selectedLeafStaffAssignmentIds))>
                         Link Staff
                     </button>
                     <button type="button" wire:click="$set('showLeafStaffModal', false)" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">

@@ -36,7 +36,7 @@ class OrganizationalStructure extends Component
     public array $selectedLeafClientSpaceIds = [];
     public bool $showLeafStaffModal = false;
     public ?int $selectedLeafStaffUnitId = null;
-    public array $selectedLeafTargetClientSpaceIds = [];
+    public ?int $selectedLeafTargetClientSpaceId = null;
     public array $selectedLeafStaffAssignmentIds = [];
     public bool $canManageLeafClientSpaceStaff = false;
     public bool $autoPromptLeafClientSpaces = false;
@@ -442,9 +442,9 @@ class OrganizationalStructure extends Component
         $this->resetValidation();
         $this->selectedLeafUnitId = $leafUnit->id;
         $this->selectedLeafStaffUnitId = $leafUnit->id;
-        $this->selectedLeafTargetClientSpaceIds = $clientSpaceId && $attachedClientSpaceIds->contains((int) $clientSpaceId)
-            ? [(int) $clientSpaceId]
-            : [];
+        $this->selectedLeafTargetClientSpaceId = $clientSpaceId && $attachedClientSpaceIds->contains((int) $clientSpaceId)
+            ? (int) $clientSpaceId
+            : (int) $attachedClientSpaceIds->first();
         $this->selectedLeafStaffAssignmentIds = [];
         $this->autoPromptLeafClientSpaces = false;
         $this->autoPromptLeafStaffAssignments = false;
@@ -576,7 +576,7 @@ class OrganizationalStructure extends Component
             $this->showLeafClientSpacesModal = false;
             $this->selectedLeafClientSpaceIds = [];
             $this->openLeafStaffPrompt($leafUnitId, $selectedClientSpaceIdsForStaffPrompt);
-            session()->flash('status', 'Client spaces saved. Link last-node staff to the selected client spaces next.');
+            session()->flash('status', 'Client spaces saved. Choose a client space, then link last-node staff to it.');
 
             return;
         }
@@ -596,8 +596,7 @@ class OrganizationalStructure extends Component
 
         $this->validate([
             'selectedLeafStaffUnitId' => 'required|integer|exists:hr_organizational_units,id',
-            'selectedLeafTargetClientSpaceIds' => 'required|array|min:1',
-            'selectedLeafTargetClientSpaceIds.*' => 'integer|distinct|exists:hr_organizational_units,id',
+            'selectedLeafTargetClientSpaceId' => 'required|integer|exists:hr_organizational_units,id',
             'selectedLeafStaffAssignmentIds' => 'required|array|min:1',
             'selectedLeafStaffAssignmentIds.*' => 'integer|distinct|exists:hr_staff_assignments,id',
         ]);
@@ -609,14 +608,11 @@ class OrganizationalStructure extends Component
             return;
         }
 
-        $targetClientSpaceIds = $this->attachedClientSpacesForSelectedLeaf($org)
-            ->whereIn('id', collect($this->selectedLeafTargetClientSpaceIds)->map(fn ($id): int => (int) $id))
-            ->pluck('id')
-            ->map(fn ($id): int => (int) $id)
-            ->values();
+        $targetClientSpace = $this->attachedClientSpacesForSelectedLeaf($org)
+            ->first(fn (HrOrganizationalUnit $clientSpace): bool => (int) $clientSpace->id === (int) $this->selectedLeafTargetClientSpaceId);
 
-        if ($targetClientSpaceIds->count() !== count(array_unique(array_map('intval', $this->selectedLeafTargetClientSpaceIds)))) {
-            $this->addError('selectedLeafTargetClientSpaceIds', 'Choose attached client spaces from this last routing node.');
+        if (! $targetClientSpace) {
+            $this->addError('selectedLeafTargetClientSpaceId', 'Choose an attached client space from this last routing node.');
 
             return;
         }
@@ -635,35 +631,32 @@ class OrganizationalStructure extends Component
             return;
         }
 
-        DB::transaction(function () use ($org, $targetClientSpaceIds, $staffAssignments): void {
-            foreach ($targetClientSpaceIds as $clientSpaceId) {
-                foreach ($staffAssignments as $assignment) {
-                    HrClientSpaceStaffAssignment::updateOrCreate(
-                        [
-                            'organization_id' => $org->id,
-                            'client_space_unit_id' => (int) $clientSpaceId,
-                            'staff_assignment_id' => (int) $assignment->id,
-                            'assignment_type' => HrClientSpaceStaffAssignment::TYPE_SECONDARY,
-                        ],
-                        [
-                            'staff_uuid' => $assignment->staff_uuid,
-                            'status' => HrClientSpaceStaffAssignment::STATUS_ACTIVE,
-                            'assigned_by_user_id' => Auth::id(),
-                            'assigned_at' => now(),
-                            'notes' => 'Linked directly from last routing node',
-                        ]
-                    );
-                }
+        DB::transaction(function () use ($org, $targetClientSpace, $staffAssignments): void {
+            foreach ($staffAssignments as $assignment) {
+                HrClientSpaceStaffAssignment::updateOrCreate(
+                    [
+                        'organization_id' => $org->id,
+                        'client_space_unit_id' => (int) $targetClientSpace->id,
+                        'staff_assignment_id' => (int) $assignment->id,
+                        'assignment_type' => HrClientSpaceStaffAssignment::TYPE_SECONDARY,
+                    ],
+                    [
+                        'staff_uuid' => $assignment->staff_uuid,
+                        'status' => HrClientSpaceStaffAssignment::STATUS_ACTIVE,
+                        'assigned_by_user_id' => Auth::id(),
+                        'assigned_at' => now(),
+                        'notes' => 'Linked directly from last routing node',
+                    ]
+                );
             }
         });
 
-        $linkedClientSpaceCount = $targetClientSpaceIds->count();
         $linkedStaffCount = $staffAssignments->count();
 
-        $this->resetLeafStaffModal();
+        $this->selectedLeafStaffAssignmentIds = [];
         session()->flash(
             'message',
-            "{$linkedStaffCount} last-node staff linked to {$linkedClientSpaceCount} client space(s)."
+            "{$linkedStaffCount} last-node staff linked to {$targetClientSpace->name}."
         );
     }
 
@@ -973,19 +966,15 @@ class OrganizationalStructure extends Component
             ->orderBy('hr_organizational_units.name')
             ->get()
             ->whenEmpty(function ($collection) use ($org) {
-                $selectedIds = collect($this->selectedLeafTargetClientSpaceIds)
-                    ->filter(fn ($id): bool => filled($id))
-                    ->map(fn ($id): int => (int) $id)
-                    ->unique()
-                    ->values();
+                $selectedId = $this->selectedLeafTargetClientSpaceId ? (int) $this->selectedLeafTargetClientSpaceId : null;
 
-                if ($selectedIds->isEmpty()) {
+                if (! $selectedId) {
                     return $collection;
                 }
 
                 return HrOrganizationalUnit::where('organization_id', $org->id)
                     ->clientSpaces()
-                    ->whereIn('id', $selectedIds)
+                    ->whereKey($selectedId)
                     ->withCount([
                         'staffAssignments as active_staff_count' => fn ($query) => $query->where('status', 'active'),
                         'secondaryStaffAssignments as secondary_staff_count',
@@ -1055,7 +1044,8 @@ class OrganizationalStructure extends Component
     {
         $this->selectedLeafUnitId = $leafUnitId;
         $this->selectedLeafStaffUnitId = $leafUnitId;
-        $this->selectedLeafTargetClientSpaceIds = array_values(array_unique(array_map('intval', $clientSpaceIds)));
+        $clientSpaceIds = array_values(array_unique(array_map('intval', $clientSpaceIds)));
+        $this->selectedLeafTargetClientSpaceId = $clientSpaceIds[0] ?? null;
         $this->selectedLeafStaffAssignmentIds = [];
         $this->autoPromptLeafClientSpaces = false;
         $this->autoPromptLeafStaffAssignments = true;
@@ -1080,7 +1070,7 @@ class OrganizationalStructure extends Component
         $this->showLeafStaffModal = false;
         $this->selectedLeafUnitId = null;
         $this->selectedLeafStaffUnitId = null;
-        $this->selectedLeafTargetClientSpaceIds = [];
+        $this->selectedLeafTargetClientSpaceId = null;
         $this->selectedLeafStaffAssignmentIds = [];
         $this->autoPromptLeafStaffAssignments = false;
     }

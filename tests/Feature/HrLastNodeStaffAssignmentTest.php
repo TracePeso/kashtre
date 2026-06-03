@@ -88,7 +88,7 @@ class HrLastNodeStaffAssignmentTest extends TestCase
             ->set('selectedLeafClientSpaceIds', [$clientSpace->id])
             ->call('saveLeafClientSpaces')
             ->assertSet('showLeafStaffModal', true)
-            ->assertSet('selectedLeafTargetClientSpaceIds', [$clientSpace->id]);
+            ->assertSet('selectedLeafTargetClientSpaceId', $clientSpace->id);
 
         $this->assertTrue($leafNode->fresh()->isMarkedAsLastRoutingNode());
         $this->assertTrue($clientSpace->fresh()->isLinkedToRoutingNode($leafNode->fresh()));
@@ -228,7 +228,7 @@ class HrLastNodeStaffAssignmentTest extends TestCase
         ]);
     }
 
-    public function test_last_node_staff_prompt_stays_populated_if_client_space_modal_unit_state_is_cleared(): void
+    public function test_last_node_staff_prompt_stays_populated_and_can_link_staff_if_client_space_modal_unit_state_is_cleared(): void
     {
         $user = User::factory()->create([
             'is_hr_admin' => true,
@@ -279,6 +279,14 @@ class HrLastNodeStaffAssignmentTest extends TestCase
             'unit_kind' => HrOrganizationalUnit::KIND_CLIENT_SPACE,
         ]);
 
+        $clientSpaceB = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => null,
+            'name' => 'Ward B',
+            'type' => 'Client Space',
+            'unit_kind' => HrOrganizationalUnit::KIND_CLIENT_SPACE,
+        ]);
+
         $staffAssignment = StaffAssignment::create([
             'organization_id' => $organization->id,
             'organizational_unit_id' => $leafNode->id,
@@ -295,14 +303,35 @@ class HrLastNodeStaffAssignmentTest extends TestCase
 
         Livewire::test(OrganizationalStructure::class)
             ->call('openLeafClientSpacesModal', $leafNode->id)
-            ->set('selectedLeafClientSpaceIds', [$clientSpace->id])
+            ->set('selectedLeafClientSpaceIds', [$clientSpace->id, $clientSpaceB->id])
             ->call('saveLeafClientSpaces')
             ->assertSet('showLeafStaffModal', true)
             ->assertSet('selectedLeafStaffUnitId', $leafNode->id)
             ->set('selectedLeafUnitId', null)
             ->assertSee($leafNode->name)
             ->assertSee($clientSpace->name)
-            ->assertSee($staffAssignment->staff_name);
+            ->assertSee($clientSpaceB->name)
+            ->assertSee($staffAssignment->staff_name)
+            ->set('selectedLeafTargetClientSpaceId', $clientSpace->id)
+            ->set('selectedLeafStaffAssignmentIds', [$staffAssignment->id])
+            ->call('assignLeafStaffToClientSpaces')
+            ->assertHasNoErrors()
+            ->assertSet('showLeafStaffModal', true)
+            ->assertSet('selectedLeafStaffAssignmentIds', [])
+            ->set('selectedLeafTargetClientSpaceId', $clientSpaceB->id)
+            ->set('selectedLeafStaffAssignmentIds', [$staffAssignment->id])
+            ->call('assignLeafStaffToClientSpaces')
+            ->assertHasNoErrors()
+            ->assertSet('showLeafStaffModal', true)
+            ->assertSet('selectedLeafStaffAssignmentIds', []);
+
+        $this->assertDatabaseHas('hr_client_space_staff_assignments', [
+            'organization_id' => $organization->id,
+            'client_space_unit_id' => $clientSpace->id,
+            'staff_assignment_id' => $staffAssignment->id,
+            'assignment_type' => HrClientSpaceStaffAssignment::TYPE_SECONDARY,
+            'status' => HrClientSpaceStaffAssignment::STATUS_ACTIVE,
+        ]);
     }
 
     public function test_dl_test_staa_assignment_validates_single_staff_member_can_link_to_multiple_client_spaces_with_conflict_checks(): void
@@ -390,7 +419,7 @@ class HrLastNodeStaffAssignmentTest extends TestCase
             ->set('selectedLeafClientSpaceIds', [$clientSpaceA->id, $clientSpaceB->id])
             ->call('saveLeafClientSpaces')
             ->assertSet('showLeafStaffModal', true)
-            ->assertSet('selectedLeafTargetClientSpaceIds', [$clientSpaceA->id, $clientSpaceB->id])
+            ->assertSet('selectedLeafTargetClientSpaceId', $clientSpaceA->id)
             ->set('selectedLeafStaffAssignmentIds', [$staffAssignment->id])
             ->call('assignLeafStaffToClientSpaces')
             ->assertHasNoErrors();
@@ -403,20 +432,12 @@ class HrLastNodeStaffAssignmentTest extends TestCase
             'status' => HrClientSpaceStaffAssignment::STATUS_ACTIVE,
         ]);
 
-        $this->assertDatabaseHas('hr_client_space_staff_assignments', [
-            'organization_id' => $organization->id,
-            'client_space_unit_id' => $clientSpaceB->id,
-            'staff_assignment_id' => $staffAssignment->id,
-            'assignment_type' => HrClientSpaceStaffAssignment::TYPE_SECONDARY,
-            'status' => HrClientSpaceStaffAssignment::STATUS_ACTIVE,
-        ]);
-
         Livewire::test(OrganizationalStructure::class)
             ->call('openLeafStaffModal', $leafNode->id)
-            ->set('selectedLeafTargetClientSpaceIds', [$clientSpaceA->id, $conflictingClientSpace->id])
+            ->set('selectedLeafTargetClientSpaceId', $conflictingClientSpace->id)
             ->set('selectedLeafStaffAssignmentIds', [$staffAssignment->id])
             ->call('assignLeafStaffToClientSpaces')
-            ->assertHasErrors(['selectedLeafTargetClientSpaceIds']);
+            ->assertHasErrors(['selectedLeafTargetClientSpaceId']);
 
         $this->assertDatabaseMissing('hr_client_space_staff_assignments', [
             'organization_id' => $organization->id,
