@@ -23,6 +23,20 @@
                 <p class="mt-1 text-[11px] text-blue-600">
                     Last routing node.
                 </p>
+                @php($attachedClientSpaces = $unit->relationLoaded('linkedClientSpaces') ? $unit->linkedClientSpaces : collect())
+                @php($attachedClientSpaceCount = $unit->linked_client_spaces_count ?? $attachedClientSpaces->count())
+                @if($attachedClientSpaceCount > 0)
+                    <p class="mt-1 text-[11px] text-emerald-600">
+                        {{ $attachedClientSpaceCount }} client space{{ $attachedClientSpaceCount === 1 ? '' : 's' }} attached.
+                    </p>
+                    <p class="mt-1 text-[11px] text-gray-500">
+                        {{ $attachedClientSpaces->pluck('name')->filter()->implode(', ') }}
+                    </p>
+                @else
+                    <p class="mt-1 text-[11px] text-amber-600">
+                        No client spaces attached yet.
+                    </p>
+                @endif
             @elseif($leafCandidate)
                 <p class="mt-1 text-[11px] text-amber-600">
                     Click Last Node? to lock child tiers.

@@ -863,6 +863,7 @@ class OrganizationalStructure extends Component
                                                 ->whereNull('parent_id')
                                                 ->with([
                                                     'childrenRecursive',
+                                                    'linkedClientSpaces:id,name',
                                                     'tierLevel',
                                                 ])
                                                 ->withCount([

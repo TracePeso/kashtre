@@ -103,6 +103,7 @@ class HrOrganizationalUnit extends Model
         return $this->children()
             ->with([
                 'tierLevel',
+                'linkedClientSpaces:id,name',
                 'childrenRecursive',
             ])
             ->withCount([
