@@ -372,31 +372,33 @@
                         @error('shiftPreferenceForm.rostering_mode') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                     </div>
 
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Fixed Shift</label>
-                        <select wire:model="shiftPreferenceForm.fixed_shift_type_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                            <option value="">No fixed shift</option>
-                            @foreach($shiftTypeOptions as $shiftTypeId => $shiftTypeLabel)
-                                <option value="{{ $shiftTypeId }}">{{ $shiftTypeLabel }}</option>
-                            @endforeach
-                        </select>
-                        @error('shiftPreferenceForm.fixed_shift_type_id') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Fixed Days</label>
-                        <div class="mt-2 grid grid-cols-4 gap-2">
-                            @foreach($dayOfWeekOptions as $dayValue => $dayLabel)
-                                <label class="flex items-center gap-2 rounded-md border border-gray-200 px-2 py-2 text-sm text-gray-700">
-                                    <input type="checkbox" wire:model="shiftPreferenceForm.fixed_days_of_week" value="{{ $dayValue }}" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                    <span>{{ $dayLabel }}</span>
-                                </label>
-                            @endforeach
+                    @if(($shiftPreferenceForm['rostering_mode'] ?? 'dynamic') === 'fixed')
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Fixed Shift</label>
+                            <select wire:model="shiftPreferenceForm.fixed_shift_type_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                <option value="">No fixed shift</option>
+                                @foreach($shiftTypeOptions as $shiftTypeId => $shiftTypeLabel)
+                                    <option value="{{ $shiftTypeId }}">{{ $shiftTypeLabel }}</option>
+                                @endforeach
+                            </select>
+                            @error('shiftPreferenceForm.fixed_shift_type_id') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                         </div>
-                        <p class="mt-1 text-xs text-gray-500">Used when the staff member follows a fixed weekly pattern.</p>
-                        @error('shiftPreferenceForm.fixed_days_of_week') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
-                        @error('shiftPreferenceForm.fixed_days_of_week.*') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
-                    </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Fixed Days</label>
+                            <div class="mt-2 grid grid-cols-4 gap-2">
+                                @foreach($dayOfWeekOptions as $dayValue => $dayLabel)
+                                    <label class="flex items-center gap-2 rounded-md border border-gray-200 px-2 py-2 text-sm text-gray-700">
+                                        <input type="checkbox" wire:model="shiftPreferenceForm.fixed_days_of_week" value="{{ $dayValue }}" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                        <span>{{ $dayLabel }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                            <p class="mt-1 text-xs text-gray-500">Used when the staff member follows a fixed weekly pattern.</p>
+                            @error('shiftPreferenceForm.fixed_days_of_week') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                            @error('shiftPreferenceForm.fixed_days_of_week.*') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
+                        </div>
+                    @endif
 
                     <div>
                         <label class="block text-sm font-medium text-gray-700">Preferred Shifts</label>
@@ -408,6 +410,7 @@
                                 </label>
                             @endforeach
                         </div>
+                        <p class="mt-1 text-xs text-gray-500">If no preferred shift is selected, the staff member defaults to Regular working Hours.</p>
                         @error('shiftPreferenceForm.preferred_shift_type_ids') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                         @error('shiftPreferenceForm.preferred_shift_type_ids.*') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                     </div>
@@ -424,13 +427,6 @@
                         </div>
                         @error('shiftPreferenceForm.excluded_shift_type_ids') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                         @error('shiftPreferenceForm.excluded_shift_type_ids.*') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Max Overnight Shifts Per Cycle</label>
-                        <input type="number" min="0" wire:model="shiftPreferenceForm.max_night_shifts_per_cycle" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                        <p class="mt-1 text-xs text-gray-500">Night counts use shifts that run past midnight.</p>
-                        @error('shiftPreferenceForm.max_night_shifts_per_cycle') <span class="text-xs text-red-500">{{ $message }}</span> @enderror
                     </div>
 
                     <div>

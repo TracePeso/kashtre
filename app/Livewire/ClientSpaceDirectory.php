@@ -1032,7 +1032,6 @@ class ClientSpaceDirectory extends Component
             'shiftPreferenceForm.preferred_shift_type_ids.*' => ['integer', 'distinct', $shiftTypeExistsRule],
             'shiftPreferenceForm.excluded_shift_type_ids' => ['nullable', 'array'],
             'shiftPreferenceForm.excluded_shift_type_ids.*' => ['integer', 'distinct', $shiftTypeExistsRule],
-            'shiftPreferenceForm.max_night_shifts_per_cycle' => ['nullable', 'integer', 'min:0'],
             'shiftPreferenceForm.notes' => ['nullable', 'string'],
             'shiftPreferenceForm.is_active' => ['nullable', 'boolean'],
         ];

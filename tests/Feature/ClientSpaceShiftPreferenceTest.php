@@ -101,7 +101,6 @@ class ClientSpaceShiftPreferenceTest extends TestCase
             ->set('shiftPreferenceForm.fixed_days_of_week', [1, 2, 3])
             ->set('shiftPreferenceForm.preferred_shift_type_ids', [$dayShift->id])
             ->set('shiftPreferenceForm.excluded_shift_type_ids', [$nightShift->id])
-            ->set('shiftPreferenceForm.max_night_shifts_per_cycle', 0)
             ->set('shiftPreferenceForm.notes', 'Client-space level shift preference edit.')
             ->call('saveShiftPreference')
             ->assertHasNoErrors()
@@ -112,8 +111,104 @@ class ClientSpaceShiftPreferenceTest extends TestCase
             'staff_assignment_id' => $assignment->id,
             'rostering_mode' => HrStaffRosteringProfile::MODE_FIXED,
             'fixed_shift_type_id' => $dayShift->id,
-            'max_night_shifts_per_cycle' => 0,
             'is_active' => true,
         ]);
+    }
+
+    public function test_dynamic_mode_clears_fixed_shift_configuration_and_overnight_limit(): void
+    {
+        $organization = Organization::create([
+            'name' => 'Client Space Dynamic Shift Org',
+            'external_business_uuid' => 'client-space-dynamic-shift-org',
+            'weekend_days' => [0, 6],
+        ]);
+
+        $user = User::factory()->create([
+            'permissions' => ['View HR Setup'],
+        ]);
+
+        $routingNode = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'name' => 'Routing Node B',
+            'type' => 'Routing Node',
+            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+            'metadata' => [
+                HrOrganizationalUnit::METADATA_LAST_ROUTING_NODE => true,
+            ],
+        ]);
+
+        $clientSpace = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => $routingNode->id,
+            'name' => 'Ward Echo',
+            'type' => 'Client Space',
+            'unit_kind' => HrOrganizationalUnit::KIND_CLIENT_SPACE,
+        ]);
+
+        $assignment = StaffAssignment::create([
+            'organization_id' => $organization->id,
+            'organizational_unit_id' => $routingNode->id,
+            'staff_uuid' => 'staff-echo',
+            'staff_name' => 'Eddie Echo',
+            'staff_title' => 'Nurse',
+            'assignment_type' => 'primary',
+            'status' => 'active',
+            'assigned_at' => now(),
+        ]);
+
+        HrClientSpaceStaffAssignment::create([
+            'organization_id' => $organization->id,
+            'client_space_unit_id' => $clientSpace->id,
+            'staff_assignment_id' => $assignment->id,
+            'staff_uuid' => $assignment->staff_uuid,
+            'assignment_type' => HrClientSpaceStaffAssignment::TYPE_SECONDARY,
+            'status' => HrClientSpaceStaffAssignment::STATUS_ACTIVE,
+            'assigned_at' => now(),
+        ]);
+
+        $dayShift = ShiftType::create([
+            'organization_id' => $organization->id,
+            'name' => 'Day Shift',
+            'code' => 'DAY',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'color' => '#2563EB',
+            'is_active' => true,
+            'is_rosterable' => true,
+        ]);
+
+        HrStaffRosteringProfile::create([
+            'organization_id' => $organization->id,
+            'staff_assignment_id' => $assignment->id,
+            'rostering_mode' => HrStaffRosteringProfile::MODE_FIXED,
+            'fixed_shift_type_id' => $dayShift->id,
+            'fixed_days_of_week' => [1, 2],
+            'preferred_shift_type_ids' => [],
+            'excluded_shift_type_ids' => [],
+            'max_night_shifts_per_cycle' => 2,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_organization_id' => $organization->id]);
+
+        Livewire::test(ClientSpaceDirectory::class)
+            ->call('openShiftPreferenceModal', $clientSpace->id, $assignment->id)
+            ->set('shiftPreferenceForm.rostering_mode', HrStaffRosteringProfile::MODE_DYNAMIC)
+            ->set('shiftPreferenceForm.preferred_shift_type_ids', [])
+            ->call('saveShiftPreference')
+            ->assertHasNoErrors()
+            ->assertSee('Shift preference updated.');
+
+        $this->assertDatabaseHas('hr_staff_rostering_profiles', [
+            'organization_id' => $organization->id,
+            'staff_assignment_id' => $assignment->id,
+            'rostering_mode' => HrStaffRosteringProfile::MODE_DYNAMIC,
+            'fixed_shift_type_id' => null,
+            'max_night_shifts_per_cycle' => null,
+            'is_active' => true,
+        ]);
+
+        $this->assertSame([], $assignment->fresh()->rosteringProfile?->fixedDays() ?? []);
     }
 }

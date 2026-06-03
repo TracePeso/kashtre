@@ -21,7 +21,6 @@ trait InteractsWithStaffShiftPreferences
             'fixed_days_of_week' => [],
             'preferred_shift_type_ids' => [],
             'excluded_shift_type_ids' => [],
-            'max_night_shifts_per_cycle' => null,
             'notes' => null,
             'is_active' => true,
         ];
@@ -40,7 +39,6 @@ trait InteractsWithStaffShiftPreferences
             'fixed_days_of_week' => $profile?->fixedDays() ?? [],
             'preferred_shift_type_ids' => $profile?->preferredShiftIds() ?? [],
             'excluded_shift_type_ids' => $profile?->excludedShiftIds() ?? [],
-            'max_night_shifts_per_cycle' => $profile?->max_night_shifts_per_cycle,
             'notes' => $profile?->notes,
             'is_active' => $profile?->is_active ?? true,
         ];
@@ -51,18 +49,21 @@ trait InteractsWithStaffShiftPreferences
      */
     protected function saveStaffShiftPreference(StaffAssignment $record, array $data): void
     {
+        $rosteringMode = $data['rostering_mode'] ?? HrStaffRosteringProfile::MODE_DYNAMIC;
+        $usesFixedMode = $rosteringMode === HrStaffRosteringProfile::MODE_FIXED;
+
         $record->rosteringProfile()->updateOrCreate(
             [],
             [
                 'organization_id' => $record->organization_id,
-                'rostering_mode' => $data['rostering_mode'] ?? HrStaffRosteringProfile::MODE_DYNAMIC,
-                'fixed_shift_type_id' => $data['fixed_shift_type_id'] ?: null,
-                'fixed_days_of_week' => array_values(array_map('intval', $data['fixed_days_of_week'] ?? [])),
+                'rostering_mode' => $rosteringMode,
+                'fixed_shift_type_id' => $usesFixedMode ? ($data['fixed_shift_type_id'] ?: null) : null,
+                'fixed_days_of_week' => $usesFixedMode
+                    ? array_values(array_map('intval', $data['fixed_days_of_week'] ?? []))
+                    : [],
                 'preferred_shift_type_ids' => array_values(array_map('intval', $data['preferred_shift_type_ids'] ?? [])),
                 'excluded_shift_type_ids' => array_values(array_map('intval', $data['excluded_shift_type_ids'] ?? [])),
-                'max_night_shifts_per_cycle' => filled($data['max_night_shifts_per_cycle'] ?? null)
-                    ? (int) $data['max_night_shifts_per_cycle']
-                    : null,
+                'max_night_shifts_per_cycle' => null,
                 'notes' => $data['notes'] ?: null,
                 'is_active' => (bool) ($data['is_active'] ?? true),
             ]
@@ -92,7 +93,7 @@ trait InteractsWithStaffShiftPreferences
 
         return $profile->rostering_mode === HrStaffRosteringProfile::MODE_FIXED
             ? 'Fixed pattern'
-            : 'Dynamic rotation';
+            : 'Dynamic rotation (Regular working Hours by default)';
     }
 
     protected function userCanManageShiftPreferences(): bool
