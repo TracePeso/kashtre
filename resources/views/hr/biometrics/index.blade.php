@@ -479,7 +479,7 @@
         @if ($activeBiometricPage === 'attendance')
         <div class="mb-8 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
             <div class="mb-5">
-                <h2 class="text-base font-semibold text-gray-900">Attendance Login / Logout</h2>
+                <h2 class="text-base font-semibold text-gray-900">Attendance Clocking</h2>
                 <p class="mt-1 text-sm text-gray-500">Complete clock-in or clock-out from this page. The attendance action only completes after the office network and enabled geofence checks pass.</p>
             </div>
 
@@ -534,14 +534,14 @@
                     <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div>
                             <p class="text-sm font-semibold text-sky-900">Fingerprint attendance actions</p>
-                            <p class="mt-1 text-sm text-sky-800">Use the buttons below to authenticate with the staff member's fingerprint and complete `Login / Clock In` or `Logout / Clock Out` directly from Attendance.</p>
+                            <p class="mt-1 text-sm text-sky-800">Use the buttons below to authenticate with the staff member's fingerprint and complete `Clock In` or `Clock Out` directly from Attendance.</p>
                         </div>
                         <div class="flex flex-wrap gap-3">
-                            <button type="submit" data-punch-submit data-punch-type="in" data-punch-label="Login / Clock In" class="inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
-                                Login / Clock In
+                            <button type="submit" data-punch-submit data-punch-type="in" data-punch-label="Clock In" class="inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
+                                Clock In
                             </button>
-                            <button type="submit" data-punch-submit data-punch-type="out" data-punch-label="Logout / Clock Out" class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
-                                Logout / Clock Out
+                            <button type="submit" data-punch-submit data-punch-type="out" data-punch-label="Clock Out" class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
+                                Clock Out
                             </button>
                         </div>
                     </div>

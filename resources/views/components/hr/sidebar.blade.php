@@ -45,7 +45,7 @@
                     'visible' => $user?->canViewHrBiometrics() ?? false,
                 ],
                 [
-                    'label' => 'Biometric Attendance',
+                    'label' => 'Clocking',
                     'href' => route('hr.biometrics.attendance'),
                     'active' => request()->routeIs('hr.biometrics.attendance'),
                     'visible' => $user?->canViewHrBiometrics() ?? false,
