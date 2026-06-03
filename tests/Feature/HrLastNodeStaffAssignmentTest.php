@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Livewire\ClientSpaceDirectory;
 use App\Livewire\OrganizationalStructure;
 use App\Models\HrClientSpaceStaffAssignment;
 use App\Models\HrOrganizationalUnit;
@@ -16,6 +17,216 @@ use Tests\TestCase;
 class HrLastNodeStaffAssignmentTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_client_space_directory_add_staff_links_last_node_staff_after_leaf_setup(): void
+    {
+        $user = User::factory()->create([
+            'is_hr_admin' => true,
+            'permissions' => ['Add HR Setup'],
+        ]);
+
+        $organization = Organization::create([
+            'name' => 'Leaf Directory Org',
+            'external_business_uuid' => 'leaf-directory-org',
+            'weekend_days' => [0, 6],
+        ]);
+
+        $rootLevel = HrOrganizationTierLevel::create([
+            'organization_id' => $organization->id,
+            'name' => 'Division',
+            'level_order' => 1,
+        ]);
+
+        $leafLevel = HrOrganizationTierLevel::create([
+            'organization_id' => $organization->id,
+            'name' => 'Unit',
+            'level_order' => 2,
+        ]);
+
+        $rootNode = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => null,
+            'tier_level_id' => $rootLevel->id,
+            'name' => 'Division',
+            'type' => 'Division',
+            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+        ]);
+
+        $leafNode = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => $rootNode->id,
+            'tier_level_id' => $leafLevel->id,
+            'name' => 'Unit',
+            'type' => 'Unit',
+            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+        ]);
+
+        $clientSpace = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => null,
+            'name' => 'Ward A',
+            'type' => 'Client Space',
+            'unit_kind' => HrOrganizationalUnit::KIND_CLIENT_SPACE,
+        ]);
+
+        $staffAssignment = StaffAssignment::create([
+            'organization_id' => $organization->id,
+            'organizational_unit_id' => $leafNode->id,
+            'staff_uuid' => 'leaf-directory-staff',
+            'staff_name' => 'Leaf Nurse',
+            'staff_title' => 'Nurse',
+            'assignment_type' => 'primary',
+            'status' => 'active',
+            'assigned_at' => now(),
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_organization_id' => $organization->id]);
+
+        Livewire::test(OrganizationalStructure::class)
+            ->call('openLeafClientSpacesModal', $leafNode->id)
+            ->set('selectedLeafClientSpaceIds', [$clientSpace->id])
+            ->call('saveLeafClientSpaces')
+            ->assertSet('showLeafStaffModal', true)
+            ->assertSet('selectedLeafTargetClientSpaceIds', [$clientSpace->id]);
+
+        $this->assertTrue($leafNode->fresh()->isMarkedAsLastRoutingNode());
+        $this->assertTrue($clientSpace->fresh()->isLinkedToRoutingNode($leafNode->fresh()));
+
+        Livewire::test(ClientSpaceDirectory::class)
+            ->call('openAddStaffModal', $clientSpace->id)
+            ->assertSet('showAddStaffModal', true)
+            ->call('selectAllVisibleStaff')
+            ->assertSet('selectedStaffAssignmentIds', [$staffAssignment->id])
+            ->call('addStaffToClientSpace')
+            ->assertHasNoErrors()
+            ->assertSet('showAddStaffModal', false)
+            ->assertSet('selectedStaffAssignmentIds', []);
+
+        $this->assertDatabaseHas('hr_client_space_staff_assignments', [
+            'organization_id' => $organization->id,
+            'client_space_unit_id' => $clientSpace->id,
+            'staff_assignment_id' => $staffAssignment->id,
+            'assignment_type' => HrClientSpaceStaffAssignment::TYPE_SECONDARY,
+            'status' => HrClientSpaceStaffAssignment::STATUS_ACTIVE,
+        ]);
+
+        $this->assertSame($leafNode->id, $staffAssignment->fresh()->organizational_unit_id);
+    }
+
+    public function test_client_space_directory_rejects_staff_outside_attached_last_routes(): void
+    {
+        $user = User::factory()->create([
+            'is_hr_admin' => true,
+            'permissions' => ['Add HR Setup'],
+        ]);
+
+        $organization = Organization::create([
+            'name' => 'Leaf Directory Guard Org',
+            'external_business_uuid' => 'leaf-directory-guard-org',
+            'weekend_days' => [0, 6],
+        ]);
+
+        $rootLevel = HrOrganizationTierLevel::create([
+            'organization_id' => $organization->id,
+            'name' => 'Division',
+            'level_order' => 1,
+        ]);
+
+        $leafLevel = HrOrganizationTierLevel::create([
+            'organization_id' => $organization->id,
+            'name' => 'Unit',
+            'level_order' => 2,
+        ]);
+
+        $rootNode = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => null,
+            'tier_level_id' => $rootLevel->id,
+            'name' => 'Division',
+            'type' => 'Division',
+            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+        ]);
+
+        $attachedLeafNode = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => $rootNode->id,
+            'tier_level_id' => $leafLevel->id,
+            'name' => 'Unit A',
+            'type' => 'Unit',
+            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+        ]);
+
+        $otherLeafNode = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => $rootNode->id,
+            'tier_level_id' => $leafLevel->id,
+            'name' => 'Unit B',
+            'type' => 'Unit',
+            'unit_kind' => HrOrganizationalUnit::KIND_ROUTING_NODE,
+        ]);
+
+        $clientSpace = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'parent_id' => null,
+            'name' => 'Ward A',
+            'type' => 'Client Space',
+            'unit_kind' => HrOrganizationalUnit::KIND_CLIENT_SPACE,
+        ]);
+
+        $eligibleAssignment = StaffAssignment::create([
+            'organization_id' => $organization->id,
+            'organizational_unit_id' => $attachedLeafNode->id,
+            'staff_uuid' => 'eligible-last-node-staff',
+            'staff_name' => 'Eligible Nurse',
+            'staff_title' => 'Nurse',
+            'assignment_type' => 'primary',
+            'status' => 'active',
+            'assigned_at' => now(),
+        ]);
+
+        $ineligibleAssignment = StaffAssignment::create([
+            'organization_id' => $organization->id,
+            'organizational_unit_id' => $otherLeafNode->id,
+            'staff_uuid' => 'other-last-node-staff',
+            'staff_name' => 'Other Nurse',
+            'staff_title' => 'Nurse',
+            'assignment_type' => 'primary',
+            'status' => 'active',
+            'assigned_at' => now(),
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_organization_id' => $organization->id]);
+
+        Livewire::test(OrganizationalStructure::class)
+            ->call('openLeafClientSpacesModal', $attachedLeafNode->id)
+            ->set('selectedLeafClientSpaceIds', [$clientSpace->id])
+            ->call('saveLeafClientSpaces')
+            ->assertSet('showLeafStaffModal', true);
+
+        Livewire::test(ClientSpaceDirectory::class)
+            ->call('openAddStaffModal', $clientSpace->id)
+            ->call('selectAllVisibleStaff')
+            ->assertSet('selectedStaffAssignmentIds', [$eligibleAssignment->id])
+            ->set('selectedStaffAssignmentIds', [$eligibleAssignment->id, $ineligibleAssignment->id])
+            ->call('addStaffToClientSpace')
+            ->assertHasErrors(['selectedStaffAssignmentIds']);
+
+        $this->assertDatabaseMissing('hr_client_space_staff_assignments', [
+            'organization_id' => $organization->id,
+            'client_space_unit_id' => $clientSpace->id,
+            'staff_assignment_id' => $eligibleAssignment->id,
+            'status' => HrClientSpaceStaffAssignment::STATUS_ACTIVE,
+        ]);
+
+        $this->assertDatabaseMissing('hr_client_space_staff_assignments', [
+            'organization_id' => $organization->id,
+            'client_space_unit_id' => $clientSpace->id,
+            'staff_assignment_id' => $ineligibleAssignment->id,
+            'status' => HrClientSpaceStaffAssignment::STATUS_ACTIVE,
+        ]);
+    }
 
     public function test_dl_test_staa_assignment_validates_single_staff_member_can_link_to_multiple_client_spaces_with_conflict_checks(): void
     {
