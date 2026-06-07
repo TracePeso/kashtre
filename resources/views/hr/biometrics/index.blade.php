@@ -122,11 +122,7 @@
                     </div>
 
                     <div class="lg:col-span-2">
-                        <input type="hidden" name="biometric_network_restriction_enabled" value="0">
-                        <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
-                            <input type="checkbox" name="biometric_network_restriction_enabled" value="1" class="rounded border-gray-300 text-brand-blue shadow-sm focus:ring-brand-blue" @checked(old('biometric_network_restriction_enabled', $organization->biometric_network_restriction_enabled))>
-                            Require office network
-                        </label>
+                        <input type="hidden" name="biometric_network_restriction_enabled" value="{{ old('biometric_network_restriction_enabled', $organization->biometric_network_restriction_enabled) ? 1 : 0 }}">
 
                         <div class="mt-4 space-y-3" data-biometric-network-entries>
                             <div class="grid grid-cols-12 gap-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -190,11 +186,7 @@
                     </div>
 
                     <div class="lg:col-span-2">
-                        <input type="hidden" name="biometric_geofence_enabled" value="0">
-                        <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
-                            <input type="checkbox" name="biometric_geofence_enabled" value="1" class="rounded border-gray-300 text-brand-blue shadow-sm focus:ring-brand-blue" @checked(old('biometric_geofence_enabled', $organization->biometric_geofence_enabled))>
-                            Require office geofence
-                        </label>
+                        <input type="hidden" name="biometric_geofence_enabled" value="{{ old('biometric_geofence_enabled', $organization->biometric_geofence_enabled) ? 1 : 0 }}">
 
                         <div class="mt-4 space-y-3" data-biometric-geofence-locations>
                             @foreach ($geofenceLocationRows as $index => $locationEntry)
