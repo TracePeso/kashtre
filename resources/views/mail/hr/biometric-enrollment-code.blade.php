@@ -11,7 +11,7 @@ Use this secret code to authorize the personal device:
 
 This code expires at **{{ optional($enrollmentSession->secret_code_expires_at)->format('M j, Y H:i') }}**.
 
-After the code is confirmed, face capture and mobile fingerprint enrollment must both finish within **2 minutes**.
+After the code is confirmed, face capture and fingerprint enrollment must both finish within **2 minutes**.
 
 If you did not expect this code, ignore this email and contact HR.
 

@@ -426,7 +426,7 @@
                             @csrf
                             <div>
                                 <h2 class="text-base font-semibold text-gray-900">Authorize Personal Device</h2>
-                                <p class="mt-1 text-sm text-gray-500">HR must send and confirm a secret code before face capture and mobile fingerprint enrollment can begin.</p>
+                                <p class="mt-1 text-sm text-gray-500">HR must send and confirm a secret code before face capture and fingerprint enrollment can begin.</p>
                             </div>
 
                             <div>
@@ -479,7 +479,7 @@
                                 <input id="secret_code" name="secret_code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue" placeholder="Enter 6-digit code">
                             </div>
                             <div class="md:self-end">
-                                <p class="text-xs text-gray-500">Confirm the emailed code before the phone fingerprint prompt can start.</p>
+                                <p class="text-xs text-gray-500">Confirm the emailed code before the fingerprint prompt can start.</p>
                             </div>
                             <div class="md:self-end">
                                 <button type="submit" class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
@@ -515,7 +515,7 @@
                         <div class="mb-5 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                             <div>
                                 <h2 class="text-base font-semibold text-gray-900">Complete Secure Biometric {{ $activeEnrollmentPurpose === 're-enrollment' ? 'Re-enrollment' : 'Enrollment' }}</h2>
-                                <p class="mt-1 text-sm text-gray-500">{{ $activeEnrollmentSession->staff_name }} must complete both mobile fingerprint and face capture in the same authorized session.</p>
+                                <p class="mt-1 text-sm text-gray-500">{{ $activeEnrollmentSession->staff_name }} must complete both fingerprint and face capture in the same authorized session.</p>
                             </div>
                             <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                                 <p class="font-semibold">2-minute capture window</p>
@@ -535,14 +535,14 @@
                         <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
                             <div class="space-y-4">
                                 <div>
-                                    <h3 class="text-sm font-semibold text-gray-900">Mobile Fingerprint</h3>
-                                    <p class="mt-1 text-sm text-gray-500">Open this page on the staff member's phone and complete the device fingerprint/passkey prompt after code confirmation.</p>
+                                    <h3 class="text-sm font-semibold text-gray-900">Fingerprint</h3>
+                                    <p class="mt-1 text-sm text-gray-500">Open this page on the staff member's phone and complete the fingerprint prompt after code confirmation.</p>
                                 </div>
 
                                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700" for="fingerprint_label">Label</label>
-                                        <input id="fingerprint_label" name="fingerprint_label" value="{{ old('fingerprint_label', 'Phone fingerprint') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                                        <input id="fingerprint_label" name="fingerprint_label" value="{{ old('fingerprint_label', 'Fingerprint') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700" for="fingerprint_device_id">Device ID</label>
@@ -556,11 +556,11 @@
                                 </div>
 
                                 <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
-                                    <p class="text-sm font-semibold text-gray-900">Phone fingerprint registration</p>
+                                    <p class="text-sm font-semibold text-gray-900">Fingerprint registration</p>
                                     <p class="mt-1 text-sm text-gray-500">The device prompt remains locked until the secret code is confirmed for this session.</p>
-                                    <p id="fingerprint_status" class="mt-2 text-xs text-gray-500">No phone fingerprint registered in this session yet.</p>
+                                    <p id="fingerprint_status" class="mt-2 text-xs text-gray-500">No fingerprint registered in this session yet.</p>
                                     <button type="button" data-mobile-fingerprint-register class="mt-3 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">
-                                        Register Phone Fingerprint
+                                        Register Fingerprint
                                     </button>
                                 </div>
                             </div>
@@ -654,7 +654,7 @@
                             </button>
                         </div>
                     </div>
-                    <p id="verify_fingerprint_status" class="mt-3 text-xs text-sky-800">Choose `Clock In` or `Clock Out` to start the fingerprint prompt.</p>
+                        <p id="verify_fingerprint_status" class="mt-3 text-xs text-sky-800">Choose `Clock In` or `Clock Out` to start fingerprint verification.</p>
                 </div>
             </form>
         </div>
@@ -717,9 +717,9 @@
 
                 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <div class="rounded-md border border-gray-200 bg-gray-50 p-3">
-                        <p class="text-sm font-semibold text-gray-900">Phone fingerprint check</p>
-                        <p class="mt-1 text-sm text-gray-500">Use the staff member's mobile device to approve the fingerprint/passkey prompt before manual verification completes.</p>
-                        <p id="verify_fingerprint_status" class="mt-2 text-xs text-gray-500">No phone fingerprint check captured yet.</p>
+                        <p class="text-sm font-semibold text-gray-900">Fingerprint check</p>
+                        <p class="mt-1 text-sm text-gray-500">Use the staff member's mobile device to approve the fingerprint prompt before manual verification completes.</p>
+                        <p id="verify_fingerprint_status" class="mt-2 text-xs text-gray-500">No fingerprint check captured yet.</p>
                         <button type="button" data-mobile-fingerprint-verify class="mt-3 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">
                             Capture Fingerprint Only
                         </button>
@@ -1046,7 +1046,7 @@
 
                     if (!response.ok) {
                         const firstError = payload.errors ? Object.values(payload.errors).flat()[0] : null;
-                        throw new Error(firstError || 'The phone fingerprint prompt could not be started.');
+                        throw new Error(firstError || 'The fingerprint prompt could not be started.');
                     }
 
                     return preparePublicKeyOptions(payload.publicKey);
@@ -1634,28 +1634,28 @@
                     const form = event.currentTarget.closest('form');
 
                     if (!window.PublicKeyCredential || !navigator.credentials?.create) {
-                        mobileFingerprintStatus('fingerprint_status', 'Phone fingerprint registration is not available in this browser.');
+                        mobileFingerprintStatus('fingerprint_status', 'Fingerprint registration is not available in this browser.');
                         return;
                     }
 
                     try {
-                        mobileFingerprintStatus('fingerprint_status', 'Waiting for the phone fingerprint prompt...');
+                        mobileFingerprintStatus('fingerprint_status', 'Waiting for the fingerprint prompt...');
                         const publicKey = await mobileFingerprintOptions('enroll', form);
                         const credential = await navigator.credentials.create({ publicKey });
                         document.getElementById('fingerprint_credential').value = JSON.stringify(credentialToJson(credential));
-                        mobileFingerprintStatus('fingerprint_status', 'Phone fingerprint registered. Save the profile to finish.', true);
+                        mobileFingerprintStatus('fingerprint_status', 'Fingerprint captured. Save the profile to finish.', true);
                     } catch (error) {
-                        mobileFingerprintStatus('fingerprint_status', error.message || 'Phone fingerprint registration failed.');
+                        mobileFingerprintStatus('fingerprint_status', error.message || 'Fingerprint registration failed.');
                     }
                 });
 
-                async function runPhoneFingerprintVerification(form, successMessage = 'Phone fingerprint approved. Run verification to finish.') {
+                async function runPhoneFingerprintVerification(form, successMessage = 'Fingerprint approved. Run verification to finish.') {
                     if (!window.PublicKeyCredential || !navigator.credentials?.get) {
-                        throw new Error('Phone fingerprint verification is not available in this browser.');
+                        throw new Error('Fingerprint verification is not available in this browser.');
                     }
 
                     form.querySelector('[name="modality"]').value = 'fingerprint';
-                    mobileFingerprintStatus('verify_fingerprint_status', 'Waiting for the phone fingerprint prompt...');
+                    mobileFingerprintStatus('verify_fingerprint_status', 'Waiting for the fingerprint prompt...');
                     const publicKey = await mobileFingerprintOptions('verify', form);
                     const credential = await navigator.credentials.get({ publicKey });
                     document.getElementById('verify_fingerprint_assertion').value = JSON.stringify(credentialToJson(credential));

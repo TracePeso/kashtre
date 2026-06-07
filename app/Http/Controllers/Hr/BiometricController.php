@@ -220,7 +220,7 @@ class BiometricController extends Controller
             'capture_deadline_at' => now()->addMinutes(self::ENROLLMENT_CAPTURE_WINDOW_MINUTES),
         ])->save();
 
-        return back()->with('status', "Secret code confirmed. Complete face and phone fingerprint enrollment for {$session->staff_name} within 2 minutes.");
+        return back()->with('status', "Secret code confirmed. Complete face and fingerprint enrollment for {$session->staff_name} within 2 minutes.");
     }
 
     public function completeSecureEnrollment(
@@ -323,7 +323,7 @@ class BiometricController extends Controller
     ): RedirectResponse
     {
         throw ValidationException::withMessages([
-            'modality' => 'Use the secure biometric enrollment flow so face capture and phone fingerprint enrollment complete within the same authorized 2-minute window.',
+            'modality' => 'Use the secure biometric enrollment flow so face capture and fingerprint enrollment complete within the same authorized 2-minute window.',
         ]);
     }
 

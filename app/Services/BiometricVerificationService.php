@@ -42,7 +42,7 @@ class BiometricVerificationService
 
             if (! $templatePayload && ! $externalReference) {
                 throw ValidationException::withMessages([
-                    'fingerprint_template' => 'Register the phone fingerprint credential or provide a fingerprint template.',
+                    'fingerprint_template' => 'Register a fingerprint credential or provide a fingerprint template.',
                 ]);
             }
         }

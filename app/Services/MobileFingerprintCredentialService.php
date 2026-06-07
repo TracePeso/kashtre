@@ -111,13 +111,13 @@ class MobileFingerprintCredentialService
 
         if ((int) ($state['organization_id'] ?? 0) !== (int) $staffAssignment->organization_id) {
             throw ValidationException::withMessages([
-                'fingerprint_credential' => 'The phone fingerprint registration was started for another organization.',
+                'fingerprint_credential' => 'This fingerprint registration was started for another organization.',
             ]);
         }
 
         if ((int) ($state['staff_assignment_id'] ?? 0) !== (int) $staffAssignment->id) {
             throw ValidationException::withMessages([
-                'fingerprint_credential' => 'The phone fingerprint registration was started for another staff member.',
+                'fingerprint_credential' => 'This fingerprint registration was started for another staff member.',
             ]);
         }
 
@@ -131,13 +131,13 @@ class MobileFingerprintCredentialService
             $attestation = $this->cborDecode($attestationBytes, $offset);
         } catch (\Throwable) {
             throw ValidationException::withMessages([
-                'fingerprint_credential' => 'The phone fingerprint registration payload was not readable.',
+                'fingerprint_credential' => 'The fingerprint registration payload was not readable.',
             ]);
         }
 
         if (! is_array($attestation) || ! is_string($attestation['authData'] ?? null)) {
             throw ValidationException::withMessages([
-                'fingerprint_credential' => 'The phone fingerprint registration response was incomplete.',
+                'fingerprint_credential' => 'The fingerprint registration response was incomplete.',
             ]);
         }
 
@@ -146,7 +146,7 @@ class MobileFingerprintCredentialService
 
         if (! hash_equals($credentialId, (string) ($credential['id'] ?? ''))) {
             throw ValidationException::withMessages([
-                'fingerprint_credential' => 'The phone fingerprint credential ID did not match the registration response.',
+                'fingerprint_credential' => 'The fingerprint credential ID did not match the registration response.',
             ]);
         }
 
@@ -168,7 +168,7 @@ class MobileFingerprintCredentialService
 
         if ((int) ($state['organization_id'] ?? 0) !== (int) $organization->id) {
             throw ValidationException::withMessages([
-                'fingerprint_assertion' => 'The phone fingerprint check was started for another organization.',
+                'fingerprint_assertion' => 'This fingerprint check was started for another organization.',
             ]);
         }
 
@@ -177,7 +177,7 @@ class MobileFingerprintCredentialService
 
         if ($credentialId === '') {
             throw ValidationException::withMessages([
-                'fingerprint_assertion' => 'The phone fingerprint assertion was missing a credential ID.',
+                'fingerprint_assertion' => 'The fingerprint check was missing a credential ID.',
             ]);
         }
 
@@ -191,19 +191,19 @@ class MobileFingerprintCredentialService
 
         if (! $profile) {
             throw ValidationException::withMessages([
-                'fingerprint_assertion' => 'This phone fingerprint is not enrolled for any active staff member.',
+                'fingerprint_assertion' => 'This fingerprint is not enrolled for any active staff member.',
             ]);
         }
 
         if (! empty($state['staff_assignment_id']) && (int) $state['staff_assignment_id'] !== (int) $profile->staff_assignment_id) {
             throw ValidationException::withMessages([
-                'fingerprint_assertion' => 'This phone fingerprint belongs to a different staff member.',
+                'fingerprint_assertion' => 'This fingerprint belongs to a different staff member.',
             ]);
         }
 
         if (! empty($state['profile_uuid']) && ! hash_equals((string) $state['profile_uuid'], $profile->uuid)) {
             throw ValidationException::withMessages([
-                'fingerprint_assertion' => 'This phone fingerprint belongs to a different biometric profile.',
+                'fingerprint_assertion' => 'This fingerprint belongs to a different biometric profile.',
             ]);
         }
 
@@ -211,7 +211,7 @@ class MobileFingerprintCredentialService
 
         if (! is_array($storedCredential) || ! is_string($storedCredential['public_key_pem'] ?? null)) {
             throw ValidationException::withMessages([
-                'fingerprint_assertion' => 'This phone fingerprint profile is missing its verification key.',
+                'fingerprint_assertion' => 'This fingerprint profile is missing its verification key.',
             ]);
         }
 
@@ -225,7 +225,7 @@ class MobileFingerprintCredentialService
 
         if ($verified !== 1) {
             throw ValidationException::withMessages([
-                'fingerprint_assertion' => 'The phone fingerprint signature could not be verified.',
+                'fingerprint_assertion' => 'The fingerprint signature could not be verified.',
             ]);
         }
 
@@ -244,13 +244,13 @@ class MobileFingerprintCredentialService
 
         if (! is_array($state)) {
             throw ValidationException::withMessages([
-                $action === 'enroll' ? 'fingerprint_credential' : 'fingerprint_assertion' => 'Start the phone fingerprint check again.',
+                $action === 'enroll' ? 'fingerprint_credential' : 'fingerprint_assertion' => 'Start the fingerprint check again.',
             ]);
         }
 
         if (Carbon::parse($state['expires_at'] ?? now()->subMinute())->isPast()) {
             throw ValidationException::withMessages([
-                $action === 'enroll' ? 'fingerprint_credential' : 'fingerprint_assertion' => 'The phone fingerprint check expired. Start again.',
+                $action === 'enroll' ? 'fingerprint_credential' : 'fingerprint_assertion' => 'The fingerprint check expired. Start again.',
             ]);
         }
 
@@ -260,13 +260,13 @@ class MobileFingerprintCredentialService
     private function decodeJsonPayload(mixed $value, string $field): array
     {
         if (! is_string($value) || trim($value) === '') {
-            throw ValidationException::withMessages([$field => 'The phone fingerprint response is required.']);
+            throw ValidationException::withMessages([$field => 'The fingerprint response is required.']);
         }
 
         $decoded = json_decode($value, true);
 
         if (! is_array($decoded)) {
-            throw ValidationException::withMessages([$field => 'The phone fingerprint response was not valid JSON.']);
+            throw ValidationException::withMessages([$field => 'The fingerprint response was not valid JSON.']);
         }
 
         return $decoded;
@@ -277,19 +277,19 @@ class MobileFingerprintCredentialService
         $clientData = json_decode($clientDataBytes, true);
 
         if (! is_array($clientData)) {
-            throw ValidationException::withMessages([$field => 'The phone fingerprint client response was invalid.']);
+            throw ValidationException::withMessages([$field => 'The fingerprint client response was invalid.']);
         }
 
         if (($clientData['type'] ?? null) !== $expectedType) {
-            throw ValidationException::withMessages([$field => 'The phone fingerprint response had the wrong operation type.']);
+            throw ValidationException::withMessages([$field => 'The fingerprint response had the wrong operation type.']);
         }
 
         if (! hash_equals((string) $state['challenge'], (string) ($clientData['challenge'] ?? ''))) {
-            throw ValidationException::withMessages([$field => 'The phone fingerprint challenge did not match.']);
+            throw ValidationException::withMessages([$field => 'The fingerprint challenge did not match.']);
         }
 
         if (! hash_equals((string) $state['origin'], (string) ($clientData['origin'] ?? ''))) {
-            throw ValidationException::withMessages([$field => 'The phone fingerprint response came from the wrong origin.']);
+            throw ValidationException::withMessages([$field => 'The fingerprint response came from the wrong origin.']);
         }
 
         return $clientData;
@@ -301,7 +301,7 @@ class MobileFingerprintCredentialService
 
         if (($authData['flags'] & 0x40) !== 0x40) {
             throw ValidationException::withMessages([
-                'fingerprint_credential' => 'The phone fingerprint registration did not include a credential key.',
+                'fingerprint_credential' => 'The fingerprint registration did not include a credential key.',
             ]);
         }
 
@@ -319,13 +319,13 @@ class MobileFingerprintCredentialService
             $publicKey = $this->cborDecode($publicKeyCose, $coseOffset);
         } catch (\Throwable) {
             throw ValidationException::withMessages([
-                'fingerprint_credential' => 'The phone fingerprint public key was not readable.',
+                'fingerprint_credential' => 'The fingerprint public key was not readable.',
             ]);
         }
 
         if (! is_array($publicKey) || $credentialId === '') {
             throw ValidationException::withMessages([
-                'fingerprint_credential' => 'The phone fingerprint credential was not readable.',
+                'fingerprint_credential' => 'The fingerprint credential was not readable.',
             ]);
         }
 
@@ -341,7 +341,7 @@ class MobileFingerprintCredentialService
     {
         if (strlen($authenticatorData) < 37) {
             throw ValidationException::withMessages([
-                'fingerprint_assertion' => 'The phone fingerprint authenticator data was incomplete.',
+                'fingerprint_assertion' => 'The fingerprint authenticator data was incomplete.',
             ]);
         }
 
@@ -349,7 +349,7 @@ class MobileFingerprintCredentialService
 
         if (! hash_equals(hash('sha256', $rpId, true), $rpIdHash)) {
             throw ValidationException::withMessages([
-                'fingerprint_assertion' => 'The phone fingerprint was created for another site.',
+                'fingerprint_assertion' => 'This fingerprint was created for another site.',
             ]);
         }
 
@@ -377,13 +377,13 @@ class MobileFingerprintCredentialService
 
         if ($keyType !== 2 || $algorithm !== -7 || $curve !== 1 || ! is_string($x) || ! is_string($y)) {
             throw ValidationException::withMessages([
-                'fingerprint_credential' => 'Only phone passkeys using ES256 are currently supported.',
+                'fingerprint_credential' => 'Only fingerprint credentials supported by this system can be used.',
             ]);
         }
 
         if (strlen($x) !== 32 || strlen($y) !== 32) {
             throw ValidationException::withMessages([
-                'fingerprint_credential' => 'The phone fingerprint public key was not a P-256 key.',
+                'fingerprint_credential' => 'The fingerprint public key format is not supported.',
             ]);
         }
 
@@ -513,13 +513,13 @@ class MobileFingerprintCredentialService
     private function base64UrlDecode(mixed $value, string $field): string
     {
         if (! is_string($value) || $value === '') {
-            throw ValidationException::withMessages([$field => 'The phone fingerprint response was missing encoded data.']);
+            throw ValidationException::withMessages([$field => 'The fingerprint response was missing encoded data.']);
         }
 
         $decoded = base64_decode(strtr($value . str_repeat('=', (4 - strlen($value) % 4) % 4), '-_', '+/'), true);
 
         if ($decoded === false) {
-            throw ValidationException::withMessages([$field => 'The phone fingerprint response contained invalid encoded data.']);
+            throw ValidationException::withMessages([$field => 'The fingerprint response contained invalid encoded data.']);
         }
 
         return $decoded;
