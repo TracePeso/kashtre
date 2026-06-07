@@ -2,7 +2,7 @@
     <div class="mb-6 flex items-center justify-between">
         <div>
             <h3 class="text-lg font-semibold text-gray-900">Roster Approval Rules</h3>
-            <p class="mt-1 text-sm text-gray-500">Assign different approvers per client space and, when needed, per title. Single-title rosters use title-specific rules first, then fall back to the client-space rule. Each level needs at least 3 approvers, and any current-level approver can act.</p>
+            <p class="mt-1 text-sm text-gray-500">Assign roster approvers by client space. Rosters resolve their approval chain automatically from the selected client space, with an optional all-client-spaces fallback rule. Each level needs at least 3 approvers, and any current-level approver can act.</p>
             @unless($canDesignateRosterApprovers)
                 <p class="mt-2 text-xs font-medium text-amber-700">Only users with `Designate HR Roster Approvers` can assign or change primary, secondary, and tertiary roster approvers.</p>
             @endunless
@@ -24,7 +24,7 @@
     @if(empty($rules))
         <div class="rounded-xl border border-dashed border-gray-300 bg-white p-6 text-center">
             <p class="font-medium text-gray-700">No roster approval rules configured yet.</p>
-            <p class="mt-2 text-sm text-gray-500">Add a client-space fallback rule first, then add title-specific rules where one roster needs a different approval chain.</p>
+            <p class="mt-2 text-sm text-gray-500">Add a client-space rule first, or create one all-client-spaces fallback rule for shared approval chains.</p>
         </div>
     @else
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -39,7 +39,7 @@
                                 @endif
                             </div>
                             <p class="mt-3 text-sm font-semibold text-gray-900">{{ $rule['organizational_unit']['name'] ?? 'All Client Spaces' }}</p>
-                            <p class="mt-1 text-xs text-gray-500">{{ $rule['discipline_title'] ?: 'All Titles In This Client Space' }}</p>
+                            <p class="mt-1 text-xs text-gray-500">{{ isset($rule['organizational_unit']['name']) ? 'Applies to all rosters in this client space.' : 'Applies to all rosters across client spaces that do not have a specific rule.' }}</p>
                         </div>
 
                         @if($canDesignateRosterApprovers)
@@ -91,27 +91,62 @@
                                 <option value="{{ $id }}">{{ $name }}</option>
                             @endforeach
                         </select>
+                        <p class="mt-2 text-xs text-gray-500">Rosters now pick approvers automatically from the selected client space. Leave this blank only when you want one fallback rule for client spaces without a dedicated setup.</p>
                         @error('clientSpaceId') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
                     </div>
 
-                    <div>
-                        <label class="mb-1 block text-sm font-medium text-gray-700">Title Scope</label>
-                        <select wire:model="disciplineTitle" class="w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                            <option value="">{{ $clientSpaceId ? 'All Titles In This Client Space' : 'All Titles In All Client Spaces' }}</option>
-                            @foreach($disciplineOptions as $disciplineOption)
-                                <option value="{{ $disciplineOption }}">{{ $disciplineOption }}</option>
-                            @endforeach
-                        </select>
-                        <p class="mt-2 text-xs text-gray-500">Choose a title for single-title roster rules. Leave this as all titles to create the fallback rule for the selected scope.</p>
-                        @error('disciplineTitle') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                    <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <h4 class="text-sm font-semibold text-gray-900">Existing Rosters</h4>
+                                <p class="mt-1 text-xs text-gray-500">Rosters already created in the selected client space load here automatically.</p>
+                            </div>
+                            @if($clientSpaceId)
+                                <span class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 shadow-sm">{{ count($existingRosters) }}</span>
+                            @endif
+                        </div>
+
+                        @if(!$clientSpaceId)
+                            <p class="mt-3 text-sm text-gray-500">Select a client space to load its rosters.</p>
+                        @elseif(empty($existingRosters))
+                            <p class="mt-3 text-sm text-gray-500">No rosters exist in this client space yet.</p>
+                        @else
+                            <div class="mt-3 max-h-52 space-y-2 overflow-y-auto pr-1">
+                                @foreach($existingRosters as $roster)
+                                    <div class="rounded-md border border-gray-200 bg-white px-3 py-3">
+                                        <div class="flex flex-wrap items-start justify-between gap-2">
+                                            <div class="min-w-0">
+                                                <p class="text-sm font-semibold text-gray-900">{{ $roster['name'] }}</p>
+                                                <p class="mt-1 text-xs text-gray-500">{{ implode(', ', $roster['titles']) }}</p>
+                                            </div>
+                                            <div class="flex flex-wrap gap-2">
+                                                <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{{ $roster['status'] }}</span>
+                                                <span class="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-700">{{ $roster['approval_status'] }}</span>
+                                            </div>
+                                        </div>
+                                        <p class="mt-2 text-xs text-gray-500">{{ $roster['start_date'] }} to {{ $roster['end_date'] }}</p>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
                     </div>
 
                     <div class="border-t pt-4">
                         <h4 class="mb-3 text-sm font-semibold text-gray-700">Approvers</h4>
-                        <p class="mb-3 text-xs text-gray-500">Select at least 3 approvers for each level. Any one approver at the active level can approve or reject the request.</p>
+                        <p class="mb-3 text-xs text-gray-500">Primary is always required. Choose how many approval levels this rule should use, then select at least 3 approvers for each enabled level. Any one approver at the active level can approve or reject the request.</p>
+
+                        <div class="mb-4">
+                            <label class="mb-1 block text-sm font-medium text-gray-700">Approval Levels</label>
+                            <select wire:model.live="approvalLevelCount" class="w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                                <option value="1">1 Level: Primary only</option>
+                                <option value="2">2 Levels: Primary and Secondary</option>
+                                <option value="3">3 Levels: Primary, Secondary, and Tertiary</option>
+                            </select>
+                            @error('approvalLevelCount') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                        </div>
 
                         <div class="space-y-4">
-                            @foreach(['primary' => 'Primary', 'secondary' => 'Secondary', 'tertiary' => 'Tertiary'] as $level => $label)
+                            @foreach(array_slice(['primary' => 'Primary', 'secondary' => 'Secondary', 'tertiary' => 'Tertiary'], 0, $approvalLevelCount, true) as $level => $label)
                                 <div class="rounded-lg border border-gray-200 p-3">
                                     <div class="mb-3 flex items-center justify-between gap-3">
                                         <label class="mb-0 block text-xs font-medium uppercase text-gray-500">{{ $label }} Approvers *</label>

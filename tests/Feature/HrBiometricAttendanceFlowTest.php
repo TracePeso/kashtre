@@ -17,6 +17,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class HrBiometricAttendanceFlowTest extends TestCase
@@ -400,6 +401,7 @@ class HrBiometricAttendanceFlowTest extends TestCase
             }
         });
 
+        Storage::fake('local');
         $this->actingAs($user);
 
         $response = $this
@@ -435,6 +437,46 @@ class HrBiometricAttendanceFlowTest extends TestCase
             'label' => 'Primary face',
             'status' => 'active',
         ]);
+
+        $faceProfile = HrBiometricProfile::query()
+            ->where('organization_id', $organization->id)
+            ->where('staff_assignment_id', $assignment->id)
+            ->where('modality', HrBiometricProfile::MODALITY_FACE)
+            ->where('status', 'active')
+            ->firstOrFail();
+
+        $this->assertNotEmpty($faceProfile->metadata['face_photo_path'] ?? null);
+        Storage::disk('local')->assertExists($faceProfile->metadata['face_photo_path']);
+    }
+
+    public function test_secure_biometric_enrollment_requires_live_face_photo_capture(): void
+    {
+        [$user, $organization, $business] = $this->createHrBiometricContext(['Manage HR Biometrics']);
+        $staffUser = User::factory()->create([
+            'business_id' => $business->id,
+            'email' => 'staff-photo@example.com',
+            'staff_uuid' => 'staff-photo-001',
+        ]);
+        $assignment = $this->createStaffAssignmentForUser($organization, $staffUser);
+        $session = $this->createEnrollmentSession($organization, $assignment, $user, [
+            'confirmed_at' => now(),
+            'capture_deadline_at' => now()->addMinutes(2),
+        ]);
+
+        $this->actingAs($user);
+
+        $response = $this
+            ->from(route('hr.biometrics.enrollment'))
+            ->post(route('hr.biometrics.secure-enrollment'), array_merge(
+                $this->validSecureEnrollmentPayload($assignment, $session),
+                [
+                    'fingerprint_credential' => json_encode(['id' => 'new-cred-photo']),
+                    'face_photo' => '',
+                ]
+            ));
+
+        $response->assertRedirect(route('hr.biometrics.enrollment'));
+        $response->assertSessionHasErrors('face_photo');
     }
 
     public function test_approved_offsite_duty_bypasses_attendance_network_and_geofence_restrictions(): void
@@ -722,6 +764,7 @@ class HrBiometricAttendanceFlowTest extends TestCase
                     ['step' => 'right', 'quality' => 85, 'detection' => 'detected', 'center' => 0.65, 'captured_at' => now()->toIso8601String()],
                 ],
             ]),
+            'face_photo' => $this->sampleFacePhotoDataUrl(),
             'quality_score' => 84,
             'face_protocol_version' => 'face-capture-v2',
             'face_liveness_passed' => '1',
@@ -732,6 +775,11 @@ class HrBiometricAttendanceFlowTest extends TestCase
             'face_quality_average' => 84,
             'capture_source' => 'browser_camera',
         ];
+    }
+
+    private function sampleFacePhotoDataUrl(): string
+    {
+        return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wn4u3sAAAAASUVORK5CYII=';
     }
 
     private function createApprovedOffsiteDuty(Organization $organization, StaffAssignment $assignment): HrStaffUnavailability

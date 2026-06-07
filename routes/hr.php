@@ -77,15 +77,16 @@ Route::middleware(['web', 'auth', 'verified'])->prefix('hr')->name('hr.')->group
     Route::patch('/biometrics/clock-settings', [BiometricController::class, 'updateClockSettings'])
         ->middleware('hr.permission:Edit HR Staff,Manage HR Biometrics')
         ->name('biometrics.clock-settings');
-    Route::post('/biometrics/legacy-devices', [BiometricController::class, 'storeLegacyDevice'])
-        ->middleware('hr.permission:Edit HR Staff,Manage HR Biometrics')
-        ->name('biometrics.legacy-devices.store');
+    // Legacy offline clocking is intentionally disabled in HR.
+    // Route::post('/biometrics/legacy-devices', [BiometricController::class, 'storeLegacyDevice'])
+    //     ->middleware('hr.permission:Edit HR Staff,Manage HR Biometrics')
+    //     ->name('biometrics.legacy-devices.store');
     Route::post('/biometrics/mobile-fingerprint/options', [BiometricController::class, 'mobileFingerprintOptions'])
         ->middleware('hr.permission:View HR Staff,Edit HR Staff,Manage HR Biometrics')
         ->name('biometrics.mobile-fingerprint.options');
-    Route::post('/biometrics/legacy-device-import', [BiometricController::class, 'importLegacyDeviceLog'])
-        ->middleware('hr.permission:Edit HR Staff,Manage HR Biometrics')
-        ->name('biometrics.legacy-device-import');
+    // Route::post('/biometrics/legacy-device-import', [BiometricController::class, 'importLegacyDeviceLog'])
+    //     ->middleware('hr.permission:Edit HR Staff,Manage HR Biometrics')
+    //     ->name('biometrics.legacy-device-import');
     Route::post('/biometrics/verify', [BiometricController::class, 'verify'])
         ->middleware('hr.permission:View HR Staff,Edit HR Staff,Manage HR Biometrics')
         ->name('biometrics.verify');

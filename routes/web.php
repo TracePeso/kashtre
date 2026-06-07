@@ -95,6 +95,10 @@ use Illuminate\Http\Request;
 
 Route::redirect('/', 'login');
 
+Route::get('/images/login', function () {
+    return response()->file(public_path('images/auth.jpeg'));
+});
+
 Route::match(['get', 'post'], '/reverb/auth', BroadcastAuthController::class)
     ->middleware(['auth'])
     ->withoutMiddleware([

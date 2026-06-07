@@ -260,7 +260,7 @@
                             <h4 class="text-sm font-semibold {{ $resolvedApprovalWorkflow ? 'text-sky-900' : 'text-amber-900' }}">Resolved Approval Flow</h4>
                             @if($resolvedApprovalWorkflow)
                                 <p class="mt-1 text-sm {{ $resolvedApprovalWorkflow ? 'text-sky-800' : 'text-amber-800' }}">
-                                    {{ $resolvedApprovalWorkflow->discipline_title ? 'Title-specific rule' : 'Client-space fallback rule' }}
+                                    {{ $resolvedApprovalWorkflow->organizationalUnit ? 'Client-space rule' : 'All-client-spaces fallback rule' }}
                                     for {{ $resolvedApprovalWorkflow->organizationalUnit?->name ?? 'all client spaces' }}.
                                 </p>
                                 <div class="mt-3 grid gap-3 md:grid-cols-3">
@@ -273,7 +273,7 @@
                                 </div>
                             @else
                                 <p class="mt-1 text-sm text-amber-800">
-                                    No roster approval rule matches this client space and title set yet. Add a client-space fallback rule or a title-specific rule before submitting this roster.
+                                    No roster approval rule matches this client space yet. Add a client-space rule or an all-client-spaces fallback rule before submitting this roster.
                                 </p>
                             @endif
                         </div>

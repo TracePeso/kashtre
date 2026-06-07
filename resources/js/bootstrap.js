@@ -22,6 +22,7 @@ window.Pusher = Pusher;
 
 const configuredReverbHost = import.meta.env.VITE_REVERB_HOST;
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+const shouldEnableReverb = document.querySelector('meta[name="reverb-enabled"]')?.getAttribute('content') !== '0';
 const localReverbHosts = ['localhost', '127.0.0.1', '0.0.0.0'];
 const reverbHost = !configuredReverbHost
     ? window.location.hostname
@@ -30,7 +31,7 @@ const reverbHost = !configuredReverbHost
         : configuredReverbHost);
 const reverbAppKey = import.meta.env.VITE_REVERB_APP_KEY;
 
-if (reverbAppKey) {
+if (reverbAppKey && shouldEnableReverb) {
     window.Echo = new Echo({
         broadcaster: 'reverb',
         key: reverbAppKey,
@@ -49,6 +50,8 @@ if (reverbAppKey) {
         withCredentials: true,
         enabledTransports: ['ws', 'wss'],
     });
+} else if (!shouldEnableReverb) {
+    window.Echo = null;
 } else {
     console.warn('Reverb disabled: missing VITE_REVERB_APP_KEY during frontend build.');
 }

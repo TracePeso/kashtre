@@ -40,6 +40,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->clearStaleLocalViteHotFile();
+
         // View::composer('*', function ($view) {
         //     $view->with('business', Auth::check() ? Auth::user()->business : null);
         // });
@@ -101,5 +103,45 @@ class AppServiceProvider extends ServiceProvider
          Livewire::component('transactions.transactions', Transactions::class);
          
 
+    }
+
+    private function clearStaleLocalViteHotFile(): void
+    {
+        if (! app()->environment('local')) {
+            return;
+        }
+
+        $hotFile = public_path('hot');
+
+        if (! is_file($hotFile)) {
+            return;
+        }
+
+        $hotUrl = trim((string) file_get_contents($hotFile));
+        $host = parse_url($hotUrl, PHP_URL_HOST);
+        $port = parse_url($hotUrl, PHP_URL_PORT);
+
+        if (! is_string($host) || ! is_numeric($port)) {
+            return;
+        }
+
+        if ($this->isTcpEndpointReachable($host, (int) $port)) {
+            return;
+        }
+
+        @unlink($hotFile);
+    }
+
+    private function isTcpEndpointReachable(string $host, int $port): bool
+    {
+        $connection = @fsockopen($host, $port, $errorCode, $errorMessage, 0.2);
+
+        if (! is_resource($connection)) {
+            return false;
+        }
+
+        fclose($connection);
+
+        return true;
     }
 }

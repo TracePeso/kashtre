@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Livewire\RosterApprovalWorkflowManager;
 use App\Models\ApprovalWorkflow;
+use App\Models\HrDutyRoster;
+use App\Models\HrOrganizationalUnit;
 use App\Models\Organization;
 use App\Models\StaffAssignment;
 use App\Models\User;
@@ -65,11 +67,14 @@ class RosterApproverDesignationPermissionTest extends TestCase
         $user = User::factory()->create([
             'permissions' => ['View HR Setup', 'Edit HR Setup', 'Designate HR Roster Approvers'],
         ]);
+        $clientSpace = $this->createClientSpace($organization, 'Authorized Ward');
 
         $this->actingAs($user);
+        $this->withSession(['current_organization_id' => $organization->id]);
         $this->seedApproverAssignments($organization);
 
         Livewire::test(RosterApprovalWorkflowManager::class)
+            ->set('clientSpaceId', $clientSpace->id)
             ->set('approverUuids', $this->approverSelections())
             ->call('saveRule')
             ->assertHasNoErrors();
@@ -80,6 +85,8 @@ class RosterApproverDesignationPermissionTest extends TestCase
             ->first();
 
         $this->assertNotNull($workflow);
+        $this->assertSame($clientSpace->id, $workflow->organizational_unit_id);
+        $this->assertNull($workflow->discipline_title);
         $this->assertSame(9, $workflow->approvers()->count());
 
         Livewire::test(RosterApprovalWorkflowManager::class)
@@ -90,6 +97,94 @@ class RosterApproverDesignationPermissionTest extends TestCase
             'id' => $workflow->id,
             'is_active' => false,
         ]);
+    }
+
+    public function test_selected_client_space_loads_only_existing_rosters_for_that_client_space(): void
+    {
+        $organization = Organization::create([
+            'name' => 'Roster Listing Org',
+            'external_business_uuid' => 'roster-listing-org',
+            'weekend_days' => [0, 6],
+        ]);
+
+        $user = User::factory()->create([
+            'permissions' => ['View HR Setup', 'Edit HR Setup', 'Designate HR Roster Approvers'],
+        ]);
+
+        $firstClientSpace = $this->createClientSpace($organization, 'Ward A');
+        $secondClientSpace = $this->createClientSpace($organization, 'Ward B');
+
+        HrDutyRoster::create([
+            'organization_id' => $organization->id,
+            'organizational_unit_id' => $firstClientSpace->id,
+            'cadre_or_discipline' => 'Nurse',
+            'discipline_titles' => ['Nurse'],
+            'name' => 'Ward A June Roster',
+            'start_date' => '2026-06-01',
+            'end_date' => '2026-06-30',
+            'status' => HrDutyRoster::STATUS_DRAFT,
+            'approval_status' => HrDutyRoster::APPROVAL_NOT_SUBMITTED,
+        ]);
+
+        HrDutyRoster::create([
+            'organization_id' => $organization->id,
+            'organizational_unit_id' => $secondClientSpace->id,
+            'cadre_or_discipline' => 'Lab',
+            'discipline_titles' => ['Lab'],
+            'name' => 'Ward B June Roster',
+            'start_date' => '2026-06-01',
+            'end_date' => '2026-06-30',
+            'status' => HrDutyRoster::STATUS_PUBLISHED,
+            'approval_status' => HrDutyRoster::APPROVAL_APPROVED,
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_organization_id' => $organization->id]);
+        $this->seedApproverAssignments($organization);
+
+        Livewire::test(RosterApprovalWorkflowManager::class)
+            ->call('openCreateModal')
+            ->set('clientSpaceId', $firstClientSpace->id)
+            ->assertSee('Ward A June Roster')
+            ->assertDontSee('Ward B June Roster');
+    }
+
+    public function test_roster_rule_can_be_saved_with_two_approval_levels_only(): void
+    {
+        $organization = Organization::create([
+            'name' => 'Two Level Org',
+            'external_business_uuid' => 'two-level-org',
+            'weekend_days' => [0, 6],
+        ]);
+
+        $user = User::factory()->create([
+            'permissions' => ['View HR Setup', 'Edit HR Setup', 'Designate HR Roster Approvers'],
+        ]);
+        $clientSpace = $this->createClientSpace($organization, 'Ward C');
+
+        $this->actingAs($user);
+        $this->withSession(['current_organization_id' => $organization->id]);
+        $this->seedApproverAssignments($organization);
+
+        Livewire::test(RosterApprovalWorkflowManager::class)
+            ->set('clientSpaceId', $clientSpace->id)
+            ->set('approvalLevelCount', 2)
+            ->set('approverUuids', [
+                'primary' => ['approver-1', 'approver-2', 'approver-3'],
+                'secondary' => ['approver-4', 'approver-5', 'approver-6'],
+                'tertiary' => ['approver-7', 'approver-8', 'approver-9'],
+            ])
+            ->call('saveRule')
+            ->assertHasNoErrors();
+
+        $workflow = ApprovalWorkflow::query()
+            ->where('organization_id', $organization->id)
+            ->where('approval_category', 'roster')
+            ->firstOrFail();
+
+        $this->assertSame(3, $workflow->approvers()->where('approver_level', 'primary')->count());
+        $this->assertSame(3, $workflow->approvers()->where('approver_level', 'secondary')->count());
+        $this->assertSame(0, $workflow->approvers()->where('approver_level', 'tertiary')->count());
     }
 
     private function seedApproverAssignments(Organization $organization): void
@@ -113,5 +208,15 @@ class RosterApproverDesignationPermissionTest extends TestCase
             'secondary' => ['approver-4', 'approver-5', 'approver-6'],
             'tertiary' => ['approver-7', 'approver-8', 'approver-9'],
         ];
+    }
+
+    private function createClientSpace(Organization $organization, string $name): HrOrganizationalUnit
+    {
+        return HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'name' => $name,
+            'type' => 'Client Space',
+            'unit_kind' => HrOrganizationalUnit::KIND_CLIENT_SPACE,
+        ]);
     }
 }

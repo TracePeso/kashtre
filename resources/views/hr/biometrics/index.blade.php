@@ -314,6 +314,7 @@
         @endif
 
         @if ($canManageBiometrics && $activeBiometricPage === 'attendance')
+            {{-- Legacy offline clocking flow is intentionally disabled in HR.
             <div class="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
                 <form method="POST" action="{{ route('hr.biometrics.legacy-devices.store') }}" class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
                     @csrf
@@ -422,6 +423,7 @@
                     </div>
                 @endif
             </div>
+            --}}
         @endif
 
         @if ($canManageBiometrics && $activeBiometricPage === 'enrollment')
@@ -504,6 +506,7 @@
                         <input type="hidden" name="fingerprint_credential" id="fingerprint_credential">
                         <input type="hidden" name="face_descriptor" id="enroll_face_descriptor">
                         <input type="hidden" name="face_sample" id="enroll_face_sample">
+                        <input type="hidden" name="face_photo" id="enroll_face_photo">
                         <input type="hidden" name="quality_score" id="enroll_face_quality_score">
                         <input type="hidden" name="face_protocol_version" id="enroll_face_protocol_version">
                         <input type="hidden" name="face_liveness_passed" id="enroll_face_liveness_passed">
@@ -601,8 +604,9 @@
                                 <div class="rounded-md border border-gray-200 bg-gray-50 p-3">
                                     <video data-face-video="enroll" class="h-56 w-full rounded-md bg-gray-900 object-cover" autoplay muted playsinline></video>
                                     <canvas data-face-canvas="enroll" class="hidden"></canvas>
+                                    <img data-face-preview="enroll" alt="Captured face preview" class="mt-3 hidden h-40 w-40 rounded-md border border-gray-200 object-cover">
                                     <p data-face-status="enroll" class="mt-2 text-xs text-gray-500">Camera not started.</p>
-                                    <p data-face-quality="enroll" class="mt-1 text-xs text-gray-500">Quality score will appear after capture.</p>
+                                    <p data-face-quality="enroll" class="mt-1 text-xs text-gray-500">Quality score and captured photo preview will appear after capture.</p>
                                     <div class="mt-3 flex flex-wrap gap-2">
                                         <button type="button" data-face-start="enroll" class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
                                             Start Camera
@@ -1346,6 +1350,7 @@
                         detectionStatus,
                         challenge: step.key,
                         centerRatio: Number(centerRatio.toFixed(4)),
+                        photoDataUrl: facePhotoDataUrl(frame, crop),
                         capturedAt: new Date().toISOString(),
                     };
                 }
@@ -1370,10 +1375,28 @@
                     }
                 }
 
+                function setFacePreview(target, dataUrl) {
+                    const preview = document.querySelector(`[data-face-preview="${target}"]`);
+
+                    if (!preview) {
+                        return;
+                    }
+
+                    if (dataUrl) {
+                        preview.src = dataUrl;
+                        preview.classList.remove('hidden');
+                        return;
+                    }
+
+                    preview.removeAttribute('src');
+                    preview.classList.add('hidden');
+                }
+
                 function resetFaceInputs(target) {
                     [
                         'face_descriptor',
                         'face_sample',
+                        'face_photo',
                         'face_quality_score',
                         'face_protocol_version',
                         'face_liveness_passed',
@@ -1383,6 +1406,26 @@
                         'face_quality_min',
                         'face_quality_average',
                     ].forEach((suffix) => fillFaceInput(target, suffix, ''));
+                    setFacePreview(target, null);
+                }
+
+                function facePhotoDataUrl(frame, crop) {
+                    const output = document.createElement('canvas');
+                    output.width = Math.max(1, Math.round(crop.width));
+                    output.height = Math.max(1, Math.round(crop.height));
+                    output.getContext('2d').drawImage(
+                        frame,
+                        crop.x,
+                        crop.y,
+                        crop.width,
+                        crop.height,
+                        0,
+                        0,
+                        output.width,
+                        output.height
+                    );
+
+                    return output.toDataURL('image/jpeg', 0.92);
                 }
 
                 function storeFaceCapture(target, samples) {
@@ -1405,9 +1448,11 @@
                             captured_at: sample.capturedAt,
                         })),
                     };
+                    const previewPhoto = samples[samples.length - 1]?.photoDataUrl || '';
 
                     fillFaceInput(target, 'face_descriptor', JSON.stringify(descriptor));
                     fillFaceInput(target, 'face_sample', JSON.stringify(protocolSample));
+                    fillFaceInput(target, 'face_photo', previewPhoto);
                     fillFaceInput(target, 'face_quality_score', qualityAverage);
                     fillFaceInput(target, 'face_protocol_version', faceCaptureProtocolVersion);
                     fillFaceInput(target, 'face_liveness_passed', '1');
@@ -1416,6 +1461,7 @@
                     fillFaceInput(target, 'face_detection_status', detectionStatus);
                     fillFaceInput(target, 'face_quality_min', qualityMin);
                     fillFaceInput(target, 'face_quality_average', qualityAverage);
+                    setFacePreview(target, previewPhoto);
 
                     return { qualityMin, qualityAverage };
                 }

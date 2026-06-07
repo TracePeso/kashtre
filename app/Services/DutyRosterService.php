@@ -110,14 +110,8 @@ class DutyRosterService
             ->values();
     }
 
-    public function previewRosterApprovalWorkflow(HrOrganizationalUnit $clientSpace, string|array $discipline): ?ApprovalWorkflow
+    public function previewRosterApprovalWorkflow(HrOrganizationalUnit $clientSpace): ?ApprovalWorkflow
     {
-        $normalizedDisciplines = $this->normalizeDisciplineList($discipline);
-
-        if ($normalizedDisciplines === []) {
-            return null;
-        }
-
         $candidates = ApprovalWorkflow::query()
             ->where('organization_id', $clientSpace->organization_id)
             ->where('approval_category', 'roster')
@@ -127,13 +121,15 @@ class DutyRosterService
                     ->where('organizational_unit_id', $clientSpace->id)
                     ->orWhereNull('organizational_unit_id');
             })
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
             ->with('approvers')
             ->get();
 
         return $candidates
             ->map(fn (ApprovalWorkflow $workflow): array => [
                 'workflow' => $workflow,
-                'score' => $this->rosterApprovalWorkflowScore($workflow, $normalizedDisciplines, $clientSpace->id),
+                'score' => $this->rosterApprovalWorkflowScore($workflow, $clientSpace->id),
             ])
             ->filter(fn (array $candidate): bool => $candidate['score'] > 0)
             ->sortByDesc('score')
@@ -770,11 +766,11 @@ class DutyRosterService
             return $this->publishDirectly($roster, $user);
         }
 
-        $workflow = $this->previewRosterApprovalWorkflow($roster->organizationalUnit, $roster->disciplineTitles());
+        $workflow = $this->previewRosterApprovalWorkflow($roster->organizationalUnit);
 
         if (! $workflow) {
             throw ValidationException::withMessages([
-                'roster' => 'Configure a roster approval rule for this client space and title set before submitting this roster.',
+                'roster' => 'Configure a roster approval rule for this client space before submitting this roster.',
             ]);
         }
 
@@ -1396,7 +1392,7 @@ class DutyRosterService
         return $user->name;
     }
 
-    private function rosterApprovalWorkflowScore(ApprovalWorkflow $workflow, array $normalizedDisciplines, int $clientSpaceId): int
+    private function rosterApprovalWorkflowScore(ApprovalWorkflow $workflow, int $clientSpaceId): int
     {
         $workflowClientSpaceId = $workflow->organizational_unit_id;
 
@@ -1404,20 +1400,11 @@ class DutyRosterService
             return 0;
         }
 
-        $score = $workflowClientSpaceId === null ? 10 : 40;
-        $workflowDiscipline = $this->normalizeDiscipline($workflow->discipline_title);
+        $score = $workflowClientSpaceId === null ? 20 : 60;
 
-        if ($workflowDiscipline === '') {
-            return $score + 1;
-        }
-
-        if (count($normalizedDisciplines) !== 1) {
-            return 0;
-        }
-
-        return $workflowDiscipline === $normalizedDisciplines[0]
+        return blank($workflow->discipline_title)
             ? $score + 5
-            : 0;
+            : $score;
     }
 
     private function rosterEligibleAssignments(HrOrganizationalUnit $clientSpace): Collection

@@ -16,7 +16,16 @@ class AuthenticationTest extends TestCase
     {
         $response = $this->get('/login');
 
-        $response->assertStatus(200);
+        $response->assertStatus(200)
+            ->assertSee('name="reverb-enabled" content="0"', false);
+    }
+
+    public function test_legacy_login_image_path_resolves(): void
+    {
+        $response = $this->get('/images/login');
+
+        $response->assertOk();
+        $this->assertStringContainsString('image/', (string) $response->headers->get('content-type'));
     }
 
     public function test_users_can_authenticate_using_the_login_screen(): void

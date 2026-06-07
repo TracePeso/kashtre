@@ -17,14 +17,14 @@
             ? 'My Leave Applications'
             : ($canViewAllApprovals ? 'Approval Queue' : 'My Approval Queue');
         $pageDescription = $leaveOnly
-            ? 'View your pending and approved leave applications alongside your leave usage summary.'
+            ? 'View your leave applications, track approval status, and see who needs to act next.'
             : ($canViewAllApprovals
                 ? 'Submit HR requests and review every approval stage.'
                 : 'Requests appear here when they are waiting for your approval or when you submitted them.');
         $createButtonLabel = $leaveOnly ? 'Apply for Leave' : 'New Request';
-        $emptyHeading = $leaveOnly ? 'No pending or approved leave applications yet.' : 'No approval requests yet.';
+        $emptyHeading = $leaveOnly ? 'No leave applications yet.' : 'No approval requests yet.';
         $emptyDescription = $leaveOnly
-            ? 'Approved and pending leave applications will appear here after you submit them.'
+            ? 'Your submitted leave applications and their approval status will appear here.'
             : 'New requests will appear here as soon as they are submitted.';
         $modalHeading = $leaveOnly ? 'New Leave Application' : 'New Approval Request';
         $submitButtonLabel = $leaveOnly ? 'Submit Leave Application' : 'Submit';
@@ -149,6 +149,28 @@
                 ? $currentApproverNames->join(', ', ' or ')
                 : ($currentStep['approver_name'] ?? 'the next approver');
             $canAct = $currentStep && ($canApproveAnyRequest || $currentSteps->contains(fn ($step) => $step['approver_staff_uuid'] === $currentStaffUuid));
+            $latestDecisionEvent = collect($request['events'])->first(fn ($event) => in_array($event['action'], ['approved', 'rejected', 'cancelled'], true));
+            $approvalStatusSummary = match ($request['status']) {
+                'pending' => $currentStep
+                    ? 'Awaiting '.ucfirst($currentStep['approver_level']).' approval'
+                    : 'Pending approval',
+                'approved' => 'Fully approved',
+                'rejected' => 'Rejected',
+                'cancelled' => 'Cancelled',
+                default => ucfirst($request['status']),
+            };
+            $approvalActorHeading = $request['status'] === 'pending' ? 'Current Approver' : 'Last Decision By';
+            $approvalActorLabel = $request['status'] === 'pending'
+                ? $waitingLabel
+                : ($latestDecisionEvent['actor_name'] ?? 'Not recorded');
+            $approvalActorMeta = $request['status'] === 'pending'
+                ? ($request['current_level'] ? ucfirst($request['current_level']).' step' : null)
+                : (!empty($latestDecisionEvent['created_at'])
+                    ? \Illuminate\Support\Carbon::parse($latestDecisionEvent['created_at'])->format('M j, Y g:i A')
+                    : null);
+            $submittedAtLabel = !empty($request['submitted_at'])
+                ? \Illuminate\Support\Carbon::parse($request['submitted_at'])->format('M j, Y g:i A')
+                : 'Not recorded';
         @endphp
         <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
             <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
@@ -161,7 +183,31 @@
                         @endif
                     </div>
                     <h3 class="text-base font-semibold text-gray-900">{{ $request['subject'] }}</h3>
-                    <p class="text-sm text-gray-500 mt-1">Requested by {{ $request['requester_name'] }}</p>
+                    <p class="text-sm text-gray-500 mt-1">
+                        {{ $leaveOnly ? 'Submitted by you' : 'Requested by '.$request['requester_name'] }}
+                    </p>
+                    @if($leaveOnly)
+                    <div class="mt-3 grid gap-3 sm:grid-cols-3">
+                        <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                            <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Approval Status</p>
+                            <p class="mt-1 text-sm font-semibold text-slate-900">{{ $approvalStatusSummary }}</p>
+                            @if($request['status'] === 'pending' && $request['current_level'])
+                            <p class="mt-1 text-xs text-slate-600">Current step: {{ ucfirst($request['current_level']) }}</p>
+                            @endif
+                        </div>
+                        <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                            <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{{ $approvalActorHeading }}</p>
+                            <p class="mt-1 text-sm font-semibold text-slate-900">{{ $approvalActorLabel }}</p>
+                            @if($approvalActorMeta)
+                            <p class="mt-1 text-xs text-slate-600">{{ $approvalActorMeta }}</p>
+                            @endif
+                        </div>
+                        <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                            <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Submitted</p>
+                            <p class="mt-1 text-sm font-semibold text-slate-900">{{ $submittedAtLabel }}</p>
+                        </div>
+                    </div>
+                    @endif
                     @if(in_array($request['approval_category'], ['leave', 'offsite_duty'], true))
                     <div class="mt-3 flex flex-wrap gap-2 text-xs text-gray-600">
                         @if($request['approval_category'] === 'leave' && !empty($request['leave_type']['name']))

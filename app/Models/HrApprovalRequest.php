@@ -135,23 +135,7 @@ class HrApprovalRequest extends Model
                 throw new RuntimeException('The selected workflow has no approvers.');
             }
 
-            $invalidLevels = collect(['primary', 'secondary', 'tertiary'])
-                ->filter(function (string $level) use ($workflowApprovers, $approverOverrides): bool {
-                    $overrideCount = collect($approverOverrides[$level] ?? [])
-                        ->filter(fn ($approver): bool => filled($approver['uuid'] ?? null))
-                        ->count();
-
-                    if ($level === 'primary' && $overrideCount > 0) {
-                        return $overrideCount < 1;
-                    }
-
-                    return $workflowApprovers->where('approver_level', $level)->count() < 3;
-                })
-                ->values();
-
-            if ($invalidLevels->isNotEmpty()) {
-                throw new RuntimeException('The selected workflow must include at least 3 approvers at each approval level, unless the primary level is being overridden by the client-space leader rule.');
-            }
+            $activeLevels = self::activeWorkflowLevels($workflowApprovers, $approverOverrides);
 
             $request = self::create([
                 'organization_id' => $workflow->organization_id,
@@ -168,10 +152,10 @@ class HrApprovalRequest extends Model
                 'end_date' => $validated['end_date'] ?? null,
                 'requested_days' => $validated['requested_days'] ?? null,
                 'status' => 'pending',
-                'current_level' => 'primary',
+                'current_level' => $activeLevels[0] ?? 'primary',
             ]);
 
-            foreach (['primary', 'secondary', 'tertiary'] as $level) {
+            foreach ($activeLevels as $level) {
                 $levelApprovers = collect($approverOverrides[$level] ?? [])
                     ->filter(fn ($approver): bool => filled($approver['uuid'] ?? null))
                     ->values();
@@ -192,7 +176,7 @@ class HrApprovalRequest extends Model
                         'approver_level' => $level,
                         'approver_staff_uuid' => $approver['approver_staff_uuid'] ?? $approver['uuid'],
                         'approver_name' => $approver['approver_name'] ?? $approver['name'],
-                        'is_current' => $level === 'primary',
+                        'is_current' => $level === ($activeLevels[0] ?? 'primary'),
                         'sort_order' => $index,
                     ]);
                 }
@@ -547,6 +531,53 @@ class HrApprovalRequest extends Model
         });
 
         return $validator->validate();
+    }
+
+    private static function activeWorkflowLevels($workflowApprovers, array $approverOverrides): array
+    {
+        $levels = ['primary', 'secondary', 'tertiary'];
+        $activeLevels = [];
+
+        foreach ($levels as $index => $level) {
+            $overrideCount = collect($approverOverrides[$level] ?? [])
+                ->filter(fn ($approver): bool => filled($approver['uuid'] ?? null))
+                ->count();
+
+            $workflowCount = $workflowApprovers->where('approver_level', $level)->count();
+
+            if ($level === 'primary' && $overrideCount > 0) {
+                $activeLevels[] = $level;
+                continue;
+            }
+
+            if ($workflowCount === 0) {
+                if ($index === 0) {
+                    throw new RuntimeException('The selected workflow must include at least 3 primary approvers, unless the primary level is being overridden by the client-space leader rule.');
+                }
+
+                $remainingLevels = array_slice($levels, $index + 1);
+
+                foreach ($remainingLevels as $remainingLevel) {
+                    if ($workflowApprovers->where('approver_level', $remainingLevel)->count() > 0) {
+                        throw new RuntimeException('Approval levels must be configured in order without skipping secondary or tertiary.');
+                    }
+                }
+
+                break;
+            }
+
+            if ($workflowCount < 3) {
+                throw new RuntimeException('Each enabled approval level must include at least 3 approvers.');
+            }
+
+            $activeLevels[] = $level;
+        }
+
+        if ($activeLevels === []) {
+            throw new RuntimeException('The selected workflow has no valid approval levels.');
+        }
+
+        return $activeLevels;
     }
 
     private function syncCategoryArtifactsForSubmission(): void

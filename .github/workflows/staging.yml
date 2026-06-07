@@ -81,6 +81,12 @@ jobs:
             rm -f bootstrap/cache/*.php
             rm -f storage/framework/views/*.php
 
+            echo "Removing unexpected PHP files from public asset and upload paths..."
+            find public/vendor/livewire -type f \( -name "*.php" -o -name "*.phtml" -o -name "*.phar" \) -delete 2>/dev/null || true
+            find public/vendor/livewire -depth -type d -empty -delete 2>/dev/null || true
+            find storage/app/public -type f \( -name "*.php" -o -name "*.phtml" -o -name "*.phar" \) -delete 2>/dev/null || true
+            find storage/app/public -depth -type d -empty -delete 2>/dev/null || true
+
             echo "Creating storage link..."
             $ARTISAN_PHP artisan storage:link || true
 

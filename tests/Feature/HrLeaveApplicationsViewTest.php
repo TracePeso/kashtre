@@ -17,10 +17,13 @@ class HrLeaveApplicationsViewTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_leave_only_view_shows_only_current_users_pending_and_approved_leave_applications(): void
+    public function test_leave_only_view_shows_current_users_leave_applications_with_approval_status_and_current_approver(): void
     {
         $user = User::factory()->create();
         $otherUser = User::factory()->create();
+        $approverUser = User::factory()->create([
+            'name' => 'Primary Approver',
+        ]);
 
         $organization = Organization::create([
             'name' => 'Test HR Org',
@@ -79,7 +82,7 @@ class HrLeaveApplicationsViewTest extends TestCase
             'is_active' => true,
         ]);
 
-        HrApprovalRequest::create([
+        $pendingRequest = HrApprovalRequest::create([
             'organization_id' => $organization->id,
             'approval_workflow_id' => $workflow->id,
             'approval_category' => 'leave',
@@ -93,6 +96,15 @@ class HrLeaveApplicationsViewTest extends TestCase
             'requested_days' => 3,
             'status' => 'pending',
             'current_level' => 'primary',
+        ]);
+
+        $pendingRequest->steps()->create([
+            'approver_level' => 'primary',
+            'approver_staff_uuid' => $approverUser->staff_uuid,
+            'approver_name' => $approverUser->name,
+            'status' => 'pending',
+            'is_current' => true,
+            'sort_order' => 0,
         ]);
 
         HrApprovalRequest::create([
@@ -159,8 +171,12 @@ class HrLeaveApplicationsViewTest extends TestCase
             ->assertSee('Leave Days Used')
             ->assertSee('My Pending Leave')
             ->assertSee('My Approved Leave')
+            ->assertSee('My Rejected Leave')
             ->assertSee('Annual Leave')
-            ->assertDontSee('My Rejected Leave')
+            ->assertSee('Approval Status')
+            ->assertSee('Current Approver')
+            ->assertSee('Awaiting Primary approval')
+            ->assertSee('Primary Approver')
             ->assertDontSee('Needs My Approval')
             ->assertDontSee('Sick Leave');
     }

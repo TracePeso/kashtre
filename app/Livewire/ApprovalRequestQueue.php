@@ -97,8 +97,7 @@ class ApprovalRequestQueue extends Component
             }
 
             $query->where('approval_category', 'leave')
-                ->where('requester_staff_uuid', $this->currentStaffUuid)
-                ->whereIn('status', ['pending', 'approved']);
+                ->where('requester_staff_uuid', $this->currentStaffUuid);
         } elseif (! $this->canViewAllApprovals) {
             $query->where(function ($requestQuery) {
                 $requestQuery

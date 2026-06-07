@@ -559,7 +559,7 @@ class DutyRosterManager extends Component
         $staffScheduledHours = $this->staffScheduledHours($staffRows, $shiftTypes, $editorDates);
         $staffUiContext = $this->staffUiContext($organization, $staffRows, $shiftTypes, $editorDates);
         $resolvedApprovalWorkflow = ($selectedClientSpace && $selectedRoster && ! $selectedRoster->approvalRequest)
-            ? $this->dutyRosterService()->previewRosterApprovalWorkflow($selectedClientSpace, $selectedRoster->disciplineTitles())
+            ? $this->dutyRosterService()->previewRosterApprovalWorkflow($selectedClientSpace)
             : null;
 
         return view('livewire.duty-roster-manager', [

@@ -9,6 +9,8 @@ use App\Models\StaffAssignment;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class BiometricVerificationService
@@ -56,6 +58,7 @@ class BiometricVerificationService
             }
 
             $this->assertFaceCaptureProtocol($payload, true);
+            $payload['face_photo_metadata'] = $this->storeFacePhoto($staffAssignment, $payload);
         } else {
             $qualityScore = null;
         }
@@ -587,7 +590,15 @@ class BiometricVerificationService
             'face_detection_status' => $this->cleanString($payload['face_detection_status'] ?? null),
             'face_quality_min' => $this->qualityScore($payload['face_quality_min'] ?? null),
             'face_quality_average' => $this->qualityScore($payload['face_quality_average'] ?? null),
-        ]);
+            'face_photo_disk' => data_get($payload, 'face_photo_metadata.disk'),
+            'face_photo_path' => data_get($payload, 'face_photo_metadata.path'),
+            'face_photo_mime_type' => data_get($payload, 'face_photo_metadata.mime_type'),
+            'face_photo_size_bytes' => data_get($payload, 'face_photo_metadata.size_bytes'),
+            'face_photo_width' => data_get($payload, 'face_photo_metadata.width'),
+            'face_photo_height' => data_get($payload, 'face_photo_metadata.height'),
+            'face_photo_sha256' => data_get($payload, 'face_photo_metadata.sha256'),
+            'face_photo_captured_at' => data_get($payload, 'face_photo_metadata.captured_at'),
+        ], fn ($value) => $value !== null && $value !== '');
     }
 
     private function verificationMetadata(array $payload): array
@@ -616,6 +627,77 @@ class BiometricVerificationService
         }
 
         return hash_hmac('sha256', trim($sample), $this->hmacKey());
+    }
+
+    /**
+     * @return array{disk: string, path: string, mime_type: string, size_bytes: int, width: int, height: int, sha256: string, captured_at: string}
+     */
+    private function storeFacePhoto(StaffAssignment $staffAssignment, array $payload): array
+    {
+        $photo = $this->cleanString($payload['face_photo'] ?? null);
+
+        if ($photo === null) {
+            throw ValidationException::withMessages([
+                'face_photo' => 'Capture the live face photo before saving the biometric profile.',
+            ]);
+        }
+
+        if (! preg_match('/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+\/=]+)$/', $photo, $matches)) {
+            throw ValidationException::withMessages([
+                'face_photo' => 'The captured face photo was not in a supported image format.',
+            ]);
+        }
+
+        $binary = base64_decode($matches[2], true);
+
+        if ($binary === false || $binary === '') {
+            throw ValidationException::withMessages([
+                'face_photo' => 'The captured face photo could not be decoded. Capture it again.',
+            ]);
+        }
+
+        $imageInfo = @getimagesizefromstring($binary);
+
+        if (! is_array($imageInfo) || empty($imageInfo['mime'])) {
+            throw ValidationException::withMessages([
+                'face_photo' => 'The captured face photo is not a valid image. Capture it again.',
+            ]);
+        }
+
+        $mimeType = (string) $imageInfo['mime'];
+        $extension = match ($mimeType) {
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            default => null,
+        };
+
+        if ($extension === null) {
+            throw ValidationException::withMessages([
+                'face_photo' => 'The captured face photo must be JPEG, PNG, or WebP.',
+            ]);
+        }
+
+        $path = sprintf(
+            'biometrics/face-captures/%d/%s/%s.%s',
+            $staffAssignment->organization_id,
+            $staffAssignment->staff_uuid,
+            (string) Str::uuid(),
+            $extension
+        );
+
+        Storage::disk('local')->put($path, $binary);
+
+        return [
+            'disk' => 'local',
+            'path' => $path,
+            'mime_type' => $mimeType,
+            'size_bytes' => strlen($binary),
+            'width' => (int) ($imageInfo[0] ?? 0),
+            'height' => (int) ($imageInfo[1] ?? 0),
+            'sha256' => hash('sha256', $binary),
+            'captured_at' => now()->toIso8601String(),
+        ];
     }
 
     private function cleanString(mixed $value): ?string

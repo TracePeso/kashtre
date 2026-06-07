@@ -3,11 +3,11 @@
 namespace App\Livewire;
 
 use App\Models\ApprovalWorkflow;
+use App\Models\HrDutyRoster;
 use App\Models\HrOrganizationalUnit;
 use App\Models\Organization;
 use App\Models\StaffAssignment;
 use App\Models\User;
-use App\Services\DutyRosterService;
 use App\Services\KashApiService;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
@@ -23,14 +23,14 @@ class RosterApprovalWorkflowManager extends Component
     public $rules = [];
     public array $staffOptions = [];
     public array $clientSpaceOptions = [];
-    public array $disciplineOptions = [];
+    public array $existingRosters = [];
     public ?string $message = null;
     public bool $canDesignateRosterApprovers = false;
 
     public bool $showModal = false;
     public ?int $editingId = null;
     public ?int $clientSpaceId = null;
-    public string $disciplineTitle = '';
+    public int $approvalLevelCount = 3;
     public array $approverUuids = [];
 
     public function mount(): void
@@ -54,14 +54,13 @@ class RosterApprovalWorkflowManager extends Component
         $this->rules = ApprovalWorkflow::query()
             ->where('organization_id', $this->organizationId)
             ->where('approval_category', 'roster')
+            ->whereNull('discipline_title')
             ->with(['organizationalUnit', 'approvers'])
             ->get()
             ->sortBy(fn (ApprovalWorkflow $workflow): string => sprintf(
-                '%d|%s|%d|%s',
+                '%d|%s',
                 $workflow->organizational_unit_id === null ? 1 : 0,
-                Str::lower((string) ($workflow->organizationalUnit?->name ?? '')),
-                blank($workflow->discipline_title) ? 1 : 0,
-                Str::lower((string) ($workflow->discipline_title ?? ''))
+                Str::lower((string) ($workflow->organizationalUnit?->name ?? ''))
             ))
             ->values()
             ->toArray();
@@ -114,12 +113,6 @@ class RosterApprovalWorkflowManager extends Component
             ->toArray();
     }
 
-    public function updatedClientSpaceId($value): void
-    {
-        $this->disciplineTitle = '';
-        $this->loadDisciplineOptions((int) $value);
-    }
-
     public function openCreateModal(): void
     {
         $this->authorizeRosterApproverDesignation();
@@ -127,6 +120,12 @@ class RosterApprovalWorkflowManager extends Component
         $this->resetForm();
         $this->message = null;
         $this->showModal = true;
+    }
+
+    public function updatedClientSpaceId($value): void
+    {
+        $clientSpaceId = is_numeric($value) ? (int) $value : null;
+        $this->loadExistingRosters($clientSpaceId);
     }
 
     public function openEditModal(int $id): void
@@ -141,8 +140,8 @@ class RosterApprovalWorkflowManager extends Component
 
         $this->editingId = $workflow->id;
         $this->clientSpaceId = $workflow->organizational_unit_id;
-        $this->loadDisciplineOptions($workflow->organizational_unit_id);
-        $this->disciplineTitle = (string) ($workflow->discipline_title ?? '');
+        $this->loadExistingRosters($this->clientSpaceId);
+        $this->approvalLevelCount = $this->inferApprovalLevelCount($workflow);
         $this->approverUuids = $this->defaultApproverSelections();
 
         foreach ($workflow->approvers->groupBy('approver_level') as $level => $approvers) {
@@ -169,6 +168,7 @@ class RosterApprovalWorkflowManager extends Component
 
         $validated = $this->validate(array_merge([
             'clientSpaceId' => ['nullable', 'integer'],
+            'approvalLevelCount' => ['required', 'integer', 'min:1', 'max:3'],
         ], $this->approverValidationRules()));
 
         $approverSelections = $this->normalizedApproverSelections();
@@ -177,25 +177,14 @@ class RosterApprovalWorkflowManager extends Component
             return;
         }
 
-        $disciplineTitle = Str::of($this->disciplineTitle)->squish()->trim()->toString();
-
-        if (($validated['clientSpaceId'] ?? null) === null && $disciplineTitle !== '') {
-            $this->addError('clientSpaceId', 'Select a client space before choosing a title-specific roster rule.');
-            return;
-        }
-
         $duplicateQuery = ApprovalWorkflow::query()
             ->where('organization_id', $this->organizationId)
             ->where('approval_category', 'roster')
+            ->whereNull('discipline_title')
             ->when(
                 ($validated['clientSpaceId'] ?? null) === null,
                 fn ($query) => $query->whereNull('organizational_unit_id'),
                 fn ($query) => $query->where('organizational_unit_id', $validated['clientSpaceId'])
-            )
-            ->when(
-                $disciplineTitle === '',
-                fn ($query) => $query->whereNull('discipline_title'),
-                fn ($query) => $query->whereRaw('LOWER(discipline_title) = ?', [Str::lower($disciplineTitle)])
             );
 
         if ($this->editingId) {
@@ -203,8 +192,7 @@ class RosterApprovalWorkflowManager extends Component
         }
 
         if ($duplicateQuery->exists()) {
-            $key = $disciplineTitle === '' ? 'clientSpaceId' : 'disciplineTitle';
-            $this->addError($key, 'A roster approval rule already exists for this client space and title scope.');
+            $this->addError('clientSpaceId', 'A roster approval rule already exists for this client-space scope.');
             return;
         }
 
@@ -212,7 +200,7 @@ class RosterApprovalWorkflowManager extends Component
             'organization_id' => $this->organizationId,
             'organizational_unit_id' => $validated['clientSpaceId'] ?? null,
             'approval_category' => 'roster',
-            'discipline_title' => $disciplineTitle !== '' ? $disciplineTitle : null,
+            'discipline_title' => null,
             'is_active' => true,
         ];
 
@@ -225,7 +213,7 @@ class RosterApprovalWorkflowManager extends Component
 
         $workflow->approvers()->delete();
 
-        foreach (self::APPROVER_LEVELS as $level) {
+        foreach ($this->selectedApproverLevels() as $level) {
             $workflow->syncApprovers($level, collect($approverSelections[$level] ?? [])
                 ->values()
                 ->map(fn (string $uuid): array => [
@@ -261,16 +249,16 @@ class RosterApprovalWorkflowManager extends Component
         $this->resetValidation();
         $this->editingId = null;
         $this->clientSpaceId = array_key_first($this->clientSpaceOptions);
-        $this->disciplineTitle = '';
+        $this->loadExistingRosters($this->clientSpaceId);
+        $this->approvalLevelCount = 3;
         $this->approverUuids = $this->defaultApproverSelections();
-        $this->loadDisciplineOptions($this->clientSpaceId);
     }
 
     public function addApproverSlot(string $level): void
     {
         $this->authorizeRosterApproverDesignation();
 
-        if (! in_array($level, self::APPROVER_LEVELS, true)) {
+        if (! in_array($level, $this->selectedApproverLevels(), true)) {
             return;
         }
 
@@ -281,7 +269,7 @@ class RosterApprovalWorkflowManager extends Component
     {
         $this->authorizeRosterApproverDesignation();
 
-        if (! in_array($level, self::APPROVER_LEVELS, true)) {
+        if (! in_array($level, $this->selectedApproverLevels(), true)) {
             return;
         }
 
@@ -300,26 +288,38 @@ class RosterApprovalWorkflowManager extends Component
         return view('livewire.roster-approval-workflow-manager');
     }
 
-    private function loadDisciplineOptions(?int $clientSpaceId): void
+    private function loadExistingRosters(?int $clientSpaceId): void
     {
-        $this->disciplineOptions = [];
+        $this->existingRosters = [];
 
-        if (! $clientSpaceId) {
+        if (! $this->organizationId || ! $clientSpaceId) {
             return;
         }
 
-        $clientSpace = HrOrganizationalUnit::query()
+        $this->existingRosters = HrDutyRoster::query()
             ->where('organization_id', $this->organizationId)
-            ->clientSpaces()
-            ->find($clientSpaceId);
-
-        if (! $clientSpace) {
-            return;
-        }
-
-        $this->disciplineOptions = app(DutyRosterService::class)
-            ->availableDisciplines($clientSpace)
-            ->pluck('label')
+            ->where('organizational_unit_id', $clientSpaceId)
+            ->orderByDesc('start_date')
+            ->orderBy('name')
+            ->get([
+                'id',
+                'name',
+                'cadre_or_discipline',
+                'discipline_titles',
+                'start_date',
+                'end_date',
+                'status',
+                'approval_status',
+            ])
+            ->map(fn (HrDutyRoster $roster): array => [
+                'id' => $roster->id,
+                'name' => $roster->name,
+                'titles' => $roster->disciplineTitles(),
+                'start_date' => $roster->start_date?->format('M j, Y'),
+                'end_date' => $roster->end_date?->format('M j, Y'),
+                'status' => $roster->status,
+                'approval_status' => $roster->approval_status,
+            ])
             ->values()
             ->all();
     }
@@ -328,7 +328,7 @@ class RosterApprovalWorkflowManager extends Component
     {
         $rules = [];
 
-        foreach (self::APPROVER_LEVELS as $level) {
+        foreach ($this->selectedApproverLevels() as $level) {
             $rules["approverUuids.$level"] = 'required|array|min:'.self::MIN_APPROVERS_PER_LEVEL;
             $rules["approverUuids.$level.*"] = 'required|string|distinct';
         }
@@ -360,7 +360,7 @@ class RosterApprovalWorkflowManager extends Component
     {
         $normalized = [];
 
-        foreach (self::APPROVER_LEVELS as $level) {
+        foreach ($this->selectedApproverLevels() as $level) {
             $normalized[$level] = collect($this->approverUuids[$level] ?? [])
                 ->map(fn ($uuid): string => trim((string) $uuid))
                 ->values()
@@ -375,7 +375,7 @@ class RosterApprovalWorkflowManager extends Component
         $seen = [];
         $hasDuplicates = false;
 
-        foreach (self::APPROVER_LEVELS as $level) {
+        foreach ($this->selectedApproverLevels() as $level) {
             foreach ($approverSelections[$level] ?? [] as $index => $uuid) {
                 if ($uuid === '') {
                     continue;
@@ -399,5 +399,30 @@ class RosterApprovalWorkflowManager extends Component
         $user = Auth::user();
 
         abort_unless($user instanceof User && $user->canDesignateHrRosterApprovers(), 403);
+    }
+
+    private function selectedApproverLevels(): array
+    {
+        return array_slice(self::APPROVER_LEVELS, 0, max(1, min(3, $this->approvalLevelCount)));
+    }
+
+    private function inferApprovalLevelCount(ApprovalWorkflow $workflow): int
+    {
+        $presentLevels = $workflow->approvers
+            ->pluck('approver_level')
+            ->filter(fn ($level): bool => in_array($level, self::APPROVER_LEVELS, true))
+            ->unique()
+            ->values()
+            ->all();
+
+        if (in_array('tertiary', $presentLevels, true)) {
+            return 3;
+        }
+
+        if (in_array('secondary', $presentLevels, true)) {
+            return 2;
+        }
+
+        return 1;
     }
 }
