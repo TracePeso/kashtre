@@ -6,6 +6,13 @@
         $networkEntryRows = old('biometric_allowed_networks', $networkEntries ?? []);
         $networkEntryRows = is_array($networkEntryRows) ? array_values($networkEntryRows) : [];
         $networkEntryRows = $networkEntryRows === [] ? [['name' => '', 'service_provider' => '', 'network' => '']] : $networkEntryRows;
+        $geofenceLocationRows = old('biometric_geofence_locations', $geofenceAccess['locations'] ?? []);
+        $geofenceLocationRows = is_array($geofenceLocationRows) ? array_values($geofenceLocationRows) : [];
+        $geofenceLocationRows = $geofenceLocationRows === [] ? [['name' => '', 'latitude' => '', 'longitude' => '', 'radius_meters' => $organization->biometric_geofence_radius_meters ?? 100, 'max_accuracy_meters' => $organization->biometric_geofence_max_accuracy_meters ?? 150]] : $geofenceLocationRows;
+        $activeEnrollmentSession = $activeEnrollmentSession ?? null;
+        $authorizationStaffAssignmentId = old('authorization_staff_assignment_id', $activeEnrollmentSession?->staff_assignment_id);
+        $enrollmentWindowDeadline = $activeEnrollmentSession?->capture_deadline_at?->toIso8601String();
+        $activeEnrollmentPurpose = $activeEnrollmentSession?->purpose === 're-enrollment' ? 're-enrollment' : 'enrollment';
         $activeProfiles = $profiles->where('status', 'active');
         $fingerprintCount = $activeProfiles->where('modality', 'fingerprint')->count();
         $faceCount = $activeProfiles->where('modality', 'face')->count();
@@ -70,7 +77,7 @@
                 <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
                     <p class="text-sm text-gray-500">Office Geofence</p>
                     <p class="mt-1 text-2xl font-bold {{ $geofenceStatusClasses }}">{{ $geofenceStatus }}</p>
-                    <p class="mt-1 text-xs text-gray-500">{{ number_format($geofenceAccess['radius_meters'] ?? 100) }}m radius</p>
+                    <p class="mt-1 text-xs text-gray-500">{{ number_format($geofenceAccess['location_count'] ?? 0) }} configured location(s)</p>
                 </div>
                 <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
                     <p class="text-sm text-gray-500">Repeated Late Flags</p>
@@ -178,7 +185,7 @@
                 <div class="grid grid-cols-1 gap-5 lg:grid-cols-3">
                     <div>
                         <h2 class="text-base font-semibold text-gray-900">Office Geofence</h2>
-                        <p class="mt-1 text-sm text-gray-500">Biometric enrollment and verification require this office location when enabled.</p>
+                        <p class="mt-1 text-sm text-gray-500">Biometric enrollment and verification require one of these office locations when enabled.</p>
                         <p data-geofence-settings-status class="mt-3 text-xs font-medium {{ $geofenceStatusClasses }}">{{ $geofenceAccess['message'] }}</p>
                     </div>
 
@@ -189,31 +196,47 @@
                             Require office geofence
                         </label>
 
-                        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="biometric_geofence_latitude">Latitude</label>
-                                <input id="biometric_geofence_latitude" name="biometric_geofence_latitude" type="number" step="0.0000001" min="-90" max="90" value="{{ old('biometric_geofence_latitude', $organization->biometric_geofence_latitude) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="biometric_geofence_longitude">Longitude</label>
-                                <input id="biometric_geofence_longitude" name="biometric_geofence_longitude" type="number" step="0.0000001" min="-180" max="180" value="{{ old('biometric_geofence_longitude', $organization->biometric_geofence_longitude) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="biometric_geofence_radius_meters">Radius (m)</label>
-                                <input id="biometric_geofence_radius_meters" name="biometric_geofence_radius_meters" type="number" min="25" max="50000" value="{{ old('biometric_geofence_radius_meters', $organization->biometric_geofence_radius_meters ?? 100) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="biometric_geofence_max_accuracy_meters">Max GPS Accuracy (m)</label>
-                                <input id="biometric_geofence_max_accuracy_meters" name="biometric_geofence_max_accuracy_meters" type="number" min="5" max="5000" value="{{ old('biometric_geofence_max_accuracy_meters', $organization->biometric_geofence_max_accuracy_meters ?? 150) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                            </div>
+                        <div class="mt-4 space-y-3" data-biometric-geofence-locations>
+                            @foreach ($geofenceLocationRows as $index => $locationEntry)
+                                <div class="rounded-lg border border-gray-200 p-4" data-geofence-location-row>
+                                    <div class="grid grid-cols-12 gap-3">
+                                        <div class="col-span-12 lg:col-span-3">
+                                            <label class="block text-sm font-medium text-gray-700" for="biometric_geofence_location_name_{{ $index }}">Location Name</label>
+                                            <input id="biometric_geofence_location_name_{{ $index }}" name="biometric_geofence_locations[{{ $index }}][name]" value="{{ $locationEntry['name'] ?? '' }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue" placeholder="Main office">
+                                        </div>
+                                        <div class="col-span-12 sm:col-span-6 lg:col-span-2">
+                                            <label class="block text-sm font-medium text-gray-700" for="biometric_geofence_location_latitude_{{ $index }}">Latitude</label>
+                                            <input id="biometric_geofence_location_latitude_{{ $index }}" name="biometric_geofence_locations[{{ $index }}][latitude]" type="number" step="0.0000001" min="-90" max="90" value="{{ $locationEntry['latitude'] ?? '' }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                                        </div>
+                                        <div class="col-span-12 sm:col-span-6 lg:col-span-2">
+                                            <label class="block text-sm font-medium text-gray-700" for="biometric_geofence_location_longitude_{{ $index }}">Longitude</label>
+                                            <input id="biometric_geofence_location_longitude_{{ $index }}" name="biometric_geofence_locations[{{ $index }}][longitude]" type="number" step="0.0000001" min="-180" max="180" value="{{ $locationEntry['longitude'] ?? '' }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                                        </div>
+                                        <div class="col-span-12 sm:col-span-6 lg:col-span-2">
+                                            <label class="block text-sm font-medium text-gray-700" for="biometric_geofence_location_radius_{{ $index }}">Radius (m)</label>
+                                            <input id="biometric_geofence_location_radius_{{ $index }}" name="biometric_geofence_locations[{{ $index }}][radius_meters]" type="number" min="25" max="50000" value="{{ $locationEntry['radius_meters'] ?? 100 }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                                        </div>
+                                        <div class="col-span-12 sm:col-span-6 lg:col-span-2">
+                                            <label class="block text-sm font-medium text-gray-700" for="biometric_geofence_location_accuracy_{{ $index }}">Max GPS Accuracy (m)</label>
+                                            <input id="biometric_geofence_location_accuracy_{{ $index }}" name="biometric_geofence_locations[{{ $index }}][max_accuracy_meters]" type="number" min="5" max="5000" value="{{ $locationEntry['max_accuracy_meters'] ?? 150 }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                                        </div>
+                                        <div class="col-span-12 lg:col-span-1">
+                                            <label class="block text-sm font-medium text-transparent" aria-hidden="true">Action</label>
+                                            <button type="button" data-geofence-current-location class="mt-1 inline-flex w-full items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                                                Use Current
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
                         </div>
 
                         <div class="mt-4 flex flex-wrap gap-2">
-                            <button type="button" data-geofence-current-location class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                                Use Current Location
+                            <button type="button" data-add-biometric-geofence-location class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                                Add Geofence Location
                             </button>
                             <button type="submit" class="inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
-                                Save Office Geofence
+                                Save Geofence Locations
                             </button>
                         </div>
                     </div>
@@ -402,150 +425,203 @@
         @endif
 
         @if ($canManageBiometrics && $activeBiometricPage === 'enrollment')
-            <div id="biometric-enrollment" class="mb-8 grid scroll-mt-6 grid-cols-1 gap-6 xl:grid-cols-2">
-                <form method="POST" action="{{ route('hr.biometrics.store') }}" class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" data-biometric-form>
-                    @csrf
-                    <input type="hidden" name="modality" value="fingerprint">
-                    <input type="hidden" name="fingerprint_credential" id="fingerprint_credential">
-                    <input type="hidden" name="geo_latitude" data-geo-latitude>
-                    <input type="hidden" name="geo_longitude" data-geo-longitude>
-                    <input type="hidden" name="geo_accuracy" data-geo-accuracy>
+            <div id="biometric-enrollment" class="mb-8 space-y-6 scroll-mt-6">
+                <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                    <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                        <form method="POST" action="{{ route('hr.biometrics.enrollment-authorization.send') }}" class="space-y-4">
+                            @csrf
+                            <div>
+                                <h2 class="text-base font-semibold text-gray-900">Authorize Personal Device</h2>
+                                <p class="mt-1 text-sm text-gray-500">HR must send and confirm a secret code before face capture and mobile fingerprint enrollment can begin.</p>
+                            </div>
 
-                    <div class="mb-5">
-                        <h2 class="text-base font-semibold text-gray-900">Enroll Phone Fingerprint</h2>
-                        <p class="mt-1 text-sm text-gray-500">Register this staff member's mobile biometric key. The fingerprint stays on the phone.</p>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700" for="authorization_staff_assignment_id">Staff Member</label>
+                                <select id="authorization_staff_assignment_id" name="staff_assignment_id" required class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                                    <option value="">Choose staff</option>
+                                    @foreach ($staffAssignments as $staffAssignment)
+                                        <option value="{{ $staffAssignment->id }}" @selected((string) $authorizationStaffAssignmentId === (string) $staffAssignment->id)>
+                                            {{ $staffAssignment->staff_name }} @if($staffAssignment->staff_title) - {{ $staffAssignment->staff_title }} @endif
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+
+                            <button type="submit" class="inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
+                                Send Secret Code
+                            </button>
+                        </form>
+
+                        <div class="rounded-md border border-dashed border-gray-200 bg-gray-50 p-4">
+                            @if ($activeEnrollmentSession)
+                                <p class="text-sm font-semibold text-gray-900">Current Authorization</p>
+                                <p class="mt-1 text-sm text-gray-600">
+                                    {{ $activeEnrollmentSession->staff_name }} / {{ $activeEnrollmentSession->recipient_email }}
+                                </p>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    Purpose: {{ $activeEnrollmentPurpose === 're-enrollment' ? 'Re-enrollment' : 'Enrollment' }}
+                                </p>
+                                @if ($activeEnrollmentSession->confirmed_at)
+                                    <p class="mt-2 text-xs font-medium text-green-700">
+                                        Code confirmed. Capture window ends at {{ $activeEnrollmentSession->capture_deadline_at?->format('M j, Y H:i:s') }}.
+                                    </p>
+                                @else
+                                    <p class="mt-2 text-xs font-medium text-gray-600">
+                                        Code sent at {{ $activeEnrollmentSession->secret_code_sent_at?->format('M j, Y H:i') }} and expires at {{ $activeEnrollmentSession->secret_code_expires_at?->format('M j, Y H:i') }}.
+                                    </p>
+                                @endif
+                            @else
+                                <p class="text-sm text-gray-500">No active biometric authorization is open yet.</p>
+                            @endif
+                        </div>
                     </div>
 
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700" for="fingerprint_staff_assignment_id">Staff Member</label>
-                            <select id="fingerprint_staff_assignment_id" name="staff_assignment_id" required class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                                <option value="">Choose staff</option>
-                                @foreach ($staffAssignments as $staffAssignment)
-                                    <option value="{{ $staffAssignment->id }}" @selected(old('staff_assignment_id') == $staffAssignment->id)>
-                                        {{ $staffAssignment->staff_name }} @if($staffAssignment->staff_title) - {{ $staffAssignment->staff_title }} @endif
-                                    </option>
-                                @endforeach
-                            </select>
+                    @if ($activeEnrollmentSession && ! $activeEnrollmentSession->confirmed_at)
+                        <form method="POST" action="{{ route('hr.biometrics.enrollment-authorization.confirm') }}" class="mt-6 grid grid-cols-1 gap-4 border-t border-gray-200 pt-5 md:grid-cols-[minmax(0,1fr)_220px_auto]">
+                            @csrf
+                            <input type="hidden" name="enrollment_session_uuid" value="{{ $activeEnrollmentSession->uuid }}">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700" for="secret_code">Secret Code</label>
+                                <input id="secret_code" name="secret_code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue" placeholder="Enter 6-digit code">
+                            </div>
+                            <div class="md:self-end">
+                                <p class="text-xs text-gray-500">Confirm the emailed code before the phone fingerprint prompt can start.</p>
+                            </div>
+                            <div class="md:self-end">
+                                <button type="submit" class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
+                                    Confirm Code
+                                </button>
+                            </div>
+                        </form>
+                    @endif
+                </div>
+
+                @if ($activeEnrollmentSession && $activeEnrollmentSession->confirmed_at && $activeEnrollmentSession->capture_deadline_at && $activeEnrollmentSession->capture_deadline_at->isFuture())
+                    <form method="POST" action="{{ route('hr.biometrics.secure-enrollment') }}" class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" data-biometric-form data-secure-enrollment-form>
+                        @csrf
+                        <input type="hidden" name="enrollment_session_uuid" value="{{ $activeEnrollmentSession->uuid }}">
+                        <input type="hidden" name="staff_assignment_id" value="{{ $activeEnrollmentSession->staff_assignment_id }}">
+                        <input type="hidden" name="fingerprint_credential" id="fingerprint_credential">
+                        <input type="hidden" name="face_descriptor" id="enroll_face_descriptor">
+                        <input type="hidden" name="face_sample" id="enroll_face_sample">
+                        <input type="hidden" name="quality_score" id="enroll_face_quality_score">
+                        <input type="hidden" name="face_protocol_version" id="enroll_face_protocol_version">
+                        <input type="hidden" name="face_liveness_passed" id="enroll_face_liveness_passed">
+                        <input type="hidden" name="face_liveness_challenge" id="enroll_face_liveness_challenge">
+                        <input type="hidden" name="face_sample_count" id="enroll_face_sample_count">
+                        <input type="hidden" name="face_detection_status" id="enroll_face_detection_status">
+                        <input type="hidden" name="face_quality_min" id="enroll_face_quality_min">
+                        <input type="hidden" name="face_quality_average" id="enroll_face_quality_average">
+                        <input type="hidden" name="capture_source" value="browser_camera">
+                        <input type="hidden" name="geo_latitude" data-geo-latitude>
+                        <input type="hidden" name="geo_longitude" data-geo-longitude>
+                        <input type="hidden" name="geo_accuracy" data-geo-accuracy>
+
+                        <div class="mb-5 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                            <div>
+                                <h2 class="text-base font-semibold text-gray-900">Complete Secure Biometric {{ $activeEnrollmentPurpose === 're-enrollment' ? 'Re-enrollment' : 'Enrollment' }}</h2>
+                                <p class="mt-1 text-sm text-gray-500">{{ $activeEnrollmentSession->staff_name }} must complete both mobile fingerprint and face capture in the same authorized session.</p>
+                            </div>
+                            <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                <p class="font-semibold">2-minute capture window</p>
+                                <p class="mt-1 text-xs" data-enrollment-deadline="{{ $enrollmentWindowDeadline }}">
+                                    Ends at {{ $activeEnrollmentSession->capture_deadline_at->format('M j, Y H:i:s') }}
+                                </p>
+                                <p class="mt-1 text-xs font-medium" id="enrollment_window_status">Capture both face and fingerprint before the timer runs out.</p>
+                            </div>
                         </div>
 
-                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="fingerprint_label">Label</label>
-                                <input id="fingerprint_label" name="label" value="{{ old('label', 'Phone fingerprint') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                        <div class="mb-5 rounded-md border border-gray-200 bg-gray-50 p-4">
+                            <p class="text-sm font-semibold text-gray-900">Authorized Staff Member</p>
+                            <p class="mt-1 text-sm text-gray-600">{{ $activeEnrollmentSession->staff_name }}</p>
+                            <p class="mt-1 text-xs text-gray-500">Secret code recipient: {{ $activeEnrollmentSession->recipient_email }}</p>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                            <div class="space-y-4">
+                                <div>
+                                    <h3 class="text-sm font-semibold text-gray-900">Mobile Fingerprint</h3>
+                                    <p class="mt-1 text-sm text-gray-500">Open this page on the staff member's phone and complete the device fingerprint/passkey prompt after code confirmation.</p>
+                                </div>
+
+                                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700" for="fingerprint_label">Label</label>
+                                        <input id="fingerprint_label" name="fingerprint_label" value="{{ old('fingerprint_label', 'Phone fingerprint') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700" for="fingerprint_device_id">Device ID</label>
+                                        <input id="fingerprint_device_id" name="fingerprint_device_id" value="{{ old('fingerprint_device_id') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700" for="fingerprint_threshold">Threshold</label>
+                                    <input id="fingerprint_threshold" name="fingerprint_verification_threshold" type="number" min="0" max="1" step="0.0001" value="{{ old('fingerprint_verification_threshold', '0.98') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                                </div>
+
+                                <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
+                                    <p class="text-sm font-semibold text-gray-900">Phone fingerprint registration</p>
+                                    <p class="mt-1 text-sm text-gray-500">The device prompt remains locked until the secret code is confirmed for this session.</p>
+                                    <p id="fingerprint_status" class="mt-2 text-xs text-gray-500">No phone fingerprint registered in this session yet.</p>
+                                    <button type="button" data-mobile-fingerprint-register class="mt-3 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">
+                                        Register Phone Fingerprint
+                                    </button>
+                                </div>
                             </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="fingerprint_provider">Provider</label>
-                                <input id="fingerprint_provider" name="provider" value="mobile-webauthn" readonly class="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+
+                            <div class="space-y-4">
+                                <div>
+                                    <h3 class="text-sm font-semibold text-gray-900">Face Capture</h3>
+                                    <p class="mt-1 text-sm text-gray-500">Use the guided live face capture flow for the same staff member inside the current authorization window.</p>
+                                </div>
+
+                                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700" for="face_label">Label</label>
+                                        <input id="face_label" name="face_label" value="{{ old('face_label', 'Primary face') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700" for="face_threshold">Threshold</label>
+                                        <input id="face_threshold" name="face_verification_threshold" type="number" min="0" max="1" step="0.0001" value="{{ old('face_verification_threshold', '0.86') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700" for="face_provider">Provider</label>
+                                        <input id="face_provider" name="face_provider" value="{{ old('face_provider', 'browser-camera') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700" for="face_device_id">Device ID</label>
+                                        <input id="face_device_id" name="face_device_id" value="{{ old('face_device_id') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                                    </div>
+                                </div>
+
+                                <div class="rounded-md border border-gray-200 bg-gray-50 p-3">
+                                    <video data-face-video="enroll" class="h-56 w-full rounded-md bg-gray-900 object-cover" autoplay muted playsinline></video>
+                                    <canvas data-face-canvas="enroll" class="hidden"></canvas>
+                                    <p data-face-status="enroll" class="mt-2 text-xs text-gray-500">Camera not started.</p>
+                                    <p data-face-quality="enroll" class="mt-1 text-xs text-gray-500">Quality score will appear after capture.</p>
+                                    <div class="mt-3 flex flex-wrap gap-2">
+                                        <button type="button" data-face-start="enroll" class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                                            Start Camera
+                                        </button>
+                                        <button type="button" data-face-capture="enroll" class="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">
+                                            Capture Face
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="fingerprint_device_id">Device ID</label>
-                                <input id="fingerprint_device_id" name="device_id" value="{{ old('device_id') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                            </div>
-                            <input type="hidden" name="external_reference" value="{{ old('external_reference') }}">
-                        </div>
-
-                        <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
-                            <p class="text-sm font-semibold text-gray-900">Mobile biometric registration</p>
-                            <p class="mt-1 text-sm text-gray-500">Open this page on the staff member's phone and use the phone prompt to register their fingerprint/passkey.</p>
-                            <p id="fingerprint_status" class="mt-2 text-xs text-gray-500">No phone fingerprint registered in this form yet.</p>
-                            <button type="button" data-mobile-fingerprint-register class="mt-3 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">
-                                Register Phone Fingerprint
+                        <div class="mt-6">
+                            <button type="submit" class="inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
+                                Complete Secure Enrollment
                             </button>
                         </div>
-
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700" for="fingerprint_threshold">Threshold</label>
-                            <input id="fingerprint_threshold" name="verification_threshold" type="number" min="0" max="1" step="0.0001" value="{{ old('verification_threshold', '0.98') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                        </div>
-
-                        <button type="submit" class="inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
-                            Save Phone Fingerprint
-                        </button>
-                    </div>
-                </form>
-
-                <form method="POST" action="{{ route('hr.biometrics.store') }}" class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" data-biometric-form>
-                    @csrf
-                    <input type="hidden" name="modality" value="face">
-                    <input type="hidden" name="face_descriptor" id="enroll_face_descriptor">
-                    <input type="hidden" name="face_sample" id="enroll_face_sample">
-                    <input type="hidden" name="quality_score" id="enroll_face_quality_score">
-                    <input type="hidden" name="face_protocol_version" id="enroll_face_protocol_version">
-                    <input type="hidden" name="face_liveness_passed" id="enroll_face_liveness_passed">
-                    <input type="hidden" name="face_liveness_challenge" id="enroll_face_liveness_challenge">
-                    <input type="hidden" name="face_sample_count" id="enroll_face_sample_count">
-                    <input type="hidden" name="face_detection_status" id="enroll_face_detection_status">
-                    <input type="hidden" name="face_quality_min" id="enroll_face_quality_min">
-                    <input type="hidden" name="face_quality_average" id="enroll_face_quality_average">
-                    <input type="hidden" name="capture_source" value="browser_camera">
-                    <input type="hidden" name="geo_latitude" data-geo-latitude>
-                    <input type="hidden" name="geo_longitude" data-geo-longitude>
-                    <input type="hidden" name="geo_accuracy" data-geo-accuracy>
-
-                    <div class="mb-5">
-                        <h2 class="text-base font-semibold text-gray-900">Enroll Face</h2>
-                        <p class="mt-1 text-sm text-gray-500">Capture a clear, consented face sample for the selected staff member.</p>
-                    </div>
-
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700" for="face_staff_assignment_id">Staff Member</label>
-                            <select id="face_staff_assignment_id" name="staff_assignment_id" required class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                                <option value="">Choose staff</option>
-                                @foreach ($staffAssignments as $staffAssignment)
-                                    <option value="{{ $staffAssignment->id }}">
-                                        {{ $staffAssignment->staff_name }} @if($staffAssignment->staff_title) - {{ $staffAssignment->staff_title }} @endif
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-
-                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="face_label">Label</label>
-                                <input id="face_label" name="label" value="Primary face" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="face_threshold">Threshold</label>
-                                <input id="face_threshold" name="verification_threshold" type="number" min="0" max="1" step="0.0001" value="0.86" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="face_provider">Provider</label>
-                                <input id="face_provider" name="provider" value="browser-camera" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" for="face_device_id">Device ID</label>
-                                <input id="face_device_id" name="device_id" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                            </div>
-                        </div>
-
-                        <div class="rounded-md border border-gray-200 bg-gray-50 p-3">
-                            <video data-face-video="enroll" class="h-56 w-full rounded-md bg-gray-900 object-cover" autoplay muted playsinline></video>
-                            <canvas data-face-canvas="enroll" class="hidden"></canvas>
-                            <p data-face-status="enroll" class="mt-2 text-xs text-gray-500">Camera not started.</p>
-                            <p data-face-quality="enroll" class="mt-1 text-xs text-gray-500">Quality score will appear after capture.</p>
-                            <div class="mt-3 flex flex-wrap gap-2">
-                                <button type="button" data-face-start="enroll" class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                                    Start Camera
-                                </button>
-                                <button type="button" data-face-capture="enroll" class="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">
-                                    Capture Face
-                                </button>
-                            </div>
-                        </div>
-
-                        <button type="submit" class="inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
-                            Save Face Profile
-                        </button>
-                    </div>
-                </form>
+                    </form>
+                @endif
             </div>
         @endif
 
@@ -843,6 +919,7 @@
                 const mobileFingerprintOptionsUrl = @json(route('hr.biometrics.mobile-fingerprint.options'));
                 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
                 const geofenceEnabled = @json($geofenceAccess['enabled'] ?? false);
+                const secureEnrollmentDeadline = document.querySelector('[data-enrollment-deadline]')?.dataset.enrollmentDeadline || null;
 
                 function bufferToBase64Url(buffer) {
                     const bytes = new Uint8Array(buffer);
@@ -962,6 +1039,7 @@
                             action,
                             staff_assignment_id: form.querySelector('[name="staff_assignment_id"]')?.value || null,
                             profile_uuid: form.querySelector('[name="profile_uuid"]')?.value || null,
+                            enrollment_session_uuid: form.querySelector('[name="enrollment_session_uuid"]')?.value || null,
                             geo_latitude: form.querySelector('[name="geo_latitude"]')?.value || null,
                             geo_longitude: form.querySelector('[name="geo_longitude"]')?.value || null,
                             geo_accuracy: form.querySelector('[name="geo_accuracy"]')?.value || null,
@@ -995,6 +1073,34 @@
                     el.classList.toggle('text-green-600', ok);
                     el.classList.toggle('text-red-600', !ok && isError);
                     el.classList.toggle('text-gray-500', !ok && !isError);
+                }
+
+                function updateEnrollmentWindowStatus() {
+                    const status = document.getElementById('enrollment_window_status');
+                    const secureForm = document.querySelector('[data-secure-enrollment-form]');
+
+                    if (!status || !secureEnrollmentDeadline) {
+                        return;
+                    }
+
+                    const deadline = new Date(secureEnrollmentDeadline);
+                    const remainingMs = deadline.getTime() - Date.now();
+
+                    if (remainingMs <= 0) {
+                        status.textContent = 'The 2-minute enrollment window expired. Send a new secret code to restart.';
+                        status.classList.add('text-red-700');
+                        secureForm?.querySelectorAll('button, input, select').forEach((element) => {
+                            if (element.name !== '_token') {
+                                element.disabled = true;
+                            }
+                        });
+                        return;
+                    }
+
+                    const remainingSeconds = Math.floor(remainingMs / 1000);
+                    const minutes = Math.floor(remainingSeconds / 60);
+                    const seconds = remainingSeconds % 60;
+                    status.textContent = `Time remaining: ${minutes}:${String(seconds).padStart(2, '0')}. Capture both face and fingerprint before it ends.`;
                 }
 
                 function credentialToJson(credential) {
@@ -1387,20 +1493,6 @@
                     });
                 });
 
-                document.querySelector('[data-geofence-current-location]')?.addEventListener('click', async () => {
-                    try {
-                        setGeofenceSettingsStatus('Confirming current location...');
-                        const position = await browserPosition();
-                        const accuracy = Math.round(position.coords.accuracy);
-
-                        document.getElementById('biometric_geofence_latitude').value = position.coords.latitude.toFixed(7);
-                        document.getElementById('biometric_geofence_longitude').value = position.coords.longitude.toFixed(7);
-                        setGeofenceSettingsStatus(`Current location captured with ${accuracy}m accuracy.`, true);
-                    } catch (error) {
-                        setGeofenceSettingsStatus(error.message || 'Location capture failed.');
-                    }
-                });
-
                 document.querySelector('[data-add-biometric-network]')?.addEventListener('click', () => {
                     const container = document.querySelector('[data-biometric-network-entries]');
 
@@ -1427,6 +1519,77 @@
                     `;
                     container.appendChild(row);
                     row.querySelector('input')?.focus();
+                });
+
+                document.querySelector('[data-add-biometric-geofence-location]')?.addEventListener('click', () => {
+                    const container = document.querySelector('[data-biometric-geofence-locations]');
+
+                    if (!container) {
+                        return;
+                    }
+
+                    const index = container.querySelectorAll('[data-geofence-location-row]').length;
+                    const row = document.createElement('div');
+                    row.className = 'rounded-lg border border-gray-200 p-4';
+                    row.setAttribute('data-geofence-location-row', '');
+                    row.innerHTML = `
+                        <div class="grid grid-cols-12 gap-3">
+                            <div class="col-span-12 lg:col-span-3">
+                                <label class="block text-sm font-medium text-gray-700" for="biometric_geofence_location_name_${index}">Location Name</label>
+                                <input id="biometric_geofence_location_name_${index}" name="biometric_geofence_locations[${index}][name]" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue" placeholder="Branch office">
+                            </div>
+                            <div class="col-span-12 sm:col-span-6 lg:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700" for="biometric_geofence_location_latitude_${index}">Latitude</label>
+                                <input id="biometric_geofence_location_latitude_${index}" name="biometric_geofence_locations[${index}][latitude]" type="number" step="0.0000001" min="-90" max="90" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                            </div>
+                            <div class="col-span-12 sm:col-span-6 lg:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700" for="biometric_geofence_location_longitude_${index}">Longitude</label>
+                                <input id="biometric_geofence_location_longitude_${index}" name="biometric_geofence_locations[${index}][longitude]" type="number" step="0.0000001" min="-180" max="180" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                            </div>
+                            <div class="col-span-12 sm:col-span-6 lg:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700" for="biometric_geofence_location_radius_${index}">Radius (m)</label>
+                                <input id="biometric_geofence_location_radius_${index}" name="biometric_geofence_locations[${index}][radius_meters]" type="number" min="25" max="50000" value="100" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                            </div>
+                            <div class="col-span-12 sm:col-span-6 lg:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700" for="biometric_geofence_location_accuracy_${index}">Max GPS Accuracy (m)</label>
+                                <input id="biometric_geofence_location_accuracy_${index}" name="biometric_geofence_locations[${index}][max_accuracy_meters]" type="number" min="5" max="5000" value="150" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
+                            </div>
+                            <div class="col-span-12 lg:col-span-1">
+                                <label class="block text-sm font-medium text-transparent" aria-hidden="true">Action</label>
+                                <button type="button" data-geofence-current-location class="mt-1 inline-flex w-full items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                                    Use Current
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(row);
+                    row.querySelector('input')?.focus();
+                });
+
+                document.addEventListener('click', async (event) => {
+                    const button = event.target.closest('[data-geofence-current-location]');
+
+                    if (!button) {
+                        return;
+                    }
+
+                    const row = button.closest('[data-geofence-location-row]');
+
+                    if (!row) {
+                        return;
+                    }
+
+                    try {
+                        setGeofenceSettingsStatus('Confirming current location...');
+                        const position = await browserPosition();
+                        const accuracy = Math.round(position.coords.accuracy);
+
+                        row.querySelector('input[name$="[latitude]"]').value = position.coords.latitude.toFixed(7);
+                        row.querySelector('input[name$="[longitude]"]').value = position.coords.longitude.toFixed(7);
+                        setGeofenceSettingsStatus(`Current location captured with ${accuracy}m accuracy.`, true);
+                    } catch (error) {
+                        setGeofenceSettingsStatus(error.message || 'Location capture failed.');
+                    }
                 });
 
                 document.querySelector('[data-mobile-fingerprint-register]')?.addEventListener('click', async (event) => {
@@ -1496,6 +1659,11 @@
                         }
                     });
                 });
+
+                if (secureEnrollmentDeadline) {
+                    updateEnrollmentWindowStatus();
+                    window.setInterval(updateEnrollmentWindowStatus, 1000);
+                }
             })();
         </script>
     @endif

@@ -41,33 +41,43 @@ class BiometricGeofencePolicy
     }
 
     /**
-     * @return array{enabled: bool, configured: bool, latitude: ?float, longitude: ?float, radius_meters: int, max_accuracy_meters: int, message: string}
+     * @return array{enabled: bool, configured: bool, latitude: ?float, longitude: ?float, radius_meters: int, max_accuracy_meters: int, location_count: int, locations: array<int, array{name: string, latitude: float, longitude: float, radius_meters: int, max_accuracy_meters: int}>, message: string}
      */
     public function status(?Organization $organization): array
     {
+        $locations = $this->configuredLocations($organization);
+        $primaryLocation = $locations[0] ?? null;
+
         if (! $organization || ! $organization->biometric_geofence_enabled) {
             return [
                 'enabled' => false,
                 'configured' => false,
-                'latitude' => null,
-                'longitude' => null,
-                'radius_meters' => $this->radiusMeters($organization),
-                'max_accuracy_meters' => $this->maxAccuracyMeters($organization),
+                'latitude' => $primaryLocation['latitude'] ?? null,
+                'longitude' => $primaryLocation['longitude'] ?? null,
+                'radius_meters' => $primaryLocation['radius_meters'] ?? $this->radiusMeters($organization),
+                'max_accuracy_meters' => $primaryLocation['max_accuracy_meters'] ?? $this->maxAccuracyMeters($organization),
+                'location_count' => count($locations),
+                'locations' => $locations,
                 'message' => 'Office geofence restriction is off.',
             ];
         }
 
-        $configured = $this->isConfigured($organization);
+        $configured = $locations !== [];
+        $locationCount = count($locations);
 
         return [
             'enabled' => true,
             'configured' => $configured,
-            'latitude' => $this->coordinate($organization->biometric_geofence_latitude),
-            'longitude' => $this->coordinate($organization->biometric_geofence_longitude),
-            'radius_meters' => $this->radiusMeters($organization),
-            'max_accuracy_meters' => $this->maxAccuracyMeters($organization),
+            'latitude' => $primaryLocation['latitude'] ?? null,
+            'longitude' => $primaryLocation['longitude'] ?? null,
+            'radius_meters' => $primaryLocation['radius_meters'] ?? $this->radiusMeters($organization),
+            'max_accuracy_meters' => $primaryLocation['max_accuracy_meters'] ?? $this->maxAccuracyMeters($organization),
+            'location_count' => $locationCount,
+            'locations' => $locations,
             'message' => $configured
-                ? 'Biometrics require GPS confirmation inside the office geofence.'
+                ? ($locationCount === 1
+                    ? 'Biometrics require GPS confirmation inside the configured geofence location.'
+                    : "Biometrics require GPS confirmation inside one of the {$locationCount} configured geofence locations.")
                 : 'Office geofence is on, but no office location is configured.',
         ];
     }
@@ -77,7 +87,9 @@ class BiometricGeofencePolicy
      */
     public function check(Request $request, Organization $organization): array
     {
-        if (! $this->isConfigured($organization)) {
+        $locations = $this->configuredLocations($organization);
+
+        if ($locations === []) {
             return [
                 'allowed' => false,
                 'message' => 'Biometrics require the office geofence, but no office location is configured.',
@@ -102,7 +114,17 @@ class BiometricGeofencePolicy
         $maxAccuracy = $this->maxAccuracyMeters($organization);
         $accuracyMeters = (int) round($accuracy);
 
-        if ($accuracy > $maxAccuracy) {
+        $supportedLocations = array_values(array_filter(
+            $locations,
+            fn (array $location): bool => $accuracy <= (float) $location['max_accuracy_meters']
+        ));
+
+        if ($supportedLocations === []) {
+            $maxAccuracy = max(array_map(
+                fn (array $location): int => (int) $location['max_accuracy_meters'],
+                $locations
+            ));
+
             return [
                 'allowed' => false,
                 'message' => "Location accuracy {$accuracyMeters}m is outside the allowed {$maxAccuracy}m accuracy.",
@@ -111,28 +133,58 @@ class BiometricGeofencePolicy
             ];
         }
 
-        $distance = $this->distanceMeters(
-            $latitude,
-            $longitude,
-            (float) $organization->biometric_geofence_latitude,
-            (float) $organization->biometric_geofence_longitude
-        );
-        $distanceMeters = (int) round($distance);
-        $radius = $this->radiusMeters($organization);
+        $nearest = null;
+        $matched = null;
 
-        if ($distance > $radius) {
-            return [
-                'allowed' => false,
-                'message' => "Biometrics require the office geofence. Current location is {$distanceMeters}m from the office, outside the {$radius}m radius.",
+        foreach ($supportedLocations as $index => $location) {
+            $distance = $this->distanceMeters(
+                $latitude,
+                $longitude,
+                (float) $location['latitude'],
+                (float) $location['longitude']
+            );
+            $distanceMeters = (int) round($distance);
+            $candidate = [
+                'index' => $index,
+                'location' => $location,
+                'distance' => $distance,
                 'distance_meters' => $distanceMeters,
+            ];
+
+            if ($nearest === null || $distance < $nearest['distance']) {
+                $nearest = $candidate;
+            }
+
+            if ($distance <= (int) $location['radius_meters']) {
+                if ($matched === null || $distance < $matched['distance']) {
+                    $matched = $candidate;
+                }
+            }
+        }
+
+        if ($matched !== null) {
+            $locationName = $this->locationName($matched['location'], $matched['index']);
+
+            return [
+                'allowed' => true,
+                'message' => "Location confirmed within {$matched['distance_meters']}m of {$locationName}.",
+                'distance_meters' => $matched['distance_meters'],
                 'accuracy_meters' => $accuracyMeters,
             ];
         }
 
+        $nearest ??= [
+            'index' => 0,
+            'location' => $locations[0],
+            'distance_meters' => null,
+        ];
+        $nearestName = $this->locationName($nearest['location'], $nearest['index']);
+        $nearestRadius = (int) $nearest['location']['radius_meters'];
+
         return [
-            'allowed' => true,
-            'message' => "Location confirmed within {$distanceMeters}m of the office.",
-            'distance_meters' => $distanceMeters,
+            'allowed' => false,
+            'message' => "Biometrics require the office geofence. Current location is {$nearest['distance_meters']}m from {$nearestName}, outside the {$nearestRadius}m radius.",
+            'distance_meters' => $nearest['distance_meters'],
             'accuracy_meters' => $accuracyMeters,
         ];
     }
@@ -156,10 +208,7 @@ class BiometricGeofencePolicy
 
     private function isConfigured(Organization $organization): bool
     {
-        return $this->coordinate($organization->biometric_geofence_latitude) !== null
-            && $this->coordinate($organization->biometric_geofence_longitude) !== null
-            && $this->radiusMeters($organization) > 0
-            && $this->maxAccuracyMeters($organization) > 0;
+        return $this->configuredLocations($organization) !== [];
     }
 
     private function coordinate(mixed $value): ?float
@@ -190,6 +239,67 @@ class BiometricGeofencePolicy
     private function maxAccuracyMeters(?Organization $organization): int
     {
         return max(1, (int) ($organization?->biometric_geofence_max_accuracy_meters ?: 150));
+    }
+
+    /**
+     * @return array<int, array{name: string, latitude: float, longitude: float, radius_meters: int, max_accuracy_meters: int}>
+     */
+    private function configuredLocations(?Organization $organization): array
+    {
+        if (! $organization) {
+            return [];
+        }
+
+        $locations = [];
+
+        foreach ((array) ($organization->biometric_geofence_locations ?? []) as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+
+            $latitude = $this->coordinate($entry['latitude'] ?? null);
+            $longitude = $this->coordinate($entry['longitude'] ?? null);
+            $radius = (int) ($entry['radius_meters'] ?? 0);
+            $maxAccuracy = (int) ($entry['max_accuracy_meters'] ?? 0);
+
+            if ($latitude === null || $longitude === null || $radius < 1 || $maxAccuracy < 1) {
+                continue;
+            }
+
+            $locations[] = [
+                'name' => trim((string) ($entry['name'] ?? '')),
+                'latitude' => $latitude,
+                'longitude' => $longitude,
+                'radius_meters' => $radius,
+                'max_accuracy_meters' => $maxAccuracy,
+            ];
+        }
+
+        if ($locations !== []) {
+            return array_values($locations);
+        }
+
+        $latitude = $this->coordinate($organization->biometric_geofence_latitude);
+        $longitude = $this->coordinate($organization->biometric_geofence_longitude);
+
+        if ($latitude === null || $longitude === null || $this->radiusMeters($organization) < 1 || $this->maxAccuracyMeters($organization) < 1) {
+            return [];
+        }
+
+        return [[
+            'name' => 'Primary office',
+            'latitude' => $latitude,
+            'longitude' => $longitude,
+            'radius_meters' => $this->radiusMeters($organization),
+            'max_accuracy_meters' => $this->maxAccuracyMeters($organization),
+        ]];
+    }
+
+    private function locationName(array $location, int $index): string
+    {
+        $name = trim((string) ($location['name'] ?? ''));
+
+        return $name !== '' ? $name : 'Location ' . ($index + 1);
     }
 
     private function applyOffsiteBypass(Request $request, Organization $organization): bool

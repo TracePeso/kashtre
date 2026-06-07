@@ -59,6 +59,15 @@ Route::middleware(['web', 'auth', 'verified'])->prefix('hr')->name('hr.')->group
     Route::post('/biometrics/enroll', [BiometricController::class, 'store'])
         ->middleware('hr.permission:Edit HR Staff,Manage HR Biometrics')
         ->name('biometrics.store');
+    Route::post('/biometrics/enrollment-authorization', [BiometricController::class, 'sendEnrollmentAuthorization'])
+        ->middleware('hr.permission:Edit HR Staff,Manage HR Biometrics')
+        ->name('biometrics.enrollment-authorization.send');
+    Route::post('/biometrics/enrollment-authorization/confirm', [BiometricController::class, 'confirmEnrollmentAuthorization'])
+        ->middleware('hr.permission:Edit HR Staff,Manage HR Biometrics')
+        ->name('biometrics.enrollment-authorization.confirm');
+    Route::post('/biometrics/secure-enrollment', [BiometricController::class, 'completeSecureEnrollment'])
+        ->middleware('hr.permission:Edit HR Staff,Manage HR Biometrics')
+        ->name('biometrics.secure-enrollment');
     Route::patch('/biometrics/network-policy', [BiometricController::class, 'updateNetworkPolicy'])
         ->middleware('hr.permission:Edit HR Staff,Manage HR Biometrics')
         ->name('biometrics.network-policy');

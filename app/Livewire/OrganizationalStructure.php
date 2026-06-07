@@ -12,6 +12,7 @@ use App\Models\StaffAssignment;
 use App\Services\CascadeRoutingService;
 use App\Services\ClientSpaceRoutingService;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Livewire\Component;
@@ -48,6 +49,7 @@ class OrganizationalStructure extends Component
     public ?int $routingNodeStaffTargetUnitId = null;
     public ?int $selectedRoutingNodeStaffAssignmentId = null;
     public ?string $routingNodeStaffMessage = null;
+    public int $routingTreeVersion = 1;
 
     protected $rules = [
         'newUnitTierLevelId' => 'required|exists:hr_organization_tier_levels,id',
@@ -103,6 +105,7 @@ class OrganizationalStructure extends Component
 
         $this->newTierName = '';
         $this->newTierOrder = '';
+        $this->bumpRoutingTreeVersion($org);
 
         session()->flash('message', 'Tier level successfully saved.');
     }
@@ -150,6 +153,7 @@ class OrganizationalStructure extends Component
 
         $this->showEditTierModal = false;
         $this->editingTierId = null;
+        $this->bumpRoutingTreeVersion($org);
         session()->flash('message', 'Tier level successfully updated.');
     }
 
@@ -208,6 +212,7 @@ class OrganizationalStructure extends Component
         });
 
         app(ClientSpaceRoutingService::class)->promoteRemainingRoutes($affectedClientSpaceIds);
+        $this->bumpRoutingTreeVersion($org);
 
         $deletedCount = $unitIds->count();
         $suffix = $deletedCount > 0 ? " {$deletedCount} routing node(s) under it were also deleted." : '';
@@ -279,6 +284,7 @@ class OrganizationalStructure extends Component
         ]);
 
         $this->showModal = false;
+        $this->bumpRoutingTreeVersion($org);
         session()->flash('message', 'Unit successfully added.');
     }
 
@@ -376,6 +382,7 @@ class OrganizationalStructure extends Component
         ]);
 
         $this->showEditModal = false;
+        $this->bumpRoutingTreeVersion($org);
         session()->flash('message', 'Routing tier successfully updated.');
     }
 
@@ -469,6 +476,7 @@ class OrganizationalStructure extends Component
         $this->routingNodeStaffMessage = $directChildren->isEmpty()
             ? "Staff added to {$this->routingNodeDisplayName($targetUnit)}."
             : "Staff routed to {$this->routingNodeDisplayName($targetUnit)}.";
+        $this->bumpRoutingTreeVersion($org);
     }
 
     public function removeRoutingNodeStaff(int $assignmentId): void
@@ -528,6 +536,7 @@ class OrganizationalStructure extends Component
         });
 
         $this->routingNodeStaffMessage = 'Staff removed from node.';
+        $this->bumpRoutingTreeVersion($org);
     }
 
     public function closeRoutingNodeStaffModal(): void
@@ -572,6 +581,7 @@ class OrganizationalStructure extends Component
         $this->showLeafClientSpacesModal = true;
 
         if ($markedNow) {
+            $this->bumpRoutingTreeVersion($org);
             session()->flash('status', 'Last node confirmed. Attach client spaces here, then the system will prompt you to link staff immediately.');
         }
     }
@@ -766,6 +776,7 @@ class OrganizationalStructure extends Component
             $selectedClientSpaceIdsForStaffPrompt !== []
             && $this->canManageLeafClientSpaceStaff
         ) {
+            $this->bumpRoutingTreeVersion($org);
             $this->showLeafClientSpacesModal = false;
             $this->openLeafStaffPrompt($leafUnitId, $selectedClientSpaceIdsForStaffPrompt);
             session()->flash('status', 'Client spaces saved. Choose a client space, then link last-node staff to it.');
@@ -773,6 +784,7 @@ class OrganizationalStructure extends Component
             return;
         }
 
+        $this->bumpRoutingTreeVersion($org);
         $this->resetLeafClientSpacesModal();
         session()->flash('message', 'Client spaces attached to the last routing node.');
     }
@@ -858,19 +870,7 @@ class OrganizationalStructure extends Component
         $this->canManageLeafClientSpaceStaff = $this->userCanManageLeafClientSpaceStaff();
 
         $org = Organization::current();
-        $rootUnits = $org ? HrOrganizationalUnit::where('organization_id', $org->id)
-                                                ->routingNodes()
-                                                ->whereNull('parent_id')
-                                                ->with([
-                                                    'childrenRecursive',
-                                                    'linkedClientSpaces:id,name',
-                                                    'tierLevel',
-                                                ])
-                                                ->withCount([
-                                                    'staffAssignments as routing_staff_count' => fn ($query) => $query->whereNotIn('status', ['inactive', 'orphaned']),
-                                                    'linkedClientSpaces as linked_client_spaces_count',
-                                                ])
-                                                ->get() : collect();
+        $rootUnits = $org ? $this->cachedRootUnits($org) : collect();
         $parentOptions = $org && ($this->showModal || $this->showEditModal) ? HrOrganizationalUnit::where('organization_id', $org->id)
                                                 ->routingNodes()
                                                 ->with('tierLevel')
@@ -879,11 +879,7 @@ class OrganizationalStructure extends Component
         $tierLevels = $org ? HrOrganizationTierLevel::where('organization_id', $org->id)
                                                 ->orderBy('level_order')
                                                 ->get() : collect();
-        $structureSummary = $org ? [
-            'routing_nodes' => HrOrganizationalUnit::where('organization_id', $org->id)->routingNodes()->count(),
-            'root_nodes' => HrOrganizationalUnit::where('organization_id', $org->id)->routingNodes()->whereNull('parent_id')->count(),
-            'staff_pool' => StaffAssignment::where('organization_id', $org->id)->where('status', '!=', 'inactive')->count(),
-        ] : [
+        $structureSummary = $org ? $this->cachedStructureSummary($org) : [
             'routing_nodes' => 0,
             'root_nodes' => 0,
             'staff_pool' => 0,
@@ -1145,6 +1141,40 @@ class OrganizationalStructure extends Component
             ->lowestRoutingNodes()
             ->with(['tierLevel', 'linkedClientSpaces'])
             ->find($unitId);
+    }
+
+    private function cachedRootUnits(Organization $org)
+    {
+        return Cache::remember(
+            $this->routingTreeCacheKey($org),
+            now()->addMinutes(10),
+            fn () => HrOrganizationalUnit::where('organization_id', $org->id)
+                ->routingNodes()
+                ->whereNull('parent_id')
+                ->with([
+                    'childrenRecursive',
+                    'linkedClientSpaces:id,name',
+                    'tierLevel',
+                ])
+                ->withCount([
+                    'staffAssignments as routing_staff_count' => fn ($query) => $query->whereNotIn('status', ['inactive', 'orphaned']),
+                    'linkedClientSpaces as linked_client_spaces_count',
+                ])
+                ->get()
+        );
+    }
+
+    private function cachedStructureSummary(Organization $org): array
+    {
+        return Cache::remember(
+            $this->routingSummaryCacheKey($org),
+            now()->addMinutes(10),
+            fn (): array => [
+                'routing_nodes' => HrOrganizationalUnit::where('organization_id', $org->id)->routingNodes()->count(),
+                'root_nodes' => HrOrganizationalUnit::where('organization_id', $org->id)->routingNodes()->whereNull('parent_id')->count(),
+                'staff_pool' => StaffAssignment::where('organization_id', $org->id)->where('status', '!=', 'inactive')->count(),
+            ]
+        );
     }
 
     private function selectedLeafRoutingUnitForOrganization(Organization $org, int $unitId): ?HrOrganizationalUnit
@@ -1456,6 +1486,28 @@ class OrganizationalStructure extends Component
     private function activeLeafStaffUnitId(): ?int
     {
         return $this->selectedLeafStaffUnitId ?? $this->selectedLeafUnitId;
+    }
+
+    private function routingTreeCacheKey(Organization $org): string
+    {
+        return "hr-routing-tree:{$org->id}:{$this->routingTreeVersion}";
+    }
+
+    private function routingSummaryCacheKey(Organization $org): string
+    {
+        return "hr-routing-summary:{$org->id}:{$this->routingTreeVersion}";
+    }
+
+    private function bumpRoutingTreeVersion(?Organization $org = null): void
+    {
+        $org ??= Organization::current();
+
+        if ($org) {
+            Cache::forget($this->routingTreeCacheKey($org));
+            Cache::forget($this->routingSummaryCacheKey($org));
+        }
+
+        $this->routingTreeVersion++;
     }
 
     private function resetLeafClientSpacesModal(): void
