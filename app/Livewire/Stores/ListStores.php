@@ -53,8 +53,13 @@ class ListStores extends Component implements HasForms, HasTable
                 Tables\Columns\TextColumn::make('hierarchy')
                     ->label('Type')
                     ->badge()
-                    ->state(fn (Store $record): string => $record->isChild() ? 'Child' : 'Parent')
-                    ->color(fn (Store $record): string => $record->isChild() ? 'info' : 'success'),
+                    ->state(fn (Store $record): string => $record->hierarchyLabel())
+                    ->color(fn (Store $record): string => match ($record->depth()) {
+                        0 => 'success',
+                        1 => 'info',
+                        2 => 'warning',
+                        default => 'gray',
+                    }),
                 Tables\Columns\TextColumn::make('parent.name')
                     ->label('Parent store')
                     ->placeholder('—')

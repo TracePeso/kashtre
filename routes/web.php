@@ -64,6 +64,9 @@ use App\Http\Controllers\GoodsReceivedNoteController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\InventoryDailyConsumptionController;
 use App\Http\Controllers\InventoryOrderController;
+use App\Http\Controllers\InventoryStockTransferController;
+use App\Http\Controllers\InventoryGoodsReturnController;
+use App\Http\Controllers\InventoryReportsController;
 use App\Http\Controllers\InventoryStockCountController;
 use App\Http\Controllers\ServicePointCallerController;
 use App\Http\Controllers\CallingController;
@@ -307,6 +310,21 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::post('/orders/{order}/regenerate', [InventoryOrderController::class, 'regenerate'])->name('orders.regenerate');
         Route::get('/approvers', [InventoryController::class, 'approvers'])->name('approvers');
         Route::put('/approvers', [InventoryController::class, 'updateApprovers'])->name('approvers.update');
+        Route::get('/transfers', [InventoryStockTransferController::class, 'index'])->name('transfers.index');
+        Route::get('/transfers/create', [InventoryStockTransferController::class, 'create'])->name('transfers.create');
+        Route::post('/transfers', [InventoryStockTransferController::class, 'store'])->name('transfers.store');
+        Route::get('/transfers/{transfer}', [InventoryStockTransferController::class, 'show'])->name('transfers.show');
+        Route::post('/transfers/{transfer}/submit', [InventoryStockTransferController::class, 'submit'])->name('transfers.submit');
+        Route::post('/transfers/{transfer}/approve', [InventoryStockTransferController::class, 'approve'])->name('transfers.approve');
+        Route::post('/transfers/{transfer}/receive', [InventoryStockTransferController::class, 'receive'])->name('transfers.receive');
+        Route::post('/transfers/{transfer}/reject', [InventoryStockTransferController::class, 'reject'])->name('transfers.reject');
+        Route::get('/returns', [InventoryGoodsReturnController::class, 'index'])->name('returns.index');
+        Route::get('/returns/create', [InventoryGoodsReturnController::class, 'create'])->name('returns.create');
+        Route::post('/returns', [InventoryGoodsReturnController::class, 'store'])->name('returns.store');
+        Route::get('/returns/{returnNote}', [InventoryGoodsReturnController::class, 'show'])->name('returns.show');
+        Route::post('/returns/{returnNote}/submit', [InventoryGoodsReturnController::class, 'submit'])->name('returns.submit');
+        Route::get('/reports/aging', [InventoryReportsController::class, 'aging'])->name('reports.aging');
+        Route::get('/network', [InventoryController::class, 'network'])->name('network');
     });
     
     // Payment Method Account Transactions

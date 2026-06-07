@@ -4,8 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class Supplier extends Model
 {
@@ -18,7 +19,7 @@ class Supplier extends Model
         'name',
         'description',
     ];
-    
+
     protected static function booted()
     {
         static::creating(function ($user) {
@@ -34,5 +35,19 @@ class Supplier extends Model
     public function branch()
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function items(): BelongsToMany
+    {
+        return $this->belongsToMany(Item::class, 'supplier_item')->withTimestamps();
+    }
+
+    public function suppliesItem(int $itemId): bool
+    {
+        if ($this->items()->count() === 0) {
+            return true;
+        }
+
+        return $this->items()->where('items.id', $itemId)->exists();
     }
 }

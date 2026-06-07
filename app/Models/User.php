@@ -36,6 +36,7 @@ class User extends Authenticatable
         'status',
         'business_id',
         'branch_id', // Uncomment if you want to allow branch assignment,
+        'default_store_id',
         'service_points',
         'permissions',
         'allowed_branches',
@@ -111,6 +112,11 @@ class User extends Authenticatable
     public function branch()
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function defaultStore()
+    {
+        return $this->belongsTo(Store::class, 'default_store_id');
     }
 
     public function qualification()

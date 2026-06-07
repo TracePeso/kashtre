@@ -16,12 +16,14 @@ class InventoryStockCountLine extends Model
         'system_quantity_suom',
         'physical_quantity_suom',
         'damaged_quantity_suom',
+        'expired_quantity_suom',
     ];
 
     protected $casts = [
         'system_quantity_suom' => 'decimal:4',
         'physical_quantity_suom' => 'decimal:4',
         'damaged_quantity_suom' => 'decimal:4',
+        'expired_quantity_suom' => 'decimal:4',
     ];
 
     public function stockCount(): BelongsTo

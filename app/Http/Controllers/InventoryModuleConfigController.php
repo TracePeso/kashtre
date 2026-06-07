@@ -94,6 +94,8 @@ class InventoryModuleConfigController extends Controller
                 'fixed_daily_average_suom' => $validated['fixed_daily_average_suom'],
                 'safety_stock_days' => $validated['safety_stock_days'],
                 'buffer_stock_days' => $validated['buffer_stock_days'],
+                'notification_to_order_days' => $validated['notification_to_order_days'],
+                'period_of_order_days' => $validated['period_of_order_days'],
                 'is_active' => $request->boolean('is_active', true),
                 'created_by' => Auth::id(),
             ]);
@@ -145,6 +147,8 @@ class InventoryModuleConfigController extends Controller
                 'fixed_daily_average_suom' => $validated['fixed_daily_average_suom'],
                 'safety_stock_days' => $validated['safety_stock_days'],
                 'buffer_stock_days' => $validated['buffer_stock_days'],
+                'notification_to_order_days' => $validated['notification_to_order_days'],
+                'period_of_order_days' => $validated['period_of_order_days'],
                 'updated_by' => Auth::id(),
             ]);
 
@@ -212,6 +216,8 @@ class InventoryModuleConfigController extends Controller
             'fixed_daily_average_suom' => 'required|numeric|min:0',
             'safety_stock_days' => 'required|numeric|min:0',
             'buffer_stock_days' => 'required|numeric|min:0',
+            'notification_to_order_days' => 'required|numeric|min:0',
+            'period_of_order_days' => 'required|numeric|min:0',
         ];
     }
 

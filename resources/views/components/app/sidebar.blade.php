@@ -160,6 +160,26 @@
                                 </a>
                             </li>
                             <li>
+                                <a href="{{ route('inventory.orders.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.orders*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Order Forms
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.transfers.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.transfers*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Transfers
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.returns.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.returns*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Returns
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.reports.aging') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.reports*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Stock Aging
+                                </a>
+                            </li>
+                            <li>
                                 <a href="{{ route('inventory.approvers') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.approvers') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
                                     GRN Approvers
                                 </a>

@@ -13,6 +13,9 @@ class InventoryStockMovement extends Model
     public const TYPE_GRN_RECEIPT = 'grn_receipt';
     public const TYPE_STOCK_COUNT = 'stock_count';
     public const TYPE_CONSUMPTION = 'consumption';
+    public const TYPE_TRANSFER_OUT = 'transfer_out';
+    public const TYPE_TRANSFER_IN = 'transfer_in';
+    public const TYPE_GOODS_RETURN = 'goods_return';
 
     protected $fillable = [
         'business_id',
@@ -26,6 +29,8 @@ class InventoryStockMovement extends Model
         'balance_valuation',
         'goods_received_note_id',
         'goods_received_note_line_id',
+        'stock_transfer_id',
+        'goods_return_note_id',
         'reference_label',
         'recorded_by_user_id',
         'occurred_at',
@@ -99,6 +104,9 @@ class InventoryStockMovement extends Model
             self::TYPE_GRN_RECEIPT => 'GRN receipt',
             self::TYPE_STOCK_COUNT => 'Stock count adjustment',
             self::TYPE_CONSUMPTION => 'Consumption',
+            self::TYPE_TRANSFER_OUT => 'Transfer out',
+            self::TYPE_TRANSFER_IN => 'Transfer in',
+            self::TYPE_GOODS_RETURN => 'Goods return',
             default => ucfirst(str_replace('_', ' ', $this->movement_type)),
         };
     }

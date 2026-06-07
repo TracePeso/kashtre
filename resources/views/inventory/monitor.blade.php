@@ -15,11 +15,10 @@
         </div>
 
         <p class="mt-4 text-xs text-gray-500">
-            <strong>System stock</strong> follows GRN receipts and consumption.
-            <strong>Physical stock</strong> comes from stock counts;
-            <strong>Usable</strong> = physical (or system if not counted) minus damaged.
-            <strong>Shrinkage</strong> compares system vs physical when a count exists.
-            Moving averages feed order form suggestions.
+            <strong>Physical usable stock</strong> = physical (or system if not counted) minus damaged and expired.
+            <strong>Verifiable shrinkage</strong> = damaged + expired (on shelf but unusable).
+            <strong>Unverified loss</strong> = system − physical (missing from shelf).
+            Moving averages come from the consumption log.
         </p>
     </div>
 </div>

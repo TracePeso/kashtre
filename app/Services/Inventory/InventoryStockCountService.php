@@ -53,6 +53,7 @@ class InventoryStockCountService
                     'system_quantity_suom' => $level->quantity_suom,
                     'physical_quantity_suom' => $level->physical_quantity_suom ?? $level->quantity_suom,
                     'damaged_quantity_suom' => $level->damaged_quantity_suom ?? 0,
+                    'expired_quantity_suom' => $level->expired_quantity_suom ?? 0,
                 ]);
             }
 
@@ -60,8 +61,12 @@ class InventoryStockCountService
         });
     }
 
-    public function updateLine(InventoryStockCountLine $line, float $physicalQty, float $damagedQty): InventoryStockCountLine
-    {
+    public function updateLine(
+        InventoryStockCountLine $line,
+        float $physicalQty,
+        float $damagedQty,
+        float $expiredQty = 0
+    ): InventoryStockCountLine {
         if (! $line->stockCount->isDraft()) {
             throw ValidationException::withMessages([
                 'status' => 'Only draft stock counts can be edited.',
@@ -71,6 +76,7 @@ class InventoryStockCountService
         $line->update([
             'physical_quantity_suom' => max(0, $physicalQty),
             'damaged_quantity_suom' => max(0, $damagedQty),
+            'expired_quantity_suom' => max(0, $expiredQty),
         ]);
 
         return $line->fresh('item');
@@ -105,6 +111,7 @@ class InventoryStockCountService
                     'physical_quantity_suom' => $physical,
                     'physical_counted_at' => $count->counted_at ?? now(),
                     'damaged_quantity_suom' => (float) $line->damaged_quantity_suom,
+                    'expired_quantity_suom' => (float) $line->expired_quantity_suom,
                 ]);
 
                 if ($variance != 0.0) {

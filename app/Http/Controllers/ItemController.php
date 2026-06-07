@@ -120,6 +120,9 @@ class ItemController extends Controller
             'subgroup_id' => 'required_if:type,service,good|nullable|exists:sub_groups,id',
             'department_id' => 'required_if:type,service,good|nullable|exists:departments,id',
             'uom_id' => 'required_unless:type,package,bulk|nullable|exists:item_units,id',
+            'importance_category' => 'nullable|in:essential,non_essential',
+            'order_unit_id' => 'nullable|exists:item_units,id',
+            'suom_per_ouom' => 'nullable|numeric|min:0.0001',
             'default_price' => 'required|numeric|min:0',
             'vat_rate' => 'nullable|numeric|min:0|max:100',
             'hospital_share' => 'required_if:type,service,good|integer|between:0,100',
@@ -157,10 +160,20 @@ class ItemController extends Controller
             $validated['subgroup_id'] = null;
             $validated['department_id'] = null;
             $validated['uom_id'] = null;
+            $validated['importance_category'] = null;
+            $validated['order_unit_id'] = null;
+            $validated['suom_per_ouom'] = null;
             // Set max_qty default to 1 for package types if not provided
             if ($validated['type'] === 'package' && (!isset($validated['max_qty']) || empty($validated['max_qty']))) {
                 $validated['max_qty'] = 1;
             }
+        }
+
+        // Inventory unit fields apply to goods only
+        if ($validated['type'] !== 'good') {
+            $validated['importance_category'] = null;
+            $validated['order_unit_id'] = null;
+            $validated['suom_per_ouom'] = null;
         }
 
         // Validate contractor selection when hospital share is not 100% for goods and services
@@ -348,6 +361,9 @@ class ItemController extends Controller
             'subgroup_id' => 'required_if:type,service,good|nullable|exists:sub_groups,id',
             'department_id' => 'required_if:type,service,good|nullable|exists:departments,id',
             'uom_id' => 'required_unless:type,package,bulk|nullable|exists:item_units,id',
+            'importance_category' => 'nullable|in:essential,non_essential',
+            'order_unit_id' => 'nullable|exists:item_units,id',
+            'suom_per_ouom' => 'nullable|numeric|min:0.0001',
             'default_price' => 'required|numeric|min:0',
             'vat_rate' => 'nullable|numeric|min:0|max:100',
             'hospital_share' => 'required_if:type,service,good|integer|between:0,100',
@@ -385,10 +401,20 @@ class ItemController extends Controller
             $validated['subgroup_id'] = null;
             $validated['department_id'] = null;
             $validated['uom_id'] = null;
+            $validated['importance_category'] = null;
+            $validated['order_unit_id'] = null;
+            $validated['suom_per_ouom'] = null;
             // Set max_qty default to 1 for package types if not provided
             if ($validated['type'] === 'package' && (!isset($validated['max_qty']) || empty($validated['max_qty']))) {
                 $validated['max_qty'] = 1;
             }
+        }
+
+        // Inventory unit fields apply to goods only
+        if ($validated['type'] !== 'good') {
+            $validated['importance_category'] = null;
+            $validated['order_unit_id'] = null;
+            $validated['suom_per_ouom'] = null;
         }
 
         // Validate contractor selection when hospital share is not 100% for goods and services

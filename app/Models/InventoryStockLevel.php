@@ -17,6 +17,7 @@ class InventoryStockLevel extends Model
         'physical_quantity_suom',
         'physical_counted_at',
         'damaged_quantity_suom',
+        'expired_quantity_suom',
         'opening_quantity_suom',
         'daily_usage_suom',
         'safety_stock_days',
@@ -35,6 +36,7 @@ class InventoryStockLevel extends Model
         'physical_quantity_suom' => 'decimal:4',
         'physical_counted_at' => 'datetime',
         'damaged_quantity_suom' => 'decimal:4',
+        'expired_quantity_suom' => 'decimal:4',
         'opening_quantity_suom' => 'decimal:4',
         'daily_usage_suom' => 'decimal:4',
         'safety_stock_days' => 'decimal:2',
@@ -53,13 +55,69 @@ class InventoryStockLevel extends Model
         return (float) $this->quantity_suom;
     }
 
-    public function usableQuantitySuom(): float
+    public function verifiableLossSuom(): float
+    {
+        return round(
+            (float) ($this->damaged_quantity_suom ?? 0) + (float) ($this->expired_quantity_suom ?? 0),
+            4
+        );
+    }
+
+    public function physicalUsableQuantitySuom(): float
     {
         $base = $this->physical_quantity_suom !== null
             ? (float) $this->physical_quantity_suom
             : (float) $this->quantity_suom;
 
-        return max(0, round($base - (float) ($this->damaged_quantity_suom ?? 0), 4));
+        return max(0, round($base - $this->verifiableLossSuom(), 4));
+    }
+
+    /** @deprecated Use physicalUsableQuantitySuom() */
+    public function usableQuantitySuom(): float
+    {
+        return $this->physicalUsableQuantitySuom();
+    }
+
+    public function totalShrinkageAmountSuom(): ?float
+    {
+        if ($this->physical_quantity_suom === null) {
+            return null;
+        }
+
+        return max(0, round((float) $this->quantity_suom - (float) $this->physical_quantity_suom, 4));
+    }
+
+    public function unverifiedShrinkageAmountSuom(): ?float
+    {
+        if ($this->physical_quantity_suom === null) {
+            return null;
+        }
+
+        // Stock missing from the shelf vs system ledger (theft, loss, count errors).
+        return max(0, round((float) $this->quantity_suom - (float) $this->physical_quantity_suom, 4));
+    }
+
+    public function verifiableShrinkagePercent(): ?float
+    {
+        $system = (float) $this->quantity_suom;
+
+        if ($system <= 0) {
+            return null;
+        }
+
+        return round(($this->verifiableLossSuom() / $system) * 100, 2);
+    }
+
+    public function unverifiedShrinkagePercent(): ?float
+    {
+        $system = (float) $this->quantity_suom;
+        $amount = $this->unverifiedShrinkageAmountSuom();
+
+        if ($amount === null || $system <= 0) {
+            return null;
+        }
+
+        return round(($amount / $system) * 100, 2);
     }
 
     public function shrinkagePercent(): ?float
@@ -75,16 +133,12 @@ class InventoryStockLevel extends Model
 
     public function shrinkageAmountSuom(): ?float
     {
-        if ($this->physical_quantity_suom === null) {
-            return null;
-        }
-
-        return round((float) $this->quantity_suom - (float) $this->physical_quantity_suom, 4);
+        return $this->totalShrinkageAmountSuom();
     }
 
     public function valuationTotal(): float
     {
-        $qty = $this->usableQuantitySuom();
+        $qty = $this->physicalUsableQuantitySuom();
         $avgCost = (float) ($this->weighted_avg_cost ?? $this->last_purchase_price ?? 0);
 
         return round($qty * $avgCost, 2);
@@ -98,7 +152,7 @@ class InventoryStockLevel extends Model
             return null;
         }
 
-        return round($this->usableQuantitySuom() / $usage, 1);
+        return round($this->physicalUsableQuantitySuom() / $usage, 1);
     }
 
     public function business()

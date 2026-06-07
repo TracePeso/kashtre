@@ -24,13 +24,22 @@
             </div>
 
             <div>
-                <label for="moving_average_days" class="block text-sm font-medium text-gray-700">Moving average window (days)</label>
+                <label for="moving_average_days" class="block text-sm font-medium text-gray-700">Consumption rate window (days)</label>
                 <select name="moving_average_days" id="moving_average_days" required
                         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                     @foreach([15, 30, 90, 180, 360] as $days)
                         <option value="{{ $days }}" @selected(old('moving_average_days', 30) == $days)>{{ $days }} days</option>
                     @endforeach
                 </select>
+                <p class="mt-1 text-xs text-gray-500">Daily average consumption is calculated over this window from the consumption log.</p>
+            </div>
+
+            <div>
+                <label for="period_of_order_days" class="block text-sm font-medium text-gray-700">Period of order (days)</label>
+                <input type="number" step="0.01" min="0" name="period_of_order_days" id="period_of_order_days"
+                       value="{{ old('period_of_order_days', 30) }}"
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                <p class="mt-1 text-xs text-gray-500">Comfort stock period added to safety, buffer, lead time, and notification days.</p>
             </div>
 
             <div>
@@ -42,6 +51,7 @@
                         <option value="{{ $value }}" @selected(old('importance_filter') === $value)>{{ $label }}</option>
                     @endforeach
                 </select>
+                <p class="mt-1 text-xs text-gray-500">Items without a category are only included when <strong>All items</strong> is selected. Set categories on each good under Items → edit.</p>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

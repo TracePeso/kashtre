@@ -68,6 +68,41 @@ class Store extends Model
         return $this->parent_id === null;
     }
 
+    public function depth(): int
+    {
+        if (! $this->parent_id) {
+            return 0;
+        }
+
+        $parent = $this->relationLoaded('parent') ? $this->parent : static::query()->find($this->parent_id);
+
+        return $parent ? 1 + $parent->depth() : 0;
+    }
+
+    public function hierarchyLabel(): string
+    {
+        return match ($this->depth()) {
+            0 => 'Main store',
+            1 => 'Branch store',
+            2 => 'Unit store',
+            default => 'Store',
+        };
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    public static function descendantIds(int $storeId): array
+    {
+        $ids = [$storeId];
+
+        foreach (static::query()->where('parent_id', $storeId)->pluck('id') as $childId) {
+            $ids = array_merge($ids, static::descendantIds((int) $childId));
+        }
+
+        return array_values(array_unique($ids));
+    }
+
     public function scopeRoots(Builder $query): Builder
     {
         return $query->whereNull('parent_id');
@@ -131,9 +166,13 @@ class Store extends Model
         }
 
         if ($parent->parent_id !== null) {
-            throw ValidationException::withMessages([
-                'parent_id' => 'Child stores can only be linked to a parent store (not another child).',
-            ]);
+            $grandparent = static::query()->find($parent->parent_id);
+
+            if ($grandparent && $grandparent->parent_id !== null) {
+                throw ValidationException::withMessages([
+                    'parent_id' => 'Stores support up to three levels: Main → Branch → Unit.',
+                ]);
+            }
         }
 
         if ($this->business_id && (int) $this->business_id !== (int) $parent->business_id) {

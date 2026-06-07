@@ -5,16 +5,23 @@ namespace App\Livewire\Inventory;
 use App\Models\InventoryStockCount;
 use App\Models\InventoryStockCountLine;
 use App\Services\Inventory\InventoryStockCountService;
+use Filament\Forms\Concerns\InteractsWithForms;
+use Filament\Forms\Contracts\HasForms;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\TextInputColumn;
+use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Table;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 
-class EditStockCountLines extends Component
+class EditStockCountLines extends Component implements HasForms, HasTable
 {
-    public InventoryStockCount $stockCount;
+    use InteractsWithForms;
+    use InteractsWithTable;
 
-    /** @var array<int, array{physical: string, damaged: string}> */
-    public array $lines = [];
+    public InventoryStockCount $stockCount;
 
     public function mount(InventoryStockCount $stockCount): void
     {
@@ -22,36 +29,118 @@ class EditStockCountLines extends Component
             abort(403);
         }
 
-        $this->stockCount = $stockCount->load('lines.item.itemUnit');
-
-        foreach ($stockCount->lines as $line) {
-            $this->lines[$line->id] = [
-                'physical' => (string) $line->physical_quantity_suom,
-                'damaged' => (string) $line->damaged_quantity_suom,
-            ];
-        }
+        $this->stockCount = $stockCount;
     }
 
-    public function saveLine(int $lineId, InventoryStockCountService $service): void
+    public function table(Table $table): Table
     {
-        if (! $this->stockCount->isDraft()) {
-            return;
-        }
+        $isDraft = $this->stockCount->isDraft();
+        $service = app(InventoryStockCountService::class);
 
-        $line = InventoryStockCountLine::query()
-            ->where('inventory_stock_count_id', $this->stockCount->id)
-            ->where('id', $lineId)
-            ->firstOrFail();
+        return $table
+            ->query(
+                InventoryStockCountLine::query()
+                    ->where('inventory_stock_count_id', $this->stockCount->id)
+                    ->with('item.itemUnit')
+            )
+            ->columns([
+                TextColumn::make('item.name')
+                    ->label('Item')
+                    ->description(fn (InventoryStockCountLine $record): ?string => $record->item?->code),
 
-        $data = $this->lines[$lineId] ?? ['physical' => '0', 'damaged' => '0'];
+                TextColumn::make('item.itemUnit.name')
+                    ->label('SUOM')
+                    ->placeholder('—'),
 
-        $service->updateLine(
-            $line,
-            (float) $data['physical'],
-            (float) $data['damaged']
-        );
+                TextColumn::make('system_quantity_suom')
+                    ->label('System')
+                    ->alignEnd()
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
-        session()->flash('success', 'Line updated.');
+                TextInputColumn::make('physical_quantity_suom')
+                    ->label('Physical')
+                    ->type('number')
+                    ->alignEnd()
+                    ->step('0.0001')
+                    ->disabled(! $isDraft)
+                    ->updateStateUsing(function (InventoryStockCountLine $record, $state) use ($service, $isDraft) {
+                        if (! $isDraft) {
+                            return $state;
+                        }
+
+                        $service->updateLine(
+                            $record,
+                            (float) ($state ?? 0),
+                            (float) $record->damaged_quantity_suom,
+                            (float) ($record->expired_quantity_suom ?? 0)
+                        );
+
+                        return $state;
+                    }),
+
+                TextInputColumn::make('damaged_quantity_suom')
+                    ->label('Damaged')
+                    ->type('number')
+                    ->alignEnd()
+                    ->step('0.0001')
+                    ->disabled(! $isDraft)
+                    ->updateStateUsing(function (InventoryStockCountLine $record, $state) use ($service, $isDraft) {
+                        if (! $isDraft) {
+                            return $state;
+                        }
+
+                        $service->updateLine(
+                            $record,
+                            (float) $record->physical_quantity_suom,
+                            (float) ($state ?? 0),
+                            (float) ($record->expired_quantity_suom ?? 0)
+                        );
+
+                        return $state;
+                    }),
+
+                TextInputColumn::make('expired_quantity_suom')
+                    ->label('Expired')
+                    ->type('number')
+                    ->alignEnd()
+                    ->step('0.0001')
+                    ->disabled(! $isDraft)
+                    ->updateStateUsing(function (InventoryStockCountLine $record, $state) use ($service, $isDraft) {
+                        if (! $isDraft) {
+                            return $state;
+                        }
+
+                        $service->updateLine(
+                            $record,
+                            (float) $record->physical_quantity_suom,
+                            (float) $record->damaged_quantity_suom,
+                            (float) ($state ?? 0)
+                        );
+
+                        return $state;
+                    }),
+
+                TextColumn::make('verifiable_display')
+                    ->label('Verifiable')
+                    ->alignEnd()
+                    ->color('warning')
+                    ->state(fn (InventoryStockCountLine $record): float => (float) $record->damaged_quantity_suom + (float) ($record->expired_quantity_suom ?? 0))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+
+                TextColumn::make('unverified_display')
+                    ->label('Unverified')
+                    ->alignEnd()
+                    ->color('danger')
+                    ->state(fn (InventoryStockCountLine $record): float => max(
+                        0,
+                        (float) $record->system_quantity_suom - (float) $record->physical_quantity_suom
+                    ))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+            ])
+            ->paginated(false)
+            ->striped()
+            ->emptyStateHeading('No lines')
+            ->emptyStateDescription('This stock count has no item lines.');
     }
 
     public function render(): View

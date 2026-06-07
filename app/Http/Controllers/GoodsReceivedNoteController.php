@@ -219,6 +219,20 @@ class GoodsReceivedNoteController extends Controller
                 ]);
             }
 
+            $itemSuom = $item->itemUnit?->name;
+
+            if (! $itemSuom) {
+                throw ValidationException::withMessages([
+                    'lines' => "Item \"{$item->name}\" has no sale unit (SUOM) configured.",
+                ]);
+            }
+
+            if (($line['suom'] ?? '') !== $itemSuom) {
+                throw ValidationException::withMessages([
+                    'lines' => "Sale unit for \"{$item->name}\" must match the item master ({$itemSuom}).",
+                ]);
+            }
+
             $quantity = (float) $line['quantity'];
             $conversion = (float) $line['sale_units_per_purchase_unit'];
             $saleUnits = GoodsReceivedNoteLine::calculateSaleUnitsPurchased($quantity, $conversion);
@@ -232,7 +246,7 @@ class GoodsReceivedNoteController extends Controller
                 'expiry_date' => $line['expiry_date'] ?? null,
                 'duom' => $line['duom'],
                 'purchase_price' => $line['purchase_price'],
-                'suom' => $line['suom'],
+                'suom' => $itemSuom,
                 'sale_units_per_purchase_unit' => $conversion,
                 'sale_units_purchased' => $saleUnits,
             ]);

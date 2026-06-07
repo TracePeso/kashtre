@@ -6,7 +6,11 @@
                 <a href="{{ route('inventory.orders.index') }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to order forms</a>
                 <h2 class="mt-2 text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">{{ $order->order_number }}</h2>
                 <p class="mt-1 text-sm text-gray-500">
-                    {{ $order->store->selectLabel() }} · {{ ucfirst($order->status) }} · MA {{ $order->moving_average_days }} days
+                    {{ $order->store->selectLabel() }} · {{ ucfirst($order->status) }} ·
+                    {{ $order->moving_average_days }}-day avg · {{ $order->period_of_order_days ?? '—' }} day order period
+                    @if($order->importance_filter)
+                        · {{ \App\Models\Item::importanceOptions()[$order->importance_filter] ?? $order->importance_filter }} only
+                    @endif
                 </p>
             </div>
             @if($order->isDraft())
@@ -32,6 +36,24 @@
 
         @if(session('success'))
             <div class="mt-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">{{ session('success') }}</div>
+        @endif
+
+        @if(session('warning'))
+            <div class="mt-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded text-sm">{{ session('warning') }}</div>
+        @endif
+
+        @if(!empty($emptyOrderReason))
+            <div class="mt-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded text-sm">
+                <strong>No order lines were generated.</strong> {{ $emptyOrderReason }}
+                @if($order->isDraft())
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <a href="{{ route('inventory.orders.create') }}"
+                           class="inline-flex items-center px-3 py-1.5 border border-amber-300 rounded-md text-sm font-medium text-amber-900 bg-white hover:bg-amber-50">
+                            Create new order
+                        </a>
+                    </div>
+                @endif
+            </div>
         @endif
 
         @if($order->notes)

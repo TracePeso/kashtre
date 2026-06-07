@@ -125,6 +125,11 @@ class Item extends Model
         return $this->belongsTo(ItemUnit::class, 'order_unit_id');
     }
 
+    public function suppliers()
+    {
+        return $this->belongsToMany(Supplier::class, 'supplier_item')->withTimestamps();
+    }
+
     public static function importanceOptions(): array
     {
         return [

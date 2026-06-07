@@ -120,9 +120,33 @@ class InventoryStockAnalyticsService
     {
         $physical = $this->physicalQuantitySuom($stock);
         $base = $physical ?? $this->systemQuantitySuom($stock);
-        $damaged = (float) ($stock->damaged_quantity_suom ?? 0);
+        $verifiable = (float) ($stock->damaged_quantity_suom ?? 0) + (float) ($stock->expired_quantity_suom ?? 0);
 
-        return max(0, round($base - $damaged, 4));
+        return max(0, round($base - $verifiable, 4));
+    }
+
+    public function verifiableShrinkageSuom(InventoryStockLevel $stock): float
+    {
+        return round(
+            (float) ($stock->damaged_quantity_suom ?? 0) + (float) ($stock->expired_quantity_suom ?? 0),
+            4
+        );
+    }
+
+    public function totalShrinkageSuom(InventoryStockLevel $stock): ?float
+    {
+        $physical = $this->physicalQuantitySuom($stock);
+
+        if ($physical === null) {
+            return null;
+        }
+
+        return max(0, round($this->systemQuantitySuom($stock) - $physical, 4));
+    }
+
+    public function unverifiedShrinkageSuom(InventoryStockLevel $stock): ?float
+    {
+        return $this->totalShrinkageSuom($stock);
     }
 
     public function shrinkagePercent(InventoryStockLevel $stock): ?float

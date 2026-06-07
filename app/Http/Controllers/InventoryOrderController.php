@@ -41,6 +41,7 @@ class InventoryOrderController extends Controller
             'budget_mode' => 'nullable|in:days,amount',
             'budget_value' => 'nullable|numeric|min:0',
             'moving_average_days' => 'required|in:15,30,90,180,360',
+            'period_of_order_days' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:2000',
         ]);
 
@@ -59,11 +60,17 @@ class InventoryOrderController extends Controller
             $validated['budget_mode'] ?? null,
             isset($validated['budget_value']) ? (float) $validated['budget_value'] : null,
             (int) $validated['moving_average_days'],
+            isset($validated['period_of_order_days']) ? (float) $validated['period_of_order_days'] : null,
             $validated['notes'] ?? null
         );
 
-        return redirect()
-            ->route('inventory.orders.show', $order)
+        $redirect = redirect()->route('inventory.orders.show', $order);
+
+        if ($order->lines()->count() === 0) {
+            return $redirect->with('warning', $this->service->explainEmptyOrder($order));
+        }
+
+        return $redirect
             ->with('success', 'Order form generated. Review and edit quantities before submitting.');
     }
 
@@ -73,7 +80,11 @@ class InventoryOrderController extends Controller
 
         $order->load(['lines.item.itemUnit', 'lines.item.orderUnit', 'store', 'createdBy']);
 
-        return view('inventory.orders.show', compact('order'));
+        $emptyOrderReason = $order->lines->isEmpty()
+            ? app(InventoryOrderService::class)->explainEmptyOrder($order)
+            : null;
+
+        return view('inventory.orders.show', compact('order', 'emptyOrderReason'));
     }
 
     public function submit(InventoryOrder $order)
@@ -101,9 +112,15 @@ class InventoryOrderController extends Controller
 
         $this->service->populateLines($order);
 
-        return redirect()
-            ->route('inventory.orders.show', $order->fresh())
-            ->with('success', 'Order lines refreshed from current stock and moving averages.');
+        $order = $order->fresh(['lines.item.itemUnit', 'lines.item.orderUnit', 'store']);
+
+        $redirect = redirect()->route('inventory.orders.show', $order);
+
+        if ($order->lines()->count() === 0) {
+            return $redirect->with('warning', $this->service->explainEmptyOrder($order));
+        }
+
+        return $redirect->with('success', 'Order lines refreshed from current stock and moving averages.');
     }
 
     private function authorizeOrder(InventoryOrder $order): void

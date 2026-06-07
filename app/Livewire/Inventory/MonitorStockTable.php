@@ -5,6 +5,7 @@ namespace App\Livewire\Inventory;
 use App\Models\InventoryModuleConfig;
 use App\Models\Item;
 use App\Models\Store;
+use App\Services\Inventory\InventoryStockAgingService;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -83,13 +84,27 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 0) : '—'),
 
                 TextColumn::make('usable_stock_display')
-                    ->label('Usable')
+                    ->label('Physical usable stock')
                     ->alignEnd()
-                    ->state(fn (Item $record): float => $this->usableStock($record))
+                    ->state(fn (Item $record): float => $this->physicalUsableStock($record))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
+                TextColumn::make('verifiable_shrinkage_display')
+                    ->label('Verifiable shrinkage')
+                    ->alignEnd()
+                    ->tooltip('Damaged + expired quantities still on the shelf but unusable')
+                    ->state(fn (Item $record): ?float => $this->verifiableShrinkage($record))
+                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 0) : '—'),
+
+                TextColumn::make('unverified_shrinkage_display')
+                    ->label('Unverified loss')
+                    ->alignEnd()
+                    ->tooltip('System stock minus physical count — units missing from the shelf')
+                    ->state(fn (Item $record): ?float => $this->unverifiedShrinkage($record))
+                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 0) : '—'),
+
                 TextColumn::make('shrinkage_display')
-                    ->label('Shrinkage')
+                    ->label('Total shrinkage')
                     ->alignEnd()
                     ->state(fn (Item $record): ?float => $this->shrinkagePercent($record))
                     ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 2).'%' : '—'),
@@ -108,10 +123,28 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
 
                 TextColumn::make('stock_ma_30_days')
-                    ->label('MA 30d')
+                    ->label('30-day avg')
+                    ->tooltip('30-day moving average daily consumption (SUOM)')
                     ->alignEnd()
                     ->state(fn (Item $record): float => $this->movingAverage($record, 30))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
+
+                TextColumn::make('stock_aging_days')
+                    ->label('Stock aging (days)')
+                    ->tooltip('Days since last approved GRN delivery (Excel column U)')
+                    ->alignEnd()
+                    ->state(function (Item $record): ?int {
+                        if (! $this->usesJoinedStock($record)) {
+                            return null;
+                        }
+
+                        return app(InventoryStockAgingService::class)->agingDays(
+                            (int) Auth::user()->business_id,
+                            (int) $record->stock_store_id,
+                            (int) $record->id
+                        );
+                    })
+                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((int) $state) : '—'),
 
                 TextColumn::make('safety_stock_suom')
                     ->label('Safety stock (SUOM)')
@@ -195,6 +228,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                 'stock.quantity_suom as stock_quantity_suom',
                 'stock.physical_quantity_suom as stock_physical_quantity_suom',
                 'stock.damaged_quantity_suom as stock_damaged_quantity_suom',
+                'stock.expired_quantity_suom as stock_expired_quantity_suom',
                 'stock.daily_usage_suom as stock_daily_usage_suom',
                 'stock.safety_stock_days as stock_safety_stock_days',
                 'stock.buffer_stock_days as stock_buffer_stock_days',
@@ -213,19 +247,20 @@ class MonitorStockTable extends Component implements HasForms, HasTable
 
     private function currentStock(Item $item): float
     {
-        return $this->usableStock($item);
+        return $this->physicalUsableStock($item);
     }
 
-    private function usableStock(Item $item): float
+    private function physicalUsableStock(Item $item): float
     {
         if ($this->usesJoinedStock($item)) {
             $physical = $item->stock_physical_quantity_suom;
             $base = $physical !== null
                 ? (float) $physical
                 : (float) $item->stock_quantity_suom;
-            $damaged = (float) ($item->stock_damaged_quantity_suom ?? 0);
+            $verifiable = (float) ($item->stock_damaged_quantity_suom ?? 0)
+                + (float) ($item->stock_expired_quantity_suom ?? 0);
 
-            return max(0, round($base - $damaged, 4));
+            return max(0, round($base - $verifiable, 4));
         }
 
         $level = $item->inventoryStockLevel;
@@ -234,7 +269,40 @@ class MonitorStockTable extends Component implements HasForms, HasTable
             return 0.0;
         }
 
-        return $level->usableQuantitySuom();
+        return $level->physicalUsableQuantitySuom();
+    }
+
+    /** @deprecated */
+    private function usableStock(Item $item): float
+    {
+        return $this->physicalUsableStock($item);
+    }
+
+    private function verifiableShrinkage(Item $item): ?float
+    {
+        if (! $this->usesJoinedStock($item)) {
+            $level = $item->inventoryStockLevel;
+
+            return $level ? $level->verifiableLossSuom() : null;
+        }
+
+        return round(
+            (float) ($item->stock_damaged_quantity_suom ?? 0) + (float) ($item->stock_expired_quantity_suom ?? 0),
+            4
+        );
+    }
+
+    private function unverifiedShrinkage(Item $item): ?float
+    {
+        if ($this->usesJoinedStock($item)) {
+            if ($item->stock_physical_quantity_suom === null) {
+                return null;
+            }
+
+            return max(0, round((float) $item->stock_quantity_suom - (float) $item->stock_physical_quantity_suom, 4));
+        }
+
+        return $item->inventoryStockLevel?->unverifiedShrinkageAmountSuom();
     }
 
     private function shrinkagePercent(Item $item): ?float
@@ -312,11 +380,11 @@ class MonitorStockTable extends Component implements HasForms, HasTable
             return 0.0;
         }
 
-        return round($this->usableStock($item) / $usage, 1);
+        return round($this->physicalUsableStock($item) / $usage, 1);
     }
 
     private function valuation(Item $item): float
     {
-        return round($this->usableStock($item) * $this->averageCost($item), 2);
+        return round($this->physicalUsableStock($item) * $this->averageCost($item), 2);
     }
 }

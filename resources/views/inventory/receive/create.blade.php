@@ -25,7 +25,7 @@
 
         @if ($itemUnits->isEmpty())
             <div class="mt-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded text-sm">
-                Add item units for your organisation before creating a GRN (used for DUOM and SUOM on each line).
+                Add item units for your organisation before creating a GRN (delivery unit and sale unit on each line).
                 <a href="{{ route('item-units.index') }}" class="font-medium underline hover:text-amber-950">Manage Item Units</a>
             </div>
         @endif
@@ -169,26 +169,24 @@
                                 {{-- Row 2: units & stock calculation --}}
                                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end pt-3 border-t border-gray-100">
                                     <div class="lg:col-span-3">
-                                        <label class="block text-xs font-medium text-gray-600 mb-1">DUOM <span class="text-red-500">*</span></label>
+                                        <label class="block text-xs font-medium text-gray-600 mb-1">Delivery unit (DUOM) <span class="text-red-500">*</span></label>
                                         <select :name="'lines[' + index + '][duom]'" x-model="line.duom" required
                                                 class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500"
                                                 :disabled="itemUnits.length === 0">
-                                            <option value="">Select DUOM</option>
+                                            <option value="">Select delivery unit</option>
                                             <template x-for="name in itemUnits" :key="'duom-' + index + name">
                                                 <option :value="name" x-text="name"></option>
                                             </template>
                                         </select>
+                                        <p class="mt-1 text-xs text-gray-500">Unit shown on the supplier delivery note — e.g. box, carton, bottle. May differ from the item’s sale unit.</p>
                                     </div>
                                     <div class="lg:col-span-3">
-                                        <label class="block text-xs font-medium text-gray-600 mb-1">SUOM (item unit) <span class="text-red-500">*</span></label>
-                                        <select :name="'lines[' + index + '][suom]'" x-model="line.suom" required
-                                                class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500"
-                                                :disabled="itemUnits.length === 0">
-                                            <option value="">Select SUOM</option>
-                                            <template x-for="name in itemUnits" :key="'suom-' + index + name">
-                                                <option :value="name" x-text="name"></option>
-                                            </template>
-                                        </select>
+                                        <label class="block text-xs font-medium text-gray-600 mb-1">Sale unit</label>
+                                        <div class="flex h-[38px] items-center rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800">
+                                            <span x-text="line.suom || 'Select an item first'"></span>
+                                        </div>
+                                        <input type="hidden" :name="'lines[' + index + '][suom]'" :value="line.suom">
+                                        <p class="mt-1 text-xs text-gray-500">Fixed from the item master (SUOM). Sale units to stock = qty × conversion below.</p>
                                     </div>
                                     <div class="lg:col-span-3">
                                         <label class="block text-xs font-medium text-gray-600 mb-1">Sale units per purchase <span class="text-red-500">*</span></label>
@@ -265,8 +263,10 @@ function grnCreateForm(itemUnits, items) {
                 return;
             }
             line.item_suom = item.suom || '';
-            if (item.suom && this.itemUnits.includes(item.suom)) {
+            if (item.suom) {
                 line.suom = item.suom;
+            }
+            if (! line.duom && item.suom && this.itemUnits.includes(item.suom)) {
                 line.duom = item.suom;
             }
             line.purchase_price = item.default_price || 0;

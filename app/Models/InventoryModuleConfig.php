@@ -16,6 +16,8 @@ class InventoryModuleConfig extends Model
         'fixed_daily_average_suom',
         'safety_stock_days',
         'buffer_stock_days',
+        'notification_to_order_days',
+        'period_of_order_days',
         'created_by',
         'updated_by',
     ];
@@ -25,6 +27,8 @@ class InventoryModuleConfig extends Model
         'fixed_daily_average_suom' => 'decimal:4',
         'safety_stock_days' => 'decimal:2',
         'buffer_stock_days' => 'decimal:2',
+        'notification_to_order_days' => 'decimal:2',
+        'period_of_order_days' => 'decimal:2',
     ];
 
     /**

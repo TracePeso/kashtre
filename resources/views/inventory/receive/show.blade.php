@@ -89,39 +89,8 @@
                             <span class="ml-1 text-xs text-gray-400">(delivery − order)</span>
                         </div>
                     </div>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200 text-sm">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expiry</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SUOM</th>
-                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">No. sale units / purchase</th>
-                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">DUOM</th>
-                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Price</th>
-                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Sale units purchased</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-200">
-                                @foreach($goodsReceivedNote->lines as $line)
-                                    <tr>
-                                        <td class="px-4 py-3">
-                                            <div class="font-medium text-gray-900">{{ $line->item_name }}</div>
-                                        </td>
-                                        <td class="px-4 py-3 text-gray-600">{{ $line->batch_number ?? '—' }}</td>
-                                        <td class="px-4 py-3 text-gray-600">{{ $line->expiry_date?->format('M d, Y') ?? '—' }}</td>
-                                        <td class="px-4 py-3 text-gray-600">{{ $line->suom ?? '—' }}</td>
-                                        <td class="px-4 py-3 text-right tabular-nums text-gray-600">{{ number_format($line->sale_units_per_purchase_unit, 4) }}</td>
-                                        <td class="px-4 py-3 text-right tabular-nums">{{ number_format($line->quantity, 4) }}</td>
-                                        <td class="px-4 py-3 text-gray-600">{{ $line->duom ?? '—' }}</td>
-                                        <td class="px-4 py-3 text-right tabular-nums">{{ number_format($line->purchase_price, 2) }}</td>
-                                        <td class="px-4 py-3 text-right tabular-nums font-semibold text-emerald-900">{{ number_format($line->sale_units_purchased, 4) }}</td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
+                    <div class="px-6 pb-6">
+                        @livewire('inventory.show-goods-received-note-lines', ['goodsReceivedNote' => $goodsReceivedNote], key('grn-lines-'.$goodsReceivedNote->id))
                     </div>
                 </div>
             </div>

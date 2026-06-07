@@ -50,6 +50,11 @@ class InventoryController extends Controller
         return view('inventory.monitor');
     }
 
+    public function network()
+    {
+        return view('inventory.network');
+    }
+
     public function stockHistory(Item $item)
     {
         if ((int) $item->business_id !== (int) Auth::user()->business_id) {

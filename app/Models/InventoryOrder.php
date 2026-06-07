@@ -26,6 +26,7 @@ class InventoryOrder extends Model
         'budget_mode',
         'budget_value',
         'moving_average_days',
+        'period_of_order_days',
         'notes',
         'created_by_user_id',
         'submitted_at',
@@ -34,6 +35,7 @@ class InventoryOrder extends Model
     protected $casts = [
         'budget_value' => 'decimal:2',
         'moving_average_days' => 'integer',
+        'period_of_order_days' => 'decimal:2',
         'submitted_at' => 'datetime',
     ];
 

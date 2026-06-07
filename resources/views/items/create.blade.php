@@ -163,15 +163,48 @@
 
                         <!-- Unit of Measure -->
                         <div class="service-good-only">
-                            <label for="uom_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Unit of Measure <span class="text-red-500">*</span></label>
+                            <label for="uom_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Sale unit (SUOM) <span class="text-red-500">*</span></label>
                             <select name="uom_id" id="uom_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
-                                <option value="" disabled selected>Select unit of measure</option>
+                                <option value="" disabled selected>Select sale unit</option>
                                 @foreach($itemUnits as $itemUnit)
                                     <option value="{{ $itemUnit->id }}" {{ old('uom_id') == $itemUnit->id ? 'selected' : '' }}>
                                         {{ $itemUnit->name }}
                                     </option>
                                 @endforeach
                             </select>
+                            <p class="mt-1 text-xs text-gray-500">Unit in which the business sells or issues this item (Excel: SUOM).</p>
+                        </div>
+
+                        <div class="good-only inventory-good-fields">
+                            <label for="importance_category" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Category of importance</label>
+                            <select name="importance_category" id="importance_category" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                <option value="">Not set</option>
+                                @foreach(\App\Models\Item::importanceOptions() as $value => $label)
+                                    <option value="{{ $value }}" {{ old('importance_category') === $value ? 'selected' : '' }}>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div class="good-only inventory-good-fields">
+                            <label for="order_unit_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Order unit (OUOM)</label>
+                            <select name="order_unit_id" id="order_unit_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                <option value="">Same as sale unit</option>
+                                @foreach($itemUnits as $itemUnit)
+                                    <option value="{{ $itemUnit->id }}" {{ old('order_unit_id') == $itemUnit->id ? 'selected' : '' }}>
+                                        {{ $itemUnit->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <p class="mt-1 text-xs text-gray-500">Supplier quote unit (Excel: OUOM). DUOM on GRN is chosen per receipt.</p>
+                        </div>
+
+                        <div class="good-only inventory-good-fields">
+                            <label for="suom_per_ouom" class="block text-sm font-medium text-gray-700 dark:text-gray-300">SUOM per OUOM</label>
+                            <input type="number" name="suom_per_ouom" id="suom_per_ouom" step="0.0001" min="0.0001"
+                                   value="{{ old('suom_per_ouom') }}"
+                                   placeholder="e.g. 100"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                            <p class="mt-1 text-xs text-gray-500">How many sale units are in one order unit (e.g. 100 tablets per box).</p>
                         </div>
 
 
@@ -391,6 +424,7 @@
                 
                 // Get service/good only elements
                 const serviceGoodOnlyElements = document.querySelectorAll('.service-good-only');
+                const goodOnlyElements = document.querySelectorAll('.good-only');
                 
                 // Hide both sections initially
                 packageItemsSection.style.display = 'none';
@@ -413,11 +447,13 @@
                     // Hide service/good specific fields
                     serviceGoodOnlyElements.forEach(element => {
                         element.style.display = 'none';
-                        // Remove required attribute from inputs in hidden sections
                         const inputs = element.querySelectorAll('input, select');
                         inputs.forEach(input => {
                             input.required = false;
                         });
+                    });
+                    goodOnlyElements.forEach(element => {
+                        element.style.display = 'none';
                     });
                     
                     // Set hospital share to 100 for packages and bulk
@@ -431,11 +467,14 @@
                     // Show service/good specific fields
                     serviceGoodOnlyElements.forEach(element => {
                         element.style.display = 'block';
-                        // Restore required attributes where needed
                         const requiredInputs = element.querySelectorAll('input[data-required="true"], select[data-required="true"]');
                         requiredInputs.forEach(input => {
                             input.required = true;
                         });
+                    });
+
+                    goodOnlyElements.forEach(element => {
+                        element.style.display = selectedType === 'good' ? 'block' : 'none';
                     });
                     
                     // Re-trigger contractor toggle

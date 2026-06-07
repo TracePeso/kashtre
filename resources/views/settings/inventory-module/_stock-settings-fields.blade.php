@@ -3,6 +3,8 @@
     $fixedDaily = old('fixed_daily_average_suom', $config?->fixed_daily_average_suom ?? 0);
     $safetyDays = old('safety_stock_days', $config?->safety_stock_days ?? 0);
     $bufferDays = old('buffer_stock_days', $config?->buffer_stock_days ?? 0);
+    $notificationDays = old('notification_to_order_days', $config?->notification_to_order_days ?? 0);
+    $periodDays = old('period_of_order_days', $config?->period_of_order_days ?? 30);
 @endphp
 
 <div class="border border-gray-200 rounded-lg p-4 space-y-4">
@@ -52,6 +54,29 @@
             @error('buffer_stock_days')
                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
             @enderror
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+            <label for="notification_to_order_days" class="block text-sm font-medium text-gray-700">
+                Notification to order (days)
+            </label>
+            <input type="number" name="notification_to_order_days" id="notification_to_order_days"
+                   step="0.01" min="0"
+                   value="{{ $notificationDays }}"
+                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+            <p class="mt-1 text-xs text-gray-500">Lead time buffer from first stockout notice to placing an order.</p>
+        </div>
+        <div>
+            <label for="period_of_order_days" class="block text-sm font-medium text-gray-700">
+                Default period of order (days)
+            </label>
+            <input type="number" name="period_of_order_days" id="period_of_order_days"
+                   step="0.01" min="0"
+                   value="{{ $periodDays }}"
+                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+            <p class="mt-1 text-xs text-gray-500">Default comfort period covered by each order form.</p>
         </div>
     </div>
 

@@ -4,7 +4,7 @@
         <div class="md:flex md:items-center md:justify-between">
             <div class="flex-1 min-w-0">
                 <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">Order Forms</h2>
-                <p class="mt-1 text-sm text-gray-500">Generate purchase orders from moving averages, safety stock, and buffer days.</p>
+                <p class="mt-1 text-sm text-gray-500">Suggested quantities use consumption averages plus safety, buffer, lead time, notification, and order period days.</p>
             </div>
             <div class="mt-4 md:mt-0">
                 <a href="{{ route('inventory.orders.create') }}"
