@@ -10,6 +10,7 @@ class HrPolicyVersion extends Model
 {
     use SoftDeletes;
 
+    public const HOLIDAY_COMPENSATORY_DYNAMIC_PERCENTAGE_0 = 0.00;
     public const HOLIDAY_COMPENSATORY_DYNAMIC_PERCENTAGE_25 = 0.25;
     public const HOLIDAY_COMPENSATORY_DYNAMIC_PERCENTAGE_50 = 0.50;
     public const HOLIDAY_COMPENSATORY_DYNAMIC_PERCENTAGE_75 = 0.75;
@@ -102,6 +103,7 @@ class HrPolicyVersion extends Model
     public static function holidayCompensatoryDynamicPercentageOptions(): array
     {
         return [
+            '0.00' => '0%',
             '0.25' => '25%',
             '0.50' => '50%',
             '0.75' => '75%',
@@ -201,10 +203,9 @@ class HrPolicyVersion extends Model
 
                 if ($scope === self::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY) {
                     return sprintf(
-                        '%s: %s with dynamic 25%%/50%%/75%%/100%% of %s whole-day credit',
+                        '%s: %s with dynamic 0%%/25%%/50%%/75%%/100%% based on the holiday-covered portion of the shift',
                         $scopeLabel,
-                        $ruleLabel,
-                        $creditDays
+                        $ruleLabel
                     );
                 }
 
@@ -217,5 +218,10 @@ class HrPolicyVersion extends Model
     public static function normalizeHolidayCompensatoryCreditDays(float $creditDays): float
     {
         return max(0.0, round($creditDays * 4) / 4);
+    }
+
+    public static function normalizeHolidayCompensatoryDynamicPercentage(float $ratio): float
+    {
+        return max(0.0, min(1.0, round($ratio * 4) / 4));
     }
 }

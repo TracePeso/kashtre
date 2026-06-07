@@ -292,15 +292,18 @@
                             </div>
                             <div class="lg:col-span-3">
                                 <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Holiday Compensation Settings</label>
-                                <p class="mt-1 text-xs text-gray-500">Configure crossing-holiday shifts and within-holiday shifts separately. Crossing-holiday shifts use dynamic 25%, 50%, 75% or 100% of the configured whole-day credit, and stored values use 0.25-day increments.</p>
+                                <p class="mt-1 text-xs text-gray-500">Configure crossing-holiday shifts and within-holiday shifts separately. Crossing-holiday shifts are awarded from the holiday-covered portion of the shift and resolve to 0%, 25%, 50%, 75% or 100% automatically.</p>
                                 <div class="mt-3 grid gap-4 lg:grid-cols-2">
                                     <div class="rounded-md border border-gray-200 bg-white p-4">
                                         <p class="text-sm font-semibold text-gray-900">{{ $holidayCompensatoryCreditScopeOptions[\App\Models\HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY] }}</p>
                                         <div class="mt-3">
-                                            <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Whole-Day Credit Days</label>
-                                            <input type="number" min="0" step="0.25" wire:model="crossingHolidayCreditDays" @disabled(! $canAddPolicies && ! $canEditPolicies) class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 sm:text-sm">
-                                            <p class="mt-1 text-xs text-gray-500">Crossing-holiday shifts earn 25%, 50%, 75% or 100% of this amount dynamically, based on how much of the shift falls on public-holiday dates.</p>
-                                            @error('crossingHolidayCreditDays') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
+                                            <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Percentage Of Shift Within Public Holidays</label>
+                                            <div class="mt-2 flex flex-wrap gap-2">
+                                                @foreach ($holidayCompensatoryDynamicPercentageOptions as $percentageLabel)
+                                                    <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-700">{{ $percentageLabel }}</span>
+                                                @endforeach
+                                            </div>
+                                            <p class="mt-2 text-xs text-gray-500">The system calculates the holiday-covered portion of the worked shift and rounds it to one of these percentages automatically.</p>
                                         </div>
                                     </div>
                                     <div class="rounded-md border border-gray-200 bg-white p-4">

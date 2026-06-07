@@ -335,11 +335,11 @@ class HolidayLeaveCreditService
     ): float {
         $baseCreditDays = (float) ($creditSetting['credit_days'] ?? 0);
 
-        if ($baseCreditDays <= 0) {
-            return 0.0;
-        }
-
         if ($scope !== HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY) {
+            if ($baseCreditDays <= 0) {
+                return 0.0;
+            }
+
             return $baseCreditDays;
         }
 
@@ -357,9 +357,9 @@ class HolidayLeaveCreditService
         }
 
         $ratio = min(1.0, $holidayMinutes / $shiftMinutes);
-        $bucket = min(1.0, ceil($ratio * 4) / 4);
+        $bucket = HrPolicyVersion::normalizeHolidayCompensatoryDynamicPercentage($ratio);
 
-        return round($baseCreditDays * $bucket, 2);
+        return round($bucket, 2);
     }
 
     /**
@@ -429,11 +429,10 @@ class HolidayLeaveCreditService
 
         if ($scope === HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY) {
             return sprintf(
-                'Earned by working on %s. Policy applied: %s using %s with dynamic 25%%/50%%/75%%/100%% of %s whole-day credit.',
+                'Earned by working on %s. Policy applied: %s using %s with dynamic 0%%/25%%/50%%/75%%/100%% based on the portion of the shift worked during public holiday time.',
                 $holidayLabel,
                 $scopeLabel,
-                $ruleLabel,
-                $creditDays
+                $ruleLabel
             );
         }
 

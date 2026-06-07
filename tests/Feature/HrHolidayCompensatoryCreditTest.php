@@ -17,12 +17,13 @@ class HrHolidayCompensatoryCreditTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_crossing_public_holiday_shifts_receive_dynamic_quarter_half_three_quarter_and_full_credit(): void
+    public function test_crossing_public_holiday_shifts_bucket_credit_by_holiday_overlap_percentage(): void
     {
         $cases = [
+            ['date' => '2026-12-24', 'in' => '2026-12-23 20:00:00', 'out' => '2026-12-24 00:10:00', 'expected' => null],
             ['date' => '2026-12-25', 'in' => '2026-12-24 21:00:00', 'out' => '2026-12-25 01:00:00', 'expected' => '0.25'],
             ['date' => '2026-12-26', 'in' => '2026-12-25 20:00:00', 'out' => '2026-12-26 04:00:00', 'expected' => '0.50'],
-            ['date' => '2026-12-27', 'in' => '2026-12-26 20:00:00', 'out' => '2026-12-27 06:00:00', 'expected' => '0.75'],
+            ['date' => '2026-12-27', 'in' => '2026-12-26 22:00:00', 'out' => '2026-12-27 06:00:00', 'expected' => '0.75'],
             ['date' => '2026-12-28', 'in' => '2026-12-27 23:00:00', 'out' => '2026-12-28 08:00:00', 'expected' => '1.00'],
         ];
 
@@ -46,9 +47,43 @@ class HrHolidayCompensatoryCreditTest extends TestCase
                 ->where('hr_calendar_event_id', $holiday->id)
                 ->first();
 
+            if ($case['expected'] === null) {
+                $this->assertNull($credit, 'Expected no credit for a shift with negligible holiday overlap on '.$case['date']);
+                continue;
+            }
+
             $this->assertNotNull($credit, 'No credit created for holiday date '.$case['date'].' and assignment '.$assignment->id);
             $this->assertSame($case['expected'], number_format((float) $credit->credit_days, 2, '.', ''));
         }
+    }
+
+    public function test_crossing_public_holiday_credit_is_not_scaled_by_configured_day_amount(): void
+    {
+        $organization = $this->createOrganizationWithHolidayPolicy(
+            crossingRule: HrPolicyVersion::HOLIDAY_COMPENSATORY_CREDIT_PER_SHIFT,
+            crossingCreditDays: 3.0
+        );
+
+        $holiday = $this->createHoliday($organization, '2026-12-26', 20);
+        $assignment = $this->createAssignment($organization, 20);
+        $outPunch = $this->createPunchPair(
+            $organization,
+            $assignment,
+            20,
+            '2026-12-25 20:00:00',
+            '2026-12-26 04:00:00'
+        );
+
+        app(HolidayLeaveCreditService::class)->createForPairedPunch($outPunch->fresh());
+
+        $credit = HrHolidayLeaveCredit::query()
+            ->where('organization_id', $organization->id)
+            ->where('staff_assignment_id', $assignment->id)
+            ->where('hr_calendar_event_id', $holiday->id)
+            ->first();
+
+        $this->assertNotNull($credit);
+        $this->assertSame('0.50', number_format((float) $credit->credit_days, 2, '.', ''));
     }
 
     public function test_shifts_fully_within_public_holidays_keep_the_configured_flat_credit(): void
