@@ -15,7 +15,8 @@ class HrBiometricEnrollmentCodeMail extends Mailable
 
     public function __construct(
         public readonly HrBiometricEnrollmentSession $enrollmentSession,
-        public readonly string $secretCode
+        public readonly string $secretCode,
+        public readonly string $enrollmentUrl
     ) {
     }
 
@@ -33,6 +34,7 @@ class HrBiometricEnrollmentCodeMail extends Mailable
             with: [
                 'enrollmentSession' => $this->enrollmentSession,
                 'secretCode' => $this->secretCode,
+                'enrollmentUrl' => $this->enrollmentUrl,
             ],
         );
     }

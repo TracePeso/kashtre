@@ -26,7 +26,9 @@ class MobileFingerprintCredentialService
             'rp_id' => $rpId,
             'origin' => $this->origin($request),
             'staff_assignment_id' => $data['staff_assignment_id'] ?? null,
+            'staff_assignment_ids' => $data['staff_assignment_ids'] ?? null,
             'profile_uuid' => $data['profile_uuid'] ?? null,
+            'profile_uuids' => $data['profile_uuids'] ?? null,
             'expires_at' => now()->addMinutes(self::CHALLENGE_TTL_MINUTES)->toIso8601String(),
         ];
 
@@ -85,7 +87,9 @@ class MobileFingerprintCredentialService
             ->where('provider', 'mobile-webauthn')
             ->whereNotNull('external_reference')
             ->when(! empty($data['staff_assignment_id']), fn ($query) => $query->where('staff_assignment_id', $data['staff_assignment_id']))
+            ->when(! empty($data['staff_assignment_ids']) && is_array($data['staff_assignment_ids']), fn ($query) => $query->whereIn('staff_assignment_id', $data['staff_assignment_ids']))
             ->when(! empty($data['profile_uuid']), fn ($query) => $query->where('uuid', $data['profile_uuid']))
+            ->when(! empty($data['profile_uuids']) && is_array($data['profile_uuids']), fn ($query) => $query->whereIn('uuid', $data['profile_uuids']))
             ->get();
 
         return [
@@ -201,7 +205,19 @@ class MobileFingerprintCredentialService
             ]);
         }
 
+        if (! empty($state['staff_assignment_ids']) && is_array($state['staff_assignment_ids']) && ! in_array((int) $profile->staff_assignment_id, array_map('intval', $state['staff_assignment_ids']), true)) {
+            throw ValidationException::withMessages([
+                'fingerprint_assertion' => 'This fingerprint belongs to a different staff member.',
+            ]);
+        }
+
         if (! empty($state['profile_uuid']) && ! hash_equals((string) $state['profile_uuid'], $profile->uuid)) {
+            throw ValidationException::withMessages([
+                'fingerprint_assertion' => 'This fingerprint belongs to a different biometric profile.',
+            ]);
+        }
+
+        if (! empty($state['profile_uuids']) && is_array($state['profile_uuids']) && ! in_array((string) $profile->uuid, array_map('strval', $state['profile_uuids']), true)) {
             throw ValidationException::withMessages([
                 'fingerprint_assertion' => 'This fingerprint belongs to a different biometric profile.',
             ]);

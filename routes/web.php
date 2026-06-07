@@ -95,6 +95,13 @@ use Illuminate\Http\Request;
 
 Route::redirect('/', 'login');
 
+Route::middleware(['signed'])->prefix('biometric-enrollment')->name('biometric-enrollment.')->group(function () {
+    Route::get('/{enrollmentSession}', [\App\Http\Controllers\Hr\BiometricController::class, 'publicEnrollment'])->name('show');
+    Route::post('/{enrollmentSession}/confirm', [\App\Http\Controllers\Hr\BiometricController::class, 'confirmPublicEnrollment'])->name('confirm');
+    Route::post('/{enrollmentSession}/mobile-fingerprint/options', [\App\Http\Controllers\Hr\BiometricController::class, 'publicMobileFingerprintOptions'])->name('mobile-fingerprint.options');
+    Route::post('/{enrollmentSession}/complete', [\App\Http\Controllers\Hr\BiometricController::class, 'completePublicEnrollment'])->name('complete');
+});
+
 Route::get('/images/login', function () {
     return response()->file(public_path('images/auth.jpeg'));
 });

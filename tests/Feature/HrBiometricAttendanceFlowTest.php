@@ -18,6 +18,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Tests\TestCase;
 
 class HrBiometricAttendanceFlowTest extends TestCase
@@ -47,6 +48,107 @@ class HrBiometricAttendanceFlowTest extends TestCase
             strpos($view, 'Enrolled Profiles'),
             strpos($view, 'Clocking')
         );
+    }
+
+    public function test_staff_with_active_assignment_can_open_clocking_tab_without_hr_biometric_permissions(): void
+    {
+        [, $organization, $business] = $this->createHrBiometricContext([]);
+        $staffUser = User::factory()->create([
+            'business_id' => $business->id,
+            'staff_uuid' => 'staff-clocking-access-001',
+            'permissions' => [],
+        ]);
+        $this->createStaffAssignmentForUser($organization, $staffUser);
+
+        $this->actingAs($staffUser);
+
+        $this->get(route('hr.clocking.index'))
+            ->assertOk()
+            ->assertSee('Fingerprint attendance actions');
+    }
+
+    public function test_staff_clocking_prompt_only_returns_fingerprints_enrolled_for_the_authenticated_staff_user(): void
+    {
+        [$hrUser, $organization, $business] = $this->createHrBiometricContext([]);
+        $staffUser = User::factory()->create([
+            'business_id' => $business->id,
+            'staff_uuid' => 'staff-clocking-prompt-001',
+            'permissions' => [],
+        ]);
+        $assignment = $this->createStaffAssignmentForUser($organization, $staffUser);
+        $this->createMobileFingerprintProfile($assignment, $hrUser, [
+            'external_reference' => 'cred-own-001',
+        ]);
+
+        $otherUser = User::factory()->create([
+            'business_id' => $business->id,
+            'staff_uuid' => 'staff-clocking-prompt-002',
+            'permissions' => [],
+        ]);
+        $otherAssignment = $this->createStaffAssignmentForUser($organization, $otherUser);
+        $this->createMobileFingerprintProfile($otherAssignment, $hrUser, [
+            'external_reference' => 'cred-other-001',
+        ]);
+
+        $this->actingAs($staffUser);
+
+        $response = $this->postJson(route('hr.biometrics.mobile-fingerprint.options'), [
+            'action' => 'verify',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('publicKey.allowCredentials.0.id', 'cred-own-001');
+        $this->assertCount(1, $response->json('publicKey.allowCredentials'));
+    }
+
+    public function test_staff_can_clock_in_from_clocking_tab_with_enrolled_fingerprint(): void
+    {
+        [$hrUser, $organization, $business] = $this->createHrBiometricContext([]);
+        $staffUser = User::factory()->create([
+            'business_id' => $business->id,
+            'staff_uuid' => 'staff-clocking-verify-001',
+            'permissions' => [],
+        ]);
+        $assignment = $this->createStaffAssignmentForUser($organization, $staffUser);
+        $profile = $this->createMobileFingerprintProfile($assignment, $hrUser, [
+            'external_reference' => 'cred-clock-in-001',
+        ]);
+
+        app()->instance(MobileFingerprintCredentialService::class, new class($profile) extends MobileFingerprintCredentialService
+        {
+            public function __construct(private HrBiometricProfile $profile)
+            {
+            }
+
+            public function verify(\Illuminate\Http\Request $request, \App\Models\Organization $organization, array $payload): HrBiometricProfile
+            {
+                return $this->profile->fresh();
+            }
+        });
+
+        $this->actingAs($staffUser);
+
+        $this->postJson(route('hr.biometrics.mobile-fingerprint.options'), [
+            'action' => 'verify',
+        ])->assertOk();
+
+        $response = $this
+            ->from(route('hr.clocking.index'))
+            ->post(route('hr.biometrics.verify'), [
+                'modality' => 'fingerprint',
+                'fingerprint_assertion' => json_encode(['id' => 'cred-clock-in-001']),
+                'punch_type' => 'in',
+            ]);
+
+        $response->assertRedirect(route('hr.clocking.index'));
+        $response->assertSessionHas('biometric_verification', fn (array $result): bool => (bool) ($result['passed'] ?? false));
+
+        $this->assertDatabaseHas('hr_attendance_ledger', [
+            'organization_id' => $organization->id,
+            'staff_assignment_id' => $assignment->id,
+            'staff_uuid' => $assignment->staff_uuid,
+            'punch_type' => 'in',
+        ]);
     }
 
     public function test_clock_in_verification_requires_office_network_when_network_restriction_is_enabled(): void
@@ -156,6 +258,43 @@ class HrBiometricAttendanceFlowTest extends TestCase
         $this->assertTrue($session->capture_deadline_at->greaterThan($session->confirmed_at));
     }
 
+    public function test_staff_can_open_signed_enrollment_link_and_confirm_secret_code_without_hr_login(): void
+    {
+        [$user, $organization, $business] = $this->createHrBiometricContext(['Manage HR Biometrics']);
+        $staffUser = User::factory()->create([
+            'business_id' => $business->id,
+            'email' => 'staff-public-confirm@example.com',
+            'staff_uuid' => 'staff-public-confirm-001',
+        ]);
+        $assignment = $this->createStaffAssignmentForUser($organization, $staffUser);
+        $session = $this->createEnrollmentSession($organization, $assignment, $user, [
+            'recipient_email' => $staffUser->email,
+            'metadata' => ['recipient_user_id' => $staffUser->id],
+        ]);
+
+        $showUrl = URL::signedRoute('biometric-enrollment.show', ['enrollmentSession' => $session]);
+        $confirmUrl = URL::signedRoute('biometric-enrollment.confirm', ['enrollmentSession' => $session]);
+
+        $this->get($showUrl)
+            ->assertOk()
+            ->assertSee('Secure Device Authorization');
+
+        $response = $this
+            ->from($showUrl)
+            ->post($confirmUrl, [
+                'secret_code' => '123456',
+            ]);
+
+        $response->assertRedirect($showUrl);
+        $response->assertSessionHas('status');
+
+        $session->refresh();
+
+        $this->assertNotNull($session->confirmed_at);
+        $this->assertNotNull($session->capture_deadline_at);
+        $this->assertTrue($session->capture_deadline_at->greaterThan($session->confirmed_at));
+    }
+
     public function test_mobile_fingerprint_attendance_prompt_requires_office_network(): void
     {
         [$user] = $this->createHrBiometricContext(
@@ -227,6 +366,104 @@ class HrBiometricAttendanceFlowTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonStructure(['publicKey' => ['challenge', 'rp', 'user', 'timeout']]);
+    }
+
+    public function test_signed_public_enrollment_prompt_requires_confirmed_secret_code_session(): void
+    {
+        [$user, $organization, $business] = $this->createHrBiometricContext(['Manage HR Biometrics']);
+        $staffUser = User::factory()->create([
+            'business_id' => $business->id,
+            'email' => 'staff-public-gated@example.com',
+            'staff_uuid' => 'staff-public-gated-001',
+        ]);
+        $assignment = $this->createStaffAssignmentForUser($organization, $staffUser);
+        $session = $this->createEnrollmentSession($organization, $assignment, $user, [
+            'recipient_email' => $staffUser->email,
+            'metadata' => ['recipient_user_id' => $staffUser->id],
+        ]);
+
+        $response = $this->postJson(
+            URL::signedRoute('biometric-enrollment.mobile-fingerprint.options', ['enrollmentSession' => $session]),
+            [
+                'geo_latitude' => 0.3136112,
+                'geo_longitude' => 32.5811112,
+                'geo_accuracy' => 20,
+            ]
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('enrollment_session_uuid');
+    }
+
+    public function test_signed_public_secure_enrollment_completes_for_staff_recipient(): void
+    {
+        [$user, $organization, $business] = $this->createHrBiometricContext(['Manage HR Biometrics']);
+        $staffUser = User::factory()->create([
+            'business_id' => $business->id,
+            'email' => 'staff-public-complete@example.com',
+            'staff_uuid' => 'staff-public-complete-001',
+        ]);
+        $assignment = $this->createStaffAssignmentForUser($organization, $staffUser);
+        $session = $this->createEnrollmentSession($organization, $assignment, $user, [
+            'recipient_email' => $staffUser->email,
+            'metadata' => ['recipient_user_id' => $staffUser->id],
+            'confirmed_at' => now(),
+            'capture_deadline_at' => now()->addMinutes(2),
+        ]);
+
+        app()->instance(MobileFingerprintCredentialService::class, new class extends MobileFingerprintCredentialService
+        {
+            public function enroll(\Illuminate\Http\Request $request, \App\Models\StaffAssignment $staffAssignment, array $payload): array
+            {
+                return [
+                    'credential_id' => 'public-cred-001',
+                    'public_key_cose' => 'cose-key',
+                    'public_key_pem' => 'pem-key',
+                    'sign_count' => 0,
+                    'origin' => 'https://example.test',
+                    'rp_id' => 'example.test',
+                    'transports' => ['internal'],
+                    'registered_at' => now()->toIso8601String(),
+                ];
+            }
+        });
+
+        Storage::fake('local');
+
+        $showUrl = URL::signedRoute('biometric-enrollment.show', ['enrollmentSession' => $session]);
+        $completeUrl = URL::signedRoute('biometric-enrollment.complete', ['enrollmentSession' => $session]);
+
+        $response = $this
+            ->from($showUrl)
+            ->post($completeUrl, array_merge(
+                $this->validSecureEnrollmentPayload($assignment, $session),
+                ['fingerprint_credential' => json_encode(['id' => 'public-cred-001'])]
+            ));
+
+        $response->assertRedirect($showUrl);
+        $response->assertSessionHas('status', 'Biometric enrollment completed successfully.');
+
+        $session->refresh();
+
+        $this->assertNotNull($session->completed_at);
+        $this->assertSame($staffUser->id, $session->completed_by_user_id);
+
+        $this->assertDatabaseHas('hr_biometric_profiles', [
+            'organization_id' => $organization->id,
+            'staff_assignment_id' => $assignment->id,
+            'modality' => HrBiometricProfile::MODALITY_FINGERPRINT,
+            'external_reference' => 'public-cred-001',
+            'status' => 'active',
+            'enrolled_by_user_id' => $staffUser->id,
+        ]);
+        $this->assertDatabaseHas('hr_biometric_profiles', [
+            'organization_id' => $organization->id,
+            'staff_assignment_id' => $assignment->id,
+            'modality' => HrBiometricProfile::MODALITY_FACE,
+            'label' => 'Primary face',
+            'status' => 'active',
+            'enrolled_by_user_id' => $staffUser->id,
+        ]);
     }
 
     public function test_manage_hr_biometrics_can_store_multiple_geofence_locations(): void
@@ -737,6 +974,27 @@ class HrBiometricAttendanceFlowTest extends TestCase
         ];
 
         return HrBiometricEnrollmentSession::create(array_merge($defaults, $overrides));
+    }
+
+    private function createMobileFingerprintProfile(StaffAssignment $assignment, User $actor, array $overrides = []): HrBiometricProfile
+    {
+        return HrBiometricProfile::create(array_merge([
+            'organization_id' => $assignment->organization_id,
+            'staff_assignment_id' => $assignment->id,
+            'staff_uuid' => $assignment->staff_uuid,
+            'staff_name' => $assignment->staff_name,
+            'modality' => HrBiometricProfile::MODALITY_FINGERPRINT,
+            'label' => 'Phone fingerprint',
+            'provider' => 'mobile-webauthn',
+            'device_id' => 'PHONE-001',
+            'external_reference' => 'cred-default-001',
+            'template_payload' => json_encode(['public_key_pem' => 'pem-key', 'sign_count' => 0]),
+            'verification_threshold' => 0.98,
+            'status' => 'active',
+            'enrolled_by_user_id' => $actor->id,
+            'enrolled_at' => now(),
+            'metadata' => [],
+        ], $overrides));
     }
 
     /**

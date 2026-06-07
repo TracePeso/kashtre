@@ -13,6 +13,12 @@ This code expires at **{{ optional($enrollmentSession->secret_code_expires_at)->
 
 After the code is confirmed, face capture and fingerprint enrollment must both finish within **2 minutes**.
 
+Open the secure enrollment page on the staff member's phone:
+
+<x-mail::button :url="$enrollmentUrl">
+Open Enrollment Page
+</x-mail::button>
+
 If you did not expect this code, ignore this email and contact HR.
 
 {{ config('app.name') }}

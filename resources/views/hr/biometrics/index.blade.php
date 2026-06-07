@@ -643,7 +643,7 @@
                     <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div>
                             <p class="text-sm font-semibold text-sky-900">Fingerprint attendance actions</p>
-                            <p class="mt-1 text-sm text-sky-800">Use the buttons below to authenticate with the staff member's fingerprint and register `Clock In` or `Clock Out`.</p>
+                            <p class="mt-1 text-sm text-sky-800">Use the buttons below on the enrolled phone to authenticate with the fingerprint already registered for this staff account and register `Clock In` or `Clock Out`.</p>
                         </div>
                         <div class="flex flex-wrap gap-3">
                             <button type="submit" data-punch-submit data-punch-type="in" data-punch-label="Clock In" class="inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
@@ -654,7 +654,7 @@
                             </button>
                         </div>
                     </div>
-                        <p id="verify_fingerprint_status" class="mt-3 text-xs text-sky-800">Choose `Clock In` or `Clock Out` to start fingerprint verification.</p>
+                        <p id="verify_fingerprint_status" class="mt-3 text-xs text-sky-800">Choose `Clock In` or `Clock Out` to start fingerprint verification on this phone.</p>
                 </div>
             </form>
         </div>

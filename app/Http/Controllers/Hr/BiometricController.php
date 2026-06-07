@@ -23,6 +23,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -48,12 +49,33 @@ class BiometricController extends Controller
 
     public function clocking(Request $request, BiometricNetworkPolicy $networkPolicy, BiometricGeofencePolicy $geofencePolicy)
     {
+        $this->assertClockingAccess($this->currentOrganizationOrFail($request), $request->user());
+
         return $this->page($request, $networkPolicy, $geofencePolicy, 'clocking');
     }
 
     public function settings(Request $request, BiometricNetworkPolicy $networkPolicy, BiometricGeofencePolicy $geofencePolicy)
     {
         return $this->page($request, $networkPolicy, $geofencePolicy, 'settings');
+    }
+
+    public function publicEnrollment(Request $request, HrBiometricEnrollmentSession $enrollmentSession, BiometricNetworkPolicy $networkPolicy, BiometricGeofencePolicy $geofencePolicy)
+    {
+        $organization = $enrollmentSession->organization()->firstOrFail();
+        $staffAssignment = $this->staffAssignmentForOrganization($organization, (int) $enrollmentSession->staff_assignment_id);
+
+        $enrollmentSession = $this->refreshEnrollmentSessionState($enrollmentSession);
+
+        return view('hr.biometrics.public-enrollment', [
+            'organization' => $organization,
+            'staffAssignment' => $staffAssignment,
+            'enrollmentSession' => $enrollmentSession,
+            'networkAccess' => $networkPolicy->status($request, $organization),
+            'geofenceAccess' => $geofencePolicy->status($organization),
+            'mobileFingerprintOptionsUrl' => $this->publicEnrollmentSignedUrl('biometric-enrollment.mobile-fingerprint.options', $enrollmentSession),
+            'confirmUrl' => $this->publicEnrollmentSignedUrl('biometric-enrollment.confirm', $enrollmentSession),
+            'completeUrl' => $this->publicEnrollmentSignedUrl('biometric-enrollment.complete', $enrollmentSession),
+        ]);
     }
 
     private function page(Request $request, BiometricNetworkPolicy $networkPolicy, BiometricGeofencePolicy $geofencePolicy, string $activePage)
@@ -174,7 +196,11 @@ class BiometricController extends Controller
             ],
         ]);
 
-        Mail::to($recipient->email)->send(new HrBiometricEnrollmentCodeMail($session, $secretCode));
+        Mail::to($recipient->email)->send(new HrBiometricEnrollmentCodeMail(
+            $session,
+            $secretCode,
+            $this->publicEnrollmentSignedUrl('biometric-enrollment.show', $session)
+        ));
 
         return back()->with('status', "Secret code sent to {$recipient->email} for {$staffAssignment->staff_name}'s biometric {$session->purpose}.");
     }
@@ -221,6 +247,22 @@ class BiometricController extends Controller
         ])->save();
 
         return back()->with('status', "Secret code confirmed. Complete face and fingerprint enrollment for {$session->staff_name} within 2 minutes.");
+    }
+
+    public function confirmPublicEnrollment(Request $request, HrBiometricEnrollmentSession $enrollmentSession): RedirectResponse
+    {
+        $organization = $enrollmentSession->organization()->firstOrFail();
+        $data = $request->validate([
+            'secret_code' => ['required', 'digits:6'],
+        ]);
+
+        $session = $this->confirmEnrollmentCode(
+            $this->enrollmentSessionForOrganization($organization, $enrollmentSession->uuid),
+            (string) $data['secret_code']
+        );
+
+        return redirect($this->publicEnrollmentSignedUrl('biometric-enrollment.show', $session))
+            ->with('status', "Secret code confirmed. Complete face and fingerprint enrollment for {$session->staff_name} within 2 minutes.");
     }
 
     public function completeSecureEnrollment(
@@ -315,6 +357,97 @@ class BiometricController extends Controller
         return back()->with('status', "{$staffAssignment->staff_name}'s secure biometric enrollment completed.");
     }
 
+    public function completePublicEnrollment(
+        Request $request,
+        HrBiometricEnrollmentSession $enrollmentSession,
+        BiometricVerificationService $biometrics,
+        BiometricNetworkPolicy $networkPolicy,
+        BiometricGeofencePolicy $geofencePolicy,
+        MobileFingerprintCredentialService $mobileFingerprints
+    ): RedirectResponse {
+        $organization = $enrollmentSession->organization()->firstOrFail();
+        $networkPolicy->assertAllowed($request, $organization, ['allow_offsite_bypass' => false]);
+
+        $data = $request->validate($this->secureEnrollmentRules());
+        $geofencePolicy->assertAllowed($request, $organization, ['allow_offsite_bypass' => false]);
+
+        $session = $this->assertPublicEnrollmentSession(
+            $this->enrollmentSessionForOrganization($organization, $enrollmentSession->uuid),
+            (int) $data['staff_assignment_id']
+        );
+        $staffAssignment = $this->staffAssignmentForOrganization($organization, (int) $data['staff_assignment_id']);
+        $recipient = $this->enrollmentSessionRecipient($session);
+
+        $fingerprintPayload = [
+            'label' => $data['fingerprint_label'] ?? 'Fingerprint',
+            'provider' => 'mobile-webauthn',
+            'device_id' => $data['fingerprint_device_id'] ?? null,
+            'verification_threshold' => $data['fingerprint_verification_threshold'] ?? null,
+            'fingerprint_credential' => $data['fingerprint_credential'],
+            'capture_source' => 'mobile_webauthn',
+            'geo_latitude' => $data['geo_latitude'] ?? null,
+            'geo_longitude' => $data['geo_longitude'] ?? null,
+            'geo_accuracy' => $data['geo_accuracy'] ?? null,
+        ];
+
+        $mobileCredential = $mobileFingerprints->enroll($request, $staffAssignment, $fingerprintPayload);
+        $fingerprintPayload['external_reference'] = $mobileCredential['credential_id'];
+        $fingerprintPayload['mobile_credential'] = $mobileCredential;
+
+        $facePayload = [
+            'label' => $data['face_label'] ?? 'Primary face',
+            'provider' => $data['face_provider'] ?? 'browser-camera',
+            'device_id' => $data['face_device_id'] ?? null,
+            'verification_threshold' => $data['face_verification_threshold'] ?? null,
+            'face_descriptor' => $data['face_descriptor'] ?? null,
+            'face_sample' => $data['face_sample'] ?? null,
+            'face_photo' => $data['face_photo'] ?? null,
+            'quality_score' => $data['quality_score'] ?? null,
+            'face_protocol_version' => $data['face_protocol_version'] ?? null,
+            'face_liveness_passed' => $data['face_liveness_passed'] ?? null,
+            'face_liveness_challenge' => $data['face_liveness_challenge'] ?? null,
+            'face_sample_count' => $data['face_sample_count'] ?? null,
+            'face_detection_status' => $data['face_detection_status'] ?? null,
+            'face_quality_min' => $data['face_quality_min'] ?? null,
+            'face_quality_average' => $data['face_quality_average'] ?? null,
+            'capture_source' => $data['capture_source'] ?? 'browser_camera',
+            'geo_latitude' => $data['geo_latitude'] ?? null,
+            'geo_longitude' => $data['geo_longitude'] ?? null,
+            'geo_accuracy' => $data['geo_accuracy'] ?? null,
+        ];
+
+        DB::transaction(function () use ($staffAssignment, $request, $biometrics, $fingerprintPayload, $facePayload, $session, $recipient): void {
+            HrBiometricProfile::query()
+                ->where('organization_id', $staffAssignment->organization_id)
+                ->where('staff_assignment_id', $staffAssignment->id)
+                ->whereIn('modality', [HrBiometricProfile::MODALITY_FINGERPRINT, HrBiometricProfile::MODALITY_FACE])
+                ->where('status', 'active')
+                ->update(['status' => 'inactive']);
+
+            $biometrics->enroll(
+                $staffAssignment,
+                HrBiometricProfile::MODALITY_FINGERPRINT,
+                $this->payloadFromRequest($request, $fingerprintPayload),
+                $recipient
+            );
+
+            $biometrics->enroll(
+                $staffAssignment,
+                HrBiometricProfile::MODALITY_FACE,
+                $this->payloadFromRequest($request, $facePayload),
+                $recipient
+            );
+
+            $session->forceFill([
+                'completed_at' => now(),
+                'completed_by_user_id' => $recipient->id,
+            ])->save();
+        });
+
+        return redirect($this->publicEnrollmentSignedUrl('biometric-enrollment.show', $session))
+            ->with('status', 'Biometric enrollment completed successfully.');
+    }
+
     public function store(
         Request $request,
         BiometricVerificationService $biometrics,
@@ -335,9 +468,20 @@ class BiometricController extends Controller
     ): RedirectResponse
     {
         $organization = $this->currentOrganizationOrFail($request);
+        $isHrBiometricViewer = $request->user()?->canViewHrBiometrics() ?? false;
+
+        if (! $isHrBiometricViewer) {
+            $this->assertClockingAccess($organization, $request->user());
+        }
+
         $networkPolicy->assertAllowed($request, $organization, ['allow_offsite_bypass' => true]);
 
         $data = $request->validate($this->verificationRules());
+
+        if (! $isHrBiometricViewer) {
+            $data = $this->normalizeStaffClockingVerificationPayload($data);
+        }
+
         $geofencePolicy->assertAllowed($request, $organization, ['allow_offsite_bypass' => true]);
 
         $staffAssignment = null;
@@ -350,6 +494,11 @@ class BiometricController extends Controller
 
         if (($data['modality'] ?? null) === HrBiometricProfile::MODALITY_FINGERPRINT && ! empty($data['fingerprint_assertion'])) {
             $profile = app(MobileFingerprintCredentialService::class)->verify($request, $organization, $data);
+
+            if (! $isHrBiometricViewer) {
+                $this->assertStaffClockingProfileAccess($organization, $request->user(), $profile);
+            }
+
             $data['profile_uuid'] = $profile->uuid;
             $data['external_reference'] = $profile->external_reference;
             $data['match_score'] = 1;
@@ -400,9 +549,13 @@ class BiometricController extends Controller
             'profile_uuid' => ['nullable', 'string', 'max:80'],
             'enrollment_session_uuid' => ['nullable', 'uuid'],
         ], $this->geolocationRules()));
+        $isHrBiometricViewer = $request->user()?->canViewHrBiometrics() ?? false;
 
         if (($data['action'] ?? null) === 'enroll') {
             abort_unless($request->user()?->canManageHrBiometrics(), 403);
+        } elseif (! $isHrBiometricViewer) {
+            $this->assertClockingAccess($organization, $request->user());
+            $data = $this->normalizeStaffClockingOptionsPayload($organization, $request->user(), $data);
         }
 
         $allowOffsiteBypass = ($data['action'] ?? null) === 'verify';
@@ -433,6 +586,38 @@ class BiometricController extends Controller
         }
 
         return response()->json($mobileFingerprints->options($request, $organization, $data));
+    }
+
+    public function publicMobileFingerprintOptions(
+        Request $request,
+        HrBiometricEnrollmentSession $enrollmentSession,
+        MobileFingerprintCredentialService $mobileFingerprints,
+        BiometricNetworkPolicy $networkPolicy,
+        BiometricGeofencePolicy $geofencePolicy
+    ): JsonResponse {
+        $organization = $enrollmentSession->organization()->firstOrFail();
+        $data = $request->validate(array_merge([
+            'geo_latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'geo_longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'geo_accuracy' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+        ], [
+            'staff_assignment_id' => ['nullable'],
+            'profile_uuid' => ['nullable'],
+            'enrollment_session_uuid' => ['nullable'],
+        ]));
+
+        $networkPolicy->assertAllowed($request, $organization, ['allow_offsite_bypass' => false]);
+        $geofencePolicy->assertAllowed($request, $organization, ['allow_offsite_bypass' => false]);
+
+        $session = $this->assertPublicEnrollmentSession(
+            $this->enrollmentSessionForOrganization($organization, $enrollmentSession->uuid),
+            (int) $enrollmentSession->staff_assignment_id
+        );
+
+        return response()->json($mobileFingerprints->options($request, $organization, [
+            'action' => 'enroll',
+            'staff_assignment_id' => $session->staff_assignment_id,
+        ]));
     }
 
     public function importLegacyDeviceLog(Request $request, LegacyBiometricDeviceSyncService $deviceSync): RedirectResponse
@@ -729,6 +914,114 @@ class BiometricController extends Controller
         ];
     }
 
+    private function assertClockingAccess(Organization $organization, ?User $actor): void
+    {
+        if ($actor?->canViewHrBiometrics()) {
+            return;
+        }
+
+        abort_unless($this->activeStaffAssignmentIdsForUser($organization, $actor) !== [], 403);
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function activeStaffAssignmentIdsForUser(Organization $organization, ?User $actor): array
+    {
+        $staffUuid = trim((string) ($actor?->staff_uuid ?? ''));
+
+        if ($staffUuid === '') {
+            return [];
+        }
+
+        return StaffAssignment::query()
+            ->where('organization_id', $organization->id)
+            ->where('staff_uuid', $staffUuid)
+            ->where('status', 'active')
+            ->pluck('id')
+            ->map(fn (mixed $id): int => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function normalizeStaffClockingOptionsPayload(Organization $organization, ?User $actor, array $data): array
+    {
+        $messages = [];
+
+        if (! empty($data['staff_assignment_id'])) {
+            $messages['staff_assignment_id'] = 'Clocking resolves the staff assignment from your enrolled fingerprint.';
+        }
+
+        if (! empty($data['profile_uuid'])) {
+            $messages['profile_uuid'] = 'Clocking resolves the biometric profile from your enrolled fingerprint.';
+        }
+
+        if (! empty($data['enrollment_session_uuid'])) {
+            $messages['enrollment_session_uuid'] = 'Clocking does not use an enrollment session.';
+        }
+
+        if ($messages !== []) {
+            throw ValidationException::withMessages($messages);
+        }
+
+        $assignmentIds = $this->activeStaffAssignmentIdsForUser($organization, $actor);
+        $data['staff_assignment_ids'] = $assignmentIds;
+
+        if (count($assignmentIds) === 1) {
+            $data['staff_assignment_id'] = $assignmentIds[0];
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function normalizeStaffClockingVerificationPayload(array $data): array
+    {
+        $messages = [];
+
+        if (($data['modality'] ?? null) !== HrBiometricProfile::MODALITY_FINGERPRINT) {
+            $messages['modality'] = 'Clocking requires fingerprint verification.';
+        }
+
+        if (empty($data['punch_type'])) {
+            $messages['punch_type'] = 'Choose Clock In or Clock Out to continue.';
+        }
+
+        if (! empty($data['staff_assignment_id'])) {
+            $messages['staff_assignment_id'] = 'Clocking resolves the staff assignment from your enrolled fingerprint.';
+        }
+
+        if (! empty($data['profile_uuid'])) {
+            $messages['profile_uuid'] = 'Clocking resolves the biometric profile from your enrolled fingerprint.';
+        }
+
+        if ($messages !== []) {
+            throw ValidationException::withMessages($messages);
+        }
+
+        return $data;
+    }
+
+    private function assertStaffClockingProfileAccess(Organization $organization, ?User $actor, HrBiometricProfile $profile): void
+    {
+        abort_unless($actor, 403);
+
+        if (in_array((int) $profile->staff_assignment_id, $this->activeStaffAssignmentIdsForUser($organization, $actor), true)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'fingerprint_assertion' => 'This fingerprint is not enrolled for your staff clocking account.',
+        ]);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -820,6 +1113,19 @@ class BiometricController extends Controller
         return $session;
     }
 
+    private function refreshEnrollmentSessionState(HrBiometricEnrollmentSession $session): HrBiometricEnrollmentSession
+    {
+        if ($session->isPendingCode() && $session->codeExpired()) {
+            $session->forceFill(['invalidated_at' => now()])->save();
+        }
+
+        if ($session->confirmed_at !== null && $session->captureWindowExpired() && $session->completed_at === null && $session->invalidated_at === null) {
+            $session->forceFill(['invalidated_at' => now()])->save();
+        }
+
+        return $session->fresh() ?? $session;
+    }
+
     private function enrollmentSessionForOrganization(Organization $organization, string $uuid): HrBiometricEnrollmentSession
     {
         return HrBiometricEnrollmentSession::query()
@@ -873,6 +1179,99 @@ class BiometricController extends Controller
         }
 
         return $session;
+    }
+
+    private function assertPublicEnrollmentSession(HrBiometricEnrollmentSession $session, int $staffAssignmentId): HrBiometricEnrollmentSession
+    {
+        if ((int) $session->staff_assignment_id !== $staffAssignmentId) {
+            throw ValidationException::withMessages([
+                'enrollment_session_uuid' => 'This biometric enrollment authorization does not match the selected staff member.',
+            ]);
+        }
+
+        if ($session->completed_at !== null || $session->invalidated_at !== null) {
+            throw ValidationException::withMessages([
+                'enrollment_session_uuid' => 'This biometric enrollment authorization is no longer active.',
+            ]);
+        }
+
+        if ($session->confirmed_at === null) {
+            throw ValidationException::withMessages([
+                'enrollment_session_uuid' => 'Enter the biometric secret code before continuing.',
+            ]);
+        }
+
+        if ($session->captureWindowExpired()) {
+            $session->forceFill(['invalidated_at' => now()])->save();
+
+            throw ValidationException::withMessages([
+                'enrollment_session_uuid' => 'The 2-minute biometric enrollment window expired. Request a new code and start again.',
+            ]);
+        }
+
+        return $session;
+    }
+
+    private function confirmEnrollmentCode(HrBiometricEnrollmentSession $session, string $secretCode): HrBiometricEnrollmentSession
+    {
+        if (! $session->isPendingCode()) {
+            throw ValidationException::withMessages([
+                'secret_code' => 'This biometric enrollment code is no longer awaiting confirmation.',
+            ]);
+        }
+
+        if ($session->codeExpired()) {
+            $session->forceFill(['invalidated_at' => now()])->save();
+
+            throw ValidationException::withMessages([
+                'secret_code' => 'This biometric enrollment code expired. Request a new code and try again.',
+            ]);
+        }
+
+        if (! Hash::check($secretCode, (string) $session->secret_code_hash)) {
+            throw ValidationException::withMessages([
+                'secret_code' => 'The biometric enrollment secret code was not correct.',
+            ]);
+        }
+
+        $session->forceFill([
+            'confirmed_at' => now(),
+            'capture_deadline_at' => now()->addMinutes(self::ENROLLMENT_CAPTURE_WINDOW_MINUTES),
+        ])->save();
+
+        return $session;
+    }
+
+    private function enrollmentSessionRecipient(HrBiometricEnrollmentSession $session): User
+    {
+        $recipientUserId = (int) data_get($session->metadata, 'recipient_user_id', 0);
+
+        if ($recipientUserId > 0) {
+            $user = User::query()->whereKey($recipientUserId)->first();
+
+            if ($user instanceof User) {
+                return $user;
+            }
+        }
+
+        $user = User::query()
+            ->where('staff_uuid', $session->staff_uuid)
+            ->where('email', $session->recipient_email)
+            ->orderByDesc('id')
+            ->first();
+
+        if ($user instanceof User) {
+            return $user;
+        }
+
+        throw ValidationException::withMessages([
+            'enrollment_session_uuid' => 'The biometric enrollment recipient could not be resolved. Send a new code and try again.',
+        ]);
+    }
+
+    private function publicEnrollmentSignedUrl(string $routeName, HrBiometricEnrollmentSession $session): string
+    {
+        return URL::signedRoute($routeName, ['enrollmentSession' => $session]);
     }
 
     /**

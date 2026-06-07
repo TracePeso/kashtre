@@ -26,7 +26,6 @@ Route::middleware(['web', 'auth', 'verified'])->prefix('hr')->name('hr.')->group
         ->middleware('hr.permission:Add HR Staff,Edit HR Staff')
         ->name('dashboard.sync');
     Route::get('/clocking', [BiometricController::class, 'clocking'])
-        ->middleware('hr.permission:View HR Staff,Edit HR Staff,Manage HR Biometrics')
         ->name('clocking.index');
 
     Route::get('/staff-assignments', [StaffAssignmentController::class, 'index'])
@@ -82,13 +81,11 @@ Route::middleware(['web', 'auth', 'verified'])->prefix('hr')->name('hr.')->group
     //     ->middleware('hr.permission:Edit HR Staff,Manage HR Biometrics')
     //     ->name('biometrics.legacy-devices.store');
     Route::post('/biometrics/mobile-fingerprint/options', [BiometricController::class, 'mobileFingerprintOptions'])
-        ->middleware('hr.permission:View HR Staff,Edit HR Staff,Manage HR Biometrics')
         ->name('biometrics.mobile-fingerprint.options');
     // Route::post('/biometrics/legacy-device-import', [BiometricController::class, 'importLegacyDeviceLog'])
     //     ->middleware('hr.permission:Edit HR Staff,Manage HR Biometrics')
     //     ->name('biometrics.legacy-device-import');
     Route::post('/biometrics/verify', [BiometricController::class, 'verify'])
-        ->middleware('hr.permission:View HR Staff,Edit HR Staff,Manage HR Biometrics')
         ->name('biometrics.verify');
     Route::delete('/biometrics/{biometricProfile}', [BiometricController::class, 'destroy'])
         ->middleware('hr.permission:Edit HR Staff,Manage HR Biometrics')
