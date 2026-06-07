@@ -292,7 +292,7 @@
                             </div>
                             <div class="lg:col-span-3">
                                 <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Holiday Compensation Settings</label>
-                                <p class="mt-1 text-xs text-gray-500">Configure crossing-holiday shifts and within-holiday shifts separately. Crossing-holiday shifts are awarded from the holiday-covered portion of the shift and resolve to 0%, 25%, 50%, 75% or 100% automatically.</p>
+                                <p class="mt-1 text-xs text-gray-500">Configure crossing-holiday shifts and within-holiday shifts separately. Crossing-holiday shifts still use their own rule, but the awarded credit is calculated as 0%, 25%, 50%, 75% or 100% of the within-holiday credit.</p>
                                 <div class="mt-3 grid gap-4 lg:grid-cols-2">
                                     <div class="rounded-md border border-gray-200 bg-white p-4">
                                         <p class="text-sm font-semibold text-gray-900">{{ $holidayCompensatoryCreditScopeOptions[\App\Models\HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY] }}</p>
@@ -303,7 +303,7 @@
                                                     <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-700">{{ $percentageLabel }}</span>
                                                 @endforeach
                                             </div>
-                                            <p class="mt-2 text-xs text-gray-500">The system calculates the holiday-covered portion of the worked shift and rounds it to one of these percentages automatically.</p>
+                                            <p class="mt-2 text-xs text-gray-500">The system calculates the holiday-covered portion of the worked shift, rounds it to one of these percentages, and applies that percentage to the credit days configured for shifts fully within public holidays.</p>
                                         </div>
                                     </div>
                                     <div class="rounded-md border border-gray-200 bg-white p-4">

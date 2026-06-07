@@ -202,10 +202,14 @@ class HrPolicyVersion extends Model
                 $creditDays = rtrim(rtrim(number_format((float) $setting['credit_days'], 2, '.', ''), '0'), '.');
 
                 if ($scope === self::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY) {
+                    $withinHolidaySetting = $this->holidayCompensatoryCreditSettingFor(self::HOLIDAY_COMPENSATORY_SCOPE_WITHIN_PUBLIC_HOLIDAY);
+                    $withinCreditDays = rtrim(rtrim(number_format((float) $withinHolidaySetting['credit_days'], 2, '.', ''), '0'), '.');
+
                     return sprintf(
-                        '%s: %s with dynamic 0%%/25%%/50%%/75%%/100%% based on the holiday-covered portion of the shift',
+                        '%s: %s with dynamic 0%%/25%%/50%%/75%%/100%% of the within-holiday credit (%s day(s))',
                         $scopeLabel,
-                        $ruleLabel
+                        $ruleLabel,
+                        $withinCreditDays
                     );
                 }
 

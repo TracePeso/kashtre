@@ -57,11 +57,13 @@ class HrHolidayCompensatoryCreditTest extends TestCase
         }
     }
 
-    public function test_crossing_public_holiday_credit_is_not_scaled_by_configured_day_amount(): void
+    public function test_crossing_public_holiday_credit_is_scaled_by_the_within_holiday_credit_amount(): void
     {
         $organization = $this->createOrganizationWithHolidayPolicy(
             crossingRule: HrPolicyVersion::HOLIDAY_COMPENSATORY_CREDIT_PER_SHIFT,
-            crossingCreditDays: 3.0
+            crossingCreditDays: 3.0,
+            withinRule: HrPolicyVersion::HOLIDAY_COMPENSATORY_CREDIT_PER_SHIFT,
+            withinCreditDays: 1.5
         );
 
         $holiday = $this->createHoliday($organization, '2026-12-26', 20);
@@ -83,7 +85,7 @@ class HrHolidayCompensatoryCreditTest extends TestCase
             ->first();
 
         $this->assertNotNull($credit);
-        $this->assertSame('0.50', number_format((float) $credit->credit_days, 2, '.', ''));
+        $this->assertSame('0.75', number_format((float) $credit->credit_days, 2, '.', ''));
     }
 
     public function test_shifts_fully_within_public_holidays_keep_the_configured_flat_credit(): void

@@ -40,6 +40,11 @@ class HolidayLeaveCreditService
 
         $scope = $this->holidayCompensatoryScope($inPunch, $outPunch);
         $creditSetting = $this->holidayCompensatoryCreditSetting($outPunch->organization_id, $earnedDate, $scope);
+        $withinHolidayCreditSetting = $this->holidayCompensatoryCreditSetting(
+            $outPunch->organization_id,
+            $earnedDate,
+            HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_WITHIN_PUBLIC_HOLIDAY
+        );
         $matchedDates = $holidayMatches
             ->pluck('date_key')
             ->unique()
@@ -54,7 +59,14 @@ class HolidayLeaveCreditService
             || $matchedDates->count() === 1
         ) {
             if (($creditSetting['rule'] ?? null) === HrPolicyVersion::HOLIDAY_COMPENSATORY_CREDIT_PER_PUBLIC_HOLIDAY_DATE) {
-                $this->createCreditsPerHolidayDate($holidayMatches, $outPunch, $inPunch, $creditSetting, $scope);
+                $this->createCreditsPerHolidayDate(
+                    $holidayMatches,
+                    $outPunch,
+                    $inPunch,
+                    $creditSetting,
+                    $scope,
+                    $withinHolidayCreditSetting
+                );
 
                 return;
             }
@@ -70,8 +82,16 @@ class HolidayLeaveCreditService
                     $inPunch,
                     $holiday,
                     $holidayDate,
-                    $this->creditNotes([$holiday->title], $creditSetting, $scope),
-                    $this->resolvedCreditDays($holidayMatches, $outPunch, $inPunch, $creditSetting, $scope, $match['date_key'])
+                    $this->creditNotes([$holiday->title], $creditSetting, $scope, $withinHolidayCreditSetting),
+                    $this->resolvedCreditDays(
+                        $holidayMatches,
+                        $outPunch,
+                        $inPunch,
+                        $creditSetting,
+                        $scope,
+                        $withinHolidayCreditSetting,
+                        $match['date_key']
+                    )
                 );
             }
 
@@ -104,8 +124,15 @@ class HolidayLeaveCreditService
             $inPunch,
             $anchorMatch['holiday'],
             $anchorMatch['date'],
-            $this->creditNotes($holidayTitles, $creditSetting, $scope),
-            $this->resolvedCreditDays($holidayMatches, $outPunch, $inPunch, $creditSetting, $scope)
+            $this->creditNotes($holidayTitles, $creditSetting, $scope, $withinHolidayCreditSetting),
+            $this->resolvedCreditDays(
+                $holidayMatches,
+                $outPunch,
+                $inPunch,
+                $creditSetting,
+                $scope,
+                $withinHolidayCreditSetting
+            )
         );
     }
 
@@ -114,7 +141,8 @@ class HolidayLeaveCreditService
         HrAttendanceLedger $outPunch,
         HrAttendanceLedger $inPunch,
         array $creditSetting,
-        string $scope
+        string $scope,
+        array $withinHolidayCreditSetting
     ): void {
         foreach ($holidayMatches->groupBy('date_key') as $dateMatches) {
             $match = $dateMatches
@@ -140,8 +168,16 @@ class HolidayLeaveCreditService
                 $inPunch,
                 $match['holiday'],
                 $match['date'],
-                $this->creditNotes($holidayTitles, $creditSetting, $scope),
-                $this->resolvedCreditDays($dateMatches, $outPunch, $inPunch, $creditSetting, $scope, $match['date_key'])
+                $this->creditNotes($holidayTitles, $creditSetting, $scope, $withinHolidayCreditSetting),
+                $this->resolvedCreditDays(
+                    $dateMatches,
+                    $outPunch,
+                    $inPunch,
+                    $creditSetting,
+                    $scope,
+                    $withinHolidayCreditSetting,
+                    $match['date_key']
+                )
             );
         }
     }
@@ -324,6 +360,7 @@ class HolidayLeaveCreditService
     /**
      * @param Collection<int, array{holiday: HrCalendarEvent, date: Carbon, date_key: string}> $holidayMatches
      * @param array{rule?: string, credit_days?: float} $creditSetting
+     * @param array{rule?: string, credit_days?: float} $withinHolidayCreditSetting
      */
     private function resolvedCreditDays(
         Collection $holidayMatches,
@@ -331,6 +368,7 @@ class HolidayLeaveCreditService
         HrAttendanceLedger $inPunch,
         array $creditSetting,
         string $scope,
+        array $withinHolidayCreditSetting,
         ?string $targetDateKey = null
     ): float {
         $baseCreditDays = (float) ($creditSetting['credit_days'] ?? 0);
@@ -358,8 +396,13 @@ class HolidayLeaveCreditService
 
         $ratio = min(1.0, $holidayMinutes / $shiftMinutes);
         $bucket = HrPolicyVersion::normalizeHolidayCompensatoryDynamicPercentage($ratio);
+        $referenceCreditDays = (float) ($withinHolidayCreditSetting['credit_days'] ?? 0);
 
-        return round($bucket, 2);
+        if ($referenceCreditDays <= 0) {
+            return 0.0;
+        }
+
+        return round($referenceCreditDays * $bucket, 2);
     }
 
     /**
@@ -418,21 +461,29 @@ class HolidayLeaveCreditService
     /**
      * @param array<int, string> $holidayTitles
      * @param array{rule?: string, credit_days?: float} $creditSetting
+     * @param array{rule?: string, credit_days?: float} $withinHolidayCreditSetting
      */
-    private function creditNotes(array $holidayTitles, array $creditSetting, string $scope): string
+    private function creditNotes(
+        array $holidayTitles,
+        array $creditSetting,
+        string $scope,
+        array $withinHolidayCreditSetting
+    ): string
     {
         $scopeLabel = HrPolicyVersion::holidayCompensatoryCreditScopeOptions()[$scope] ?? $scope;
         $ruleKey = (string) ($creditSetting['rule'] ?? HrPolicyVersion::HOLIDAY_COMPENSATORY_CREDIT_PER_SHIFT);
         $ruleLabel = HrPolicyVersion::holidayCompensatoryCreditPolicyOptions()[$ruleKey] ?? $ruleKey;
         $creditDays = rtrim(rtrim(number_format((float) ($creditSetting['credit_days'] ?? 0), 2, '.', ''), '0'), '.');
+        $withinCreditDays = rtrim(rtrim(number_format((float) ($withinHolidayCreditSetting['credit_days'] ?? 0), 2, '.', ''), '0'), '.');
         $holidayLabel = implode(' and ', array_values(array_unique($holidayTitles)));
 
         if ($scope === HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY) {
             return sprintf(
-                'Earned by working on %s. Policy applied: %s using %s with dynamic 0%%/25%%/50%%/75%%/100%% based on the portion of the shift worked during public holiday time.',
+                'Earned by working on %s. Policy applied: %s using %s with dynamic 0%%/25%%/50%%/75%%/100%% of the within-holiday credit (%s day(s)), based on the portion of the shift worked during public holiday time.',
                 $holidayLabel,
                 $scopeLabel,
-                $ruleLabel
+                $ruleLabel,
+                $withinCreditDays
             );
         }
 
