@@ -752,10 +752,10 @@
                         @endif
                     </div>
 
-                    <div class="grid gap-4 sm:grid-cols-2" x-data="{ durationPreset: $wire.entangle('newRosterDurationPreset').live }">
+                    <div class="grid gap-4 sm:grid-cols-2">
                         <div class="sm:col-span-2">
                             <label class="block text-sm font-medium text-gray-700">Duration</label>
-                            <select x-model="durationPreset" wire:model.live="newRosterDurationPreset" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <select wire:model.live="newRosterDurationPreset" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                                 <option value="monthly">Monthly</option>
                                 <option value="custom">Custom</option>
                             </select>
@@ -769,7 +769,11 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700">End Date</label>
-                            <input type="date" wire:model.live="newRosterEndDate" x-bind:disabled="durationPreset !== 'custom'" @disabled($newRosterDurationPreset !== 'custom') class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 sm:text-sm">
+                            @if($newRosterDurationPreset === 'custom')
+                                <input type="date" wire:key="new-roster-end-date-custom" wire:model.live="newRosterEndDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            @else
+                                <input type="date" wire:key="new-roster-end-date-fixed" wire:model.live="newRosterEndDate" disabled class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 sm:text-sm">
+                            @endif
                             <p class="mt-1 text-[11px] text-gray-500">Display guide: mm/dd/yyyy</p>
                             @error('end_date') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
                         </div>
