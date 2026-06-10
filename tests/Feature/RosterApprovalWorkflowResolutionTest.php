@@ -107,4 +107,30 @@ class RosterApprovalWorkflowResolutionTest extends TestCase
         $this->assertSame('approved', $request->status);
         $this->assertNull($request->current_level);
     }
+
+    public function test_roster_workflow_resolution_returns_null_without_client_space_specific_rule(): void
+    {
+        $organization = Organization::create([
+            'name' => 'Exact Match Org',
+            'external_business_uuid' => 'exact-match-org',
+            'weekend_days' => [0, 6],
+        ]);
+
+        $clientSpace = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'name' => 'Theatre',
+            'type' => 'Client Space',
+            'unit_kind' => HrOrganizationalUnit::KIND_CLIENT_SPACE,
+        ]);
+
+        ApprovalWorkflow::create([
+            'organization_id' => $organization->id,
+            'approval_category' => 'roster',
+            'organizational_unit_id' => null,
+            'discipline_title' => null,
+            'is_active' => true,
+        ]);
+
+        $this->assertNull(app(DutyRosterService::class)->previewRosterApprovalWorkflow($clientSpace));
+    }
 }

@@ -55,11 +55,11 @@ class RosterApprovalWorkflowManager extends Component
             ->where('organization_id', $this->organizationId)
             ->where('approval_category', 'roster')
             ->whereNull('discipline_title')
+            ->whereNotNull('organizational_unit_id')
             ->with(['organizationalUnit', 'approvers'])
             ->get()
             ->sortBy(fn (ApprovalWorkflow $workflow): string => sprintf(
-                '%d|%s',
-                $workflow->organizational_unit_id === null ? 1 : 0,
+                '%s',
                 Str::lower((string) ($workflow->organizationalUnit?->name ?? ''))
             ))
             ->values()
@@ -167,7 +167,7 @@ class RosterApprovalWorkflowManager extends Component
         $this->authorizeRosterApproverDesignation();
 
         $validated = $this->validate(array_merge([
-            'clientSpaceId' => ['nullable', 'integer'],
+            'clientSpaceId' => ['required', 'integer'],
             'approvalLevelCount' => ['required', 'integer', 'min:1', 'max:3'],
         ], $this->approverValidationRules()));
 
@@ -181,11 +181,7 @@ class RosterApprovalWorkflowManager extends Component
             ->where('organization_id', $this->organizationId)
             ->where('approval_category', 'roster')
             ->whereNull('discipline_title')
-            ->when(
-                ($validated['clientSpaceId'] ?? null) === null,
-                fn ($query) => $query->whereNull('organizational_unit_id'),
-                fn ($query) => $query->where('organizational_unit_id', $validated['clientSpaceId'])
-            );
+            ->where('organizational_unit_id', $validated['clientSpaceId']);
 
         if ($this->editingId) {
             $duplicateQuery->whereKeyNot($this->editingId);
@@ -204,24 +200,26 @@ class RosterApprovalWorkflowManager extends Component
             'is_active' => true,
         ];
 
-        if ($this->editingId) {
-            $workflow = ApprovalWorkflow::findOrFail($this->editingId);
-            $workflow->update($payload);
-        } else {
-            $workflow = ApprovalWorkflow::create($payload);
-        }
+        $workflow = $this->persistWorkflow(
+            $this->editingId ? ApprovalWorkflow::findOrFail($this->editingId) : null,
+            $payload,
+            $approverSelections,
+            $this->selectedApproverLevels()
+        );
 
-        $workflow->approvers()->delete();
+        $leaveWorkflow = ApprovalWorkflow::query()
+            ->where('organization_id', $this->organizationId)
+            ->where('approval_category', 'leave')
+            ->where('organizational_unit_id', $validated['clientSpaceId'])
+            ->first();
 
-        foreach ($this->selectedApproverLevels() as $level) {
-            $workflow->syncApprovers($level, collect($approverSelections[$level] ?? [])
-                ->values()
-                ->map(fn (string $uuid): array => [
-                    'uuid' => $uuid,
-                    'name' => $this->staffOptions[$uuid] ?? $uuid,
-                ])
-                ->all());
-        }
+        $this->persistWorkflow($leaveWorkflow, [
+            'organization_id' => $this->organizationId,
+            'organizational_unit_id' => $validated['clientSpaceId'],
+            'approval_category' => 'leave',
+            'discipline_title' => null,
+            'is_active' => true,
+        ], $approverSelections, $this->selectedApproverLevels());
 
         $this->showModal = false;
         $this->message = 'Roster approval rule saved.';
@@ -240,6 +238,15 @@ class RosterApprovalWorkflowManager extends Component
         }
 
         $workflow->update(['is_active' => false]);
+
+        if ($workflow->organizational_unit_id) {
+            ApprovalWorkflow::query()
+                ->where('organization_id', $workflow->organization_id)
+                ->where('approval_category', 'leave')
+                ->where('organizational_unit_id', $workflow->organizational_unit_id)
+                ->update(['is_active' => false]);
+        }
+
         $this->message = 'Roster approval rule deactivated.';
         $this->loadRules();
     }
@@ -424,5 +431,32 @@ class RosterApprovalWorkflowManager extends Component
         }
 
         return 1;
+    }
+
+    private function persistWorkflow(
+        ?ApprovalWorkflow $workflow,
+        array $data,
+        array $approverSelections,
+        array $levels
+    ): ApprovalWorkflow {
+        $workflow ??= ApprovalWorkflow::create($data);
+
+        if ($workflow->exists) {
+            $workflow->update($data);
+        }
+
+        $workflow->approvers()->delete();
+
+        foreach ($levels as $level) {
+            $workflow->syncApprovers($level, collect($approverSelections[$level] ?? [])
+                ->values()
+                ->map(fn (string $uuid): array => [
+                    'uuid' => $uuid,
+                    'name' => $this->staffOptions[$uuid] ?? $uuid,
+                ])
+                ->all());
+        }
+
+        return $workflow;
     }
 }

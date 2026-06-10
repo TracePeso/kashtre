@@ -32,6 +32,7 @@ class ApprovalWorkflowManager extends Component
     public ?int $editingId = null;
     public string $category = 'leave';
     public ?int $clientSpaceId = null;
+    public int $approvalLevelCount = 3;
     public array $approverUuids = [];
 
     public function mount()
@@ -142,6 +143,7 @@ class ApprovalWorkflowManager extends Component
         $this->editingId = $wf->id;
         $this->category = $wf->approval_category;
         $this->clientSpaceId = $wf->organizational_unit_id;
+        $this->approvalLevelCount = $this->inferApprovalLevelCount($wf);
         $this->approverUuids = $this->defaultApproverSelections();
 
         foreach ($wf->approvers->groupBy('approver_level') as $level => $approvers) {
@@ -175,6 +177,7 @@ class ApprovalWorkflowManager extends Component
                 'in:leave,coverage,offsite_duty',
             ],
             'clientSpaceId' => ['nullable', 'integer'],
+            'approvalLevelCount' => ['required', 'integer', 'min:1', 'max:3'],
         ], $this->approverValidationRules()));
 
         $approverSelections = $this->normalizedApproverSelections();
@@ -219,24 +222,28 @@ class ApprovalWorkflowManager extends Component
             'is_active' => true,
         ];
 
-        if ($this->editingId) {
-            $wf = ApprovalWorkflow::find($this->editingId);
-            $wf->update($data);
-        } else {
-            $wf = ApprovalWorkflow::create($data);
-        }
+        $wf = $this->persistWorkflow(
+            $this->editingId ? ApprovalWorkflow::find($this->editingId) : null,
+            $data,
+            $approverSelections,
+            $this->selectedApproverLevels()
+        );
 
-        // Sync approvers
-        $wf->approvers()->delete();
+        if ($this->category === 'leave' && $clientSpaceId) {
+            $rosterWorkflow = ApprovalWorkflow::query()
+                ->where('organization_id', $this->organizationId)
+                ->where('approval_category', 'roster')
+                ->where('organizational_unit_id', $clientSpaceId)
+                ->whereNull('discipline_title')
+                ->first();
 
-        foreach (self::APPROVER_LEVELS as $level) {
-            $wf->syncApprovers($level, collect($approverSelections[$level] ?? [])
-                ->values()
-                ->map(fn (string $uuid): array => [
-                    'uuid' => $uuid,
-                    'name' => $this->staffOptions[$uuid] ?? $uuid,
-                ])
-                ->all());
+            $this->persistWorkflow($rosterWorkflow, [
+                'organization_id' => $this->organizationId,
+                'approval_category' => 'roster',
+                'organizational_unit_id' => $clientSpaceId,
+                'discipline_title' => null,
+                'is_active' => true,
+            ], $approverSelections, $this->selectedApproverLevels());
         }
 
         $this->showModal = false;
@@ -252,7 +259,23 @@ class ApprovalWorkflowManager extends Component
             return;
         }
 
-        ApprovalWorkflow::find($id)?->update(['is_active' => false]);
+        $workflow = ApprovalWorkflow::find($id);
+
+        if (! $workflow) {
+            return;
+        }
+
+        $workflow->update(['is_active' => false]);
+
+        if ($workflow->approval_category === 'leave' && $workflow->organizational_unit_id) {
+            ApprovalWorkflow::query()
+                ->where('organization_id', $workflow->organization_id)
+                ->where('approval_category', 'roster')
+                ->where('organizational_unit_id', $workflow->organizational_unit_id)
+                ->whereNull('discipline_title')
+                ->update(['is_active' => false]);
+        }
+
         $this->message = 'Approval workflow deactivated.';
         $this->loadWorkflows();
     }
@@ -262,6 +285,7 @@ class ApprovalWorkflowManager extends Component
         $this->editingId = null;
         $this->category = 'leave';
         $this->clientSpaceId = null;
+        $this->approvalLevelCount = 3;
         $this->approverUuids = $this->defaultApproverSelections();
     }
 
@@ -299,7 +323,7 @@ class ApprovalWorkflowManager extends Component
     {
         $rules = [];
 
-        foreach (self::APPROVER_LEVELS as $level) {
+        foreach ($this->selectedApproverLevels() as $level) {
             $rules["approverUuids.$level"] = 'required|array|min:'.self::MIN_APPROVERS_PER_LEVEL;
             $rules["approverUuids.$level.*"] = 'required|string|distinct';
         }
@@ -346,7 +370,7 @@ class ApprovalWorkflowManager extends Component
     {
         $normalized = [];
 
-        foreach (self::APPROVER_LEVELS as $level) {
+        foreach ($this->selectedApproverLevels() as $level) {
             $normalized[$level] = collect($this->approverUuids[$level] ?? [])
                 ->map(fn ($uuid): string => trim((string) $uuid))
                 ->values()
@@ -361,7 +385,7 @@ class ApprovalWorkflowManager extends Component
         $seen = [];
         $hasDuplicates = false;
 
-        foreach (self::APPROVER_LEVELS as $level) {
+        foreach ($this->selectedApproverLevels() as $level) {
             foreach ($approverSelections[$level] ?? [] as $index => $uuid) {
                 if ($uuid === '') {
                     continue;
@@ -378,5 +402,57 @@ class ApprovalWorkflowManager extends Component
         }
 
         return $hasDuplicates;
+    }
+
+    private function selectedApproverLevels(): array
+    {
+        return array_slice(self::APPROVER_LEVELS, 0, max(1, min(3, $this->approvalLevelCount)));
+    }
+
+    private function inferApprovalLevelCount(ApprovalWorkflow $workflow): int
+    {
+        $presentLevels = $workflow->approvers
+            ->pluck('approver_level')
+            ->filter(fn ($level): bool => in_array($level, self::APPROVER_LEVELS, true))
+            ->unique()
+            ->values()
+            ->all();
+
+        if (in_array('tertiary', $presentLevels, true)) {
+            return 3;
+        }
+
+        if (in_array('secondary', $presentLevels, true)) {
+            return 2;
+        }
+
+        return 1;
+    }
+
+    private function persistWorkflow(
+        ?ApprovalWorkflow $workflow,
+        array $data,
+        array $approverSelections,
+        array $levels
+    ): ApprovalWorkflow {
+        $workflow ??= ApprovalWorkflow::create($data);
+
+        if ($workflow->exists) {
+            $workflow->update($data);
+        }
+
+        $workflow->approvers()->delete();
+
+        foreach ($levels as $level) {
+            $workflow->syncApprovers($level, collect($approverSelections[$level] ?? [])
+                ->values()
+                ->map(fn (string $uuid): array => [
+                    'uuid' => $uuid,
+                    'name' => $this->staffOptions[$uuid] ?? $uuid,
+                ])
+                ->all());
+        }
+
+        return $workflow;
     }
 }

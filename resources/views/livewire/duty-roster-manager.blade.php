@@ -260,8 +260,7 @@
                             <h4 class="text-sm font-semibold {{ $resolvedApprovalWorkflow ? 'text-sky-900' : 'text-amber-900' }}">Resolved Approval Flow</h4>
                             @if($resolvedApprovalWorkflow)
                                 <p class="mt-1 text-sm {{ $resolvedApprovalWorkflow ? 'text-sky-800' : 'text-amber-800' }}">
-                                    {{ $resolvedApprovalWorkflow->organizationalUnit ? 'Client-space rule' : 'All-client-spaces fallback rule' }}
-                                    for {{ $resolvedApprovalWorkflow->organizationalUnit?->name ?? 'all client spaces' }}.
+                                    Using the same approver chain configured for leave in {{ $resolvedApprovalWorkflow->organizationalUnit?->name ?? 'this client space' }}.
                                 </p>
                                 <div class="mt-3 grid gap-3 md:grid-cols-3">
                                     @foreach($resolvedApprovalWorkflow->approvers as $approver)
@@ -273,7 +272,7 @@
                                 </div>
                             @else
                                 <p class="mt-1 text-sm text-amber-800">
-                                    No roster approval rule matches this client space yet. Add a client-space rule or an all-client-spaces fallback rule before submitting this roster.
+                                    No synced leave or roster approver rule matches this client space yet. Configure leave approvers for this client space before submitting this roster.
                                 </p>
                             @endif
                         </div>

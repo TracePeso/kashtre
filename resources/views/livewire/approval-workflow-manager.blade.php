@@ -10,7 +10,7 @@
 
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
-        <p class="text-sm text-gray-500">Configure primary, secondary, and tertiary approvers for leave, coverage, and off-site duty. Leave and off-site duty workflows are scoped per client space. Leave keeps the current client-space chain for staff based there, while linked routing-node staff use the direct superior of that client space as the primary approver. Off-site duty always routes its primary approval to that client space leader, then continues with the configured secondary and tertiary approvers. Each level needs at least 3 approvers, and any current-level approver can act.</p>
+        <p class="text-sm text-gray-500">Configure approvers for leave, coverage, and off-site duty. Leave and off-site duty workflows are scoped per client space. Leave keeps the current client-space chain for staff based there, while linked routing-node staff use the direct superior of that client space as the primary approver. Off-site duty always routes its primary approval to that client space leader, then continues with the configured approval chain. Roster approvals now mirror the same leave approvers for that client space. Each enabled level needs at least 3 approvers, and any current-level approver can act.</p>
         @if($organizationId && $canAddSetup)
         <button wire:click="openCreateModal()" class="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
@@ -70,6 +70,9 @@
                 @if(in_array($wf['approval_category'], ['leave', 'offsite_duty'], true))
                 <p class="text-sm font-semibold text-gray-900">{{ $wf['organizational_unit']['name'] ?? 'Unscoped Client Space' }}</p>
                 <p class="text-xs text-gray-500">Scoped to this client space.</p>
+                @if($wf['approval_category'] === 'leave')
+                <p class="text-xs text-sky-700">Rosters in this client space use the same approver chain.</p>
+                @endif
                 @else
                 <p class="text-sm font-semibold text-gray-900">All Client Spaces</p>
                 <p class="text-xs text-gray-500">Organization-wide {{ strtolower($categoryLabels[$wf['approval_category']] ?? $wf['approval_category']) }} workflow.</p>
@@ -128,7 +131,7 @@
                     </select>
                     <p class="mt-1 text-xs text-gray-500">
                         {{ $category === 'leave'
-                            ? 'Leave approval workflows are configured one client space at a time.'
+                            ? 'Leave approval workflows are configured one client space at a time, and roster approvals mirror the same setup.'
                             : 'Official workshop/meeting approval workflows are configured one client space at a time so the correct client-space leader can act first.' }}
                     </p>
                     @error('clientSpaceId') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
@@ -138,16 +141,26 @@
                 <div class="border-t pt-4">
                     <h4 class="text-sm font-semibold text-gray-700 mb-3">Approvers</h4>
                     <p class="mb-3 text-xs text-gray-500">
-                        Select at least 3 approvers for each level. Any one approver at the active level can approve or reject the request.
+                        Primary is always required. Choose how many approval levels this workflow should use, then select at least 3 approvers for each enabled level. Any one approver at the active level can approve or reject the request.
                         @if($category === 'leave')
-                        For staff already based in the client space, this primary list is used as configured. For linked routing-node staff, the direct superior of the selected client space becomes the primary approver at submission time.
+                        For staff already based in the client space, this primary list is used as configured. For linked routing-node staff, the direct superior of the selected client space becomes the primary approver at submission time. Rosters in this client space reuse the same saved approver chain.
                         @elseif($category === 'offsite_duty')
                         For off-site duty, the selected client space leader becomes the live primary approver at submission time. The configured secondary and tertiary approvers still apply after that.
                         @endif
                     </p>
 
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Approval Levels</label>
+                        <select wire:model.live="approvalLevelCount" class="w-full rounded-lg border-gray-300 shadow-sm focus:border-brand-blue focus:ring-brand-blue text-sm">
+                            <option value="1">1 Level: Primary only</option>
+                            <option value="2">2 Levels: Primary and Secondary</option>
+                            <option value="3">3 Levels: Primary, Secondary, and Tertiary</option>
+                        </select>
+                        @error('approvalLevelCount') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                    </div>
+
                     <div class="space-y-4">
-                        @foreach(['primary' => 'Primary', 'secondary' => 'Secondary', 'tertiary' => 'Tertiary'] as $level => $label)
+                        @foreach(array_slice(['primary' => 'Primary', 'secondary' => 'Secondary', 'tertiary' => 'Tertiary'], 0, $approvalLevelCount, true) as $level => $label)
                         <div class="rounded-lg border border-gray-200 p-3">
                             <div class="mb-3 flex items-center justify-between gap-3">
                                 <label class="block text-xs font-medium text-gray-500 uppercase">{{ $label }} Approvers *</label>

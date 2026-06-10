@@ -298,11 +298,27 @@
                                         <p class="text-sm font-semibold text-gray-900">{{ $holidayCompensatoryCreditScopeOptions[\App\Models\HrPolicyVersion::HOLIDAY_COMPENSATORY_SCOPE_CROSSING_PUBLIC_HOLIDAY] }}</p>
                                         <div class="mt-3">
                                             <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500">Percentage Of Shift Within Public Holidays</label>
+                                            @php
+                                                $selectedCrossingHolidayRatio = (float) $selectedCrossingHolidayPercentage;
+                                                $withinHolidayCreditPreview = \App\Models\HrPolicyVersion::normalizeHolidayCompensatoryCreditDays((float) ($withinHolidayCreditDays ?? 0));
+                                                $crossingHolidayCreditPreview = \App\Models\HrPolicyVersion::normalizeHolidayCompensatoryCreditDays($withinHolidayCreditPreview * $selectedCrossingHolidayRatio);
+                                                $formattedCrossingHolidayCreditPreview = rtrim(rtrim(number_format($crossingHolidayCreditPreview, 2, '.', ''), '0'), '.');
+                                                $formattedWithinHolidayCreditPreview = rtrim(rtrim(number_format($withinHolidayCreditPreview, 2, '.', ''), '0'), '.');
+                                            @endphp
                                             <div class="mt-2 flex flex-wrap gap-2">
-                                                @foreach ($holidayCompensatoryDynamicPercentageOptions as $percentageLabel)
-                                                    <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-700">{{ $percentageLabel }}</span>
+                                                @foreach ($holidayCompensatoryDynamicPercentageOptions as $percentageValue => $percentageLabel)
+                                                    <button
+                                                        type="button"
+                                                        wire:click="$set('selectedCrossingHolidayPercentage', '{{ $percentageValue }}')"
+                                                        class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold transition {{ $selectedCrossingHolidayPercentage === $percentageValue ? 'border-sky-300 bg-sky-100 text-sky-800' : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700' }}"
+                                                    >
+                                                        {{ $percentageLabel }}
+                                                    </button>
                                                 @endforeach
                                             </div>
+                                            <p class="mt-2 text-xs font-medium text-sky-700">
+                                                Preview: {{ $holidayCompensatoryDynamicPercentageOptions[$selectedCrossingHolidayPercentage] ?? '100%' }} of {{ $formattedWithinHolidayCreditPreview !== '' ? $formattedWithinHolidayCreditPreview : '0' }} day(s) = {{ $formattedCrossingHolidayCreditPreview !== '' ? $formattedCrossingHolidayCreditPreview : '0' }} day(s).
+                                            </p>
                                             <p class="mt-2 text-xs text-gray-500">The system calculates the holiday-covered portion of the worked shift, rounds it to one of these percentages, and applies that percentage to the credit days configured for shifts fully within public holidays.</p>
                                         </div>
                                     </div>

@@ -2,7 +2,7 @@
     <div class="mb-6 flex items-center justify-between">
         <div>
             <h3 class="text-lg font-semibold text-gray-900">Roster Approval Rules</h3>
-            <p class="mt-1 text-sm text-gray-500">Assign roster approvers by client space. Rosters resolve their approval chain automatically from the selected client space, with an optional all-client-spaces fallback rule. Each level needs at least 3 approvers, and any current-level approver can act.</p>
+            <p class="mt-1 text-sm text-gray-500">Assign roster approvers by client space. Roster and leave approvals now share the same approver configuration for each client space, and saving here updates both together. Each enabled level needs at least 3 approvers, and any current-level approver can act.</p>
             @unless($canDesignateRosterApprovers)
                 <p class="mt-2 text-xs font-medium text-amber-700">Only users with `Designate HR Roster Approvers` can assign or change primary, secondary, and tertiary roster approvers.</p>
             @endunless
@@ -24,7 +24,7 @@
     @if(empty($rules))
         <div class="rounded-xl border border-dashed border-gray-300 bg-white p-6 text-center">
             <p class="font-medium text-gray-700">No roster approval rules configured yet.</p>
-            <p class="mt-2 text-sm text-gray-500">Add a client-space rule first, or create one all-client-spaces fallback rule for shared approval chains.</p>
+            <p class="mt-2 text-sm text-gray-500">Add a client-space rule here or in the leave workflow setup. Both stay in sync.</p>
         </div>
     @else
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -38,8 +38,8 @@
                                     <span class="h-2 w-2 rounded-full bg-green-500" title="Active"></span>
                                 @endif
                             </div>
-                            <p class="mt-3 text-sm font-semibold text-gray-900">{{ $rule['organizational_unit']['name'] ?? 'All Client Spaces' }}</p>
-                            <p class="mt-1 text-xs text-gray-500">{{ isset($rule['organizational_unit']['name']) ? 'Applies to all rosters in this client space.' : 'Applies to all rosters across client spaces that do not have a specific rule.' }}</p>
+                            <p class="mt-3 text-sm font-semibold text-gray-900">{{ $rule['organizational_unit']['name'] ?? 'Unknown Client Space' }}</p>
+                            <p class="mt-1 text-xs text-gray-500">Applies to all rosters in this client space and matches the leave approver setup.</p>
                         </div>
 
                         @if($canDesignateRosterApprovers)
@@ -86,12 +86,12 @@
                     <div>
                         <label class="mb-1 block text-sm font-medium text-gray-700">Client Space</label>
                         <select wire:model.live="clientSpaceId" class="w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-brand-blue focus:ring-brand-blue">
-                            <option value="">All Client Spaces</option>
+                            <option value="">Select client space</option>
                             @foreach($clientSpaceOptions as $id => $name)
                                 <option value="{{ $id }}">{{ $name }}</option>
                             @endforeach
                         </select>
-                        <p class="mt-2 text-xs text-gray-500">Rosters now pick approvers automatically from the selected client space. Leave this blank only when you want one fallback rule for client spaces without a dedicated setup.</p>
+                        <p class="mt-2 text-xs text-gray-500">Rosters now use the same approvers configured for leave in the selected client space.</p>
                         @error('clientSpaceId') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
                     </div>
 

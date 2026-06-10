@@ -88,6 +88,12 @@ class RosterApproverDesignationPermissionTest extends TestCase
         $this->assertSame($clientSpace->id, $workflow->organizational_unit_id);
         $this->assertNull($workflow->discipline_title);
         $this->assertSame(9, $workflow->approvers()->count());
+        $this->assertDatabaseHas('hr_approval_workflows', [
+            'organization_id' => $organization->id,
+            'approval_category' => 'leave',
+            'organizational_unit_id' => $clientSpace->id,
+            'is_active' => true,
+        ]);
 
         Livewire::test(RosterApprovalWorkflowManager::class)
             ->call('deleteRule', $workflow->id)
@@ -95,6 +101,12 @@ class RosterApproverDesignationPermissionTest extends TestCase
 
         $this->assertDatabaseHas('hr_approval_workflows', [
             'id' => $workflow->id,
+            'is_active' => false,
+        ]);
+        $this->assertDatabaseHas('hr_approval_workflows', [
+            'organization_id' => $organization->id,
+            'approval_category' => 'leave',
+            'organizational_unit_id' => $clientSpace->id,
             'is_active' => false,
         ]);
     }
@@ -182,9 +194,19 @@ class RosterApproverDesignationPermissionTest extends TestCase
             ->where('approval_category', 'roster')
             ->firstOrFail();
 
+        $leaveWorkflow = ApprovalWorkflow::query()
+            ->where('organization_id', $organization->id)
+            ->where('approval_category', 'leave')
+            ->where('organizational_unit_id', $clientSpace->id)
+            ->firstOrFail();
+
         $this->assertSame(3, $workflow->approvers()->where('approver_level', 'primary')->count());
         $this->assertSame(3, $workflow->approvers()->where('approver_level', 'secondary')->count());
         $this->assertSame(0, $workflow->approvers()->where('approver_level', 'tertiary')->count());
+        $this->assertSame(
+            $workflow->approvers()->orderBy('approver_level')->orderBy('sort_order')->pluck('approver_staff_uuid')->all(),
+            $leaveWorkflow->approvers()->orderBy('approver_level')->orderBy('sort_order')->pluck('approver_staff_uuid')->all()
+        );
     }
 
     private function seedApproverAssignments(Organization $organization): void

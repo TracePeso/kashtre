@@ -42,6 +42,7 @@ class HrPolicyManager extends Component
     public ?float $crossingHolidayCreditDays = 1.0;
     public string $withinHolidayCreditRule = HrPolicyVersion::HOLIDAY_COMPENSATORY_CREDIT_PER_SHIFT;
     public ?float $withinHolidayCreditDays = 1.0;
+    public string $selectedCrossingHolidayPercentage = '1.00';
     public string $versionNotes = '';
 
     public ?string $message = null;
@@ -486,6 +487,7 @@ class HrPolicyManager extends Component
         $this->crossingHolidayCreditDays = HrPolicyVersion::normalizeHolidayCompensatoryCreditDays((float) $withinSetting['credit_days']);
         $this->withinHolidayCreditRule = $withinSetting['rule'];
         $this->withinHolidayCreditDays = HrPolicyVersion::normalizeHolidayCompensatoryCreditDays((float) $withinSetting['credit_days']);
+        $this->selectedCrossingHolidayPercentage = '1.00';
         $this->versionNotes = (string) ($version->notes ?? '');
     }
 
@@ -517,6 +519,7 @@ class HrPolicyManager extends Component
         $this->crossingHolidayCreditDays = 1.0;
         $this->withinHolidayCreditRule = HrPolicyVersion::HOLIDAY_COMPENSATORY_CREDIT_PER_SHIFT;
         $this->withinHolidayCreditDays = 1.0;
+        $this->selectedCrossingHolidayPercentage = '1.00';
         $this->versionNotes = '';
     }
 

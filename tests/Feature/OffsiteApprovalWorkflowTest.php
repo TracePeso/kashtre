@@ -57,6 +57,63 @@ class OffsiteApprovalWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_leave_workflow_save_syncs_matching_roster_workflow_with_same_levels_and_approvers(): void
+    {
+        $organization = Organization::create([
+            'name' => 'Shared Workflow Org',
+            'external_business_uuid' => 'shared-workflow-org',
+            'weekend_days' => [0, 6],
+        ]);
+
+        $user = User::factory()->create([
+            'permissions' => ['Add HR Setup', 'Edit HR Setup'],
+        ]);
+
+        $clientSpace = HrOrganizationalUnit::create([
+            'organization_id' => $organization->id,
+            'name' => 'Medical Ward',
+            'type' => 'Client Space',
+            'unit_kind' => HrOrganizationalUnit::KIND_CLIENT_SPACE,
+        ]);
+
+        $this->seedApproverAssignments($organization);
+
+        $this->actingAs($user);
+        $this->withSession(['current_organization_id' => $organization->id]);
+
+        Livewire::test(ApprovalWorkflowManager::class)
+            ->set('category', 'leave')
+            ->set('clientSpaceId', $clientSpace->id)
+            ->set('approvalLevelCount', 2)
+            ->set('approverUuids', [
+                'primary' => ['approver-1', 'approver-2', 'approver-3'],
+                'secondary' => ['approver-4', 'approver-5', 'approver-6'],
+                'tertiary' => ['approver-7', 'approver-8', 'approver-9'],
+            ])
+            ->call('saveWorkflow')
+            ->assertHasNoErrors();
+
+        $leaveWorkflow = ApprovalWorkflow::query()
+            ->where('organization_id', $organization->id)
+            ->where('approval_category', 'leave')
+            ->where('organizational_unit_id', $clientSpace->id)
+            ->firstOrFail();
+
+        $rosterWorkflow = ApprovalWorkflow::query()
+            ->where('organization_id', $organization->id)
+            ->where('approval_category', 'roster')
+            ->where('organizational_unit_id', $clientSpace->id)
+            ->firstOrFail();
+
+        $this->assertSame(
+            $leaveWorkflow->approvers()->orderBy('approver_level')->orderBy('sort_order')->pluck('approver_staff_uuid')->all(),
+            $rosterWorkflow->approvers()->orderBy('approver_level')->orderBy('sort_order')->pluck('approver_staff_uuid')->all()
+        );
+        $this->assertSame(3, $rosterWorkflow->approvers()->where('approver_level', 'primary')->count());
+        $this->assertSame(3, $rosterWorkflow->approvers()->where('approver_level', 'secondary')->count());
+        $this->assertSame(0, $rosterWorkflow->approvers()->where('approver_level', 'tertiary')->count());
+    }
+
     public function test_offsite_submission_uses_selected_client_space_leader_as_primary_approver(): void
     {
         $organization = Organization::create([

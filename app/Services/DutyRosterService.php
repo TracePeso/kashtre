@@ -112,28 +112,15 @@ class DutyRosterService
 
     public function previewRosterApprovalWorkflow(HrOrganizationalUnit $clientSpace): ?ApprovalWorkflow
     {
-        $candidates = ApprovalWorkflow::query()
+        return ApprovalWorkflow::query()
             ->where('organization_id', $clientSpace->organization_id)
             ->where('approval_category', 'roster')
             ->where('is_active', true)
-            ->where(function ($query) use ($clientSpace): void {
-                $query
-                    ->where('organizational_unit_id', $clientSpace->id)
-                    ->orWhereNull('organizational_unit_id');
-            })
+            ->where('organizational_unit_id', $clientSpace->id)
+            ->whereNull('discipline_title')
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
             ->with('approvers')
-            ->get();
-
-        return $candidates
-            ->map(fn (ApprovalWorkflow $workflow): array => [
-                'workflow' => $workflow,
-                'score' => $this->rosterApprovalWorkflowScore($workflow, $clientSpace->id),
-            ])
-            ->filter(fn (array $candidate): bool => $candidate['score'] > 0)
-            ->sortByDesc('score')
-            ->pluck('workflow')
             ->first();
     }
 
@@ -770,7 +757,7 @@ class DutyRosterService
 
         if (! $workflow) {
             throw ValidationException::withMessages([
-                'roster' => 'Configure a roster approval rule for this client space before submitting this roster.',
+                'roster' => 'Configure leave approvers for this client space first. Rosters use the same approver configuration.',
             ]);
         }
 
@@ -1390,21 +1377,6 @@ class DutyRosterService
         }
 
         return $user->name;
-    }
-
-    private function rosterApprovalWorkflowScore(ApprovalWorkflow $workflow, int $clientSpaceId): int
-    {
-        $workflowClientSpaceId = $workflow->organizational_unit_id;
-
-        if ($workflowClientSpaceId !== null && (int) $workflowClientSpaceId !== $clientSpaceId) {
-            return 0;
-        }
-
-        $score = $workflowClientSpaceId === null ? 20 : 60;
-
-        return blank($workflow->discipline_title)
-            ? $score + 5
-            : $score;
     }
 
     private function rosterEligibleAssignments(HrOrganizationalUnit $clientSpace): Collection
