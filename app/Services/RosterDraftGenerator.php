@@ -160,6 +160,20 @@ class RosterDraftGenerator
             }
         }
 
+        $generatedEntries = $this->ensureMinimumCoverageAssignments(
+            $roster,
+            $eligibleAssignments,
+            $profilesByStaffId,
+            $shiftTypes,
+            $generatedEntries,
+            $payloads,
+            $state,
+            $dates,
+            $availabilityMatrix,
+            $weekendDays,
+            $teamAssignments
+        );
+
         if ($teamNames !== []) {
             return $generatedEntries;
         }
@@ -236,6 +250,120 @@ class RosterDraftGenerator
         }
 
         return $sanitized;
+    }
+
+    /**
+     * @param Collection<int, StaffAssignment> $eligibleAssignments
+     * @param Collection<string, HrStaffRosteringProfile|null> $profilesByStaffId
+     * @param Collection<int, ShiftType> $shiftTypes
+     * @param array<int|string, array<string, string>> $generatedEntries
+     * @param array<int, array<string, mixed>> $payloads
+     * @param array{
+     *     assignment_counts: array<string, int>,
+     *     total_minutes: array<string, int>,
+     *     week_minutes: array<string, array<string, int>>,
+     *     staff_shift_counts: array<string, array<string, int>>,
+     *     global_shift_counts: array<string, int>,
+     *     date_counts: array<string, int>,
+     *     date_shift_counts: array<string, array<string, int>>,
+     *     last_assigned_on: array<string, CarbonImmutable>,
+     *     day_shift_counts: array<string, int>,
+     *     night_shift_counts: array<string, int>,
+     *     weekend_shift_counts: array<string, int>,
+     *     last_shift_was_night: array<string, bool>,
+     *     consecutive_night_streaks: array<string, int>
+     * } $state
+     * @param array<int, CarbonImmutable> $dates
+     * @param array<string, array<string, string>> $availabilityMatrix
+     * @param array<int, int> $weekendDays
+     * @param array<string, string> $teamAssignments
+     * @return array<int|string, array<string, string>>
+     */
+    private function ensureMinimumCoverageAssignments(
+        HrDutyRoster $roster,
+        Collection $eligibleAssignments,
+        Collection $profilesByStaffId,
+        Collection $shiftTypes,
+        array $generatedEntries,
+        array $payloads,
+        array $state,
+        array $dates,
+        array $availabilityMatrix,
+        array $weekendDays,
+        array $teamAssignments
+    ): array {
+        if ($this->generatedSelectionCount($generatedEntries) > 0 || $shiftTypes->isEmpty() || $dates === []) {
+            return $generatedEntries;
+        }
+
+        foreach ($eligibleAssignments as $assignment) {
+            $staffId = (string) $assignment->id;
+            $profile = $profilesByStaffId->get($staffId);
+
+            foreach ($dates as $date) {
+                $dateKey = $date->toDateString();
+
+                if (filled($generatedEntries[$staffId][$dateKey] ?? null)) {
+                    continue;
+                }
+
+                if ($this->availabilityStatus($availabilityMatrix, $staffId, $date) === HrStaffUnavailability::STATUS_APPROVED) {
+                    continue;
+                }
+
+                foreach ($this->preferredFallbackShiftTypes($shiftTypes, $profile) as $shiftType) {
+                    if (! $this->canAutoAssignShift($profile, $shiftType, $date, $staffId, $state, $availabilityMatrix)) {
+                        continue;
+                    }
+
+                    $candidatePayload = $this->payloadForSelection($roster, $assignment, $shiftType, $date);
+
+                    try {
+                        $this->rosterPolicyValidator->validate($roster, [...$payloads, $candidatePayload]);
+                    } catch (ValidationException) {
+                        continue;
+                    }
+
+                    $generatedEntries[$staffId][$dateKey] = (string) $shiftType->id;
+                    $payloads[] = $candidatePayload;
+                    $weekKey = $date->startOfWeek(CarbonInterface::MONDAY)->toDateString();
+                    $state = $this->applyAssignmentState($state, $staffId, $weekKey, $date, $shiftType, $weekendDays, $teamAssignments);
+                    break;
+                }
+            }
+        }
+
+        if ($this->generatedSelectionCount($generatedEntries) > 0) {
+            return $generatedEntries;
+        }
+
+        foreach ($eligibleAssignments as $assignment) {
+            $staffId = (string) $assignment->id;
+            $profile = $profilesByStaffId->get($staffId);
+
+            foreach ($dates as $date) {
+                $dateKey = $date->toDateString();
+
+                if (filled($generatedEntries[$staffId][$dateKey] ?? null)) {
+                    continue;
+                }
+
+                if ($this->availabilityStatus($availabilityMatrix, $staffId, $date) === HrStaffUnavailability::STATUS_APPROVED) {
+                    continue;
+                }
+
+                foreach ($this->preferredFallbackShiftTypes($shiftTypes, $profile) as $shiftType) {
+                    if (! $this->canAutoAssignShift($profile, $shiftType, $date, $staffId, $state, $availabilityMatrix)) {
+                        continue;
+                    }
+
+                    $generatedEntries[$staffId][$dateKey] = (string) $shiftType->id;
+                    break 2;
+                }
+            }
+        }
+
+        return $generatedEntries;
     }
 
     /**
@@ -1880,6 +2008,40 @@ class RosterDraftGenerator
         }
 
         return $lastAssignedOn->diffInDays($date) * -1;
+    }
+
+    /**
+     * @param Collection<int, ShiftType> $shiftTypes
+     * @return Collection<int, ShiftType>
+     */
+    private function preferredFallbackShiftTypes(Collection $shiftTypes, ?HrStaffRosteringProfile $profile): Collection
+    {
+        return $shiftTypes
+            ->sort(function (ShiftType $left, ShiftType $right) use ($profile): int {
+                return [
+                    $this->shiftPreferenceRank($profile, $left),
+                    $left->isRegularWorkingHoursDefault() ? 0 : 1,
+                    $left->crossesMidnight() ? 1 : 0,
+                    $left->start_time,
+                    $left->id,
+                ] <=> [
+                    $this->shiftPreferenceRank($profile, $right),
+                    $right->isRegularWorkingHoursDefault() ? 0 : 1,
+                    $right->crossesMidnight() ? 1 : 0,
+                    $right->start_time,
+                    $right->id,
+                ];
+            })
+            ->values();
+    }
+
+    /**
+     * @param array<int|string, array<string, string>> $generatedEntries
+     */
+    private function generatedSelectionCount(array $generatedEntries): int
+    {
+        return collect($generatedEntries)
+            ->sum(fn ($dateSelections): int => is_array($dateSelections) ? count($dateSelections) : 0);
     }
 
     /**

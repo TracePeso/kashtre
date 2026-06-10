@@ -299,6 +299,7 @@ class DutyRosterService
     {
         $roster = $this->reconcileAiGenerationState($roster);
         $this->assertCanManageRoster($user, $roster->organizationalUnit, $roster->disciplineTitles());
+        $this->ensureRosterGenerationDefaults($roster);
 
         $isCurrentAutoJob = filled($payload['ai_generation_token'] ?? null)
             && (string) ($payload['ai_generation_token'] ?? '') === (string) $roster->ai_generation_token
@@ -410,6 +411,7 @@ class DutyRosterService
     public function generateAiDraft(HrDutyRoster $roster, User $user, array $payload): HrDutyRoster
     {
         $this->assertCanManageRoster($user, $roster->organizationalUnit, $roster->disciplineTitles());
+        $this->ensureRosterGenerationDefaults($roster);
 
         $isCurrentAiJob = filled($payload['ai_generation_token'] ?? null)
             && (string) $payload['ai_generation_token'] === (string) $roster->ai_generation_token
@@ -476,10 +478,13 @@ class DutyRosterService
         );
 
         if ($generationToken === null) {
+            $generatedAssignmentCount = $this->generatedSelectionCount($generatedEntries);
             $persistedRoster->update([
                 'ai_generation_status' => HrDutyRoster::AI_GENERATION_COMPLETED,
                 'ai_generation_source' => HrDutyRoster::AI_GENERATION_SOURCE_GEMINI,
-                'ai_generation_message' => 'Gemini roster generation completed and the roster draft was updated.',
+                'ai_generation_message' => $generatedAssignmentCount > 0
+                    ? 'Gemini roster generation completed and the roster draft was updated.'
+                    : 'Gemini finished, but no shift assignments were returned for this draft.',
                 'ai_generation_attempts' => max(1, (int) ($persistedRoster->ai_generation_attempts ?? 1)),
                 'ai_generation_started_at' => $persistedRoster->ai_generation_started_at ?: now(),
                 'ai_generation_heartbeat_at' => now(),
@@ -524,6 +529,7 @@ class DutyRosterService
     {
         $roster = $this->reconcileAiGenerationState($roster);
         $this->assertCanManageRoster($user, $roster->organizationalUnit, $roster->disciplineTitles());
+        $this->ensureRosterGenerationDefaults($roster);
 
         if (! $roster->isEditable() && $roster->approval_status !== HrDutyRoster::APPROVAL_REJECTED) {
             throw ValidationException::withMessages([
@@ -1207,6 +1213,27 @@ class DutyRosterService
         }
 
         return false;
+    }
+
+    /**
+     * @param array<int|string, array<string, string>> $generatedEntries
+     */
+    private function generatedSelectionCount(array $generatedEntries): int
+    {
+        return collect($generatedEntries)
+            ->sum(fn ($dateSelections): int => is_array($dateSelections) ? count($dateSelections) : 0);
+    }
+
+    private function ensureRosterGenerationDefaults(HrDutyRoster $roster): void
+    {
+        $roster->loadMissing('organization');
+
+        if (! $roster->organization) {
+            return;
+        }
+
+        app(HrDefaultPolicyService::class)->seedMissingDefaults($roster->organization);
+        app(HrDefaultShiftTypeService::class)->seedMissingDefaults($roster->organization);
     }
 
     private function ensureRosterCanBeSubmitted(HrDutyRoster $roster): void

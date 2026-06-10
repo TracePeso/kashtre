@@ -357,12 +357,25 @@ class DutyRosterManager extends Component
                 'entries' => $this->filteredEntrySelections(),
             ]);
         } catch (ValidationException $exception) {
+            $this->dispatch('roster-ai-request-finished',
+                status: 'failed',
+                generated: 0,
+                message: collect($exception->errors())->flatten()->map(fn ($message): string => trim((string) $message))->filter()->implode(' ')
+            );
             $this->forwardValidationErrors($exception);
             return;
         }
 
         $this->hydrateSelectedRoster($roster);
-        $this->message = 'Gemini roster draft generated.';
+        $generatedAssignments = $roster->entries->count();
+        $this->message = $generatedAssignments > 0
+            ? 'Gemini roster draft generated.'
+            : 'Gemini finished, but no shift assignments were added to the draft.';
+        $this->dispatch('roster-ai-request-finished',
+            status: 'completed',
+            generated: $generatedAssignments,
+            message: $this->message
+        );
     }
 
     public function refreshAiGeneration(): void

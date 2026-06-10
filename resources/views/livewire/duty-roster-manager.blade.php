@@ -96,7 +96,79 @@
                         ? $editingUsesTeams && $activeTeamNames !== []
                         : $selectedRoster->usesTeams();
                 @endphp
-                <div class="rounded-lg border border-gray-200 bg-white">
+                <div
+                    class="rounded-lg border border-gray-200 bg-white"
+                    x-data="{
+                        aiDraftVisible: false,
+                        aiDraftTitle: '',
+                        aiDraftStep: '',
+                        aiDraftElapsed: 0,
+                        aiDraftProgress: 0,
+                        aiDraftStartedAt: null,
+                        aiDraftTimer: null,
+                        startAiDraft() {
+                            this.stopAiDraftTimer();
+                            this.aiDraftVisible = true;
+                            this.aiDraftTitle = 'Generating draft with Gemini';
+                            this.aiDraftStep = 'Preparing roster data and shift constraints...';
+                            this.aiDraftElapsed = 0;
+                            this.aiDraftProgress = 8;
+                            this.aiDraftStartedAt = Date.now();
+                            this.aiDraftTimer = setInterval(() => {
+                                const elapsed = Math.max(0, Math.floor((Date.now() - this.aiDraftStartedAt) / 1000));
+                                this.aiDraftElapsed = elapsed;
+
+                                if (elapsed >= 12) {
+                                    this.aiDraftStep = 'Applying returned shift assignments to the draft...';
+                                    this.aiDraftProgress = 88;
+                                } else if (elapsed >= 6) {
+                                    this.aiDraftStep = 'Waiting for Gemini to return shift assignments...';
+                                    this.aiDraftProgress = 64;
+                                } else if (elapsed >= 2) {
+                                    this.aiDraftStep = 'Sending roster rules and staff context to Gemini...';
+                                    this.aiDraftProgress = 32;
+                                }
+                            }, 250);
+                        },
+                        stopAiDraftTimer() {
+                            if (this.aiDraftTimer) {
+                                clearInterval(this.aiDraftTimer);
+                                this.aiDraftTimer = null;
+                            }
+                        },
+                        finishAiDraft(detail) {
+                            this.stopAiDraftTimer();
+                            if (this.aiDraftStartedAt !== null) {
+                                this.aiDraftElapsed = Math.max(this.aiDraftElapsed, Math.floor((Date.now() - this.aiDraftStartedAt) / 1000));
+                            }
+
+                            const generated = Number(detail?.generated ?? 0);
+                            const status = detail?.status ?? 'completed';
+                            const message = detail?.message ?? '';
+
+                            this.aiDraftVisible = true;
+                            this.aiDraftProgress = 100;
+
+                            if (status === 'failed') {
+                                this.aiDraftTitle = 'Gemini generation failed';
+                                this.aiDraftStep = message !== '' ? message : 'The roster draft could not be generated.';
+                            } else if (generated > 0) {
+                                this.aiDraftTitle = 'Gemini draft ready';
+                                this.aiDraftStep = generated === 1
+                                    ? '1 shift assignment was applied to the draft.'
+                                    : generated + ' shift assignments were applied to the draft.';
+                            } else {
+                                this.aiDraftTitle = 'Gemini returned no assignments';
+                                this.aiDraftStep = message !== '' ? message : 'Gemini finished, but the draft is still empty.';
+                            }
+
+                            setTimeout(() => {
+                                this.aiDraftVisible = false;
+                            }, status === 'failed' || generated === 0 ? 9000 : 5000);
+                        }
+                    }"
+                    x-on:roster-ai-request-finished.window="finishAiDraft($event.detail)"
+                >
                     <div class="border-b border-gray-200 px-6 py-5">
                         <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                             <div class="min-w-0">
@@ -126,7 +198,7 @@
                                         {{ $stopGenerationLabel }}
                                     </button>
                                 @elseif($selectedRoster->isEditable())
-                                    <button type="button" wire:click="generateRosterWithAi" wire:loading.attr="disabled" wire:target="generateRosterWithAi" class="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+                                    <button type="button" x-on:click="startAiDraft()" wire:click="generateRosterWithAi" wire:loading.attr="disabled" wire:target="generateRosterWithAi" class="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
                                         <span wire:loading.remove wire:target="generateRosterWithAi">Auto-Generate</span>
                                         <span wire:loading wire:target="generateRosterWithAi">Generating...</span>
                                     </button>
@@ -169,6 +241,22 @@
                                     @endif
                                 </div>
                             @endif
+
+                            <div x-show="aiDraftVisible" class="mt-3 w-full rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-900">
+                                <div class="flex flex-wrap items-start justify-between gap-2">
+                                    <div>
+                                        <p class="font-semibold" x-text="aiDraftTitle"></p>
+                                        <p class="mt-1 text-xs text-sky-800" x-text="aiDraftStep"></p>
+                                    </div>
+                                    <span class="rounded-full bg-white px-2 py-1 text-xs font-semibold text-sky-700" x-text="aiDraftElapsed + 's'"></span>
+                                </div>
+                                <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-sky-100">
+                                    <div class="h-full rounded-full bg-sky-500 transition-all duration-500" :style="'width: ' + aiDraftProgress + '%'"></div>
+                                </div>
+                                <p class="mt-2 text-xs text-sky-800">
+                                    Preparing roster data, asking Gemini for assignments, then applying the returned shifts to this draft.
+                                </p>
+                            </div>
 
                             @if($selectedRoster->isEditable())
                                 <div class="mt-3 w-full space-y-2">
