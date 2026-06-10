@@ -300,8 +300,6 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/stock-counts/{stockCount}', [InventoryStockCountController::class, 'show'])->name('stock-counts.show');
         Route::post('/stock-counts/{stockCount}/finalize', [InventoryStockCountController::class, 'finalize'])->name('stock-counts.finalize');
         Route::get('/consumption', [InventoryDailyConsumptionController::class, 'index'])->name('consumption.index');
-        Route::get('/consumption/create', [InventoryDailyConsumptionController::class, 'create'])->name('consumption.create');
-        Route::post('/consumption', [InventoryDailyConsumptionController::class, 'store'])->name('consumption.store');
         Route::get('/orders', [InventoryOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/create', [InventoryOrderController::class, 'create'])->name('orders.create');
         Route::post('/orders', [InventoryOrderController::class, 'store'])->name('orders.store');

@@ -31,7 +31,7 @@
                         <option value="{{ $days }}" @selected(old('moving_average_days', 30) == $days)>{{ $days }} days</option>
                     @endforeach
                 </select>
-                <p class="mt-1 text-xs text-gray-500">Daily average consumption is calculated over this window from the consumption log.</p>
+                <p class="mt-1 text-xs text-gray-500">Daily average consumption is calculated over this window from automatically recorded sale consumption.</p>
             </div>
 
             <div>

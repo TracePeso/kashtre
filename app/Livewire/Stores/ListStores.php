@@ -9,6 +9,7 @@ use Filament\Forms;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Notifications\Notification;
 use Filament\Tables;
 use Filament\Tables\Actions\CreateAction;
@@ -154,7 +155,7 @@ class ListStores extends Component implements HasForms, HasTable
                     ->visible(fn () => in_array('Add Stores', Auth::user()->permissions ?? []))
                     ->label('Create Child Store')
                     ->modalHeading('Add Child Store')
-                    ->modalDescription('Links to a parent store and inherits its business and branch.')
+                    ->modalDescription('Select a business, then choose a parent store under that business. The child inherits the parent’s branch.')
                     ->form($this->childStoreForm())
                     ->createAnother(false)
                     ->after(fn () => $this->notifyCreated()),
@@ -196,12 +197,26 @@ class ListStores extends Component implements HasForms, HasTable
     protected function childStoreForm(): array
     {
         return [
+            Forms\Components\Select::make('business_id')
+                ->label('Business')
+                ->options(Business::where('id', '!=', 1)->pluck('name', 'id'))
+                ->required()
+                ->default(fn () => Auth::user()->business_id !== 1 ? Auth::user()->business_id : null)
+                ->disabled(fn () => Auth::user()->business_id !== 1)
+                ->dehydrated(false)
+                ->live()
+                ->afterStateUpdated(fn (Set $set) => $set('parent_id', null)),
             Forms\Components\Select::make('parent_id')
                 ->label('Parent store')
-                ->options(fn () => $this->parentStoreOptions())
+                ->options(fn (Get $get) => $this->parentStoreOptions(
+                    businessId: $this->resolvedBusinessId($get('business_id'))
+                ))
                 ->required()
                 ->searchable()
-                ->helperText('Child stores share the parent’s business and branch.'),
+                ->disabled(fn (Get $get) => ! $this->resolvedBusinessId($get('business_id')))
+                ->helperText(fn (Get $get) => $this->resolvedBusinessId($get('business_id'))
+                    ? 'Only top-level parent stores for the selected business are listed.'
+                    : 'Select a business first.'),
             Forms\Components\TextInput::make('name')
                 ->label('Child store name')
                 ->required()
@@ -220,9 +235,20 @@ class ListStores extends Component implements HasForms, HasTable
     {
         if ($record->isChild()) {
             return [
+                Forms\Components\Select::make('business_id')
+                    ->label('Business')
+                    ->options(Business::where('id', '!=', 1)->pluck('name', 'id'))
+                    ->default($record->business_id)
+                    ->disabled(fn () => Auth::user()->business_id !== 1)
+                    ->dehydrated(false)
+                    ->live()
+                    ->afterStateUpdated(fn (Set $set) => $set('parent_id', null)),
                 Forms\Components\Select::make('parent_id')
                     ->label('Parent store')
-                    ->options(fn () => $this->parentStoreOptions($record->id))
+                    ->options(fn (Get $get) => $this->parentStoreOptions(
+                        excludeId: $record->id,
+                        businessId: $this->resolvedBusinessId($get('business_id') ?: $record->business_id)
+                    ))
                     ->required()
                     ->searchable()
                     ->disabled($record->children()->exists()),
@@ -264,22 +290,33 @@ class ListStores extends Component implements HasForms, HasTable
     /**
      * @return array<int|string, string>
      */
-    protected function parentStoreOptions(?int $excludeId = null): array
+    protected function parentStoreOptions(?int $excludeId = null, ?int $businessId = null): array
     {
+        $businessId = $this->resolvedBusinessId($businessId);
+
+        if (! $businessId) {
+            return [];
+        }
+
         $query = Store::query()
             ->roots()
-            ->where('business_id', '!=', 1)
+            ->where('business_id', $businessId)
             ->orderBy('name');
-
-        if (Auth::user()->business_id !== 1) {
-            $query->where('business_id', Auth::user()->business_id);
-        }
 
         if ($excludeId) {
             $query->where('id', '!=', $excludeId);
         }
 
         return $query->pluck('name', 'id')->all();
+    }
+
+    protected function resolvedBusinessId(?int $businessId): ?int
+    {
+        if (Auth::user()->business_id !== 1) {
+            return (int) Auth::user()->business_id;
+        }
+
+        return $businessId ? (int) $businessId : null;
     }
 
     /**

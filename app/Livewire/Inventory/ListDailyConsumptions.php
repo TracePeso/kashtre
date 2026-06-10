@@ -49,8 +49,19 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
 
                 TextColumn::make('source')
+                    ->label('Source')
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => ucfirst($state)),
+                    ->color(fn (string $state): string => match ($state) {
+                        InventoryDailyConsumption::SOURCE_SALE => 'success',
+                        InventoryDailyConsumption::SOURCE_ISSUE => 'info',
+                        default => 'gray',
+                    })
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        InventoryDailyConsumption::SOURCE_SALE => 'POS / Sale',
+                        InventoryDailyConsumption::SOURCE_ISSUE => 'Issue',
+                        InventoryDailyConsumption::SOURCE_MANUAL => 'Manual',
+                        default => ucfirst($state),
+                    }),
 
                 TextColumn::make('recordedBy.name')
                     ->label('Recorded by')
@@ -63,7 +74,9 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
             ])
             ->defaultSort('consumption_date', 'desc')
             ->striped()
-            ->paginated([10, 25, 50, 100]);
+            ->paginated([10, 25, 50, 100])
+            ->emptyStateHeading('No consumption recorded yet')
+            ->emptyStateDescription('Entries appear here automatically when goods are sold or issued. Ensure staff have a default store set so consumption is attributed to the correct location.');
     }
 
     public function render(): View

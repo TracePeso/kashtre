@@ -18,7 +18,7 @@
             <strong>Physical usable stock</strong> = physical (or system if not counted) minus damaged and expired.
             <strong>Verifiable shrinkage</strong> = damaged + expired (on shelf but unusable).
             <strong>Unverified loss</strong> = system − physical (missing from shelf).
-            Moving averages come from the consumption log.
+            Moving averages come from automatically recorded sale consumption.
         </p>
     </div>
 </div>
