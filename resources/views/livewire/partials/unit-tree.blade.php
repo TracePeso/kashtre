@@ -51,32 +51,38 @@
 
         <div class="flex shrink-0 flex-wrap items-center gap-2 text-[13px]">
             @if($canEditRouting)
-                <button wire:click="openEditModal({{ $unit->id }})" class="text-sm font-medium text-gray-600 hover:text-gray-900">
-                    Edit
+                <button type="button" x-on:click="openInstantModal('edit', {{ $unit->id }})" wire:click="openEditModal({{ $unit->id }})" wire:loading.attr="disabled" wire:target="openEditModal({{ $unit->id }})" class="text-sm font-medium text-gray-600 hover:text-gray-900 disabled:cursor-wait disabled:opacity-60">
+                    <span wire:loading.remove wire:target="openEditModal({{ $unit->id }})">Edit</span>
+                    <span wire:loading wire:target="openEditModal({{ $unit->id }})">Opening...</span>
                 </button>
                 @if($leafCandidate)
-                    <button wire:click="openLeafClientSpacesModal({{ $unit->id }})" class="text-sm font-medium text-amber-600 hover:text-amber-800">
-                        Last Node?
+                    <button type="button" x-on:click="openInstantModal('leaf-client-spaces', {{ $unit->id }})" wire:click="openLeafClientSpacesModal({{ $unit->id }})" wire:loading.attr="disabled" wire:target="openLeafClientSpacesModal({{ $unit->id }})" class="text-sm font-medium text-amber-600 hover:text-amber-800 disabled:cursor-wait disabled:opacity-60">
+                        <span wire:loading.remove wire:target="openLeafClientSpacesModal({{ $unit->id }})">Last Node?</span>
+                        <span wire:loading wire:target="openLeafClientSpacesModal({{ $unit->id }})">Opening...</span>
                     </button>
                 @endif
                 @if($unit->isLowestRoutingNode())
-                    <button wire:click="openLeafClientSpacesModal({{ $unit->id }})" class="text-sm font-medium text-emerald-600 hover:text-emerald-800">
-                        Attach Client Spaces
+                    <button type="button" x-on:click="openInstantModal('leaf-client-spaces', {{ $unit->id }})" wire:click="openLeafClientSpacesModal({{ $unit->id }})" wire:loading.attr="disabled" wire:target="openLeafClientSpacesModal({{ $unit->id }})" class="text-sm font-medium text-emerald-600 hover:text-emerald-800 disabled:cursor-wait disabled:opacity-60">
+                        <span wire:loading.remove wire:target="openLeafClientSpacesModal({{ $unit->id }})">Attach Client Spaces</span>
+                        <span wire:loading wire:target="openLeafClientSpacesModal({{ $unit->id }})">Opening...</span>
                     </button>
                 @endif
                 @if(($canManageLeafClientSpaceStaff ?? false) && $unit->isLowestRoutingNode())
-                    <button wire:click="openLeafStaffModal({{ $unit->id }})" class="text-sm font-medium text-sky-600 hover:text-sky-800">
-                        Assign Staff to Spaces
+                    <button type="button" x-on:click="openInstantModal('leaf-staff', {{ $unit->id }})" wire:click="openLeafStaffModal({{ $unit->id }})" wire:loading.attr="disabled" wire:target="openLeafStaffModal({{ $unit->id }})" class="text-sm font-medium text-sky-600 hover:text-sky-800 disabled:cursor-wait disabled:opacity-60">
+                        <span wire:loading.remove wire:target="openLeafStaffModal({{ $unit->id }})">Assign Staff to Spaces</span>
+                        <span wire:loading wire:target="openLeafStaffModal({{ $unit->id }})">Opening...</span>
                     </button>
                 @endif
                 @if(($canManageRoutingNodeStaffTools ?? false))
-                    <button wire:click="openRoutingNodeStaffModal({{ $unit->id }})" class="text-sm font-medium text-indigo-600 hover:text-indigo-800">
-                        Manage Staff
+                    <button type="button" x-on:click="openInstantModal('routing-node-staff', {{ $unit->id }})" wire:click="openRoutingNodeStaffModal({{ $unit->id }})" wire:loading.attr="disabled" wire:target="openRoutingNodeStaffModal({{ $unit->id }})" class="text-sm font-medium text-indigo-600 hover:text-indigo-800 disabled:cursor-wait disabled:opacity-60">
+                        <span wire:loading.remove wire:target="openRoutingNodeStaffModal({{ $unit->id }})">Manage Staff</span>
+                        <span wire:loading wire:target="openRoutingNodeStaffModal({{ $unit->id }})">Opening...</span>
                     </button>
                 @endif
                 @if(! $unit->isLowestRoutingNode())
-                    <button wire:click="openModal({{ $unit->id }})" class="text-sm font-medium text-blue-600 hover:text-blue-800">
-                        Add Child
+                    <button type="button" wire:click="openModal({{ $unit->id }})" wire:loading.attr="disabled" wire:target="openModal({{ $unit->id }})" class="text-sm font-medium text-blue-600 hover:text-blue-800 disabled:cursor-wait disabled:opacity-60">
+                        <span wire:loading.remove wire:target="openModal({{ $unit->id }})">Add Child</span>
+                        <span wire:loading wire:target="openModal({{ $unit->id }})">Opening...</span>
                     </button>
                 @endif
             @endif

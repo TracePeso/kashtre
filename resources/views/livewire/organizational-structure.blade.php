@@ -1,4 +1,30 @@
-<div>
+<div
+    x-data="{
+        activeModal: null,
+        activeUnitId: null,
+        openInstantModal(modal, unitId = null) {
+            this.activeModal = modal;
+            this.activeUnitId = unitId;
+        },
+        closeInstantModal() {
+            this.activeModal = null;
+            this.activeUnitId = null;
+        },
+        modalReady(modal, loadedUnitId = null) {
+            if (this.activeModal !== modal) {
+                return false;
+            }
+
+            if (this.activeUnitId === null) {
+                return true;
+            }
+
+            return Number(loadedUnitId) === Number(this.activeUnitId);
+        }
+    }"
+    x-on:routing-modal-open.window="openInstantModal($event.detail.modal, $event.detail.unitId ?? null)"
+    x-on:routing-modal-close.window="closeInstantModal()"
+>
     @php($user = Auth::user())
 
     <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -202,14 +228,17 @@
     </div>
     @endif
 
-    @if($showEditModal)
-    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-start justify-center px-4 py-6 sm:items-center">
+    <div x-cloak x-show="activeModal === 'edit' && (@js($showEditModal) || !modalReady('edit', @js($editingUnitId)))" class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-start justify-center px-4 py-6 sm:items-center">
         <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-y-auto max-h-[calc(100vh-3rem)] shadow-xl sm:max-w-lg sm:w-full sm:p-6">
             <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">
                 Configure Routing Node
             </h3>
 
-            <form wire:submit.prevent="saveUnitConfiguration">
+            <div x-show="!modalReady('edit', @js($editingUnitId))" class="py-8 text-sm text-gray-500">
+                Loading routing node configuration...
+            </div>
+
+            <form x-show="modalReady('edit', @js($editingUnitId))" wire:submit.prevent="saveUnitConfiguration">
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700">Routing level</label>
                     <select wire:model="editUnitTierLevelId" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
@@ -241,21 +270,23 @@
                     <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent px-4 py-2 bg-gray-900 text-base font-medium text-white hover:bg-gray-800 sm:ml-3 sm:w-auto sm:text-sm">
                         Save Configuration
                     </button>
-                    <button type="button" wire:click="$set('showEditModal', false)" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
+                    <button type="button" x-on:click="closeInstantModal()" wire:click="$set('showEditModal', false)" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
                         Cancel
                     </button>
                 </div>
             </form>
         </div>
     </div>
-    @endif
 
-    @if($showRoutingNodeStaffModal)
-    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-start justify-center px-4 py-6 sm:items-center">
+    <div x-cloak x-show="activeModal === 'routing-node-staff' && (@js($showRoutingNodeStaffModal) || !modalReady('routing-node-staff', @js($selectedRoutingNodeStaffUnit?->id)))" class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-start justify-center px-4 py-6 sm:items-center">
         <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-y-auto max-h-[calc(100vh-3rem)] shadow-xl sm:max-w-3xl sm:w-full sm:p-6">
             <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">
                 Manage Routing Node Staff
             </h3>
+            <div x-show="!modalReady('routing-node-staff', @js($selectedRoutingNodeStaffUnit?->id))" class="py-6 text-sm text-gray-500">
+                Loading routing node staff tools...
+            </div>
+            <div x-show="modalReady('routing-node-staff', @js($selectedRoutingNodeStaffUnit?->id))">
             <p class="mb-4 text-sm text-gray-600">
                 {{ $selectedRoutingNodeStaffUnit ? (! $selectedRoutingNodeStaffUnit->parent_id && $selectedRoutingNodeStaffUnit->tierLevel ? $selectedRoutingNodeStaffUnit->tierLevel->name : $selectedRoutingNodeStaffUnit->name) : 'This routing node' }}
                 @if($routingNodeStaffDirectChildren->isNotEmpty())
@@ -347,20 +378,23 @@
             </div>
 
             <div class="mt-5 sm:flex sm:flex-row-reverse">
-                <button type="button" wire:click="closeRoutingNodeStaffModal" class="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:w-auto sm:text-sm">
+                <button type="button" x-on:click="closeInstantModal()" wire:click="closeRoutingNodeStaffModal" class="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:w-auto sm:text-sm">
                     Close
                 </button>
             </div>
+            </div>
         </div>
     </div>
-    @endif
 
-    @if($showLeafClientSpacesModal)
-    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-start justify-center px-4 py-6 sm:items-center">
+    <div x-cloak x-show="activeModal === 'leaf-client-spaces' && (@js($showLeafClientSpacesModal) || !modalReady('leaf-client-spaces', @js($selectedLeafUnitId)))" class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-start justify-center px-4 py-6 sm:items-center">
         <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-y-auto max-h-[calc(100vh-3rem)] shadow-xl sm:max-w-2xl sm:w-full sm:p-6">
             <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">
                 Attach Client Spaces to Last Routing Node
             </h3>
+            <div x-show="!modalReady('leaf-client-spaces', @js($selectedLeafUnitId))" class="py-6 text-sm text-gray-500">
+                Loading client spaces...
+            </div>
+            <div x-show="modalReady('leaf-client-spaces', @js($selectedLeafUnitId))">
             <p class="mb-4 text-sm text-gray-600">
                 {{ $selectedLeafUnit ? $selectedLeafUnit->name : 'This node' }} is the last routing node. Choose the client spaces that should sit under it in the organogram.
             </p>
@@ -403,21 +437,24 @@
                     <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent px-4 py-2 bg-gray-900 text-base font-medium text-white hover:bg-gray-800 sm:ml-3 sm:w-auto sm:text-sm">
                         Save Client Spaces
                     </button>
-                    <button type="button" wire:click="$set('showLeafClientSpacesModal', false)" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
+                    <button type="button" x-on:click="closeInstantModal()" wire:click="$set('showLeafClientSpacesModal', false)" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
                         Cancel
                     </button>
                 </div>
             </form>
+            </div>
         </div>
     </div>
-    @endif
 
-    @if($showLeafStaffModal)
-    <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-start justify-center px-4 py-6 sm:items-center">
+    <div x-cloak x-show="activeModal === 'leaf-staff' && (@js($showLeafStaffModal) || !modalReady('leaf-staff', @js($selectedLeafStaffUnitId ?: $selectedLeafUnitId)))" class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-start justify-center px-4 py-6 sm:items-center">
         <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-y-auto max-h-[calc(100vh-3rem)] shadow-xl sm:max-w-4xl sm:w-full sm:p-6">
             <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">
                 Link Last-Node Staff to Client Spaces
             </h3>
+            <div x-show="!modalReady('leaf-staff', @js($selectedLeafStaffUnitId ?: $selectedLeafUnitId))" class="py-6 text-sm text-gray-500">
+                Loading staff links...
+            </div>
+            <div x-show="modalReady('leaf-staff', @js($selectedLeafStaffUnitId ?: $selectedLeafUnitId))">
             <p class="mb-4 text-sm text-gray-600">
                 {{ $selectedLeafUnit ? $selectedLeafUnit->name : 'This node' }} is the last routing node. Staff stay on this node and can be linked directly to more than one attached client space.
             </p>
@@ -464,7 +501,7 @@
                 </div>
 
                 <div class="mt-5 sm:flex sm:flex-row-reverse">
-                    <button type="button" wire:click="$set('showLeafStaffModal', false)" class="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:w-auto sm:text-sm">
+                    <button type="button" x-on:click="closeInstantModal()" wire:click="$set('showLeafStaffModal', false)" class="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:w-auto sm:text-sm">
                         Close
                     </button>
                 </div>
@@ -526,15 +563,15 @@
                         <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent px-4 py-2 bg-gray-900 text-base font-medium text-white hover:bg-gray-800 disabled:opacity-50 sm:ml-3 sm:w-auto sm:text-sm" @disabled(empty($selectedLeafStaffAssignmentIds))>
                             Link Staff
                         </button>
-                        <button type="button" wire:click="$set('showLeafStaffModal', false)" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
+                        <button type="button" x-on:click="closeInstantModal()" wire:click="$set('showLeafStaffModal', false)" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
                             Cancel
                         </button>
                     </div>
                 </form>
             @endif
+            </div>
         </div>
     </div>
-    @endif
 
 @if($showEditTierModal)
     <div class="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-start justify-center px-4 py-6 sm:items-center">
