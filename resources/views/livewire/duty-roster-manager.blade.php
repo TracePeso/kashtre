@@ -752,10 +752,10 @@
                         @endif
                     </div>
 
-                    <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="grid gap-4 sm:grid-cols-2" x-data="{ durationPreset: $wire.entangle('newRosterDurationPreset').live }">
                         <div class="sm:col-span-2">
                             <label class="block text-sm font-medium text-gray-700">Duration</label>
-                            <select wire:model="newRosterDurationPreset" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <select x-model="durationPreset" wire:model.live="newRosterDurationPreset" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                                 <option value="monthly">Monthly</option>
                                 <option value="custom">Custom</option>
                             </select>
@@ -763,13 +763,13 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700">Start Date</label>
-                            <input type="date" wire:model="newRosterStartDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <input type="date" wire:model.live="newRosterStartDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                             <p class="mt-1 text-[11px] text-gray-500">Display guide: mm/dd/yyyy</p>
                             @error('start_date') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700">End Date</label>
-                            <input type="date" wire:model="newRosterEndDate" @disabled($newRosterDurationPreset !== 'custom') class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 sm:text-sm">
+                            <input type="date" wire:model.live="newRosterEndDate" x-bind:disabled="durationPreset !== 'custom'" @disabled($newRosterDurationPreset !== 'custom') class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 sm:text-sm">
                             <p class="mt-1 text-[11px] text-gray-500">Display guide: mm/dd/yyyy</p>
                             @error('end_date') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
                         </div>
