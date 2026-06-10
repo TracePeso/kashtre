@@ -2,9 +2,12 @@
 
 namespace App\Livewire\Inventory;
 
+use App\Models\InventoryModuleConfig;
 use App\Models\InventoryOrder;
 use App\Models\InventoryOrderLine;
+use App\Models\InventoryStockLevel;
 use App\Services\Inventory\InventoryOrderService;
+use App\Services\Inventory\InventoryStockAnalyticsService;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Tables\Columns\TextColumn;
@@ -36,17 +39,45 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
     {
         $isDraft = $this->order->isDraft();
         $service = app(InventoryOrderService::class);
+        $analytics = app(InventoryStockAnalyticsService::class);
+        $config = InventoryModuleConfig::query()
+            ->forBusiness((int) $this->order->business_id)
+            ->active()
+            ->first();
 
         return $table
             ->query(
                 InventoryOrderLine::query()
                     ->where('inventory_order_id', $this->order->id)
-                    ->with(['item.itemUnit', 'item.orderUnit'])
+                    ->with(['item.itemUnit', 'item.orderUnit', 'supplier'])
             )
             ->columns([
                 TextColumn::make('item.name')
                     ->label('Item')
                     ->description(fn (InventoryOrderLine $record): ?string => $record->item?->code),
+
+                TextColumn::make('supplier.name')
+                    ->label('Supplier')
+                    ->placeholder('—'),
+
+                TextColumn::make('days_left_am')
+                    ->label('Days left')
+                    ->alignEnd()
+                    ->state(function (InventoryOrderLine $record) use ($analytics, $config): ?float {
+                        $stock = $this->stockLevelForLine($record);
+
+                        return $stock ? $analytics->daysLeftToOrder($stock, $config) : null;
+                    })
+                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 1) : '—'),
+
+                TextColumn::make('notify_date')
+                    ->label('Notify date')
+                    ->state(function (InventoryOrderLine $record) use ($analytics, $config): ?string {
+                        $stock = $this->stockLevelForLine($record);
+
+                        return $stock ? $analytics->orderingNotificationDate($stock, $config)?->format('M d, Y') : null;
+                    })
+                    ->placeholder('—'),
 
                 TextColumn::make('lead_time_days')
                     ->label('Lead time')
@@ -59,7 +90,7 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
 
                 TextColumn::make('system_quantity_suom')
-                    ->label('System')
+                    ->label('System (AR)')
                     ->alignEnd()
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
@@ -131,5 +162,14 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
     public function render(): View
     {
         return view('livewire.inventory.edit-inventory-order-lines');
+    }
+
+    private function stockLevelForLine(InventoryOrderLine $record): ?InventoryStockLevel
+    {
+        return InventoryStockLevel::query()
+            ->where('business_id', $this->order->business_id)
+            ->where('store_id', $this->order->store_id)
+            ->where('item_id', $record->item_id)
+            ->first();
     }
 }

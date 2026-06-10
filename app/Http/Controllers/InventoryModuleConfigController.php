@@ -96,6 +96,7 @@ class InventoryModuleConfigController extends Controller
                 'buffer_stock_days' => $validated['buffer_stock_days'],
                 'notification_to_order_days' => $validated['notification_to_order_days'],
                 'period_of_order_days' => $validated['period_of_order_days'],
+                'financial_year_start_month' => $validated['financial_year_start_month'],
                 'is_active' => $request->boolean('is_active', true),
                 'created_by' => Auth::id(),
             ]);
@@ -149,6 +150,7 @@ class InventoryModuleConfigController extends Controller
                 'buffer_stock_days' => $validated['buffer_stock_days'],
                 'notification_to_order_days' => $validated['notification_to_order_days'],
                 'period_of_order_days' => $validated['period_of_order_days'],
+                'financial_year_start_month' => $validated['financial_year_start_month'],
                 'updated_by' => Auth::id(),
             ]);
 
@@ -218,6 +220,7 @@ class InventoryModuleConfigController extends Controller
             'buffer_stock_days' => 'required|numeric|min:0',
             'notification_to_order_days' => 'required|numeric|min:0',
             'period_of_order_days' => 'required|numeric|min:0',
+            'financial_year_start_month' => 'required|integer|min:1|max:12',
         ];
     }
 

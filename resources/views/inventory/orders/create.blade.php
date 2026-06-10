@@ -3,7 +3,7 @@
     <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex-1 min-w-0">
             <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">New order form</h2>
-            <p class="mt-1 text-sm text-gray-500">Suggested quantities use moving average consumption plus safety and buffer stock days.</p>
+            <p class="mt-1 text-sm text-gray-500">Suggested quantities follow Excel AF (period) or AH–AL (budget days) using graduated moving averages and 15-day consumption rates.</p>
         </div>
 
         @include('inventory.partials.subnav')

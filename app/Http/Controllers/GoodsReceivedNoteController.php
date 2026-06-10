@@ -45,8 +45,17 @@ class GoodsReceivedNoteController extends Controller
     {
         $businessId = Auth::user()->business_id;
 
+        $suppliers = Supplier::query()
+            ->where('business_id', $businessId)
+            ->with('items:id')
+            ->orderBy('name')
+            ->get();
+
         return view('inventory.receive.create', [
-            'suppliers' => Supplier::where('business_id', $businessId)->orderBy('name')->get(),
+            'suppliers' => $suppliers,
+            'supplierItemIds' => $suppliers->mapWithKeys(fn (Supplier $supplier) => [
+                $supplier->id => $supplier->items->pluck('id')->values()->all(),
+            ]),
             'stores' => Store::query()
                 ->forBusiness($businessId)
                 ->with('parent')

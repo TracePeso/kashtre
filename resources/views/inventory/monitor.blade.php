@@ -18,7 +18,9 @@
             <strong>Physical usable stock</strong> = physical (or system if not counted) minus damaged and expired.
             <strong>Verifiable shrinkage</strong> = damaged + expired (on shelf but unusable).
             <strong>Unverified loss</strong> = system − physical (missing from shelf).
-            Moving averages come from automatically recorded sale consumption.
+            <strong>Total shrinkage %</strong> shown to 4 decimal places.
+            <strong>Fixed daily avg</strong> is set under Manage Inventory module settings (Excel AA).
+            Moving averages (15 / 30 / 90 / 180 / 360 days) come from automatically recorded consumption.
         </p>
     </div>
 </div>

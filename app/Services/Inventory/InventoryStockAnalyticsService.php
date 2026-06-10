@@ -2,10 +2,13 @@
 
 namespace App\Services\Inventory;
 
+use App\Models\GoodsReceivedNote;
+use App\Models\GoodsReceivedNoteLine;
 use App\Models\InventoryDailyConsumption;
 use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
 use App\Models\InventoryStockMovement;
+use App\Models\Item;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -68,6 +71,295 @@ class InventoryStockAnalyticsService
         return 0.0;
     }
 
+    /**
+     * Excel column V / AA: 15-day moving average, or fixed daily average when V is zero.
+     */
+    public function excelDailyUsageSuom(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null): float
+    {
+        $ma15 = $this->movingAverageForStock($stock, 15);
+
+        if ($ma15 > 0) {
+            return $ma15;
+        }
+
+        return (float) ($config?->fixed_daily_average_suom ?? 0);
+    }
+
+    public function financialYearStart(?InventoryModuleConfig $config, ?Carbon $asOf = null): Carbon
+    {
+        $asOf = ($asOf ?? Carbon::today())->copy()->startOfDay();
+        $month = max(1, min(12, (int) ($config?->financial_year_start_month ?? 1)));
+        $start = Carbon::create($asOf->year, $month, 1)->startOfDay();
+
+        if ($asOf->lt($start)) {
+            $start->subYear();
+        }
+
+        return $start;
+    }
+
+    public function movementSumSince(InventoryStockLevel $stock, ?Carbon $since): float
+    {
+        $query = InventoryStockMovement::query()
+            ->where('business_id', $stock->business_id)
+            ->where('store_id', $stock->store_id)
+            ->where('item_id', $stock->item_id);
+
+        if ($since !== null) {
+            $query->where('occurred_at', '>=', $since);
+        }
+
+        return (float) $query->sum('quantity_delta');
+    }
+
+    /**
+     * Excel column AR: FY opening + purchases − sales + returns/transfers since FY start.
+     */
+    public function systemStockArSuom(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null): float
+    {
+        $fyStart = $this->financialYearStart($config);
+        $opening = $this->openingQuantityAtFinancialYear($stock, $fyStart);
+
+        return max(0, round($opening + $this->movementSumSince($stock, $fyStart), 4));
+    }
+
+    /**
+     * Excel column M: physical count anchor + movements since last count.
+     */
+    public function currentStockLevelSuom(InventoryStockLevel $stock): float
+    {
+        if ($stock->physical_counted_at === null) {
+            return (float) $stock->quantity_suom;
+        }
+
+        $since = Carbon::parse($stock->physical_counted_at)->startOfDay();
+        $anchor = (float) ($stock->physical_quantity_suom ?? 0);
+
+        return max(0, round($anchor + $this->movementSumSince($stock, $since), 4));
+    }
+
+    /**
+     * Excel column N: M ÷ (V or AA if V = 0).
+     */
+    public function stockDaysReport(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null): ?float
+    {
+        $usage = $this->excelDailyUsageSuom($stock, $config);
+
+        if ($usage <= 0) {
+            return null;
+        }
+
+        return round($this->currentStockLevelSuom($stock) / $usage, 1);
+    }
+
+    /**
+     * Excel columns AC / AE: safety and buffer stock using 15-day average (V or AA).
+     */
+    public function safetyStockSuom(InventoryStockLevel $stock, ?InventoryModuleConfig $config): float
+    {
+        return round(
+            $this->excelDailyUsageSuom($stock, $config) * $this->safetyStockDays($stock, $config),
+            4
+        );
+    }
+
+    public function bufferStockSuom(InventoryStockLevel $stock, ?InventoryModuleConfig $config): float
+    {
+        return round(
+            $this->excelDailyUsageSuom($stock, $config) * $this->bufferStockDays($stock, $config),
+            4
+        );
+    }
+
+    /**
+     * Excel column AM: N − (safety days + buffer days).
+     */
+    public function daysLeftToOrder(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null): ?float
+    {
+        $stockDays = $this->stockDaysReport($stock, $config);
+
+        if ($stockDays === null) {
+            return null;
+        }
+
+        return round(
+            $stockDays - $this->safetyStockDays($stock, $config) - $this->bufferStockDays($stock, $config),
+            1
+        );
+    }
+
+    /**
+     * Excel column AY: when to start the ordering process.
+     */
+    public function orderingNotificationDate(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null): ?Carbon
+    {
+        $daysLeft = $this->daysLeftToOrder($stock, $config);
+
+        if ($daysLeft === null) {
+            return null;
+        }
+
+        if ($daysLeft <= 0) {
+            return Carbon::today();
+        }
+
+        $notifyLead = (float) ($config?->notification_to_order_days ?? 0);
+        $daysUntilNotify = max(0, $daysLeft - $notifyLead);
+
+        return Carbon::today()->addDays((int) round($daysUntilNotify));
+    }
+
+    /**
+     * Excel F/J: purchase price per SUOM from the latest approved GRN line.
+     */
+    public function purchasePricePerSuom(InventoryStockLevel $stock, ?Item $item = null): float
+    {
+        $line = GoodsReceivedNoteLine::query()
+            ->join('goods_received_notes as grn', 'grn.id', '=', 'goods_received_note_lines.goods_received_note_id')
+            ->where('grn.business_id', $stock->business_id)
+            ->where('grn.store_id', $stock->store_id)
+            ->where('grn.status', GoodsReceivedNote::STATUS_APPROVED)
+            ->where('goods_received_note_lines.item_id', $stock->item_id)
+            ->orderByDesc('grn.date_of_delivery')
+            ->select('goods_received_note_lines.*')
+            ->first();
+
+        if ($line && (float) $line->sale_units_per_purchase_unit > 0) {
+            return round((float) $line->purchase_price / (float) $line->sale_units_per_purchase_unit, 4);
+        }
+
+        return (float) (
+            $stock->weighted_avg_cost
+            ?? $stock->last_purchase_price
+            ?? $item?->default_price
+            ?? 0
+        );
+    }
+
+    /**
+     * Excel column O: M × (F/J).
+     */
+    public function inventoryValuationUgx(InventoryStockLevel $stock, ?Item $item = null): float
+    {
+        return round($this->currentStockLevelSuom($stock) * $this->purchasePricePerSuom($stock, $item), 2);
+    }
+
+    /**
+     * Excel column AV: 100 × (AR − M) / AR.
+     */
+    public function shrinkagePercentExcel(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null): ?float
+    {
+        $ar = $this->systemStockArSuom($stock, $config);
+        $current = $this->currentStockLevelSuom($stock);
+
+        if ($ar <= 0) {
+            return null;
+        }
+
+        return round((($ar - $current) / $ar) * 100, 4);
+    }
+
+    /**
+     * Excel column AW: (AR − M) × (F/J).
+     */
+    public function shrinkageAmountUgx(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null, ?Item $item = null): ?float
+    {
+        $ar = $this->systemStockArSuom($stock, $config);
+        $current = $this->currentStockLevelSuom($stock);
+        $delta = $ar - $current;
+
+        if ($delta <= 0) {
+            return $delta < 0 ? null : 0.0;
+        }
+
+        return round($delta * $this->purchasePricePerSuom($stock, $item), 2);
+    }
+
+    /**
+     * Graduated MA for order qty (Excel AF): pick window based on stock days N.
+     */
+    public function graduatedMovingAverageByStockDays(InventoryStockLevel $stock, ?float $stockDaysN): float
+    {
+        if ($stockDaysN === null || $stockDaysN <= 0) {
+            return $this->movingAverageForStock($stock, 360);
+        }
+
+        foreach ([15, 30, 90, 180, 360] as $days) {
+            if ($stockDaysN < $days) {
+                return $this->movingAverageForStock($stock, $days);
+            }
+        }
+
+        return $this->movingAverageForStock($stock, 360);
+    }
+
+    /**
+     * Excel column AF (period ordering): max(0, (period + safety + buffer − N) × graduated MA).
+     */
+    public function suggestedOrderQtyPeriod(
+        InventoryStockLevel $stock,
+        ?InventoryModuleConfig $config,
+        float $periodDays
+    ): float {
+        $stockDays = $this->stockDaysReport($stock, $config) ?? 0;
+        $coverage = $periodDays
+            + $this->safetyStockDays($stock, $config)
+            + $this->bufferStockDays($stock, $config)
+            - $stockDays;
+
+        if ($coverage <= 0) {
+            return 0.0;
+        }
+
+        $rate = $this->graduatedMovingAverageByStockDays($stock, $stockDays);
+
+        if ($rate <= 0) {
+            $rate = $this->excelDailyUsageSuom($stock, $config);
+        }
+
+        return max(0, round($coverage * $rate, 4));
+    }
+
+    /**
+     * Excel column AG: order qty × (F/J).
+     */
+    public function demandForecastAmountUgx(
+        InventoryStockLevel $stock,
+        ?InventoryModuleConfig $config,
+        float $orderQtySuom,
+        ?Item $item = null
+    ): float {
+        return round($orderQtySuom * $this->purchasePricePerSuom($stock, $item), 2);
+    }
+
+    /**
+     * Excel column AH: 15 × (V or AA) × (F/J).
+     */
+    public function budgetTestAmountUgx(InventoryStockLevel $stock, ?InventoryModuleConfig $config, ?Item $item = null): float
+    {
+        return round(
+            15 * $this->excelDailyUsageSuom($stock, $config) * $this->purchasePricePerSuom($stock, $item),
+            2
+        );
+    }
+
+    private function openingQuantityAtFinancialYear(InventoryStockLevel $stock, Carbon $fyStart): float
+    {
+        if ($stock->opening_quantity_suom !== null) {
+            return (float) $stock->opening_quantity_suom;
+        }
+
+        $lastBefore = InventoryStockMovement::query()
+            ->where('business_id', $stock->business_id)
+            ->where('store_id', $stock->store_id)
+            ->where('item_id', $stock->item_id)
+            ->where('occurred_at', '<', $fyStart)
+            ->orderByDesc('occurred_at')
+            ->first();
+
+        return (float) ($lastBefore?->balance_after ?? 0);
+    }
+
     public function safetyStockDays(InventoryStockLevel $stock, ?InventoryModuleConfig $config): float
     {
         if ($stock->safety_stock_days !== null) {
@@ -84,22 +376,6 @@ class InventoryStockAnalyticsService
         }
 
         return (float) ($config?->buffer_stock_days ?? 0);
-    }
-
-    public function safetyStockSuom(InventoryStockLevel $stock, ?InventoryModuleConfig $config): float
-    {
-        return round(
-            $this->effectiveDailyUsage($stock, $config) * $this->safetyStockDays($stock, $config),
-            4
-        );
-    }
-
-    public function bufferStockSuom(InventoryStockLevel $stock, ?InventoryModuleConfig $config): float
-    {
-        return round(
-            $this->effectiveDailyUsage($stock, $config) * $this->bufferStockDays($stock, $config),
-            4
-        );
     }
 
     public function systemQuantitySuom(InventoryStockLevel $stock): float

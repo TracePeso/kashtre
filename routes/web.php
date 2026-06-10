@@ -300,6 +300,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/stock-counts/{stockCount}', [InventoryStockCountController::class, 'show'])->name('stock-counts.show');
         Route::post('/stock-counts/{stockCount}/finalize', [InventoryStockCountController::class, 'finalize'])->name('stock-counts.finalize');
         Route::get('/consumption', [InventoryDailyConsumptionController::class, 'index'])->name('consumption.index');
+        Route::get('/consumption/{consumption}', [InventoryDailyConsumptionController::class, 'show'])->name('consumption.show');
         Route::get('/orders', [InventoryOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/create', [InventoryOrderController::class, 'create'])->name('orders.create');
         Route::post('/orders', [InventoryOrderController::class, 'store'])->name('orders.store');
@@ -321,7 +322,12 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::post('/returns', [InventoryGoodsReturnController::class, 'store'])->name('returns.store');
         Route::get('/returns/{returnNote}', [InventoryGoodsReturnController::class, 'show'])->name('returns.show');
         Route::post('/returns/{returnNote}/submit', [InventoryGoodsReturnController::class, 'submit'])->name('returns.submit');
+        Route::get('/reports', [InventoryReportsController::class, 'index'])->name('reports.index');
         Route::get('/reports/aging', [InventoryReportsController::class, 'aging'])->name('reports.aging');
+        Route::get('/reports/reorder', [InventoryReportsController::class, 'reorder'])->name('reports.reorder');
+        Route::get('/reports/valuation', [InventoryReportsController::class, 'valuation'])->name('reports.valuation');
+        Route::get('/reports/shrinkage', [InventoryReportsController::class, 'shrinkage'])->name('reports.shrinkage');
+        Route::get('/reports/demand', [InventoryReportsController::class, 'demand'])->name('reports.demand');
         Route::get('/network', [InventoryController::class, 'network'])->name('network');
     });
     

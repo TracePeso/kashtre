@@ -18,6 +18,7 @@ class InventoryModuleConfig extends Model
         'buffer_stock_days',
         'notification_to_order_days',
         'period_of_order_days',
+        'financial_year_start_month',
         'created_by',
         'updated_by',
     ];
@@ -29,6 +30,7 @@ class InventoryModuleConfig extends Model
         'buffer_stock_days' => 'decimal:2',
         'notification_to_order_days' => 'decimal:2',
         'period_of_order_days' => 'decimal:2',
+        'financial_year_start_month' => 'integer',
     ];
 
     /**

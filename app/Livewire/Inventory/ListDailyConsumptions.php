@@ -5,9 +5,12 @@ namespace App\Livewire\Inventory;
 use App\Models\InventoryDailyConsumption;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
+use Filament\Tables\Actions\Action;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
+use Filament\Forms\Components\DatePicker;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Contracts\View\View;
@@ -27,7 +30,6 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
                 InventoryDailyConsumption::query()
                     ->where('business_id', Auth::user()->business_id)
                     ->with(['store', 'item.itemUnit', 'recordedBy'])
-                    ->latest('consumption_date')
             )
             ->columns([
                 TextColumn::make('consumption_date')
@@ -37,7 +39,14 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
 
                 TextColumn::make('item.name')
                     ->label('Item')
-                    ->searchable(),
+                    ->description(fn (InventoryDailyConsumption $record): ?string => $record->item?->code)
+                    ->searchable(query: function (Builder $query, string $search): Builder {
+                        return $query->whereHas('item', function (Builder $itemQuery) use ($search): void {
+                            $itemQuery
+                                ->where('name', 'like', "%{$search}%")
+                                ->orWhere('code', 'like', "%{$search}%");
+                        });
+                    }),
 
                 TextColumn::make('store.name')
                     ->label('Store')
@@ -63,17 +72,57 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
                         default => ucfirst($state),
                     }),
 
-                TextColumn::make('recordedBy.name')
+                TextColumn::make('recordedBy.email')
                     ->label('Recorded by')
-                    ->placeholder('—'),
+                    ->description(fn (InventoryDailyConsumption $record): ?string => $record->recordedBy?->name)
+                    ->placeholder('—')
+                    ->searchable(),
             ])
             ->filters([
                 SelectFilter::make('store_id')
                     ->label('Store')
                     ->relationship('store', 'name', fn (Builder $query) => $query->where('business_id', Auth::user()->business_id)),
+                SelectFilter::make('source')
+                    ->label('Source')
+                    ->options([
+                        InventoryDailyConsumption::SOURCE_SALE => 'POS / Sale',
+                        InventoryDailyConsumption::SOURCE_ISSUE => 'Issue',
+                        InventoryDailyConsumption::SOURCE_MANUAL => 'Manual',
+                    ]),
+                Filter::make('consumption_date')
+                    ->label('Date range')
+                    ->form([
+                        DatePicker::make('from')->label('From'),
+                        DatePicker::make('until')->label('Until'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['from'] ?? null,
+                                fn (Builder $q, string $date): Builder => $q->whereDate('consumption_date', '>=', $date)
+                            )
+                            ->when(
+                                $data['until'] ?? null,
+                                fn (Builder $q, string $date): Builder => $q->whereDate('consumption_date', '<=', $date)
+                            );
+                    }),
+            ])
+            ->actions([
+                Action::make('view')
+                    ->label('View')
+                    ->icon('heroicon-o-eye')
+                    ->url(fn (InventoryDailyConsumption $record): string => route('inventory.consumption.show', $record)),
+                Action::make('item_stock')
+                    ->label('Item stock')
+                    ->icon('heroicon-o-chart-bar')
+                    ->url(fn (InventoryDailyConsumption $record): ?string => $record->item
+                        ? route('inventory.monitor.history', $record->item)
+                        : null)
+                    ->visible(fn (InventoryDailyConsumption $record): bool => $record->item !== null),
             ])
             ->defaultSort('consumption_date', 'desc')
             ->striped()
+            ->deferLoading()
             ->paginated([10, 25, 50, 100])
             ->emptyStateHeading('No consumption recorded yet')
             ->emptyStateDescription('Entries appear here automatically when goods are sold or issued. Ensure staff have a default store set so consumption is attributed to the correct location.');

@@ -2,17 +2,18 @@
 
 namespace App\Livewire\Inventory;
 
-use App\Models\InventoryModuleConfig;
+use App\Livewire\Inventory\Concerns\InteractsWithInventoryMetrics;
+use App\Models\InventoryStockLevel;
 use App\Models\Item;
 use App\Models\Store;
 use App\Services\Inventory\InventoryStockAgingService;
-use Filament\Tables\Filters\SelectFilter;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -22,21 +23,20 @@ use Livewire\Component;
 class MonitorStockTable extends Component implements HasForms, HasTable
 {
     use InteractsWithForms;
+    use InteractsWithInventoryMetrics;
     use InteractsWithTable;
 
-    public ?InventoryModuleConfig $moduleConfig = null;
+    public ?\App\Models\InventoryModuleConfig $moduleConfig = null;
 
     public function mount(): void
     {
-        $this->moduleConfig = InventoryModuleConfig::query()
-            ->forBusiness((int) Auth::user()->business_id)
-            ->active()
-            ->first();
+        $this->moduleConfig = $this->moduleConfigFor((int) Auth::user()->business_id);
     }
 
     public function table(Table $table): Table
     {
         $config = $this->moduleConfig;
+        $analytics = $this->metricsService();
 
         return $table
             ->query($this->baseQuery())
@@ -66,78 +66,98 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->placeholder('—')
                     ->sortable(),
 
-                TextColumn::make('stock_quantity_suom')
-                    ->label('System stock')
+                TextColumn::make('system_stock_ar')
+                    ->label('System stock (AR)')
+                    ->tooltip('FY opening + purchases − sales + transfers since financial year start')
                     ->alignEnd()
-                    ->sortable(query: function (Builder $query, string $direction): Builder {
-                        return $query->orderBy('stock.quantity_suom', $direction);
-                    })
+                    ->state(fn (Item $record): float => $analytics->systemStockArSuom($this->stockLevel($record), $config))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+
+                TextColumn::make('current_stock_m')
+                    ->label('Current stock (M)')
+                    ->tooltip('Physical count anchor + movements since last stock count')
+                    ->alignEnd()
+                    ->state(fn (Item $record): float => $analytics->currentStockLevelSuom($this->stockLevel($record)))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('stock_physical_quantity_suom')
-                    ->label('Physical stock')
+                    ->label('Physical stock (AS)')
                     ->alignEnd()
                     ->placeholder('—')
-                    ->sortable(query: function (Builder $query, string $direction): Builder {
-                        return $query->orderBy('stock.physical_quantity_suom', $direction);
-                    })
                     ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 0) : '—'),
 
-                TextColumn::make('usable_stock_display')
-                    ->label('Physical usable stock')
+                TextColumn::make('shrinkage_excel_pct')
+                    ->label('Shrinkage % (AV)')
                     ->alignEnd()
-                    ->state(fn (Item $record): float => $this->physicalUsableStock($record))
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+                    ->tooltip('100 × (AR − M) ÷ AR')
+                    ->state(fn (Item $record): ?float => $analytics->shrinkagePercentExcel($this->stockLevel($record), $config))
+                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 4).'%' : '—'),
 
-                TextColumn::make('verifiable_shrinkage_display')
-                    ->label('Verifiable shrinkage')
+                TextColumn::make('shrinkage_excel_ugx')
+                    ->label('Shrinkage UGX (AW)')
                     ->alignEnd()
-                    ->tooltip('Damaged + expired quantities still on the shelf but unusable')
-                    ->state(fn (Item $record): ?float => $this->verifiableShrinkage($record))
-                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 0) : '—'),
+                    ->state(fn (Item $record): ?float => $analytics->shrinkageAmountUgx($this->stockLevel($record), $config, $record))
+                    ->formatStateUsing(fn ($state): string => $state !== null ? 'UGX '.number_format((float) $state, 2) : '—'),
 
-                TextColumn::make('unverified_shrinkage_display')
-                    ->label('Unverified loss')
+                TextColumn::make('stock_days_n')
+                    ->label('Stock days (N)')
                     ->alignEnd()
-                    ->tooltip('System stock minus physical count — units missing from the shelf')
-                    ->state(fn (Item $record): ?float => $this->unverifiedShrinkage($record))
-                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 0) : '—'),
+                    ->tooltip('M ÷ (15-day avg or fixed daily average)')
+                    ->state(fn (Item $record): ?float => $analytics->stockDaysReport($this->stockLevel($record), $config))
+                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 1) : '—'),
 
-                TextColumn::make('shrinkage_display')
-                    ->label('Total shrinkage')
+                TextColumn::make('days_left_am')
+                    ->label('Days left (AM)')
                     ->alignEnd()
-                    ->state(fn (Item $record): ?float => $this->shrinkagePercent($record))
-                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 2).'%' : '—'),
+                    ->tooltip('N − (safety days + buffer days)')
+                    ->state(fn (Item $record): ?float => $analytics->daysLeftToOrder($this->stockLevel($record), $config))
+                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 1) : '—')
+                    ->color(fn ($state) => $state !== null && (float) $state <= 0 ? 'danger' : null),
 
-                TextColumn::make('stock_days_display')
-                    ->label('Stock (days)')
-                    ->alignEnd()
-                    ->state(fn (Item $record): float => $this->stockDays($record))
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 1)),
+                TextColumn::make('order_notify_ay')
+                    ->label('Order notify (AY)')
+                    ->state(fn (Item $record): ?string => $analytics->orderingNotificationDate($this->stockLevel($record), $config)?->format('M d, Y'))
+                    ->placeholder('—'),
 
-                TextColumn::make('effective_daily_usage')
-                    ->label('Daily avg (SUOM)')
+                TextColumn::make('excel_daily_usage')
+                    ->label('Daily avg (V/AA)')
                     ->alignEnd()
                     ->visible($config !== null)
-                    ->state(fn (Item $record): float => $this->effectiveDailyUsage($record))
+                    ->state(fn (Item $record): float => $analytics->excelDailyUsageSuom($this->stockLevel($record), $config))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
 
-                TextColumn::make('stock_ma_30_days')
-                    ->label('30-day avg')
-                    ->tooltip('30-day moving average daily consumption (SUOM)')
+                TextColumn::make('ma_15_days_display')
+                    ->label('15-day avg')
                     ->alignEnd()
-                    ->state(fn (Item $record): float => $this->movingAverage($record, 30))
+                    ->toggleable()
+                    ->state(fn (Item $record): float => (float) ($record->stock_ma_15_days ?? 0))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
+
+                TextColumn::make('ma_30_days_display')
+                    ->label('30-day avg')
+                    ->alignEnd()
+                    ->toggleable()
+                    ->state(fn (Item $record): float => (float) ($record->stock_ma_30_days ?? 0))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
+
+                TextColumn::make('safety_stock_suom')
+                    ->label('Safety stock (AC)')
+                    ->alignEnd()
+                    ->visible($config !== null)
+                    ->state(fn (Item $record): float => $analytics->safetyStockSuom($this->stockLevel($record), $config))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
+
+                TextColumn::make('buffer_stock_suom')
+                    ->label('Buffer stock (AE)')
+                    ->alignEnd()
+                    ->visible($config !== null)
+                    ->state(fn (Item $record): float => $analytics->bufferStockSuom($this->stockLevel($record), $config))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
 
                 TextColumn::make('stock_aging_days')
-                    ->label('Stock aging (days)')
-                    ->tooltip('Days since last approved GRN delivery (Excel column U)')
+                    ->label('Stock aging (U)')
                     ->alignEnd()
                     ->state(function (Item $record): ?int {
-                        if (! $this->usesJoinedStock($record)) {
-                            return null;
-                        }
-
                         return app(InventoryStockAgingService::class)->agingDays(
                             (int) Auth::user()->business_id,
                             (int) $record->stock_store_id,
@@ -146,37 +166,10 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     })
                     ->formatStateUsing(fn ($state): string => $state !== null ? number_format((int) $state) : '—'),
 
-                TextColumn::make('safety_stock_suom')
-                    ->label('Safety stock (SUOM)')
+                TextColumn::make('valuation_o')
+                    ->label('Valuation (O)')
                     ->alignEnd()
-                    ->visible($config !== null)
-                    ->state(fn (Item $record): float => $config->safetyStockSuom($this->dailyUsage($record)))
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
-
-                TextColumn::make('buffer_stock_suom')
-                    ->label('Buffer stock (SUOM)')
-                    ->alignEnd()
-                    ->visible($config !== null)
-                    ->state(fn (Item $record): float => $config->bufferStockSuom($this->dailyUsage($record)))
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
-
-                TextColumn::make('stock_last_purchase_price')
-                    ->label('Last price')
-                    ->alignEnd()
-                    ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2)),
-
-                TextColumn::make('stock_weighted_avg_cost')
-                    ->label('Avg cost')
-                    ->alignEnd()
-                    ->formatStateUsing(fn ($state, Item $record): string => 'UGX '.number_format(
-                        (float) ($state ?? $record->stock_last_purchase_price ?? 0),
-                        2
-                    )),
-
-                TextColumn::make('valuation_display')
-                    ->label('Valuation')
-                    ->alignEnd()
-                    ->state(fn (Item $record): float => $this->valuation($record))
+                    ->state(fn (Item $record): float => $analytics->inventoryValuationUgx($this->stockLevel($record), $record))
                     ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2)),
             ])
             ->actions([
@@ -200,8 +193,8 @@ class MonitorStockTable extends Component implements HasForms, HasTable
             ->defaultSort('name')
             ->striped()
             ->paginated([10, 25, 50, 100])
-            ->emptyStateHeading('No stock on hand')
-            ->emptyStateDescription('Items appear here after goods are received and all GRN approvers have signed off.');
+            ->emptyStateHeading('No inventory activity')
+            ->emptyStateDescription('Items appear after goods are received or consumption is recorded.');
     }
 
     public function render(): View
@@ -221,18 +214,28 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->where('stock.business_id', '=', $businessId);
             })
             ->leftJoin('stores', 'stores.id', '=', 'stock.store_id')
-            ->where('stock.quantity_suom', '>', 0)
+            ->where(function (Builder $query) {
+                $query->where('stock.quantity_suom', '>', 0)
+                    ->orWhere('stock.ma_15_days', '>', 0)
+                    ->orWhere('stock.ma_30_days', '>', 0);
+            })
             ->select([
                 'items.*',
                 'stock.store_id as stock_store_id',
                 'stock.quantity_suom as stock_quantity_suom',
                 'stock.physical_quantity_suom as stock_physical_quantity_suom',
+                'stock.physical_counted_at as stock_physical_counted_at',
+                'stock.opening_quantity_suom as stock_opening_quantity_suom',
                 'stock.damaged_quantity_suom as stock_damaged_quantity_suom',
                 'stock.expired_quantity_suom as stock_expired_quantity_suom',
                 'stock.daily_usage_suom as stock_daily_usage_suom',
                 'stock.safety_stock_days as stock_safety_stock_days',
                 'stock.buffer_stock_days as stock_buffer_stock_days',
+                'stock.ma_15_days as stock_ma_15_days',
                 'stock.ma_30_days as stock_ma_30_days',
+                'stock.ma_90_days as stock_ma_90_days',
+                'stock.ma_180_days as stock_ma_180_days',
+                'stock.ma_360_days as stock_ma_360_days',
                 'stock.last_purchase_price as stock_last_purchase_price',
                 'stock.weighted_avg_cost as stock_weighted_avg_cost',
                 'stores.name as store_name',
@@ -240,151 +243,31 @@ class MonitorStockTable extends Component implements HasForms, HasTable
             ->with('itemUnit');
     }
 
-    private function usesJoinedStock(Item $item): bool
+    private function stockLevel(Item $item): InventoryStockLevel
     {
-        return array_key_exists('stock_quantity_suom', $item->getAttributes());
-    }
+        $level = new InventoryStockLevel([
+            'business_id' => Auth::user()->business_id,
+            'store_id' => $item->stock_store_id,
+            'item_id' => $item->id,
+            'quantity_suom' => $item->stock_quantity_suom,
+            'physical_quantity_suom' => $item->stock_physical_quantity_suom,
+            'physical_counted_at' => $item->stock_physical_counted_at,
+            'opening_quantity_suom' => $item->stock_opening_quantity_suom,
+            'damaged_quantity_suom' => $item->stock_damaged_quantity_suom,
+            'expired_quantity_suom' => $item->stock_expired_quantity_suom,
+            'daily_usage_suom' => $item->stock_daily_usage_suom,
+            'safety_stock_days' => $item->stock_safety_stock_days,
+            'buffer_stock_days' => $item->stock_buffer_stock_days,
+            'ma_15_days' => $item->stock_ma_15_days,
+            'ma_30_days' => $item->stock_ma_30_days,
+            'ma_90_days' => $item->stock_ma_90_days,
+            'ma_180_days' => $item->stock_ma_180_days,
+            'ma_360_days' => $item->stock_ma_360_days,
+            'last_purchase_price' => $item->stock_last_purchase_price,
+            'weighted_avg_cost' => $item->stock_weighted_avg_cost,
+        ]);
+        $level->exists = true;
 
-    private function currentStock(Item $item): float
-    {
-        return $this->physicalUsableStock($item);
-    }
-
-    private function physicalUsableStock(Item $item): float
-    {
-        if ($this->usesJoinedStock($item)) {
-            $physical = $item->stock_physical_quantity_suom;
-            $base = $physical !== null
-                ? (float) $physical
-                : (float) $item->stock_quantity_suom;
-            $verifiable = (float) ($item->stock_damaged_quantity_suom ?? 0)
-                + (float) ($item->stock_expired_quantity_suom ?? 0);
-
-            return max(0, round($base - $verifiable, 4));
-        }
-
-        $level = $item->inventoryStockLevel;
-
-        if (! $level) {
-            return 0.0;
-        }
-
-        return $level->physicalUsableQuantitySuom();
-    }
-
-    /** @deprecated */
-    private function usableStock(Item $item): float
-    {
-        return $this->physicalUsableStock($item);
-    }
-
-    private function verifiableShrinkage(Item $item): ?float
-    {
-        if (! $this->usesJoinedStock($item)) {
-            $level = $item->inventoryStockLevel;
-
-            return $level ? $level->verifiableLossSuom() : null;
-        }
-
-        return round(
-            (float) ($item->stock_damaged_quantity_suom ?? 0) + (float) ($item->stock_expired_quantity_suom ?? 0),
-            4
-        );
-    }
-
-    private function unverifiedShrinkage(Item $item): ?float
-    {
-        if ($this->usesJoinedStock($item)) {
-            if ($item->stock_physical_quantity_suom === null) {
-                return null;
-            }
-
-            return max(0, round((float) $item->stock_quantity_suom - (float) $item->stock_physical_quantity_suom, 4));
-        }
-
-        return $item->inventoryStockLevel?->unverifiedShrinkageAmountSuom();
-    }
-
-    private function shrinkagePercent(Item $item): ?float
-    {
-        if ($this->usesJoinedStock($item)) {
-            if ($item->stock_physical_quantity_suom === null) {
-                return null;
-            }
-
-            $system = (float) $item->stock_quantity_suom;
-
-            if ($system <= 0) {
-                return null;
-            }
-
-            return round((($system - (float) $item->stock_physical_quantity_suom) / $system) * 100, 2);
-        }
-
-        return $item->inventoryStockLevel?->shrinkagePercent();
-    }
-
-    private function movingAverage(Item $item, int $days): float
-    {
-        if ($this->usesJoinedStock($item) && $days === 30 && $item->stock_ma_30_days !== null) {
-            return (float) $item->stock_ma_30_days;
-        }
-
-        return $this->dailyUsage($item);
-    }
-
-    private function dailyUsage(Item $item): float
-    {
-        if ($this->usesJoinedStock($item)) {
-            return (float) ($item->stock_daily_usage_suom ?? 0);
-        }
-
-        return (float) ($item->inventoryStockLevel?->daily_usage_suom ?? 0);
-    }
-
-    private function averageCost(Item $item): float
-    {
-        if ($this->usesJoinedStock($item)) {
-            return (float) (
-                $item->stock_weighted_avg_cost
-                ?? $item->stock_last_purchase_price
-                ?? $item->default_price
-                ?? 0
-            );
-        }
-
-        $level = $item->inventoryStockLevel;
-
-        return (float) (
-            $level?->weighted_avg_cost
-            ?? $level?->last_purchase_price
-            ?? $item->default_price
-            ?? 0
-        );
-    }
-
-    private function effectiveDailyUsage(Item $item): float
-    {
-        if (! $this->moduleConfig) {
-            return $this->dailyUsage($item);
-        }
-
-        return $this->moduleConfig->effectiveDailyUsageSuom($this->dailyUsage($item));
-    }
-
-    private function stockDays(Item $item): float
-    {
-        $usage = $this->effectiveDailyUsage($item);
-
-        if ($usage <= 0) {
-            return 0.0;
-        }
-
-        return round($this->physicalUsableStock($item) / $usage, 1);
-    }
-
-    private function valuation(Item $item): float
-    {
-        return round($this->physicalUsableStock($item) * $this->averageCost($item), 2);
+        return $level;
     }
 }

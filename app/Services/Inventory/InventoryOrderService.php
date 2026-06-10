@@ -10,6 +10,7 @@ use App\Models\InventoryOrderLine;
 use App\Models\InventoryStockLevel;
 use App\Models\Item;
 use App\Models\User;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class InventoryOrderService
@@ -62,7 +63,7 @@ class InventoryOrderService
 
             $this->populateLines($order);
 
-            return $order->fresh(['lines.item.itemUnit', 'lines.item.orderUnit', 'store']);
+            return $order->fresh(['lines.item.itemUnit', 'lines.item.orderUnit', 'lines.item.suppliers', 'lines.supplier', 'store']);
         });
     }
 
@@ -76,15 +77,23 @@ class InventoryOrderService
         $stockLevels = InventoryStockLevel::query()
             ->where('business_id', $order->business_id)
             ->where('store_id', $order->store_id)
-            ->where('quantity_suom', '>', 0)
-            ->with(['item.itemUnit', 'item.orderUnit'])
+            ->where(function ($query) {
+                $query->where('quantity_suom', '>', 0)
+                    ->orWhere('ma_15_days', '>', 0)
+                    ->orWhere('ma_30_days', '>', 0);
+            })
+            ->with(['item.itemUnit', 'item.orderUnit', 'item.suppliers'])
             ->get();
 
-        $maDays = (int) ($order->moving_average_days ?: 30);
-        $periodDays = (float) ($order->period_of_order_days ?? $config?->period_of_order_days ?? 30);
-        $notificationDays = (float) ($config?->notification_to_order_days ?? 0);
-
         $order->lines()->delete();
+
+        if ($order->budget_mode === InventoryOrder::BUDGET_MODE_DAYS && $order->budget_value > 0) {
+            $this->populateBudgetDaysLines($order, $stockLevels, $config);
+
+            return;
+        }
+
+        $periodDays = (float) ($order->period_of_order_days ?? $config?->period_of_order_days ?? 30);
 
         foreach ($stockLevels as $stock) {
             $item = $stock->item;
@@ -97,33 +106,21 @@ class InventoryOrderService
                 continue;
             }
 
-            $dailyAvg = $this->analytics->movingAverageForStock($stock, $maDays);
-
-            if ($dailyAvg <= 0) {
-                $dailyAvg = $this->analytics->effectiveDailyUsage($stock, $config);
-            }
-
-            $safetyDays = $this->analytics->safetyStockDays($stock, $config);
-            $bufferDays = $this->analytics->bufferStockDays($stock, $config);
-            $leadTimeDays = $this->averageLeadTimeDays((int) $order->business_id, (int) $item->id);
-            $coverageDays = $safetyDays + $bufferDays + $leadTimeDays + $notificationDays + $periodDays;
-            $systemQty = (float) $stock->quantity_suom;
-            $targetQty = $dailyAvg * $coverageDays;
-            $suggested = max(0, round($targetQty - $systemQty, 4));
-            $unitPrice = (float) ($stock->last_purchase_price ?? $item->default_price ?? 0);
+            $dailyAvg = $this->analytics->excelDailyUsageSuom($stock, $config);
+            $suggested = $this->analytics->suggestedOrderQtyPeriod($stock, $config, $periodDays);
+            $arStock = $this->analytics->systemStockArSuom($stock, $config);
+            $unitPrice = $this->analytics->purchasePricePerSuom($stock, $item);
             $orderQtySuom = $suggested;
-            $orderQtyOuom = null;
-
-            if ($item->suom_per_ouom && (float) $item->suom_per_ouom > 0) {
-                $orderQtyOuom = round($orderQtySuom / (float) $item->suom_per_ouom, 4);
-            }
+            $orderQtyOuom = $this->toOuom($item, $orderQtySuom);
+            $supplierId = $item->suppliers->first()?->id;
 
             InventoryOrderLine::create([
                 'inventory_order_id' => $order->id,
                 'item_id' => $item->id,
+                'supplier_id' => $supplierId,
                 'daily_average_suom' => $dailyAvg,
-                'lead_time_days' => $leadTimeDays,
-                'system_quantity_suom' => $systemQty,
+                'lead_time_days' => $this->averageLeadTimeDays((int) $order->business_id, (int) $item->id),
+                'system_quantity_suom' => $arStock,
                 'suggested_quantity_suom' => $suggested,
                 'order_quantity_suom' => $orderQtySuom,
                 'order_quantity_ouom' => $orderQtyOuom,
@@ -135,16 +132,86 @@ class InventoryOrderService
         $this->applyBudgetConstraints($order->fresh(['lines']), $config);
     }
 
+    /**
+     * Excel budget path AH–AL: proportional order days from a target stock-days budget.
+     *
+     * @param  Collection<int, InventoryStockLevel>  $stockLevels
+     */
+    private function populateBudgetDaysLines(
+        InventoryOrder $order,
+        Collection $stockLevels,
+        ?InventoryModuleConfig $config
+    ): void {
+        $budgetDays = (float) $order->budget_value;
+        $rows = [];
+
+        foreach ($stockLevels as $stock) {
+            $item = $stock->item;
+
+            if (! $item || $item->type !== 'good') {
+                continue;
+            }
+
+            if ($order->importance_filter && $item->importance_category !== $order->importance_filter) {
+                continue;
+            }
+
+            $rows[] = [
+                'stock' => $stock,
+                'item' => $item,
+                'days_left' => $this->analytics->daysLeftToOrder($stock, $config) ?? 0,
+                'daily_avg' => $this->analytics->excelDailyUsageSuom($stock, $config),
+                'test_amount' => $this->analytics->budgetTestAmountUgx($stock, $config, $item),
+                'unit_price' => $this->analytics->purchasePricePerSuom($stock, $item),
+                'ar_stock' => $this->analytics->systemStockArSuom($stock, $config),
+            ];
+        }
+
+        if ($rows === []) {
+            return;
+        }
+
+        $avgDaysLeft = collect($rows)->avg('days_left');
+        $sumTestAmount = collect($rows)->sum('test_amount');
+
+        foreach ($rows as $row) {
+            $gap = $row['days_left'] - $avgDaysLeft;
+            $orderDays = $sumTestAmount > 0
+                ? max(0, (15 * $budgetDays / $sumTestAmount) - $gap)
+                : 0;
+            $suggested = max(0, round($orderDays * $row['daily_avg'], 4));
+            $supplierId = $row['item']->suppliers->first()?->id;
+
+            InventoryOrderLine::create([
+                'inventory_order_id' => $order->id,
+                'item_id' => $row['item']->id,
+                'supplier_id' => $supplierId,
+                'daily_average_suom' => $row['daily_avg'],
+                'lead_time_days' => $this->averageLeadTimeDays((int) $order->business_id, (int) $row['item']->id),
+                'system_quantity_suom' => $row['ar_stock'],
+                'suggested_quantity_suom' => $suggested,
+                'order_quantity_suom' => $suggested,
+                'order_quantity_ouom' => $this->toOuom($row['item'], $suggested),
+                'unit_price' => $row['unit_price'],
+                'line_total' => round($suggested * $row['unit_price'], 2),
+            ]);
+        }
+    }
+
     public function explainEmptyOrder(InventoryOrder $order): string
     {
         $stockCount = InventoryStockLevel::query()
             ->where('business_id', $order->business_id)
             ->where('store_id', $order->store_id)
-            ->where('quantity_suom', '>', 0)
+            ->where(function ($query) {
+                $query->where('quantity_suom', '>', 0)
+                    ->orWhere('ma_15_days', '>', 0)
+                    ->orWhere('ma_30_days', '>', 0);
+            })
             ->count();
 
         if ($stockCount === 0) {
-            return 'No items have system stock at this store. Receive goods via a GRN first, then refresh lines.';
+            return 'No items have stock or consumption history at this store. Receive goods via a GRN or wait for sale consumption, then refresh lines.';
         }
 
         if ($order->importance_filter) {
@@ -153,7 +220,10 @@ class InventoryOrderService
             $matchingStock = InventoryStockLevel::query()
                 ->where('business_id', $order->business_id)
                 ->where('store_id', $order->store_id)
-                ->where('quantity_suom', '>', 0)
+                ->where(function ($query) {
+                    $query->where('quantity_suom', '>', 0)
+                        ->orWhere('ma_15_days', '>', 0);
+                })
                 ->whereHas('item', fn ($query) => $query->where('importance_category', $order->importance_filter))
                 ->count();
 
@@ -182,6 +252,10 @@ class InventoryOrderService
             return;
         }
 
+        if ($order->budget_mode === InventoryOrder::BUDGET_MODE_DAYS) {
+            return;
+        }
+
         $order->load('lines');
 
         if ($order->budget_mode === InventoryOrder::BUDGET_MODE_AMOUNT) {
@@ -196,33 +270,6 @@ class InventoryOrderService
             foreach ($order->lines as $line) {
                 $qty = round((float) $line->order_quantity_suom * $factor, 4);
                 $this->updateLine($line, $qty);
-            }
-
-            return;
-        }
-
-        if ($order->budget_mode === InventoryOrder::BUDGET_MODE_DAYS) {
-            $targetDays = (float) $order->budget_value;
-
-            foreach ($order->lines as $line) {
-                $line->loadMissing('item');
-                $dailyAvg = (float) $line->daily_average_suom;
-
-                if ($dailyAvg <= 0) {
-                    continue;
-                }
-
-                $targetQty = $dailyAvg * $targetDays;
-                $suggested = max(0, round($targetQty - (float) $line->system_quantity_suom, 4));
-                $ouom = null;
-                $item = $line->item;
-
-                if ($item && $item->suom_per_ouom && (float) $item->suom_per_ouom > 0) {
-                    $ouom = round($suggested / (float) $item->suom_per_ouom, 4);
-                }
-
-                $this->updateLine($line, $suggested, $ouom);
-                $line->update(['suggested_quantity_suom' => $suggested]);
             }
         }
     }
@@ -260,5 +307,14 @@ class InventoryOrderService
         ]);
 
         return $order->fresh(['lines.item', 'store']);
+    }
+
+    private function toOuom(Item $item, float $orderQtySuom): ?float
+    {
+        if ($item->suom_per_ouom && (float) $item->suom_per_ouom > 0) {
+            return round($orderQtySuom / (float) $item->suom_per_ouom, 4);
+        }
+
+        return null;
     }
 }

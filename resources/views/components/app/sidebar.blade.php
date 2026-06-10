@@ -175,8 +175,13 @@
                                 </a>
                             </li>
                             <li>
-                                <a href="{{ route('inventory.reports.aging') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.reports*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
-                                    Stock Aging
+                                <a href="{{ route('inventory.reports.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.reports*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Reports
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.network') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.network') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Network Stock
                                 </a>
                             </li>
                             <li>

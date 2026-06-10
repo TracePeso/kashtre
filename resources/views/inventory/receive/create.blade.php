@@ -7,7 +7,8 @@
         'code' => $i->code,
         'suom' => $i->itemUnit?->name,
         'default_price' => (float) ($i->default_price ?? 0),
-    ])->values())
+    ])->values()),
+    @js($supplierItemIds)
 )">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="mb-6">
@@ -49,7 +50,8 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
                         <label for="supplier_id" class="block text-sm font-medium text-gray-700">Supplier</label>
-                        <select name="supplier_id" id="supplier_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                        <select name="supplier_id" id="supplier_id" x-model="supplierId" @change="onSupplierChange()"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
                             <option value="">— Select supplier —</option>
                             @foreach($suppliers as $supplier)
                                 <option value="{{ $supplier->id }}" @selected(old('supplier_id') == $supplier->id)>{{ $supplier->name }}</option>
@@ -131,7 +133,7 @@
                                         <select :name="'lines[' + index + '][item_id]'" x-model="line.item_id" @change="onItemChange(line, index)" required
                                                 class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
                                             <option value="">Select item</option>
-                                            <template x-for="item in items" :key="item.id">
+                                            <template x-for="item in filteredItems()" :key="item.id">
                                                 <option :value="item.id"
                                                         :disabled="isItemTaken(item.id, index)"
                                                         x-text="itemLabel(item, index)"></option>
@@ -225,7 +227,7 @@
 </div>
 
 <script>
-function grnCreateForm(itemUnits, items) {
+function grnCreateForm(itemUnits, items, supplierItemIds) {
     const blankLine = () => ({
         item_id: '', suom: '', duom: '', item_suom: '', quantity: 1, batch_number: '', expiry_date: '',
         purchase_price: 0, conversion: 1,
@@ -234,8 +236,29 @@ function grnCreateForm(itemUnits, items) {
     return {
         itemUnits,
         items,
+        supplierItemIds: supplierItemIds || {},
+        supplierId: '',
         deliveryNoteName: '',
         lines: [blankLine()],
+        filteredItems() {
+            if (!this.supplierId) {
+                return this.items;
+            }
+            const allowed = this.supplierItemIds[this.supplierId] || [];
+            if (!allowed.length) {
+                return this.items;
+            }
+            const allowedSet = new Set(allowed.map(String));
+            return this.items.filter(item => allowedSet.has(String(item.id)));
+        },
+        onSupplierChange() {
+            const allowed = this.filteredItems().map(item => String(item.id));
+            this.lines.forEach(line => {
+                if (line.item_id && !allowed.includes(String(line.item_id))) {
+                    Object.assign(line, blankLine());
+                }
+            });
+        },
         addLine() {
             this.lines.push(blankLine());
         },

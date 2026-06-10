@@ -8,6 +8,7 @@ use App\Models\InventoryDailyConsumption;
 use App\Models\InventoryStockLevel;
 use App\Models\Item;
 use App\Models\Store;
+use App\Models\User;
 use App\Services\Inventory\InventoryStockAnalyticsService;
 use App\Support\HospitalConsumptionMatrix;
 use Illuminate\Database\Seeder;
@@ -21,6 +22,8 @@ class SampleHospitalConsumptionSeeder extends Seeder
     private const ACCOUNT_NUMBER = 'KS1759822163';
 
     private const BRANCH_NAME = 'Kololo';
+
+    private const RECORDED_BY_EMAIL = 'katznicho@gmail.com';
 
     public function run(): void
     {
@@ -55,6 +58,17 @@ class SampleHospitalConsumptionSeeder extends Seeder
 
         if (! $store) {
             $this->command->error('No store found for '.$business->name.' / '.self::BRANCH_NAME.'.');
+
+            return;
+        }
+
+        $recordedBy = User::query()
+            ->where('business_id', $business->id)
+            ->where('email', self::RECORDED_BY_EMAIL)
+            ->first();
+
+        if (! $recordedBy) {
+            $this->command->error('User '.self::RECORDED_BY_EMAIL.' not found on '.$business->name.'.');
 
             return;
         }
@@ -112,7 +126,7 @@ class SampleHospitalConsumptionSeeder extends Seeder
                 'quantity_suom' => $row['quantity'],
                 'source' => InventoryDailyConsumption::SOURCE_SALE,
                 'notes' => self::SAMPLE_NOTE,
-                'recorded_by_user_id' => null,
+                'recorded_by_user_id' => $recordedBy->id,
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
@@ -124,7 +138,7 @@ class SampleHospitalConsumptionSeeder extends Seeder
             DB::table('inventory_daily_consumptions')->upsert(
                 $chunk,
                 ['business_id', 'store_id', 'item_id', 'consumption_date', 'source'],
-                ['quantity_suom', 'notes', 'updated_at']
+                ['quantity_suom', 'notes', 'recorded_by_user_id', 'updated_at']
             );
         }
 
