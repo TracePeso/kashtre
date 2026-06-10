@@ -128,7 +128,7 @@
                                 @elseif($selectedRoster->isEditable())
                                     <button type="button" wire:click="generateRosterWithAi" wire:loading.attr="disabled" wire:target="generateRosterWithAi" class="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
                                         <span wire:loading.remove wire:target="generateRosterWithAi">Auto-Generate</span>
-                                        <span wire:loading wire:target="generateRosterWithAi">Starting...</span>
+                                        <span wire:loading wire:target="generateRosterWithAi">Generating...</span>
                                     </button>
                                     <button type="button" wire:click="saveRoster" class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
                                         Save Draft
@@ -173,10 +173,10 @@
                             @if($selectedRoster->isEditable())
                                 <div class="mt-3 w-full space-y-2">
                                     <p wire:loading wire:target="generateRosterWithAi" class="text-xs font-medium text-blue-700">
-                                        Sending this roster draft to Gemini. The draft will update only if Gemini returns usable assignments.
+                                        Gemini is generating shift assignments for this roster.
                                     </p>
                                     <p class="text-xs text-gray-500">
-                                        Auto-generation runs through Gemini in the background. If Gemini fails, this draft stays unchanged and the failure message appears here.
+                                        Auto-generation uses Gemini and writes the returned shift assignments directly into this draft.
                                     </p>
                                     @error('roster')
                                         <div class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
@@ -434,7 +434,6 @@
                                                 <th class="border border-stone-300 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.25em] text-stone-600">Team</th>
                                                 <th class="border border-stone-300 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.25em] text-stone-600">Name</th>
                                                 <th class="border border-stone-300 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.25em] text-stone-600">Cadre</th>
-                                                <th class="border border-stone-300 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.25em] text-stone-600">Assignment Type</th>
                                                 @foreach($editorDates as $date)
                                                     @php
                                                         $dateEvents = $rosterEvents->filter(
@@ -454,7 +453,7 @@
                                         <tbody class="bg-white">
                                             @foreach($teamGroups as $teamLabel => $teamMembers)
                                                 <tr class="bg-rose-50/40">
-                                                    <td colspan="{{ 4 + count($editorDates) }}" class="border-y border-stone-300 px-3 py-2 text-left text-sm font-semibold uppercase tracking-[0.3em] text-rose-500">
+                                                    <td colspan="{{ 3 + count($editorDates) }}" class="border-y border-stone-300 px-3 py-2 text-left text-sm font-semibold uppercase tracking-[0.3em] text-rose-500">
                                                         {{ $teamLabel }}
                                                     </td>
                                                 </tr>
@@ -463,9 +462,6 @@
                                                     @php
                                                         $staffContext = $staffUiContext[$staffAssignment->id] ?? ['date_statuses' => []];
                                                         $cadreLabel = $staffAssignment->staff_title ?: $staffAssignment->staff_cadre ?: 'Staff';
-                                                        $assignmentStatus = $staffAssignment->client_space_assignment_type === \App\Models\HrClientSpaceStaffAssignment::TYPE_SECONDARY
-                                                            ? 'Additional'
-                                                            : 'Primary';
                                                     @endphp
                                                     <tr>
                                                         <td class="border border-stone-300 px-3 py-2 text-xs uppercase tracking-[0.2em] text-stone-400">
@@ -490,11 +486,6 @@
                                                         </td>
                                                         <td class="border border-stone-300 px-3 py-2 text-sm text-stone-800">
                                                             {{ $cadreLabel }}
-                                                        </td>
-                                                        <td class="border border-stone-300 px-3 py-2 text-center">
-                                                            <span class="inline-flex min-w-[6.5rem] items-center justify-center rounded border border-stone-300 bg-stone-50 px-2 py-1 text-xs font-semibold text-stone-700">
-                                                                {{ $assignmentStatus }}
-                                                            </span>
                                                         </td>
                                                         @foreach($editorDates as $date)
                                                             @php
@@ -636,7 +627,6 @@
                                                     <tr>
                                                         <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Staff</th>
                                                         <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Title</th>
-                                                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Assignment</th>
                                                         <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Team</th>
                                                     </tr>
                                                 </thead>
@@ -644,9 +634,6 @@
                                                     @foreach($newRosterStaffRows as $staffAssignment)
                                                         @php
                                                             $staffCadreLabel = $staffAssignment->staff_title ?: $staffAssignment->staff_cadre ?: 'Staff';
-                                                            $staffAssignmentType = $staffAssignment->client_space_assignment_type === \App\Models\HrClientSpaceStaffAssignment::TYPE_SECONDARY
-                                                                ? 'Additional'
-                                                                : 'Primary';
                                                         @endphp
                                                         <tr>
                                                             <td class="px-3 py-2 align-top">
@@ -656,7 +643,6 @@
                                                                 @endif
                                                             </td>
                                                             <td class="px-3 py-2 text-gray-700">{{ $staffCadreLabel }}</td>
-                                                            <td class="px-3 py-2 text-gray-700">{{ $staffAssignmentType }}</td>
                                                             <td class="px-3 py-2">
                                                                 <select wire:model.live="newRosterTeamAssignments.{{ $staffAssignment->id }}" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                                                                     <option value="">Unassigned</option>

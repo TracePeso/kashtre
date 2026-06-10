@@ -467,13 +467,28 @@ class DutyRosterService
             ])
         );
 
-        return $this->persistGeneratedAiDraft(
+        $persistedRoster = $this->persistGeneratedAiDraft(
             $roster->id,
             $validated,
             $teamAssignments,
             $generatedEntries,
             $generationToken
         );
+
+        if ($generationToken === null) {
+            $persistedRoster->update([
+                'ai_generation_status' => HrDutyRoster::AI_GENERATION_COMPLETED,
+                'ai_generation_source' => HrDutyRoster::AI_GENERATION_SOURCE_GEMINI,
+                'ai_generation_message' => 'Gemini roster generation completed and the roster draft was updated.',
+                'ai_generation_attempts' => max(1, (int) ($persistedRoster->ai_generation_attempts ?? 1)),
+                'ai_generation_started_at' => $persistedRoster->ai_generation_started_at ?: now(),
+                'ai_generation_heartbeat_at' => now(),
+                'ai_generation_completed_at' => now(),
+                'ai_generation_failed_at' => null,
+            ]);
+        }
+
+        return $persistedRoster->fresh(['entries.shiftType', 'approvalRequest.events', 'approvalRequests']);
     }
 
     public function generateAutomaticFallbackForAiDraft(HrDutyRoster $roster, User $user, array $payload): HrDutyRoster

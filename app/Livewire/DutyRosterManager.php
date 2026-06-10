@@ -346,7 +346,7 @@ class DutyRosterManager extends Component
         $this->resetValidation();
 
         try {
-            $roster = $this->dutyRosterService()->startAiDraftGeneration($roster, $user, [
+            $roster = $this->dutyRosterService()->generateAiDraft($roster, $user, [
                 'client_space_id' => $roster->organizational_unit_id,
                 'name' => $this->editingName,
                 'team_grouping_enabled' => $this->editingUsesTeams,
@@ -362,7 +362,7 @@ class DutyRosterManager extends Component
         }
 
         $this->hydrateSelectedRoster($roster);
-        $this->message = 'Gemini roster generation started.';
+        $this->message = 'Gemini roster draft generated.';
     }
 
     public function refreshAiGeneration(): void
