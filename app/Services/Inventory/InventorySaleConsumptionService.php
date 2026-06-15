@@ -15,7 +15,7 @@ class InventorySaleConsumptionService
         private readonly InventoryStockAnalyticsService $analytics
     ) {}
 
-    public function recordFromQueue(ServiceDeliveryQueue $queue, ?int $userId = null): void
+    public function recordFromQueue(ServiceDeliveryQueue $queue, ?int $userId = null, ?int $saleId = null): void
     {
         $queue->loadMissing(['item', 'business']);
 
@@ -66,7 +66,9 @@ class InventorySaleConsumptionService
             $quantity,
             \App\Models\InventoryDailyConsumption::SOURCE_SALE,
             $userId,
-            'Auto from sale: '.($queue->item_name ?? $item->name)
+            'Auto from sale: '.($queue->item_name ?? $item->name),
+            now(),
+            $saleId
         );
     }
 

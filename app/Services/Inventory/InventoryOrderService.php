@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\DB;
 
 class InventoryOrderService
 {
+    /** Consumption rate window — auto-applied (15-day MA per Excel V/AA). */
+    public const AUTO_CONSUMPTION_RATE_DAYS = 15;
+
     public function __construct(
         private readonly InventoryStockAnalyticsService $analytics
     ) {}
@@ -37,11 +40,16 @@ class InventoryOrderService
         ?string $importanceFilter = null,
         ?string $budgetMode = null,
         ?float $budgetValue = null,
-        int $movingAverageDays = 30,
         ?float $periodOfOrderDays = null,
-        ?string $notes = null
+        ?string $notes = null,
+        ?int $groupId = null,
+        ?int $subgroupId = null,
+        ?float $peakPeriodPercent = null,
+        ?float $safetyStockDays = null,
+        ?float $bufferStockDays = null,
+        ?float $notificationToOrderDays = null
     ): InventoryOrder {
-        return DB::transaction(function () use ($businessId, $storeId, $user, $importanceFilter, $budgetMode, $budgetValue, $movingAverageDays, $periodOfOrderDays, $notes) {
+        return DB::transaction(function () use ($businessId, $storeId, $user, $importanceFilter, $budgetMode, $budgetValue, $periodOfOrderDays, $notes, $groupId, $subgroupId, $peakPeriodPercent, $safetyStockDays, $bufferStockDays, $notificationToOrderDays) {
             $config = InventoryModuleConfig::query()
                 ->forBusiness($businessId)
                 ->active()
@@ -53,10 +61,16 @@ class InventoryOrderService
                 'order_number' => $this->generateOrderNumber($businessId),
                 'status' => InventoryOrder::STATUS_DRAFT,
                 'importance_filter' => $importanceFilter,
+                'group_id' => $groupId,
+                'subgroup_id' => $subgroupId,
                 'budget_mode' => $budgetMode,
                 'budget_value' => $budgetValue,
-                'moving_average_days' => $movingAverageDays,
+                'moving_average_days' => self::AUTO_CONSUMPTION_RATE_DAYS,
                 'period_of_order_days' => $periodOfOrderDays ?? (float) ($config?->period_of_order_days ?? 30),
+                'safety_stock_days' => $safetyStockDays ?? (float) ($config?->safety_stock_days ?? 0),
+                'buffer_stock_days' => $bufferStockDays ?? (float) ($config?->buffer_stock_days ?? 0),
+                'notification_to_order_days' => $notificationToOrderDays ?? (float) ($config?->notification_to_order_days ?? 0),
+                'peak_period_percent' => max(0, (float) ($peakPeriodPercent ?? 0)),
                 'notes' => $notes,
                 'created_by_user_id' => $user->id,
             ]);
@@ -98,35 +112,26 @@ class InventoryOrderService
         foreach ($stockLevels as $stock) {
             $item = $stock->item;
 
-            if (! $item || $item->type !== 'good') {
-                continue;
-            }
-
-            if ($order->importance_filter && $item->importance_category !== $order->importance_filter) {
+            if (! $this->itemPassesOrderFilters($item, $order)) {
                 continue;
             }
 
             $dailyAvg = $this->analytics->excelDailyUsageSuom($stock, $config);
-            $suggested = $this->analytics->suggestedOrderQtyPeriod($stock, $config, $periodDays);
+            $baseSuggested = $this->analytics->suggestedOrderQtyPeriod($stock, $config, $periodDays, $order);
             $arStock = $this->analytics->systemStockArSuom($stock, $config);
             $unitPrice = $this->analytics->purchasePricePerSuom($stock, $item);
-            $orderQtySuom = $suggested;
-            $orderQtyOuom = $this->toOuom($item, $orderQtySuom);
             $supplierId = $item->suppliers->first()?->id;
 
-            InventoryOrderLine::create([
-                'inventory_order_id' => $order->id,
-                'item_id' => $item->id,
-                'supplier_id' => $supplierId,
-                'daily_average_suom' => $dailyAvg,
-                'lead_time_days' => $this->averageLeadTimeDays((int) $order->business_id, (int) $item->id),
-                'system_quantity_suom' => $arStock,
-                'suggested_quantity_suom' => $suggested,
-                'order_quantity_suom' => $orderQtySuom,
-                'order_quantity_ouom' => $orderQtyOuom,
-                'unit_price' => $unitPrice,
-                'line_total' => round($orderQtySuom * $unitPrice, 2),
-            ]);
+            $this->createOrderLine(
+                $order,
+                $item,
+                $baseSuggested,
+                $dailyAvg,
+                $arStock,
+                $unitPrice,
+                $supplierId,
+                0
+            );
         }
 
         $this->applyBudgetConstraints($order->fresh(['lines']), $config);
@@ -148,18 +153,14 @@ class InventoryOrderService
         foreach ($stockLevels as $stock) {
             $item = $stock->item;
 
-            if (! $item || $item->type !== 'good') {
-                continue;
-            }
-
-            if ($order->importance_filter && $item->importance_category !== $order->importance_filter) {
+            if (! $this->itemPassesOrderFilters($item, $order)) {
                 continue;
             }
 
             $rows[] = [
                 'stock' => $stock,
                 'item' => $item,
-                'days_left' => $this->analytics->daysLeftToOrder($stock, $config) ?? 0,
+                'days_left' => $this->analytics->daysLeftToOrder($stock, $config, $order) ?? 0,
                 'daily_avg' => $this->analytics->excelDailyUsageSuom($stock, $config),
                 'test_amount' => $this->analytics->budgetTestAmountUgx($stock, $config, $item),
                 'unit_price' => $this->analytics->purchasePricePerSuom($stock, $item),
@@ -179,23 +180,91 @@ class InventoryOrderService
             $orderDays = $sumTestAmount > 0
                 ? max(0, (15 * $budgetDays / $sumTestAmount) - $gap)
                 : 0;
-            $suggested = max(0, round($orderDays * $row['daily_avg'], 4));
+            $baseSuggested = max(0, round($orderDays * $row['daily_avg'], 4));
             $supplierId = $row['item']->suppliers->first()?->id;
 
-            InventoryOrderLine::create([
-                'inventory_order_id' => $order->id,
-                'item_id' => $row['item']->id,
-                'supplier_id' => $supplierId,
-                'daily_average_suom' => $row['daily_avg'],
-                'lead_time_days' => $this->averageLeadTimeDays((int) $order->business_id, (int) $row['item']->id),
-                'system_quantity_suom' => $row['ar_stock'],
-                'suggested_quantity_suom' => $suggested,
-                'order_quantity_suom' => $suggested,
-                'order_quantity_ouom' => $this->toOuom($row['item'], $suggested),
-                'unit_price' => $row['unit_price'],
-                'line_total' => round($suggested * $row['unit_price'], 2),
-            ]);
+            $this->createOrderLine(
+                $order,
+                $row['item'],
+                $baseSuggested,
+                $row['daily_avg'],
+                $row['ar_stock'],
+                $row['unit_price'],
+                $supplierId,
+                0
+            );
         }
+    }
+
+    /**
+     * Peak impact (%) = peak period (%) × consumption increase (%) ÷ 100.
+     */
+    public static function computePeakImpactPercent(?float $peakPeriodPercent, ?float $consumptionIncreasePercent): float
+    {
+        $peakPeriod = max(0, (float) ($peakPeriodPercent ?? 0));
+        $increase = max(0, (float) ($consumptionIncreasePercent ?? 0));
+
+        if ($peakPeriod <= 0 || $increase <= 0) {
+            return 0.0;
+        }
+
+        return round($peakPeriod * $increase / 100, 4);
+    }
+
+    public function applyPeakToSuggestedQuantity(float $baseSuggested, float $peakImpactPercent): float
+    {
+        return max(0, round($baseSuggested * (1 + ($peakImpactPercent / 100)), 4));
+    }
+
+    public function updateLinePeakIncrease(InventoryOrderLine $line, float $consumptionIncreasePercent): InventoryOrderLine
+    {
+        $line->loadMissing(['order', 'item']);
+        $baseSuggested = (float) ($line->base_suggested_quantity_suom ?? $line->suggested_quantity_suom);
+        $peakImpact = self::computePeakImpactPercent($line->order->peak_period_percent, $consumptionIncreasePercent);
+        $suggested = $this->applyPeakToSuggestedQuantity($baseSuggested, $peakImpact);
+        $unitPrice = (float) ($line->unit_price ?? 0);
+
+        $line->update([
+            'peak_consumption_increase_percent' => max(0, $consumptionIncreasePercent),
+            'peak_impact_percent' => $peakImpact,
+            'suggested_quantity_suom' => $suggested,
+            'order_quantity_suom' => $suggested,
+            'order_quantity_ouom' => $line->item ? $this->toOuom($line->item, $suggested) : null,
+            'line_total' => round($suggested * $unitPrice, 2),
+        ]);
+
+        return $line->fresh('item');
+    }
+
+    private function createOrderLine(
+        InventoryOrder $order,
+        Item $item,
+        float $baseSuggested,
+        float $dailyAvg,
+        float $arStock,
+        float $unitPrice,
+        ?int $supplierId,
+        float $consumptionIncreasePercent
+    ): void {
+        $peakImpact = self::computePeakImpactPercent($order->peak_period_percent, $consumptionIncreasePercent);
+        $suggested = $this->applyPeakToSuggestedQuantity($baseSuggested, $peakImpact);
+
+        InventoryOrderLine::create([
+            'inventory_order_id' => $order->id,
+            'item_id' => $item->id,
+            'supplier_id' => $supplierId,
+            'daily_average_suom' => $dailyAvg,
+            'lead_time_days' => $this->averageLeadTimeDays((int) $order->business_id, (int) $item->id),
+            'system_quantity_suom' => $arStock,
+            'base_suggested_quantity_suom' => $baseSuggested,
+            'peak_consumption_increase_percent' => max(0, $consumptionIncreasePercent),
+            'peak_impact_percent' => $peakImpact,
+            'suggested_quantity_suom' => $suggested,
+            'order_quantity_suom' => $suggested,
+            'order_quantity_ouom' => $this->toOuom($item, $suggested),
+            'unit_price' => $unitPrice,
+            'line_total' => round($suggested * $unitPrice, 2),
+        ]);
     }
 
     public function explainEmptyOrder(InventoryOrder $order): string
@@ -299,16 +368,6 @@ class InventoryOrderService
         return $line->fresh('item');
     }
 
-    public function submit(InventoryOrder $order): InventoryOrder
-    {
-        $order->update([
-            'status' => InventoryOrder::STATUS_SUBMITTED,
-            'submitted_at' => now(),
-        ]);
-
-        return $order->fresh(['lines.item', 'store']);
-    }
-
     private function toOuom(Item $item, float $orderQtySuom): ?float
     {
         if ($item->suom_per_ouom && (float) $item->suom_per_ouom > 0) {
@@ -316,5 +375,26 @@ class InventoryOrderService
         }
 
         return null;
+    }
+
+    private function itemPassesOrderFilters(Item $item, InventoryOrder $order): bool
+    {
+        if ($item->type !== 'good') {
+            return false;
+        }
+
+        if ($order->importance_filter && $item->importance_category !== $order->importance_filter) {
+            return false;
+        }
+
+        if ($order->group_id && (int) $item->group_id !== (int) $order->group_id) {
+            return false;
+        }
+
+        if ($order->subgroup_id && (int) $item->subgroup_id !== (int) $order->subgroup_id) {
+            return false;
+        }
+
+        return true;
     }
 }

@@ -4,23 +4,23 @@
         <div class="md:flex md:items-center md:justify-between">
             <div class="flex-1 min-w-0">
                 <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">Monitor Stock</h2>
-                <p class="mt-1 text-sm text-gray-500">System vs physical stock by store. Filter by store or open <strong>History</strong> for price movements.</p>
+                <p class="mt-1 text-sm text-gray-500">
+                    Switch between <strong>local store</strong> stock (one store, full Excel metrics) and
+                    <strong>network rollup</strong> (parent store + all child stores).
+                </p>
             </div>
         </div>
 
         @include('inventory.partials.subnav')
 
         <div class="mt-6 bg-white shadow sm:rounded-lg p-6">
-            @livewire('inventory.monitor-stock-table')
+            @livewire('inventory.inventory-stock-monitor')
         </div>
 
         <p class="mt-4 text-xs text-gray-500">
-            <strong>Physical usable stock</strong> = physical (or system if not counted) minus damaged and expired.
-            <strong>Verifiable shrinkage</strong> = damaged + expired (on shelf but unusable).
-            <strong>Unverified loss</strong> = system − physical (missing from shelf).
-            <strong>Total shrinkage %</strong> shown to 4 decimal places.
-            <strong>Fixed daily avg</strong> is set under Manage Inventory module settings (Excel AA).
-            Moving averages (15 / 30 / 90 / 180 / 360 days) come from automatically recorded consumption.
+            <strong>Local store</strong> shows item-level Excel columns (M, AR, N, shrinkage, etc.) for the selected store.
+            <strong>Network rollup</strong> sums system, physical, and usable stock across the store hierarchy (Main → Branch → Unit).
+            Open <strong>History</strong> on an item row in local view for price movements.
         </p>
     </div>
 </div>

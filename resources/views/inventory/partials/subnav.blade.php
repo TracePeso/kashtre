@@ -2,7 +2,6 @@
     $tabs = [
         ['route' => 'inventory.receive', 'label' => 'Receive Goods', 'match' => 'inventory.receive*'],
         ['route' => 'inventory.monitor', 'label' => 'Monitor Stock', 'match' => 'inventory.monitor*'],
-        ['route' => 'inventory.network', 'label' => 'Network Stock', 'match' => 'inventory.network'],
         ['route' => 'inventory.stock-counts.index', 'label' => 'Stock Counts', 'match' => 'inventory.stock-counts*'],
         ['route' => 'inventory.consumption.index', 'label' => 'Consumption', 'match' => 'inventory.consumption*'],
         ['route' => 'inventory.orders.index', 'label' => 'Order Forms', 'match' => 'inventory.orders*'],

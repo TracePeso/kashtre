@@ -28,9 +28,12 @@ class MonitorStockTable extends Component implements HasForms, HasTable
 
     public ?\App\Models\InventoryModuleConfig $moduleConfig = null;
 
-    public function mount(): void
+    public ?int $storeId = null;
+
+    public function mount(?int $storeId = null): void
     {
         $this->moduleConfig = $this->moduleConfigFor((int) Auth::user()->business_id);
+        $this->storeId = $storeId;
     }
 
     public function table(Table $table): Table
@@ -59,7 +62,8 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->searchable()
                     ->sortable(query: function (Builder $query, string $direction): Builder {
                         return $query->orderBy('stores.name', $direction);
-                    }),
+                    })
+                    ->visible($this->storeId === null),
 
                 TextColumn::make('itemUnit.name')
                     ->label('SUOM')
@@ -102,7 +106,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                 TextColumn::make('stock_days_n')
                     ->label('Stock days (N)')
                     ->alignEnd()
-                    ->tooltip('M ÷ (15-day avg or fixed daily average)')
+                    ->tooltip('Estimated days until stock runs out at current usage')
                     ->state(fn (Item $record): ?float => $analytics->stockDaysReport($this->stockLevel($record), $config))
                     ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 1) : '—'),
 
@@ -119,40 +123,19 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->state(fn (Item $record): ?string => $analytics->orderingNotificationDate($this->stockLevel($record), $config)?->format('M d, Y'))
                     ->placeholder('—'),
 
-                TextColumn::make('excel_daily_usage')
-                    ->label('Daily avg (V/AA)')
-                    ->alignEnd()
-                    ->visible($config !== null)
-                    ->state(fn (Item $record): float => $analytics->excelDailyUsageSuom($this->stockLevel($record), $config))
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
-
-                TextColumn::make('ma_15_days_display')
-                    ->label('15-day avg')
-                    ->alignEnd()
-                    ->toggleable()
-                    ->state(fn (Item $record): float => (float) ($record->stock_ma_15_days ?? 0))
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
-
-                TextColumn::make('ma_30_days_display')
-                    ->label('30-day avg')
-                    ->alignEnd()
-                    ->toggleable()
-                    ->state(fn (Item $record): float => (float) ($record->stock_ma_30_days ?? 0))
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
-
                 TextColumn::make('safety_stock_suom')
                     ->label('Safety stock (AC)')
                     ->alignEnd()
                     ->visible($config !== null)
                     ->state(fn (Item $record): float => $analytics->safetyStockSuom($this->stockLevel($record), $config))
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('buffer_stock_suom')
                     ->label('Buffer stock (AE)')
                     ->alignEnd()
                     ->visible($config !== null)
                     ->state(fn (Item $record): float => $analytics->bufferStockSuom($this->stockLevel($record), $config))
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('stock_aging_days')
                     ->label('Stock aging (U)')
@@ -178,7 +161,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->icon('heroicon-o-clock')
                     ->url(fn (Item $record): string => route('inventory.monitor.history', $record)),
             ])
-            ->filters([
+            ->filters($this->storeId === null ? [
                 SelectFilter::make('store_id')
                     ->label('Store')
                     ->options(fn (): array => Store::optionsForSelect((int) Auth::user()->business_id))
@@ -189,12 +172,14 @@ class MonitorStockTable extends Component implements HasForms, HasTable
 
                         return $query->where('stock.store_id', $data['value']);
                     }),
-            ])
+            ] : [])
             ->defaultSort('name')
             ->striped()
             ->paginated([10, 25, 50, 100])
             ->emptyStateHeading('No inventory activity')
-            ->emptyStateDescription('Items appear after goods are received or consumption is recorded.');
+            ->emptyStateDescription($this->storeId
+                ? 'No stock or consumption recorded at this store yet.'
+                : 'Items appear after goods are received or consumption is recorded.');
     }
 
     public function render(): View
@@ -219,6 +204,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->orWhere('stock.ma_15_days', '>', 0)
                     ->orWhere('stock.ma_30_days', '>', 0);
             })
+            ->when($this->storeId, fn (Builder $query) => $query->where('stock.store_id', $this->storeId))
             ->select([
                 'items.*',
                 'stock.store_id as stock_store_id',

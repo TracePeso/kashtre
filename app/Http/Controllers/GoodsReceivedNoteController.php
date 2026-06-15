@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\GoodsReceivedNote;
 use App\Models\GoodsReceivedNoteLine;
 use App\Models\InventoryModuleConfig;
+use App\Models\InventoryOrder;
 use App\Models\Item;
 use App\Models\ItemUnit;
 use App\Models\Store;
@@ -41,9 +42,41 @@ class GoodsReceivedNoteController extends Controller
         });
     }
 
-    public function create()
+    public function create(Request $request)
     {
         $businessId = Auth::user()->business_id;
+
+        $inventoryOrder = null;
+        $prefillLines = [];
+        $prefillStoreId = old('store_id');
+        $prefillSupplierId = old('supplier_id', $request->query('supplier_id'));
+
+        if ($request->filled('inventory_order_id')) {
+            $inventoryOrder = InventoryOrder::query()
+                ->where('business_id', $businessId)
+                ->with(['store', 'lines.item.itemUnit', 'lines.item.orderUnit', 'lines.supplier'])
+                ->findOrFail($request->query('inventory_order_id'));
+
+            if (! $inventoryOrder->canReceiveGoods()) {
+                abort(403, 'This order is not approved for receiving.');
+            }
+
+            $fulfillment = app(\App\Services\Inventory\InventoryOrderFulfillmentService::class);
+            $prefillLines =             $fulfillment->prefillGrnLines(
+                $inventoryOrder,
+                ($prefillSupplierId !== null && $prefillSupplierId !== '' && (int) $prefillSupplierId !== 0)
+                    ? (int) $prefillSupplierId
+                    : null
+            );
+
+            if ($prefillLines === []) {
+                return redirect()
+                    ->route('inventory.orders.show', $inventoryOrder)
+                    ->with('warning', 'No remaining quantities to receive for this supplier.');
+            }
+
+            $prefillStoreId = $inventoryOrder->store_id;
+        }
 
         $suppliers = Supplier::query()
             ->where('business_id', $businessId)
@@ -71,6 +104,10 @@ class GoodsReceivedNoteController extends Controller
                 ->with('itemUnit')
                 ->orderBy('name')
                 ->get(),
+            'inventoryOrder' => $inventoryOrder,
+            'prefillLines' => $prefillLines,
+            'prefillStoreId' => $prefillStoreId,
+            'prefillSupplierId' => $prefillSupplierId,
         ]);
     }
 
@@ -81,6 +118,18 @@ class GoodsReceivedNoteController extends Controller
         $user = Auth::user();
         $businessId = $user->business_id;
         $action = $request->input('action', 'draft');
+
+        if (! empty($validated['inventory_order_id'])) {
+            $linkedOrder = InventoryOrder::query()
+                ->where('business_id', $businessId)
+                ->findOrFail($validated['inventory_order_id']);
+
+            if (! $linkedOrder->canReceiveGoods()) {
+                throw ValidationException::withMessages([
+                    'inventory_order_id' => 'The linked order is not approved for receiving.',
+                ]);
+            }
+        }
 
         $grn = DB::transaction(function () use ($validated, $request, $user, $businessId, $action) {
             $deliveryPath = null;
@@ -102,6 +151,7 @@ class GoodsReceivedNoteController extends Controller
                 'business_id' => $businessId,
                 'supplier_id' => $validated['supplier_id'] ?? null,
                 'store_id' => $validated['store_id'] ?? null,
+                'inventory_order_id' => $validated['inventory_order_id'] ?? null,
                 'date_of_order' => $validated['date_of_order'],
                 'date_of_delivery' => $validated['date_of_delivery'],
                 'lead_time_days' => $leadTime,
@@ -140,6 +190,7 @@ class GoodsReceivedNoteController extends Controller
             'entryBy',
             'submittedBy',
             'approvals.approver',
+            'inventoryOrder',
         ]);
 
         $canApprove = $this->service->userCanApprove($goodsReceivedNote, Auth::user());
@@ -198,6 +249,7 @@ class GoodsReceivedNoteController extends Controller
             ->all();
 
         return $request->validate([
+            'inventory_order_id' => 'nullable|exists:inventory_orders,id',
             'supplier_id' => 'nullable|exists:suppliers,id',
             'store_id' => 'required|exists:stores,id',
             'date_of_order' => 'required|date',
@@ -205,6 +257,7 @@ class GoodsReceivedNoteController extends Controller
             'delivery_note' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
             'lines' => 'required|array|min:1',
             'lines.*.item_id' => 'required|exists:items,id',
+            'lines.*.inventory_order_line_id' => 'nullable|exists:inventory_order_lines,id',
             'lines.*.quantity' => 'required|numeric|min:0.0001',
             'lines.*.batch_number' => 'nullable|string|max:100',
             'lines.*.expiry_date' => 'nullable|date',
@@ -249,6 +302,7 @@ class GoodsReceivedNoteController extends Controller
             GoodsReceivedNoteLine::create([
                 'goods_received_note_id' => $grn->id,
                 'item_id' => $item->id,
+                'inventory_order_line_id' => $line['inventory_order_line_id'] ?? null,
                 'item_name' => $item->name,
                 'quantity' => $quantity,
                 'batch_number' => $line['batch_number'] ?? null,

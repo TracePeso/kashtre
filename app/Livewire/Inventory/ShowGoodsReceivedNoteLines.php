@@ -58,12 +58,12 @@ class ShowGoodsReceivedNoteLines extends Component implements HasForms, HasTable
                 TextColumn::make('sale_units_per_purchase_unit')
                     ->label('No. sale units / purchase')
                     ->alignEnd()
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('quantity')
                     ->label('Quantity')
                     ->alignEnd()
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('duom')
                     ->label('Delivery unit')
@@ -79,7 +79,7 @@ class ShowGoodsReceivedNoteLines extends Component implements HasForms, HasTable
                     ->alignEnd()
                     ->weight('semibold')
                     ->color('success')
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 4)),
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
             ])
             ->paginated(false)
             ->striped()

@@ -52,7 +52,7 @@ class InventoryController extends Controller
 
     public function network()
     {
-        return view('inventory.network');
+        return redirect()->route('inventory.monitor', ['view' => 'network']);
     }
 
     public function stockHistory(Item $item)

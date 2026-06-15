@@ -8,7 +8,11 @@
         'suom' => $i->itemUnit?->name,
         'default_price' => (float) ($i->default_price ?? 0),
     ])->values()),
-    @js($supplierItemIds)
+    @js($supplierItemIds),
+    @js($prefillLines ?? []),
+    @js($prefillStoreId),
+    @js($prefillSupplierId),
+    {{ $inventoryOrder?->id ?? 'null' }}
 )">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="mb-6">
@@ -18,7 +22,13 @@
         <div class="md:flex md:items-center md:justify-between mb-6">
             <div>
                 <h2 class="text-2xl font-bold text-gray-900">New Goods Received Note</h2>
-                <p class="mt-1 text-sm text-gray-500">Record incoming goods from a supplier. Stock updates after approvers sign off.</p>
+                <p class="mt-1 text-sm text-gray-500">
+                    @if(!empty($inventoryOrder))
+                        Receiving against order <strong>{{ $inventoryOrder->order_number }}</strong>. Stock updates after GRN approvers sign off.
+                    @else
+                        Record incoming goods from a supplier. Stock updates after approvers sign off.
+                    @endif
+                </p>
             </div>
         </div>
 
@@ -43,6 +53,7 @@
 
         <form method="POST" action="{{ route('inventory.receive.store') }}" enctype="multipart/form-data" class="mt-6 space-y-6">
             @csrf
+            <input type="hidden" name="inventory_order_id" :value="inventoryOrderId ?? ''">
 
             <div class="bg-white shadow sm:rounded-lg p-6 space-y-5">
                 <h3 class="text-lg font-medium text-gray-900 border-b border-gray-200 pb-3">Delivery note header</h3>
@@ -63,7 +74,7 @@
                         <select name="store_id" id="store_id" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
                             <option value="">— Select store —</option>
                             @foreach($stores as $store)
-                                <option value="{{ $store->id }}" @selected(old('store_id') == $store->id)>{{ $store->selectLabel() }}</option>
+                                <option value="{{ $store->id }}" @selected(old('store_id', $prefillStoreId ?? null) == $store->id)>{{ $store->selectLabel() }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -142,7 +153,7 @@
                                     </div>
                                     <div class="lg:col-span-1">
                                         <label class="block text-xs font-medium text-gray-600 mb-1">Qty <span class="text-red-500">*</span></label>
-                                        <input type="number" step="0.0001" min="0.0001" :name="'lines[' + index + '][quantity]'" x-model.number="line.quantity" required
+                                        <input type="number" step="1" min="1" :name="'lines[' + index + '][quantity]'" x-model.number="line.quantity" required
                                                class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
                                     </div>
                                     <div class="lg:col-span-2">
@@ -187,12 +198,13 @@
                                         <div class="flex h-[38px] items-center rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800">
                                             <span x-text="line.suom || 'Select an item first'"></span>
                                         </div>
+                                        <input type="hidden" :name="'lines[' + index + '][inventory_order_line_id]'" :value="line.inventory_order_line_id || ''">
                                         <input type="hidden" :name="'lines[' + index + '][suom]'" :value="line.suom">
                                         <p class="mt-1 text-xs text-gray-500">Fixed from the item master (SUOM). Sale units to stock = qty × conversion below.</p>
                                     </div>
                                     <div class="lg:col-span-3">
                                         <label class="block text-xs font-medium text-gray-600 mb-1">Sale units per purchase <span class="text-red-500">*</span></label>
-                                        <input type="number" step="0.0001" min="0.0001"
+                                        <input type="number" step="1" min="1"
                                                :name="'lines[' + index + '][sale_units_per_purchase_unit]'" x-model.number="line.conversion" required
                                                placeholder="e.g. 30"
                                                class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
@@ -201,7 +213,7 @@
                                         <label class="block text-xs font-medium text-gray-600 mb-1">Sale units to stock</label>
                                         <div class="flex h-[38px] items-center rounded-md border border-emerald-200 bg-emerald-50 px-3">
                                             <span class="text-lg font-semibold text-emerald-900 tabular-nums"
-                                                  x-text="saleUnits(line).toLocaleString(undefined, {maximumFractionDigits: 4})"></span>
+                                                  x-text="saleUnits(line).toLocaleString(undefined, {maximumFractionDigits: 0})"></span>
                                         </div>
                                     </div>
                                 </div>
@@ -227,19 +239,37 @@
 </div>
 
 <script>
-function grnCreateForm(itemUnits, items, supplierItemIds) {
+function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillStoreId, prefillSupplierId, inventoryOrderId) {
     const blankLine = () => ({
-        item_id: '', suom: '', duom: '', item_suom: '', quantity: 1, batch_number: '', expiry_date: '',
+        item_id: '', inventory_order_line_id: '', suom: '', duom: '', item_suom: '', quantity: 1, batch_number: '', expiry_date: '',
         purchase_price: 0, conversion: 1,
     });
+
+    const mapPrefill = (row) => ({
+        item_id: String(row.item_id || ''),
+        inventory_order_line_id: row.inventory_order_line_id || '',
+        suom: row.suom || '',
+        duom: row.duom || row.suom || '',
+        item_suom: row.suom || '',
+        quantity: row.quantity || 1,
+        batch_number: row.batch_number || '',
+        expiry_date: row.expiry_date || '',
+        purchase_price: row.purchase_price || 0,
+        conversion: row.conversion || 1,
+    });
+
+    const initialLines = (prefillLines && prefillLines.length)
+        ? prefillLines.map(mapPrefill)
+        : [blankLine()];
 
     return {
         itemUnits,
         items,
         supplierItemIds: supplierItemIds || {},
-        supplierId: '',
+        supplierId: prefillSupplierId ? String(prefillSupplierId) : '',
+        inventoryOrderId: inventoryOrderId || null,
         deliveryNoteName: '',
-        lines: [blankLine()],
+        lines: initialLines,
         filteredItems() {
             if (!this.supplierId) {
                 return this.items;

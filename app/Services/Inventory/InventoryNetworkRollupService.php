@@ -18,7 +18,11 @@ class InventoryNetworkRollupService
         $levels = InventoryStockLevel::query()
             ->where('business_id', $businessId)
             ->whereIn('store_id', $storeIds)
-            ->where('quantity_suom', '>', 0)
+            ->where(function ($query) {
+                $query->where('quantity_suom', '>', 0)
+                    ->orWhere('ma_15_days', '>', 0)
+                    ->orWhere('ma_30_days', '>', 0);
+            })
             ->with(['item.itemUnit'])
             ->get();
 

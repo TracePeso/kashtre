@@ -300,12 +300,20 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/stock-counts/{stockCount}', [InventoryStockCountController::class, 'show'])->name('stock-counts.show');
         Route::post('/stock-counts/{stockCount}/finalize', [InventoryStockCountController::class, 'finalize'])->name('stock-counts.finalize');
         Route::get('/consumption', [InventoryDailyConsumptionController::class, 'index'])->name('consumption.index');
-        Route::get('/consumption/{consumption}', [InventoryDailyConsumptionController::class, 'show'])->name('consumption.show');
+        Route::get('/consumption/items/{item}/months/{month}', [InventoryDailyConsumptionController::class, 'showMonth'])
+            ->name('consumption.month')
+            ->where('month', '[0-9]{4}-[0-9]{2}');
+        Route::get('/consumption/items/{item}/days/{date}', [InventoryDailyConsumptionController::class, 'showDay'])
+            ->name('consumption.day')
+            ->where('date', '[0-9]{4}-[0-9]{2}-[0-9]{2}');
         Route::get('/orders', [InventoryOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/create', [InventoryOrderController::class, 'create'])->name('orders.create');
         Route::post('/orders', [InventoryOrderController::class, 'store'])->name('orders.store');
         Route::get('/orders/{order}', [InventoryOrderController::class, 'show'])->name('orders.show');
         Route::post('/orders/{order}/submit', [InventoryOrderController::class, 'submit'])->name('orders.submit');
+        Route::post('/orders/{order}/approve', [InventoryOrderController::class, 'approve'])->name('orders.approve');
+        Route::post('/orders/{order}/reject', [InventoryOrderController::class, 'reject'])->name('orders.reject');
+        Route::get('/orders/{order}/receive', [InventoryOrderController::class, 'receive'])->name('orders.receive');
         Route::post('/orders/{order}/regenerate', [InventoryOrderController::class, 'regenerate'])->name('orders.regenerate');
         Route::get('/approvers', [InventoryController::class, 'approvers'])->name('approvers');
         Route::put('/approvers', [InventoryController::class, 'updateApprovers'])->name('approvers.update');

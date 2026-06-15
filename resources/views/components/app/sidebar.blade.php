@@ -180,11 +180,6 @@
                                 </a>
                             </li>
                             <li>
-                                <a href="{{ route('inventory.network') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.network') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
-                                    Network Stock
-                                </a>
-                            </li>
-                            <li>
                                 <a href="{{ route('inventory.approvers') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.approvers') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
                                     GRN Approvers
                                 </a>

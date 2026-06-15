@@ -54,6 +54,16 @@
                     <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
                         <div><dt class="text-gray-500">Supplier</dt><dd class="font-medium text-gray-900">{{ $goodsReceivedNote->supplier->name ?? '—' }}</dd></div>
                         <div><dt class="text-gray-500">Store</dt><dd class="font-medium text-gray-900">{{ $goodsReceivedNote->store->name ?? '—' }}</dd></div>
+                        @if($goodsReceivedNote->inventoryOrder)
+                            <div class="sm:col-span-2">
+                                <dt class="text-gray-500">Linked order</dt>
+                                <dd class="font-medium text-gray-900 mt-1">
+                                    <a href="{{ route('inventory.orders.show', $goodsReceivedNote->inventoryOrder) }}" class="text-blue-600 hover:text-blue-800">
+                                        {{ $goodsReceivedNote->inventoryOrder->order_number }}
+                                    </a>
+                                </dd>
+                            </div>
+                        @endif
                         <div><dt class="text-gray-500">Date of order</dt><dd class="font-medium text-gray-900">{{ $goodsReceivedNote->date_of_order->format('M d, Y') }}</dd></div>
                         <div><dt class="text-gray-500">Date of delivery</dt><dd class="font-medium text-gray-900">{{ $goodsReceivedNote->date_of_delivery->format('M d, Y') }}</dd></div>
                         <div><dt class="text-gray-500">Lead time (days)</dt><dd class="font-medium text-gray-900">{{ $goodsReceivedNote->lead_time_days }}</dd></div>

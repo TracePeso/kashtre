@@ -117,7 +117,7 @@
                                     <td class="px-3 py-2 align-middle text-gray-600" x-text="itemSuom(line) || '—'"></td>
                                     <td class="px-3 py-2 align-middle text-right tabular-nums text-gray-500" x-text="systemQty(line)"></td>
                                     <td class="px-3 py-2 align-top">
-                                        <input type="number" step="0.0001" min="0.0001"
+                                        <input type="number" step="1" min="1"
                                                :max="maxQty(line)"
                                                :name="'lines[' + index + '][quantity_suom]'" x-model="line.quantity_suom" required
                                                class="block w-full rounded-md border-gray-300 shadow-sm text-sm text-right focus:border-blue-500 focus:ring-blue-500">

@@ -113,6 +113,18 @@ class Store extends Model
         return $query->where('business_id', $businessId);
     }
 
+    public function networkScopeDescription(): string
+    {
+        $storeIds = self::descendantIds((int) $this->id);
+        $childCount = count($storeIds) - 1;
+
+        if ($childCount === 0) {
+            return $this->selectLabel().' only (no child stores in this network).';
+        }
+
+        return $this->selectLabel().' + '.$childCount.' child store'.($childCount === 1 ? '' : 's');
+    }
+
     /**
      * @return array<int, string>
      */

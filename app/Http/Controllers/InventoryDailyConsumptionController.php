@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\InventoryDailyConsumption;
+use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
+use App\Models\Item;
+use App\Models\Store;
+use App\Services\Inventory\InventoryConsumptionQueryService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class InventoryDailyConsumptionController extends Controller
@@ -17,59 +21,108 @@ class InventoryDailyConsumptionController extends Controller
 
     public function index()
     {
-        $businessId = (int) Auth::user()->business_id;
-
-        $baseQuery = InventoryDailyConsumption::query()->where('business_id', $businessId);
-
-        $summary = [
-            'total_entries' => (clone $baseQuery)->count(),
-            'distinct_items' => (clone $baseQuery)->distinct('item_id')->count('item_id'),
-            'date_from' => (clone $baseQuery)->min('consumption_date'),
-            'date_to' => (clone $baseQuery)->max('consumption_date'),
-            'last_30_days' => (clone $baseQuery)
-                ->where('consumption_date', '>=', now()->subDays(30)->toDateString())
-                ->count(),
-        ];
-
-        return view('inventory.consumption.index', compact('summary'));
+        return view('inventory.consumption.index');
     }
 
-    public function show(InventoryDailyConsumption $consumption)
+    public function showMonth(Request $request, Item $item, string $month, InventoryConsumptionQueryService $queries)
     {
-        if ((int) $consumption->business_id !== (int) Auth::user()->business_id) {
+        $businessId = (int) Auth::user()->business_id;
+
+        if ((int) $item->business_id !== $businessId) {
             abort(403);
         }
 
-        $consumption->load(['item.itemUnit', 'store', 'recordedBy']);
+        if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'store_id' => 'required|exists:stores,id',
+        ]);
+
+        $store = Store::query()
+            ->where('business_id', $businessId)
+            ->whereKey($validated['store_id'])
+            ->firstOrFail();
+
+        $summary = $queries->monthSummary(
+            $businessId,
+            (int) $store->id,
+            (int) $item->id,
+            $month
+        );
+
+        if ($summary['total_quantity_suom'] <= 0) {
+            abort(404, 'No consumption for this item in the selected month.');
+        }
 
         $stockLevel = InventoryStockLevel::query()
-            ->where('business_id', $consumption->business_id)
-            ->where('store_id', $consumption->store_id)
-            ->where('item_id', $consumption->item_id)
+            ->where('business_id', $businessId)
+            ->where('store_id', $store->id)
+            ->where('item_id', $item->id)
             ->first();
 
-        $recentForItem = InventoryDailyConsumption::query()
-            ->where('business_id', $consumption->business_id)
-            ->where('store_id', $consumption->store_id)
-            ->where('item_id', $consumption->item_id)
-            ->where('consumption_date', '>=', $consumption->consumption_date->copy()->subDays(13))
-            ->where('consumption_date', '<=', $consumption->consumption_date)
-            ->orderByDesc('consumption_date')
-            ->get();
+        $item->load('itemUnit');
 
-        $rolling30Total = InventoryDailyConsumption::query()
-            ->where('business_id', $consumption->business_id)
-            ->where('store_id', $consumption->store_id)
-            ->where('item_id', $consumption->item_id)
-            ->where('consumption_date', '>=', $consumption->consumption_date->copy()->subDays(29))
-            ->where('consumption_date', '<=', $consumption->consumption_date)
-            ->sum('quantity_suom');
-
-        return view('inventory.consumption.show', [
-            'consumption' => $consumption,
+        return view('inventory.consumption.month', [
+            'item' => $item,
+            'store' => $store,
+            'month' => $month,
+            'summary' => $summary,
             'stockLevel' => $stockLevel,
-            'recentForItem' => $recentForItem,
-            'rolling30Avg' => round((float) $rolling30Total / 30, 4),
+        ]);
+    }
+
+    public function showDay(Request $request, Item $item, string $date, InventoryConsumptionQueryService $queries)
+    {
+        $businessId = (int) Auth::user()->business_id;
+
+        if ((int) $item->business_id !== $businessId) {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'store_id' => 'required|exists:stores,id',
+            'month' => 'nullable|date_format:Y-m',
+        ]);
+
+        $store = Store::query()
+            ->where('business_id', $businessId)
+            ->whereKey($validated['store_id'])
+            ->firstOrFail();
+
+        $dailyRows = $queries->dailyBreakdown(
+            $businessId,
+            (int) $store->id,
+            (int) $item->id,
+            $date,
+            $date
+        );
+
+        $totalQuantity = (float) ($dailyRows->first()->quantity_suom ?? 0);
+
+        if ($totalQuantity <= 0) {
+            abort(404, 'No consumption for this item on the selected day.');
+        }
+
+        $month = $validated['month'] ?? substr($date, 0, 7);
+
+        $salesSummary = $queries->salesDaySummary(
+            $businessId,
+            (int) $store->id,
+            (int) $item->id,
+            $date
+        );
+
+        $item->load('itemUnit');
+
+        return view('inventory.consumption.day', [
+            'item' => $item,
+            'store' => $store,
+            'date' => $date,
+            'month' => $month,
+            'totalQuantity' => $totalQuantity,
+            'salesSummary' => $salesSummary,
         ]);
     }
 
@@ -81,7 +134,7 @@ class InventoryDailyConsumptionController extends Controller
             abort(403, 'Inventory is only available to business users.');
         }
 
-        $enabled = \App\Models\InventoryModuleConfig::query()
+        $enabled = InventoryModuleConfig::query()
             ->where('business_id', $user->business_id)
             ->where('is_active', true)
             ->exists();

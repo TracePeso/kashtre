@@ -25,7 +25,7 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
             ->query(
                 InventoryOrder::query()
                     ->where('business_id', Auth::user()->business_id)
-                    ->with(['store', 'createdBy'])
+                    ->with(['store', 'createdBy', 'group'])
                     ->latest()
             )
             ->columns([
@@ -40,28 +40,29 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
 
                 TextColumn::make('status')
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'draft' => 'Draft',
-                        'submitted' => 'Submitted',
-                        default => ucfirst($state),
-                    })
-                    ->color(fn (string $state): string => match ($state) {
-                        'draft' => 'warning',
-                        'submitted' => 'success',
+                    ->formatStateUsing(fn (InventoryOrder $record): string => $record->statusLabel())
+                    ->color(fn (InventoryOrder $record): string => match ($record->status) {
+                        InventoryOrder::STATUS_DRAFT => 'warning',
+                        InventoryOrder::STATUS_PENDING_APPROVAL => 'warning',
+                        InventoryOrder::STATUS_APPROVED => 'info',
+                        InventoryOrder::STATUS_PARTIALLY_RECEIVED => 'primary',
+                        InventoryOrder::STATUS_FULFILLED => 'success',
+                        InventoryOrder::STATUS_REJECTED => 'danger',
                         default => 'gray',
                     }),
 
-                TextColumn::make('moving_average_days')
-                    ->label('MA (days)')
-                    ->alignEnd(),
-
                 TextColumn::make('importance_filter')
-                    ->label('Category filter')
+                    ->label('Importance')
                     ->formatStateUsing(fn (?string $state): string => match ($state) {
                         'essential' => 'Essential',
                         'non_essential' => 'Non-essential',
                         default => 'All',
                     }),
+
+                TextColumn::make('group.name')
+                    ->label('Group')
+                    ->placeholder('All')
+                    ->toggleable(),
 
                 TextColumn::make('lines_count')
                     ->label('Lines')

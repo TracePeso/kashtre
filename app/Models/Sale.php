@@ -98,7 +98,7 @@ class Sale extends Model
 
         try {
             app(\App\Services\Inventory\InventorySaleConsumptionService::class)
-                ->recordFromQueue($queue, $userId);
+                ->recordFromQueue($queue, $userId, $sale->id);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('Inventory auto-consumption failed', [
                 'queue_id' => $queue->id,

@@ -5,15 +5,18 @@ namespace Database\Seeders;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\InventoryDailyConsumption;
+use App\Models\InventoryConsumptionEvent;
 use App\Models\InventoryStockLevel;
 use App\Models\Item;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\Inventory\InventoryStockAnalyticsService;
 use App\Support\HospitalConsumptionMatrix;
+use App\Support\HourlyConsumptionDistribution;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class SampleHospitalConsumptionSeeder extends Seeder
 {
@@ -92,6 +95,25 @@ class SampleHospitalConsumptionSeeder extends Seeder
             $store->id
         ));
 
+        $sampleItemIds = InventoryDailyConsumption::query()
+            ->where('business_id', $business->id)
+            ->where('store_id', $store->id)
+            ->where('notes', 'like', 'Sample hospital matrix%')
+            ->distinct()
+            ->pluck('item_id');
+
+        if ($sampleItemIds->isNotEmpty()) {
+            $clearedEvents = InventoryConsumptionEvent::query()
+                ->where('business_id', $business->id)
+                ->where('store_id', $store->id)
+                ->whereIn('item_id', $sampleItemIds)
+                ->delete();
+
+            if ($clearedEvents > 0) {
+                $this->command->warn("Removed {$clearedEvents} previous sample consumption event(s).");
+            }
+        }
+
         $cleared = InventoryDailyConsumption::query()
             ->where('business_id', $business->id)
             ->where('store_id', $store->id)
@@ -105,7 +127,9 @@ class SampleHospitalConsumptionSeeder extends Seeder
         $matchedItemIds = [];
         $unmatched = [];
         $insertRows = [];
+        $eventRows = [];
         $now = now();
+        $hourly = new HourlyConsumptionDistribution();
 
         foreach ($rows as $row) {
             $item = $matcher->match($row['item_name']);
@@ -130,6 +154,19 @@ class SampleHospitalConsumptionSeeder extends Seeder
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
+
+            foreach ($hourly->distribute((int) $row['quantity'], (int) $item->id, $row['date']) as $hour => $hourQty) {
+                $eventRows[] = [
+                    'business_id' => $business->id,
+                    'store_id' => $store->id,
+                    'item_id' => $item->id,
+                    'quantity_suom' => $hourQty,
+                    'occurred_at' => Carbon::parse($row['date'])->setTime($hour, 0),
+                    'source' => InventoryDailyConsumption::SOURCE_SALE,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
         }
 
         $this->command->info('Generated '.number_format(count($rows)).' matrix cells; inserting '.number_format(count($insertRows)).' consumption row(s).');
@@ -140,6 +177,10 @@ class SampleHospitalConsumptionSeeder extends Seeder
                 ['business_id', 'store_id', 'item_id', 'consumption_date', 'source'],
                 ['quantity_suom', 'notes', 'recorded_by_user_id', 'updated_at']
             );
+        }
+
+        foreach (array_chunk($eventRows, 500) as $chunk) {
+            DB::table('inventory_consumption_events')->insert($chunk);
         }
 
         $analytics = app(InventoryStockAnalyticsService::class);

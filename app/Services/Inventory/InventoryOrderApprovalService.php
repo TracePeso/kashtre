@@ -1,0 +1,174 @@
+<?php
+
+namespace App\Services\Inventory;
+
+use App\Models\GoodsReceivedNote;
+use App\Models\InventoryModuleConfig;
+use App\Models\InventoryOrder;
+use App\Models\InventoryOrderApproval;
+use App\Models\InventoryOrderLine;
+use App\Models\User;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+
+class InventoryOrderApprovalService
+{
+    public function submit(InventoryOrder $order, User $user): InventoryOrder
+    {
+        if (! $order->isDraft()) {
+            throw ValidationException::withMessages([
+                'status' => 'Only draft orders can be submitted for approval.',
+            ]);
+        }
+
+        if ($order->lines()->count() < 1) {
+            throw ValidationException::withMessages([
+                'lines' => 'Add at least one order line before submitting.',
+            ]);
+        }
+
+        $approvers = $this->configuredApprovers((int) $order->business_id);
+
+        if ($approvers->isEmpty()) {
+            throw ValidationException::withMessages([
+                'approvers' => 'No GRN approvers are configured. Set them under Inventory → GRN Approvers.',
+            ]);
+        }
+
+        $firstApprovalOrder = (int) $approvers->min('approval_order');
+
+        return DB::transaction(function () use ($order, $user, $approvers, $firstApprovalOrder) {
+            $order->update([
+                'status' => InventoryOrder::STATUS_PENDING_APPROVAL,
+                'current_approval_order' => $firstApprovalOrder,
+                'submitted_by_user_id' => $user->id,
+                'submitted_at' => now(),
+                'rejection_reason' => null,
+                'approved_at' => null,
+            ]);
+
+            $order->approvals()->delete();
+
+            foreach ($approvers as $approver) {
+                InventoryOrderApproval::create([
+                    'inventory_order_id' => $order->id,
+                    'approver_user_id' => $approver->user_id,
+                    'approval_order' => $approver->approval_order,
+                    'status' => InventoryOrderApproval::STATUS_PENDING,
+                ]);
+            }
+
+            return $order->fresh(['lines.item', 'approvals.approver', 'store']);
+        });
+    }
+
+    public function approve(InventoryOrder $order, User $user, ?string $comment = null): InventoryOrder
+    {
+        if (! $order->isPendingApproval()) {
+            throw ValidationException::withMessages([
+                'status' => 'This order is not awaiting approval.',
+            ]);
+        }
+
+        $pending = $this->currentPendingApproval($order);
+
+        if (! $pending || (int) $pending->approver_user_id !== (int) $user->id) {
+            throw ValidationException::withMessages([
+                'approver' => 'You are not the approver for the current step.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($order, $user, $pending, $comment) {
+            $pending->update([
+                'status' => InventoryOrderApproval::STATUS_APPROVED,
+                'comment' => $comment,
+                'acted_at' => now(),
+            ]);
+
+            $nextPending = $order->approvals()
+                ->where('status', InventoryOrderApproval::STATUS_PENDING)
+                ->orderBy('approval_order')
+                ->first();
+
+            if ($nextPending) {
+                $order->update(['current_approval_order' => $nextPending->approval_order]);
+
+                return $order->fresh(['lines.item', 'approvals.approver', 'store']);
+            }
+
+            $order->update([
+                'status' => InventoryOrder::STATUS_APPROVED,
+                'approved_at' => now(),
+                'current_approval_order' => null,
+            ]);
+
+            return $order->fresh(['lines.item', 'approvals.approver', 'store']);
+        });
+    }
+
+    public function reject(InventoryOrder $order, User $user, string $reason): InventoryOrder
+    {
+        if (! $order->isPendingApproval()) {
+            throw ValidationException::withMessages([
+                'status' => 'This order is not awaiting approval.',
+            ]);
+        }
+
+        $pending = $this->currentPendingApproval($order);
+
+        if (! $pending || (int) $pending->approver_user_id !== (int) $user->id) {
+            throw ValidationException::withMessages([
+                'approver' => 'You are not the approver for the current step.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($order, $user, $pending, $reason) {
+            $pending->update([
+                'status' => InventoryOrderApproval::STATUS_REJECTED,
+                'comment' => $reason,
+                'acted_at' => now(),
+            ]);
+
+            $order->update([
+                'status' => InventoryOrder::STATUS_REJECTED,
+                'rejection_reason' => $reason,
+                'current_approval_order' => null,
+            ]);
+
+            return $order->fresh(['lines.item', 'approvals.approver', 'store']);
+        });
+    }
+
+    public function userCanApprove(InventoryOrder $order, User $user): bool
+    {
+        if (! $order->isPendingApproval()) {
+            return false;
+        }
+
+        $pending = $this->currentPendingApproval($order);
+
+        return $pending && (int) $pending->approver_user_id === (int) $user->id;
+    }
+
+    private function currentPendingApproval(InventoryOrder $order): ?InventoryOrderApproval
+    {
+        return $order->approvals()
+            ->where('status', InventoryOrderApproval::STATUS_PENDING)
+            ->orderBy('approval_order')
+            ->first();
+    }
+
+    private function configuredApprovers(int $businessId)
+    {
+        $config = InventoryModuleConfig::query()
+            ->where('business_id', $businessId)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $config) {
+            return collect();
+        }
+
+        return $config->approvers()->orderBy('approval_order')->get();
+    }
+}

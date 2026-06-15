@@ -9,6 +9,7 @@ use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
 use App\Models\InventoryStockMovement;
 use App\Models\User;
+use App\Services\Inventory\InventoryOrderFulfillmentService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -254,6 +255,10 @@ class GoodsReceivedNoteService
         ]);
 
         $this->applyStockIfNeeded($grn->fresh());
+
+        if ($grn->inventory_order_id) {
+            app(InventoryOrderFulfillmentService::class)->applyGrnReceipt($grn->fresh(['lines', 'inventoryOrder.lines']));
+        }
     }
 
     private function currentPendingApproval(GoodsReceivedNote $grn): ?GoodsReceivedNoteApproval

@@ -12,6 +12,7 @@ class GoodsReceivedNoteLine extends Model
     protected $fillable = [
         'goods_received_note_id',
         'item_id',
+        'inventory_order_line_id',
         'category',
         'item_name',
         'quantity',
@@ -40,6 +41,11 @@ class GoodsReceivedNoteLine extends Model
     public function item()
     {
         return $this->belongsTo(Item::class);
+    }
+
+    public function inventoryOrderLine()
+    {
+        return $this->belongsTo(InventoryOrderLine::class);
     }
 
     public static function calculateSaleUnitsPurchased(float $quantity, float $saleUnitsPerPurchaseUnit): float

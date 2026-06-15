@@ -5,11 +5,14 @@ namespace App\Services\Inventory;
 use App\Models\GoodsReceivedNote;
 use App\Models\GoodsReceivedNoteLine;
 use App\Models\InventoryDailyConsumption;
+use App\Models\InventoryConsumptionEvent;
 use App\Models\InventoryModuleConfig;
+use App\Models\InventoryOrder;
 use App\Models\InventoryStockLevel;
 use App\Models\InventoryStockMovement;
 use App\Models\Item;
 use Carbon\Carbon;
+use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 
 class InventoryStockAnalyticsService
@@ -155,18 +158,18 @@ class InventoryStockAnalyticsService
     /**
      * Excel columns AC / AE: safety and buffer stock using 15-day average (V or AA).
      */
-    public function safetyStockSuom(InventoryStockLevel $stock, ?InventoryModuleConfig $config): float
+    public function safetyStockSuom(InventoryStockLevel $stock, ?InventoryModuleConfig $config, ?InventoryOrder $order = null): float
     {
         return round(
-            $this->excelDailyUsageSuom($stock, $config) * $this->safetyStockDays($stock, $config),
+            $this->excelDailyUsageSuom($stock, $config) * $this->safetyStockDays($stock, $config, $order),
             4
         );
     }
 
-    public function bufferStockSuom(InventoryStockLevel $stock, ?InventoryModuleConfig $config): float
+    public function bufferStockSuom(InventoryStockLevel $stock, ?InventoryModuleConfig $config, ?InventoryOrder $order = null): float
     {
         return round(
-            $this->excelDailyUsageSuom($stock, $config) * $this->bufferStockDays($stock, $config),
+            $this->excelDailyUsageSuom($stock, $config) * $this->bufferStockDays($stock, $config, $order),
             4
         );
     }
@@ -174,7 +177,7 @@ class InventoryStockAnalyticsService
     /**
      * Excel column AM: N − (safety days + buffer days).
      */
-    public function daysLeftToOrder(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null): ?float
+    public function daysLeftToOrder(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null, ?InventoryOrder $order = null): ?float
     {
         $stockDays = $this->stockDaysReport($stock, $config);
 
@@ -183,7 +186,7 @@ class InventoryStockAnalyticsService
         }
 
         return round(
-            $stockDays - $this->safetyStockDays($stock, $config) - $this->bufferStockDays($stock, $config),
+            $stockDays - $this->safetyStockDays($stock, $config, $order) - $this->bufferStockDays($stock, $config, $order),
             1
         );
     }
@@ -191,9 +194,9 @@ class InventoryStockAnalyticsService
     /**
      * Excel column AY: when to start the ordering process.
      */
-    public function orderingNotificationDate(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null): ?Carbon
+    public function orderingNotificationDate(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null, ?InventoryOrder $order = null): ?Carbon
     {
-        $daysLeft = $this->daysLeftToOrder($stock, $config);
+        $daysLeft = $this->daysLeftToOrder($stock, $config, $order);
 
         if ($daysLeft === null) {
             return null;
@@ -203,7 +206,7 @@ class InventoryStockAnalyticsService
             return Carbon::today();
         }
 
-        $notifyLead = (float) ($config?->notification_to_order_days ?? 0);
+        $notifyLead = $this->notificationToOrderDays($stock, $config, $order);
         $daysUntilNotify = max(0, $daysLeft - $notifyLead);
 
         return Carbon::today()->addDays((int) round($daysUntilNotify));
@@ -299,12 +302,13 @@ class InventoryStockAnalyticsService
     public function suggestedOrderQtyPeriod(
         InventoryStockLevel $stock,
         ?InventoryModuleConfig $config,
-        float $periodDays
+        float $periodDays,
+        ?InventoryOrder $order = null
     ): float {
         $stockDays = $this->stockDaysReport($stock, $config) ?? 0;
         $coverage = $periodDays
-            + $this->safetyStockDays($stock, $config)
-            + $this->bufferStockDays($stock, $config)
+            + $this->safetyStockDays($stock, $config, $order)
+            + $this->bufferStockDays($stock, $config, $order)
             - $stockDays;
 
         if ($coverage <= 0) {
@@ -360,22 +364,42 @@ class InventoryStockAnalyticsService
         return (float) ($lastBefore?->balance_after ?? 0);
     }
 
-    public function safetyStockDays(InventoryStockLevel $stock, ?InventoryModuleConfig $config): float
+    public function safetyStockDays(InventoryStockLevel $stock, ?InventoryModuleConfig $config, ?InventoryOrder $order = null): float
     {
         if ($stock->safety_stock_days !== null) {
             return (float) $stock->safety_stock_days;
         }
 
+        if ($order !== null && $order->safety_stock_days !== null) {
+            return (float) $order->safety_stock_days;
+        }
+
         return (float) ($config?->safety_stock_days ?? 0);
     }
 
-    public function bufferStockDays(InventoryStockLevel $stock, ?InventoryModuleConfig $config): float
+    public function bufferStockDays(InventoryStockLevel $stock, ?InventoryModuleConfig $config, ?InventoryOrder $order = null): float
     {
         if ($stock->buffer_stock_days !== null) {
             return (float) $stock->buffer_stock_days;
         }
 
+        if ($order !== null && $order->buffer_stock_days !== null) {
+            return (float) $order->buffer_stock_days;
+        }
+
         return (float) ($config?->buffer_stock_days ?? 0);
+    }
+
+    public function notificationToOrderDays(
+        InventoryStockLevel $stock,
+        ?InventoryModuleConfig $config,
+        ?InventoryOrder $order = null
+    ): float {
+        if ($order !== null && $order->notification_to_order_days !== null) {
+            return (float) $order->notification_to_order_days;
+        }
+
+        return (float) ($config?->notification_to_order_days ?? 0);
     }
 
     public function systemQuantitySuom(InventoryStockLevel $stock): float
@@ -472,23 +496,46 @@ class InventoryStockAnalyticsService
         float $quantitySuom,
         string $source = InventoryDailyConsumption::SOURCE_MANUAL,
         ?int $recordedByUserId = null,
-        ?string $notes = null
+        ?string $notes = null,
+        ?DateTimeInterface $occurredAt = null,
+        ?int $saleId = null
     ): InventoryDailyConsumption {
-        return DB::transaction(function () use ($businessId, $storeId, $itemId, $date, $quantitySuom, $source, $recordedByUserId, $notes) {
-            $consumption = InventoryDailyConsumption::updateOrCreate(
-                [
-                    'business_id' => $businessId,
-                    'store_id' => $storeId,
-                    'item_id' => $itemId,
-                    'consumption_date' => $date,
-                    'source' => $source,
-                ],
-                [
-                    'quantity_suom' => $quantitySuom,
-                    'notes' => $notes,
-                    'recorded_by_user_id' => $recordedByUserId,
-                ]
-            );
+        if ($quantitySuom <= 0) {
+            throw new \InvalidArgumentException('Consumption quantity must be greater than zero.');
+        }
+
+        $occurredAt = Carbon::parse($occurredAt ?? $date)->copy();
+
+        return DB::transaction(function () use ($businessId, $storeId, $itemId, $date, $quantitySuom, $source, $recordedByUserId, $notes, $occurredAt, $saleId) {
+            $consumption = InventoryDailyConsumption::query()->firstOrNew([
+                'business_id' => $businessId,
+                'store_id' => $storeId,
+                'item_id' => $itemId,
+                'consumption_date' => $date,
+                'source' => $source,
+            ]);
+
+            $consumption->quantity_suom = (float) ($consumption->quantity_suom ?? 0) + $quantitySuom;
+
+            if ($notes !== null) {
+                $consumption->notes = $notes;
+            }
+
+            if ($recordedByUserId !== null) {
+                $consumption->recorded_by_user_id = $recordedByUserId;
+            }
+
+            $consumption->save();
+
+            InventoryConsumptionEvent::create([
+                'business_id' => $businessId,
+                'store_id' => $storeId,
+                'item_id' => $itemId,
+                'quantity_suom' => $quantitySuom,
+                'occurred_at' => $occurredAt,
+                'source' => $source,
+                'sale_id' => $saleId,
+            ]);
 
             $stock = InventoryStockLevel::firstOrCreate(
                 [
@@ -501,24 +548,22 @@ class InventoryStockAnalyticsService
 
             $this->recalculateForStockLevel($stock);
 
-            if ($quantitySuom > 0) {
-                $balanceBefore = (float) $stock->quantity_suom;
-                $balanceAfter = max(0, $balanceBefore - $quantitySuom);
+            $balanceBefore = (float) $stock->quantity_suom;
+            $balanceAfter = max(0, $balanceBefore - $quantitySuom);
 
-                $stock->update(['quantity_suom' => $balanceAfter]);
+            $stock->update(['quantity_suom' => $balanceAfter]);
 
-                InventoryStockMovement::create([
-                    'business_id' => $businessId,
-                    'item_id' => $itemId,
-                    'store_id' => $storeId,
-                    'movement_type' => InventoryStockMovement::TYPE_CONSUMPTION,
-                    'quantity_delta' => -$quantitySuom,
-                    'balance_after' => $balanceAfter,
-                    'reference_label' => 'Daily consumption '.$date,
-                    'recorded_by_user_id' => $recordedByUserId,
-                    'occurred_at' => Carbon::parse($date)->endOfDay(),
-                ]);
-            }
+            InventoryStockMovement::create([
+                'business_id' => $businessId,
+                'item_id' => $itemId,
+                'store_id' => $storeId,
+                'movement_type' => InventoryStockMovement::TYPE_CONSUMPTION,
+                'quantity_delta' => -$quantitySuom,
+                'balance_after' => $balanceAfter,
+                'reference_label' => 'Consumption '.$occurredAt->format('Y-m-d H:i'),
+                'recorded_by_user_id' => $recordedByUserId,
+                'occurred_at' => $occurredAt,
+            ]);
 
             return $consumption;
         });

@@ -54,7 +54,7 @@ class EditStockTransferLines extends Component implements HasForms, HasTable
                     ->label('Approved')
                     ->type('number')
                     ->alignEnd()
-                    ->step('0.0001')
+                    ->step('1')
                     ->disabled(! $editable)
                     ->updateStateUsing(function (StockTransferLine $record, $state) use ($service, $editable) {
                         if (! $editable) {
@@ -69,7 +69,7 @@ class EditStockTransferLines extends Component implements HasForms, HasTable
                     ->label('To receive')
                     ->type('number')
                     ->alignEnd()
-                    ->step('0.0001')
+                    ->step('1')
                     ->disabled(! $editable)
                     ->updateStateUsing(function (StockTransferLine $record, $state) use ($service, $editable) {
                         if (! $editable) {

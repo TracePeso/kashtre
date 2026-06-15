@@ -61,7 +61,7 @@ class EditStockCountLines extends Component implements HasForms, HasTable
                     ->label('Physical')
                     ->type('number')
                     ->alignEnd()
-                    ->step('0.0001')
+                    ->step('1')
                     ->disabled(! $isDraft)
                     ->updateStateUsing(function (InventoryStockCountLine $record, $state) use ($service, $isDraft) {
                         if (! $isDraft) {
@@ -82,7 +82,7 @@ class EditStockCountLines extends Component implements HasForms, HasTable
                     ->label('Damaged')
                     ->type('number')
                     ->alignEnd()
-                    ->step('0.0001')
+                    ->step('1')
                     ->disabled(! $isDraft)
                     ->updateStateUsing(function (InventoryStockCountLine $record, $state) use ($service, $isDraft) {
                         if (! $isDraft) {
@@ -103,7 +103,7 @@ class EditStockCountLines extends Component implements HasForms, HasTable
                     ->label('Expired')
                     ->type('number')
                     ->alignEnd()
-                    ->step('0.0001')
+                    ->step('1')
                     ->disabled(! $isDraft)
                     ->updateStateUsing(function (InventoryStockCountLine $record, $state) use ($service, $isDraft) {
                         if (! $isDraft) {
