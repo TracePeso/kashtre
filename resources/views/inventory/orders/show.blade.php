@@ -79,6 +79,12 @@
             </div>
         @endif
 
+        @if($order->isDraft())
+            <div class="mt-4 bg-slate-50 border border-slate-200 text-slate-800 px-4 py-3 rounded text-sm">
+                <strong>Draft order.</strong> Review lines below, then <strong>Submit for approval</strong>. Receiving goods is only available after approvers sign off.
+            </div>
+        @endif
+
         @if($order->isPendingApproval())
             <div class="mt-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded text-sm">
                 <strong>Awaiting order approval.</strong> Goods can be received only after all configured approvers have signed off.
@@ -104,7 +110,7 @@
         @endif
 
         <div class="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-2 space-y-6">
+            <div class="lg:col-span-2 space-y-6 min-w-0">
                 @if($order->notes)
                     <div class="bg-white shadow sm:rounded-lg p-4 text-sm text-gray-600">
                         <strong class="text-gray-900">Notes:</strong> {{ $order->notes }}
@@ -129,16 +135,23 @@
                     </dl>
                 </div>
 
-                <div class="bg-white shadow sm:rounded-lg p-6">
+                <div class="bg-white shadow sm:rounded-lg p-4 sm:p-6 min-w-0 overflow-hidden">
                     <div class="mb-4">
                         <h3 class="text-sm font-semibold text-gray-900">Order lines</h3>
-                        <p class="text-xs text-gray-500 mt-0.5">Ordered vs received (SUOM). Received totals update when linked GRNs are approved.</p>
+                        <p class="text-xs text-gray-500 mt-0.5">
+                            @if($order->isDraft())
+                                Use search and filters to find items. Paginated for large orders.
+                            @else
+                                Ordered vs received (SUOM). Received totals update when linked GRNs are approved.
+                            @endif
+                        </p>
                     </div>
                     @livewire('inventory.edit-inventory-order-lines', ['order' => $order], key('order-'.$order->id))
                 </div>
             </div>
 
-            <div class="space-y-6">
+            <div class="space-y-6 lg:sticky lg:top-6 lg:self-start">
+                @if(!$order->isDraft())
                 <div class="bg-white shadow sm:rounded-lg p-6">
                     <h3 class="text-sm font-semibold text-gray-900 mb-4">Order approval</h3>
                     @if($order->approvals->isEmpty())
@@ -163,6 +176,7 @@
                         </ul>
                     @endif
                 </div>
+                @endif
 
                 @if($canApprove)
                     <div class="bg-white shadow sm:rounded-lg p-6 space-y-4">
