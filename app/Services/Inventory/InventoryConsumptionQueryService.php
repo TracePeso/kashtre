@@ -4,6 +4,7 @@ namespace App\Services\Inventory;
 
 use App\Models\InventoryDailyConsumption;
 use App\Models\InventoryConsumptionEvent;
+use App\Models\InventoryMonthlyConsumption;
 use App\Models\Sale;
 use App\Models\Store;
 use App\Support\HourlyConsumptionDistribution;
@@ -55,14 +56,18 @@ class InventoryConsumptionQueryService
      *     total_quantity_suom: float
      * }
      */
-    public function yearSummary(int $businessId, int $year): array
+    public function yearSummary(int $businessId, int $year, ?int $month = null, ?int $storeId = null): array
     {
-        $row = InventoryDailyConsumption::query()
+        [$from, $until] = $this->yearMonthBounds($year, $month);
+        [$monthFrom, $monthUntil] = $this->monthRangeBounds($from, $until);
+
+        $row = InventoryMonthlyConsumption::query()
             ->where('business_id', $businessId)
-            ->whereYear('consumption_date', $year)
-            ->selectRaw("COUNT(DISTINCT CONCAT(item_id, '-', store_id, '-', DATE_FORMAT(consumption_date, '%Y-%m'))) as month_rows")
+            ->whereBetween('consumption_month', [$monthFrom, $monthUntil])
+            ->when($storeId, fn (Builder $q) => $q->where('store_id', $storeId))
+            ->selectRaw('COUNT(*) as month_rows')
             ->selectRaw('COUNT(DISTINCT item_id) as distinct_items')
-            ->selectRaw('COALESCE(SUM(quantity_suom), 0) as total_quantity_suom')
+            ->selectRaw('COALESCE(SUM(total_quantity_suom), 0) as total_quantity_suom')
             ->first();
 
         return [
@@ -70,6 +75,37 @@ class InventoryConsumptionQueryService
             'month_rows' => (int) ($row->month_rows ?? 0),
             'distinct_items' => (int) ($row->distinct_items ?? 0),
             'total_quantity_suom' => (float) ($row->total_quantity_suom ?? 0),
+        ];
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    public function monthRangeBounds(string $from, string $until): array
+    {
+        return [
+            Carbon::parse($from)->startOfMonth()->toDateString(),
+            Carbon::parse($until)->startOfMonth()->toDateString(),
+        ];
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    public function yearMonthBounds(int $year, ?int $month = null): array
+    {
+        if ($month) {
+            $start = Carbon::create($year, $month, 1)->startOfMonth();
+
+            return [
+                $start->toDateString(),
+                $start->copy()->endOfMonth()->toDateString(),
+            ];
+        }
+
+        return [
+            "{$year}-01-01",
+            "{$year}-12-31",
         ];
     }
 
@@ -125,34 +161,37 @@ class InventoryConsumptionQueryService
         ];
     }
 
-    public function itemStoreMonthlySummariesQuery(int $businessId): Builder
-    {
-        return InventoryDailyConsumption::query()
-            ->from('inventory_daily_consumptions')
-            ->where('inventory_daily_consumptions.business_id', $businessId)
-            ->join('items', 'items.id', '=', 'inventory_daily_consumptions.item_id')
-            ->join('stores', 'stores.id', '=', 'inventory_daily_consumptions.store_id')
+    public function itemStoreMonthlySummariesQuery(
+        int $businessId,
+        ?string $from = null,
+        ?string $until = null,
+        ?int $storeId = null,
+    ): Builder {
+        [$monthFrom, $monthUntil] = ($from && $until)
+            ? $this->monthRangeBounds($from, $until)
+            : [null, null];
+
+        return InventoryMonthlyConsumption::query()
+            ->from('inventory_monthly_consumptions as imc')
+            ->where('imc.business_id', $businessId)
+            ->when($monthFrom && $monthUntil, fn (Builder $query) => $query->whereBetween('imc.consumption_month', [$monthFrom, $monthUntil]))
+            ->when($storeId, fn (Builder $query) => $query->where('imc.store_id', $storeId))
+            ->join('items', 'items.id', '=', 'imc.item_id')
+            ->join('stores', 'stores.id', '=', 'imc.store_id')
             ->whereNull('items.deleted_at')
-            ->groupBy(
-                'inventory_daily_consumptions.store_id',
-                'inventory_daily_consumptions.item_id',
-                DB::raw("DATE_FORMAT(inventory_daily_consumptions.consumption_date, '%Y-%m')"),
-                'items.id',
-                'items.name',
-                'items.code',
-                'stores.id',
-                'stores.name',
-            )
             ->select([
-                'inventory_daily_consumptions.store_id',
-                'inventory_daily_consumptions.item_id',
+                'imc.store_id',
+                'imc.item_id',
+                'imc.total_quantity_suom',
+                'imc.days_with_usage',
             ])
-            ->selectRaw("DATE_FORMAT(inventory_daily_consumptions.consumption_date, '%Y-%m') as consumption_month")
+            ->selectRaw("DATE_FORMAT(imc.consumption_month, '%Y-%m') as consumption_month")
             ->selectRaw('items.name as item_name')
             ->selectRaw('items.code as item_code')
             ->selectRaw('stores.name as store_name')
-            ->selectRaw('SUM(inventory_daily_consumptions.quantity_suom) as total_quantity_suom')
-            ->selectRaw('COUNT(DISTINCT inventory_daily_consumptions.consumption_date) as days_with_usage');
+            ->selectRaw(
+                'ROUND(imc.total_quantity_suom / DAY(LAST_DAY(imc.consumption_month)), 4) as month_daily_avg'
+            );
     }
 
     public function itemStoreSummariesQuery(int $businessId): Builder

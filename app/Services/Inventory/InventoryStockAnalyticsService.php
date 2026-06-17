@@ -527,6 +527,13 @@ class InventoryStockAnalyticsService
 
             $consumption->save();
 
+            app(InventoryMonthlyConsumptionService::class)->syncMonthFromDaily(
+                $businessId,
+                $storeId,
+                $itemId,
+                $date
+            );
+
             InventoryConsumptionEvent::create([
                 'business_id' => $businessId,
                 'store_id' => $storeId,

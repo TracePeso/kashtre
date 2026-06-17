@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Inventory;
 
+use App\Models\Store;
 use App\Services\Inventory\InventoryConsumptionQueryService;
 use Carbon\Carbon;
 use Filament\Forms\Components\Select;
@@ -11,8 +12,8 @@ use Filament\Tables\Actions\Action;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Filters\Filter;
-use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -25,13 +26,55 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
     use InteractsWithForms;
     use InteractsWithTable;
 
+    /** @var array<string, mixed> */
+    public array $summary = [
+        'year' => 0,
+        'month_rows' => 0,
+        'distinct_items' => 0,
+        'total_quantity_suom' => 0,
+    ];
+
+    /** @var array<string, string> */
+    public array $storeOptions = [];
+
     public function mount(): void
     {
+        $this->storeOptions = Store::optionsForSelect((int) Auth::user()->business_id);
+
+        $defaultStoreId = array_key_first($this->storeOptions);
+
         $this->tableFilters = [
-            'consumption_year' => [
+            'scope' => [
+                'store_id' => $defaultStoreId ? (string) $defaultStoreId : null,
                 'year' => (string) now()->year,
+                'month' => null,
             ],
         ];
+
+        $this->loadSummary();
+    }
+
+    public function loadSummary(): void
+    {
+        $storeId = $this->selectedStoreId();
+
+        if (! $storeId) {
+            $this->summary = [
+                'year' => $this->selectedYear(),
+                'month_rows' => 0,
+                'distinct_items' => 0,
+                'total_quantity_suom' => 0,
+            ];
+
+            return;
+        }
+
+        $this->summary = app(InventoryConsumptionQueryService::class)->yearSummary(
+            (int) Auth::user()->business_id,
+            $this->selectedYear(),
+            $this->selectedMonth(),
+            $storeId,
+        );
     }
 
     public function table(Table $table): Table
@@ -40,97 +83,87 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
         $queries = app(InventoryConsumptionQueryService::class);
 
         return $table
-            ->query($queries->itemStoreMonthlySummariesQuery($businessId))
+            ->query(fn (): Builder => $queries->itemStoreMonthlySummariesQuery($businessId))
             ->columns([
                 TextColumn::make('consumption_month')
                     ->label('Month')
                     ->formatStateUsing(fn (string $state): string => Carbon::parse($state.'-01')->format('F Y'))
-                    ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderBy('consumption_month', $direction)),
+                    ->sortable(),
 
                 TextColumn::make('item_name')
                     ->label('Item')
                     ->description(fn ($record): ?string => $record->item_code)
-                    ->searchable(query: function (Builder $query, string $search): Builder {
-                        return $query->where(function (Builder $q) use ($search): void {
-                            $q->where('items.name', 'like', "%{$search}%")
-                                ->orWhere('items.code', 'like', "%{$search}%");
-                        });
-                    })
-                    ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderBy('items.name', $direction)),
-
-                TextColumn::make('store_name')
-                    ->label('Store')
-                    ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderBy('stores.name', $direction)),
+                    ->searchable(['items.name', 'items.code'])
+                    ->sortable(),
 
                 TextColumn::make('total_quantity_suom')
                     ->label('Consumed (SUOM)')
                     ->tooltip('Total quantity used in this month')
                     ->alignEnd()
-                    ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderBy('total_quantity_suom', $direction))
+                    ->sortable()
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
-
-                TextColumn::make('days_with_usage')
-                    ->label('Days used')
-                    ->tooltip('Days in the month when this item had any consumption')
-                    ->alignEnd()
-                    ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderBy('days_with_usage', $direction)),
-
-                TextColumn::make('month_daily_avg')
-                    ->label('Daily avg')
-                    ->tooltip('Monthly total ÷ days in month')
-                    ->alignEnd()
-                    ->state(fn ($record): float => $queries->monthDailyAverage(
-                        (float) $record->total_quantity_suom,
-                        (string) $record->consumption_month
-                    ))
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 2)),
             ])
             ->filters([
-                SelectFilter::make('store_id')
-                    ->label('Store')
-                    ->options(fn (): array => \App\Models\Store::optionsForSelect($businessId))
-                    ->query(fn (Builder $query, array $data): Builder => $data['value']
-                        ? $query->where('inventory_daily_consumptions.store_id', $data['value'])
-                        : $query),
-                Filter::make('consumption_year')
-                    ->label('Year')
+                Filter::make('scope')
                     ->form([
+                        Select::make('store_id')
+                            ->label('Store')
+                            ->options($this->storeOptions)
+                            ->required()
+                            ->native(false)
+                            ->live(),
                         Select::make('year')
                             ->label('Year')
                             ->options($this->yearOptions())
-                            ->required(),
+                            ->required()
+                            ->native(false)
+                            ->live(),
                         Select::make('month')
                             ->label('Month (optional)')
                             ->options($this->monthOptions())
-                            ->placeholder('All months'),
+                            ->placeholder('All months')
+                            ->nullable()
+                            ->native(false)
+                            ->live(),
                     ])
-                    ->query(function (Builder $query, array $data): Builder {
+                    ->baseQuery(function (Builder $query, array $data): Builder {
+                        $service = app(InventoryConsumptionQueryService::class);
+
+                        $storeId = filled($data['store_id'] ?? null) ? (int) $data['store_id'] : null;
+
+                        if (! $storeId) {
+                            return $query->whereRaw('0 = 1');
+                        }
+
+                        $year = (int) ($data['year'] ?? now()->year);
+                        $month = filled($data['month'] ?? null) ? (int) $data['month'] : null;
+
+                        [$from, $until] = $service->yearMonthBounds($year, $month);
+                        [$monthFrom, $monthUntil] = $service->monthRangeBounds($from, $until);
+
                         return $query
-                            ->when(
-                                $data['year'] ?? null,
-                                fn (Builder $q, string $year): Builder => $q->whereYear('inventory_daily_consumptions.consumption_date', $year)
-                            )
-                            ->when(
-                                $data['month'] ?? null,
-                                fn (Builder $q, string $month): Builder => $q->whereMonth('inventory_daily_consumptions.consumption_date', $month)
-                            );
+                            ->where('imc.store_id', $storeId)
+                            ->whereBetween('imc.consumption_month', [$monthFrom, $monthUntil]);
                     })
                     ->indicateUsing(function (array $data): array {
                         $indicators = [];
+
+                        if ($data['store_id'] ?? null) {
+                            $indicators[] = $this->storeOptions[(string) $data['store_id']] ?? 'Store';
+                        }
 
                         if ($data['year'] ?? null) {
                             $indicators[] = 'Year '.$data['year'];
                         }
 
-                        if ($data['month'] ?? null) {
-                            $indicators[] = Carbon::create(null, (int) $data['month'], 1)->format('F');
+                        if (filled($data['month'] ?? null)) {
+                            $indicators[] = Carbon::create((int) ($data['year'] ?? now()->year), (int) $data['month'], 1)->format('F');
                         }
 
                         return $indicators;
                     }),
-            ])
-            ->filtersFormColumns(2)
-            ->filtersTriggerAction(fn ($action) => $action->label('Year & store'))
+            ], layout: FiltersLayout::AboveContent)
+            ->filtersFormColumns(1)
             ->actions([
                 Action::make('view_days')
                     ->label('Daily breakdown')
@@ -147,18 +180,23 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
             ])
             ->defaultSort('consumption_month', 'desc')
             ->striped()
-            ->deferLoading()
             ->paginated([25, 50, 100])
             ->defaultPaginationPageOption(25)
-            ->emptyStateHeading('No consumption this year')
-            ->emptyStateDescription('Monthly usage per item will appear here once goods are consumed.');
+            ->emptyStateHeading($this->selectedStoreId() ? 'No consumption for this store' : 'Select a store')
+            ->emptyStateDescription($this->selectedStoreId()
+                ? 'Monthly usage per item will appear here once goods are consumed at this store.'
+                : 'Choose a store in the filters above to view monthly consumption.');
     }
 
-    public function render(InventoryConsumptionQueryService $queries): View
+    public function updatedTableFilters(): void
     {
-        $summary = $queries->yearSummary((int) Auth::user()->business_id, $this->selectedYear());
+        $this->loadSummary();
+        $this->handleTableFilterUpdates();
+    }
 
-        return view('livewire.inventory.list-daily-consumptions', compact('summary'));
+    public function render(): View
+    {
+        return view('livewire.inventory.list-daily-consumptions');
     }
 
     public function getTableRecordKey(Model $record): string
@@ -166,11 +204,44 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
         return $record->store_id.'-'.$record->item_id.'-'.$record->consumption_month;
     }
 
+    public function selectedStoreLabel(): ?string
+    {
+        $storeId = $this->selectedStoreId();
+
+        if (! $storeId) {
+            return null;
+        }
+
+        return $this->storeOptions[(string) $storeId] ?? null;
+    }
+
     private function selectedYear(): int
     {
-        $year = $this->tableFilters['consumption_year']['year'] ?? now()->year;
+        $year = $this->scopeFilterData()['year'] ?? now()->year;
 
         return (int) $year;
+    }
+
+    private function selectedMonth(): ?int
+    {
+        $month = $this->scopeFilterData()['month'] ?? null;
+
+        return filled($month) ? (int) $month : null;
+    }
+
+    private function selectedStoreId(): ?int
+    {
+        $storeId = $this->scopeFilterData()['store_id'] ?? null;
+
+        return filled($storeId) ? (int) $storeId : null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function scopeFilterData(): array
+    {
+        return $this->tableFilters['scope'] ?? [];
     }
 
     /**
