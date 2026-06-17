@@ -90,17 +90,26 @@ class Store extends Model
     }
 
     /**
+     * @var array<int, array<int, int>>
+     */
+    private static array $descendantIdsCache = [];
+
+    /**
      * @return array<int, int>
      */
     public static function descendantIds(int $storeId): array
     {
+        if (isset(self::$descendantIdsCache[$storeId])) {
+            return self::$descendantIdsCache[$storeId];
+        }
+
         $ids = [$storeId];
 
         foreach (static::query()->where('parent_id', $storeId)->pluck('id') as $childId) {
             $ids = array_merge($ids, static::descendantIds((int) $childId));
         }
 
-        return array_values(array_unique($ids));
+        return self::$descendantIdsCache[$storeId] = array_values(array_unique($ids));
     }
 
     public function scopeRoots(Builder $query): Builder

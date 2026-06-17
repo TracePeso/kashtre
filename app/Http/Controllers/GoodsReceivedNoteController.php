@@ -11,6 +11,7 @@ use App\Models\ItemUnit;
 use App\Models\Store;
 use App\Models\Supplier;
 use App\Services\GoodsReceivedNoteService;
+use App\Services\GrnBulkImportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -20,8 +21,10 @@ use Illuminate\Validation\ValidationException;
 
 class GoodsReceivedNoteController extends Controller
 {
-    public function __construct(private GoodsReceivedNoteService $service)
-    {
+    public function __construct(
+        private GoodsReceivedNoteService $service,
+        private GrnBulkImportService $bulkImport,
+    ) {
         $this->middleware(function ($request, $next) {
             $user = auth()->user();
 
@@ -84,31 +87,17 @@ class GoodsReceivedNoteController extends Controller
             ->orderBy('name')
             ->get();
 
-        return view('inventory.receive.create', [
-            'suppliers' => $suppliers,
-            'supplierItemIds' => $suppliers->mapWithKeys(fn (Supplier $supplier) => [
-                $supplier->id => $supplier->items->pluck('id')->values()->all(),
-            ]),
-            'stores' => Store::query()
-                ->forBusiness($businessId)
-                ->with('parent')
-                ->orderByRaw('CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END')
-                ->orderBy('name')
-                ->get(),
-            'itemUnits' => ItemUnit::query()
-                ->where('business_id', $businessId)
-                ->orderBy('name')
-                ->get(),
-            'items' => Item::where('business_id', $businessId)
-                ->where('type', 'good')
-                ->with('itemUnit')
-                ->orderBy('name')
-                ->get(),
+        return view('inventory.receive.create', array_merge($this->grnFormOptions($businessId), [
             'inventoryOrder' => $inventoryOrder,
             'prefillLines' => $prefillLines,
             'prefillStoreId' => $prefillStoreId,
             'prefillSupplierId' => $prefillSupplierId,
-        ]);
+        ]));
+    }
+
+    public function bulkUpload()
+    {
+        return view('inventory.receive.bulk-upload', $this->grnFormOptions((int) Auth::user()->business_id));
     }
 
     public function store(Request $request)
@@ -240,6 +229,123 @@ class GoodsReceivedNoteController extends Controller
             ->with('success', 'GRN rejected.');
     }
 
+    public function downloadBulkTemplate(Request $request)
+    {
+        $businessId = (int) Auth::user()->business_id;
+        $supplierId = $request->filled('supplier_id') ? (int) $request->query('supplier_id') : null;
+
+        if ($supplierId) {
+            Supplier::query()
+                ->where('business_id', $businessId)
+                ->whereKey($supplierId)
+                ->firstOrFail();
+        }
+
+        $rows = $this->bulkImport->templateRows($businessId, $supplierId);
+        $filename = 'grn_lines_template_'.now()->format('Ymd').'.csv';
+
+        return response()->streamDownload(function () use ($rows): void {
+            $handle = fopen('php://output', 'w');
+
+            foreach ($rows as $row) {
+                fputcsv($handle, $row);
+            }
+
+            fclose($handle);
+        }, $filename, [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
+
+    public function downloadItemsReference(Request $request)
+    {
+        $businessId = (int) Auth::user()->business_id;
+        $supplierId = $request->filled('supplier_id') ? (int) $request->query('supplier_id') : null;
+
+        $items = $this->bulkImport->itemsForBusiness($businessId, $supplierId);
+        $filename = 'grn_items_reference_'.now()->format('Ymd').'.csv';
+
+        return response()->streamDownload(function () use ($items): void {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, ['item_code', 'item_name', 'sale_unit_suom', 'default_price']);
+
+            foreach ($items as $item) {
+                fputcsv($handle, [
+                    $item->code,
+                    $item->name,
+                    $item->itemUnit?->name ?? '',
+                    $item->default_price ?? 0,
+                ]);
+            }
+
+            fclose($handle);
+        }, $filename, [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
+
+    public function bulkImport(Request $request)
+    {
+        $businessId = (int) Auth::user()->business_id;
+
+        $validated = $request->validate([
+            'file' => 'required|file|mimes:csv,txt|max:2048',
+            'supplier_id' => 'nullable|exists:suppliers,id',
+        ]);
+
+        $supplierId = isset($validated['supplier_id']) ? (int) $validated['supplier_id'] : null;
+
+        if ($supplierId) {
+            Supplier::query()
+                ->where('business_id', $businessId)
+                ->whereKey($supplierId)
+                ->firstOrFail();
+        }
+
+        $result = $this->bulkImport->parseUpload(
+            $request->file('file'),
+            $businessId,
+            $supplierId
+        );
+
+        if ($result['lines'] === [] && $result['errors'] !== []) {
+            return response()->json([
+                'ok' => false,
+                'lines' => [],
+                'errors' => $result['errors'],
+            ], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'lines' => $result['lines'],
+            'errors' => $result['errors'],
+            'imported_count' => count($result['lines']),
+        ]);
+    }
+
+    public function catalogueLines(Request $request)
+    {
+        $businessId = (int) Auth::user()->business_id;
+
+        $validated = $request->validate([
+            'supplier_id' => 'nullable|exists:suppliers,id',
+        ]);
+
+        $supplierId = isset($validated['supplier_id']) ? (int) $validated['supplier_id'] : null;
+
+        if ($supplierId) {
+            Supplier::query()
+                ->where('business_id', $businessId)
+                ->whereKey($supplierId)
+                ->firstOrFail();
+        }
+
+        return response()->json([
+            'lines' => $this->bulkImport->catalogueLines($businessId, $supplierId),
+        ]);
+    }
+
     private function validateGrn(Request $request): array
     {
         $businessId = Auth::user()->business_id;
@@ -314,6 +420,37 @@ class GoodsReceivedNoteController extends Controller
                 'sale_units_purchased' => $saleUnits,
             ]);
         }
+    }
+
+    private function grnFormOptions(int $businessId): array
+    {
+        $suppliers = Supplier::query()
+            ->where('business_id', $businessId)
+            ->with('items:id')
+            ->orderBy('name')
+            ->get();
+
+        return [
+            'suppliers' => $suppliers,
+            'supplierItemIds' => $suppliers->mapWithKeys(fn (Supplier $supplier) => [
+                $supplier->id => $supplier->items->pluck('id')->values()->all(),
+            ]),
+            'stores' => Store::query()
+                ->forBusiness($businessId)
+                ->with('parent')
+                ->orderByRaw('CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END')
+                ->orderBy('name')
+                ->get(),
+            'itemUnits' => ItemUnit::query()
+                ->where('business_id', $businessId)
+                ->orderBy('name')
+                ->get(),
+            'items' => Item::where('business_id', $businessId)
+                ->where('type', 'good')
+                ->with(['itemUnit', 'orderUnit'])
+                ->orderBy('name')
+                ->get(),
+        ];
     }
 
     private function authorizeBusiness(GoodsReceivedNote $grn): void

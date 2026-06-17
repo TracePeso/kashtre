@@ -37,6 +37,8 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
     /** @var Collection<int, InventoryStockLevel>|null */
     private ?Collection $stockByItemId = null;
 
+    private ?InventoryModuleConfig $orderModuleConfig = null;
+
     public function mount(InventoryOrder $order): void
     {
         if ((int) $order->business_id !== (int) Auth::user()->business_id) {
@@ -44,6 +46,10 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
         }
 
         $this->order = $order;
+        $this->orderModuleConfig = InventoryModuleConfig::query()
+            ->forBusiness((int) $order->business_id)
+            ->active()
+            ->first();
     }
 
     public function table(Table $table): Table
@@ -53,10 +59,7 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
         $showReceipt = ! $isDraft;
         $service = app(InventoryOrderService::class);
         $analytics = app(InventoryStockAnalyticsService::class);
-        $config = InventoryModuleConfig::query()
-            ->forBusiness((int) $this->order->business_id)
-            ->active()
-            ->first();
+        $config = $this->orderModuleConfig;
         $businessId = (int) $this->order->business_id;
         $stockByItem = $this->stockByItemId();
 
@@ -200,7 +203,7 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
             ->query(
                 InventoryOrderLine::query()
                     ->where('inventory_order_id', $this->order->id)
-                    ->with(['item.itemUnit', 'item.orderUnit', 'item.suppliers', 'item.group', 'item.subgroup'])
+                    ->with(['item.itemUnit', 'item.orderUnit', 'item.suppliers', 'item.group', 'item.subgroup', 'supplier'])
             )
             ->columns($columns)
             ->filters([

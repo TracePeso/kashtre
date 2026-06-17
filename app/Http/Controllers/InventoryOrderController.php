@@ -115,7 +115,7 @@ class InventoryOrderController extends Controller
         }
 
         return $redirect
-            ->with('success', 'Order form generated. Review and edit quantities before submitting.');
+            ->with('success', 'Order generated. Review and edit quantities before submitting.');
     }
 
     public function show(InventoryOrder $order)

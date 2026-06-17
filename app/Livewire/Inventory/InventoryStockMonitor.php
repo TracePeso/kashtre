@@ -18,6 +18,9 @@ class InventoryStockMonitor extends Component
 
     public ?int $storeId = null;
 
+    /** @var array<int, string> */
+    public array $storeOptions = [];
+
     public function mount(): void
     {
         $requestedView = request()->query('view');
@@ -26,6 +29,7 @@ class InventoryStockMonitor extends Component
             $this->stockView = self::VIEW_NETWORK;
         }
 
+        $this->storeOptions = Store::optionsForSelect((int) Auth::user()->business_id);
         $this->storeId = $this->resolveDefaultStoreId();
     }
 
@@ -42,7 +46,7 @@ class InventoryStockMonitor extends Component
         $store = $this->storeId ? Store::query()->with('parent')->find($this->storeId) : null;
 
         return view('livewire.inventory.inventory-stock-monitor', [
-            'stores' => Store::optionsForSelect($businessId),
+            'stores' => $this->storeOptions,
             'store' => $store,
             'networkScope' => $store?->networkScopeDescription(),
         ]);

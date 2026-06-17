@@ -3,6 +3,8 @@
 namespace App\Livewire\Inventory;
 
 use App\Livewire\Inventory\Concerns\InteractsWithInventoryMetrics;
+use App\Livewire\Inventory\Concerns\WarmsInventoryFilamentTable;
+use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -20,14 +22,18 @@ class DemandForecastReportTable extends Component implements HasForms, HasTable
 {
     use InteractsWithForms;
     use InteractsWithInventoryMetrics;
-    use InteractsWithTable;
+    use WarmsInventoryFilamentTable;
+
+    public ?InventoryModuleConfig $inventoryModuleConfig = null;
+
+    public function mount(): void
+    {
+        $this->inventoryModuleConfig = $this->moduleConfigFor((int) Auth::user()->business_id);
+    }
 
     public function table(Table $table): Table
     {
         $businessId = (int) Auth::user()->business_id;
-        $config = $this->moduleConfigFor($businessId);
-        $analytics = $this->metricsService();
-        $periodDays = (float) ($config?->period_of_order_days ?? 30);
 
         return $table
             ->query($this->inventoryReportQuery($businessId))
@@ -38,27 +44,23 @@ class DemandForecastReportTable extends Component implements HasForms, HasTable
                 TextColumn::make('daily_avg')
                     ->label('Daily avg (V/AA)')
                     ->alignEnd()
-                    ->state(fn (InventoryStockLevel $record): float => $analytics->excelDailyUsageSuom($record, $config))
+                    ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'excel_daily_usage'))
                     ->formatStateUsing(fn ($state) => number_format((float) $state, 4)),
                 TextColumn::make('order_qty')
                     ->label('Order qty (AF)')
                     ->alignEnd()
-                    ->state(fn (InventoryStockLevel $record): float => $analytics->suggestedOrderQtyPeriod($record, $config, $periodDays))
+                    ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'suggested_order_qty'))
                     ->formatStateUsing(fn ($state) => number_format((float) $state, 0)),
                 TextColumn::make('forecast_amount')
                     ->label('Forecast UGX (AG)')
                     ->alignEnd()
-                    ->state(function (InventoryStockLevel $record) use ($analytics, $config, $periodDays): float {
-                        $qty = $analytics->suggestedOrderQtyPeriod($record, $config, $periodDays);
-
-                        return $analytics->demandForecastAmountUgx($record, $config, $qty, $record->item);
-                    })
+                    ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'demand_forecast_amount'))
                     ->formatStateUsing(fn ($state) => 'UGX '.number_format((float) $state, 2)),
                 TextColumn::make('test_amount')
                     ->label('15-day test (AH)')
                     ->alignEnd()
                     ->toggleable()
-                    ->state(fn (InventoryStockLevel $record): float => $analytics->budgetTestAmountUgx($record, $config, $record->item))
+                    ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'budget_test_amount'))
                     ->formatStateUsing(fn ($state) => 'UGX '.number_format((float) $state, 2)),
             ])
             ->filters([

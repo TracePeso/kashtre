@@ -91,7 +91,7 @@
                    step="0.01" min="0"
                    value="{{ $periodDays }}"
                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-            <p class="mt-1 text-xs text-gray-500">Default comfort period covered by each order form.</p>
+            <p class="mt-1 text-xs text-gray-500">Default comfort period covered by each order.</p>
         </div>
     </div>
 

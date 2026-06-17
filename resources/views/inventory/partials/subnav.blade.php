@@ -4,7 +4,7 @@
         ['route' => 'inventory.monitor', 'label' => 'Monitor Stock', 'match' => 'inventory.monitor*'],
         ['route' => 'inventory.stock-counts.index', 'label' => 'Stock Counts', 'match' => 'inventory.stock-counts*'],
         ['route' => 'inventory.consumption.index', 'label' => 'Consumption', 'match' => 'inventory.consumption*'],
-        ['route' => 'inventory.orders.index', 'label' => 'Order Forms', 'match' => 'inventory.orders*'],
+        ['route' => 'inventory.orders.index', 'label' => 'Order Goods', 'match' => 'inventory.orders*'],
         ['route' => 'inventory.transfers.index', 'label' => 'Transfers', 'match' => 'inventory.transfers*'],
         ['route' => 'inventory.returns.index', 'label' => 'Returns', 'match' => 'inventory.returns*'],
         ['route' => 'inventory.reports.index', 'label' => 'Reports', 'match' => 'inventory.reports*'],

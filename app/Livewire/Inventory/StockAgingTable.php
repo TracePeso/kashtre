@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Inventory;
 
+use App\Livewire\Inventory\Concerns\WarmsInventoryFilamentTable;
 use App\Models\InventoryStockLevel;
 use App\Services\Inventory\InventoryStockAgingService;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -19,12 +20,12 @@ use Livewire\Component;
 class StockAgingTable extends Component implements HasForms, HasTable
 {
     use InteractsWithForms;
-    use InteractsWithTable;
+    use WarmsInventoryFilamentTable;
 
     public function table(Table $table): Table
     {
-        $agingService = app(InventoryStockAgingService::class);
         $businessId = (int) Auth::user()->business_id;
+        $agingService = app(InventoryStockAgingService::class);
 
         return $table
             ->query(
@@ -52,17 +53,18 @@ class StockAgingTable extends Component implements HasForms, HasTable
                 TextColumn::make('last_delivery_display')
                     ->label('Last delivery')
                     ->state(function (InventoryStockLevel $record) use ($agingService, $businessId): ?string {
-                        $date = $agingService->lastDeliveryDate($businessId, (int) $record->store_id, (int) $record->item_id);
-
-                        return $date?->format('M d, Y');
+                        return $agingService->pageLastDeliveryDate($businessId, (int) $record->store_id, (int) $record->item_id)
+                            ?->format('M d, Y');
                     })
                     ->placeholder('—'),
                 TextColumn::make('aging_days_display')
                     ->label('Aging (days)')
                     ->alignEnd()
-                    ->state(function (InventoryStockLevel $record) use ($agingService, $businessId): ?int {
-                        return $agingService->agingDays($businessId, (int) $record->store_id, (int) $record->item_id);
-                    })
+                    ->state(fn (InventoryStockLevel $record): ?int => $agingService->pageAgingDays(
+                        $businessId,
+                        (int) $record->store_id,
+                        (int) $record->item_id
+                    ))
                     ->formatStateUsing(fn ($state) => $state !== null ? number_format((int) $state) : '—')
                     ->color(fn ($state) => $state !== null && (int) $state > 90 ? 'danger' : ($state !== null && (int) $state > 30 ? 'warning' : null)),
             ])
@@ -76,6 +78,14 @@ class StockAgingTable extends Component implements HasForms, HasTable
             ->paginated([25, 50, 100])
             ->emptyStateHeading('No stocked items')
             ->emptyStateDescription('Items appear here after goods are received and approved via GRN.');
+    }
+
+    protected function warmTablePageMetrics(iterable $stockLevels): void
+    {
+        app(InventoryStockAgingService::class)->warmPageAging(
+            (int) Auth::user()->business_id,
+            $stockLevels
+        );
     }
 
     public function render(): View

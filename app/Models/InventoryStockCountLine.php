@@ -44,6 +44,24 @@ class InventoryStockCountLine extends Model
         );
     }
 
+    public function verifiedLossSuom(): float
+    {
+        return round(
+            (float) $this->damaged_quantity_suom + (float) ($this->expired_quantity_suom ?? 0),
+            4
+        );
+    }
+
+    public function unverifiedLossSuom(): float
+    {
+        return max(0, round(
+            (float) $this->system_quantity_suom
+            - (float) $this->physical_quantity_suom
+            - $this->verifiedLossSuom(),
+            4
+        ));
+    }
+
     public function shrinkagePercent(): ?float
     {
         $system = (float) $this->system_quantity_suom;

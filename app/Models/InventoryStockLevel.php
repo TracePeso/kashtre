@@ -93,8 +93,12 @@ class InventoryStockLevel extends Model
             return null;
         }
 
-        // Stock missing from the shelf vs system ledger (theft, loss, count errors).
-        return max(0, round((float) $this->quantity_suom - (float) $this->physical_quantity_suom, 4));
+        return max(0, round(
+            (float) $this->quantity_suom
+            - (float) $this->physical_quantity_suom
+            - $this->verifiableLossSuom(),
+            4
+        ));
     }
 
     public function verifiableShrinkagePercent(): ?float

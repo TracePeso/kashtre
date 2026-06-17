@@ -13,6 +13,7 @@ use App\Models\InventoryStockMovement;
 use App\Models\Item;
 use Carbon\Carbon;
 use DateTimeInterface;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class InventoryStockAnalyticsService
@@ -446,7 +447,16 @@ class InventoryStockAnalyticsService
 
     public function unverifiedShrinkageSuom(InventoryStockLevel $stock): ?float
     {
-        return $this->totalShrinkageSuom($stock);
+        $physical = $this->physicalQuantitySuom($stock);
+
+        if ($physical === null) {
+            return null;
+        }
+
+        return max(0, round(
+            $this->systemQuantitySuom($stock) - $physical - $this->verifiableShrinkageSuom($stock),
+            4
+        ));
     }
 
     public function shrinkagePercent(InventoryStockLevel $stock): ?float
@@ -486,6 +496,388 @@ class InventoryStockAnalyticsService
             (int) $stock->item_id,
             $days
         );
+    }
+
+    /** @var array<string, array<string, mixed>>|null */
+    private ?array $pageMetricsCache = null;
+
+    public function resetPageMetricsCache(): void
+    {
+        $this->pageMetricsCache = null;
+    }
+
+    /**
+     * Pre-compute display metrics for a page of stock levels (one batch of DB queries).
+     *
+     * @param  iterable<int, InventoryStockLevel>  $stocks
+     */
+    public function warmPageMetrics(iterable $stocks, ?InventoryModuleConfig $config, float $periodDays = 30): void
+    {
+        $stocks = collect($stocks)->filter();
+
+        if ($stocks->isEmpty()) {
+            $this->pageMetricsCache = [];
+
+            return;
+        }
+
+        $businessId = (int) $stocks->first()->business_id;
+        $fyStart = $this->financialYearStart($config);
+
+        $pairs = $stocks
+            ->map(fn (InventoryStockLevel $stock): array => [
+                'store_id' => (int) $stock->store_id,
+                'item_id' => (int) $stock->item_id,
+            ])
+            ->unique(fn (array $pair): string => "{$pair['store_id']}-{$pair['item_id']}")
+            ->values();
+
+        $fyMovementSums = $this->batchMovementSums($businessId, $pairs, $fyStart);
+        $openings = $this->batchOpeningQuantities($stocks, $fyStart);
+        $physicalMovementSums = $this->batchPhysicalMovementSums($businessId, $stocks);
+        $purchasePrices = $this->batchPurchasePrices($businessId, $stocks);
+
+        $this->pageMetricsCache = [];
+
+        foreach ($stocks as $stock) {
+            $key = $this->pageMetricKey($stock);
+
+            $opening = $openings[$key] ?? 0.0;
+            $ar = max(0, round($opening + ($fyMovementSums[$key] ?? 0.0), 4));
+
+            if ($stock->physical_counted_at === null) {
+                $currentM = (float) $stock->quantity_suom;
+            } else {
+                $anchor = (float) ($stock->physical_quantity_suom ?? 0);
+                $delta = $physicalMovementSums[$key] ?? 0.0;
+                $currentM = max(0, round($anchor + $delta, 4));
+            }
+
+            $purchasePrice = $purchasePrices[$key] ?? 0.0;
+            $excelUsage = $this->excelDailyUsageFromStock($stock, $config);
+            $stockDays = $excelUsage > 0 ? round($currentM / $excelUsage, 1) : null;
+            $safetyDays = $this->safetyStockDays($stock, $config);
+            $bufferDays = $this->bufferStockDays($stock, $config);
+            $daysLeft = $stockDays !== null
+                ? round($stockDays - $safetyDays - $bufferDays, 1)
+                : null;
+
+            $notifyDate = null;
+
+            if ($daysLeft !== null) {
+                if ($daysLeft <= 0) {
+                    $notifyDate = Carbon::today()->format('M d, Y');
+                } else {
+                    $notifyLead = $this->notificationToOrderDays($stock, $config);
+                    $notifyDate = Carbon::today()
+                        ->addDays((int) round(max(0, $daysLeft - $notifyLead)))
+                        ->format('M d, Y');
+                }
+            }
+
+            $shrinkageDelta = $ar - $currentM;
+            $shrinkagePct = $ar > 0 ? round(($shrinkageDelta / $ar) * 100, 4) : null;
+            $shrinkageUgx = $shrinkageDelta > 0
+                ? round($shrinkageDelta * $purchasePrice, 2)
+                : ($shrinkageDelta < 0 ? null : 0.0);
+
+            $orderQty = 0.0;
+
+            if ($stockDays !== null) {
+                $coverage = $periodDays + $safetyDays + $bufferDays - $stockDays;
+
+                if ($coverage > 0) {
+                    $rate = $this->graduatedMovingAverageByStockDays($stock, $stockDays);
+
+                    if ($rate <= 0) {
+                        $rate = $excelUsage;
+                    }
+
+                    $orderQty = max(0, round($coverage * $rate, 4));
+                }
+            }
+
+            $this->pageMetricsCache[$key] = [
+                'system_ar' => $ar,
+                'current_m' => $currentM,
+                'shrinkage_qty' => max(0, $shrinkageDelta),
+                'shrinkage_pct' => $shrinkagePct,
+                'shrinkage_ugx' => $shrinkageUgx,
+                'stock_days' => $stockDays,
+                'days_left' => $daysLeft,
+                'notify_date' => $notifyDate,
+                'safety_days' => $safetyDays,
+                'buffer_days' => $bufferDays,
+                'safety_stock_suom' => round($excelUsage * $safetyDays, 4),
+                'buffer_stock_suom' => round($excelUsage * $bufferDays, 4),
+                'purchase_price' => $purchasePrice,
+                'valuation' => round($currentM * $purchasePrice, 2),
+                'excel_daily_usage' => $excelUsage,
+                'suggested_order_qty' => $orderQty,
+                'demand_forecast_amount' => round($orderQty * $purchasePrice, 2),
+                'budget_test_amount' => round(15 * $excelUsage * $purchasePrice, 2),
+            ];
+        }
+    }
+
+    public function pageMetric(
+        InventoryStockLevel $stock,
+        string $field,
+        ?InventoryModuleConfig $config = null,
+        ?Item $item = null,
+        float $periodDays = 30,
+    ): mixed {
+        $key = $this->pageMetricKey($stock);
+
+        if ($this->pageMetricsCache === null || ! array_key_exists($key, $this->pageMetricsCache)) {
+            $this->warmPageMetrics([$stock], $config, $periodDays);
+        }
+
+        return $this->pageMetricsCache[$key][$field] ?? null;
+    }
+
+    private function pageMetricKey(InventoryStockLevel $stock): string
+    {
+        return "{$stock->store_id}-{$stock->item_id}";
+    }
+
+    private function excelDailyUsageFromStock(InventoryStockLevel $stock, ?InventoryModuleConfig $config): float
+    {
+        $ma15 = $this->movingAverageForStock($stock, 15);
+
+        if ($ma15 > 0) {
+            return $ma15;
+        }
+
+        return (float) ($config?->fixed_daily_average_suom ?? 0);
+    }
+
+    /**
+     * @param  Collection<int, array{store_id: int, item_id: int}>  $pairs
+     * @return array<string, float>
+     */
+    private function batchMovementSums(int $businessId, Collection $pairs, Carbon $since): array
+    {
+        if ($pairs->isEmpty()) {
+            return [];
+        }
+
+        $rows = InventoryStockMovement::query()
+            ->where('business_id', $businessId)
+            ->where('occurred_at', '>=', $since)
+            ->where(function ($query) use ($pairs): void {
+                foreach ($pairs as $pair) {
+                    $query->orWhere(function ($inner) use ($pair): void {
+                        $inner->where('store_id', $pair['store_id'])
+                            ->where('item_id', $pair['item_id']);
+                    });
+                }
+            })
+            ->selectRaw('store_id, item_id, SUM(quantity_delta) as total')
+            ->groupBy('store_id', 'item_id')
+            ->get();
+
+        $sums = [];
+
+        foreach ($rows as $row) {
+            $sums["{$row->store_id}-{$row->item_id}"] = (float) $row->total;
+        }
+
+        return $sums;
+    }
+
+    /**
+     * @param  Collection<int, InventoryStockLevel>  $stocks
+     * @return array<string, float>
+     */
+    private function batchOpeningQuantities(Collection $stocks, Carbon $fyStart): array
+    {
+        $openings = [];
+        $needLookup = [];
+
+        foreach ($stocks as $stock) {
+            $key = $this->pageMetricKey($stock);
+
+            if ($stock->opening_quantity_suom !== null) {
+                $openings[$key] = (float) $stock->opening_quantity_suom;
+            } else {
+                $needLookup[] = $stock;
+            }
+        }
+
+        if ($needLookup === []) {
+            return $openings;
+        }
+
+        $businessId = (int) $needLookup[0]->business_id;
+
+        $rows = InventoryStockMovement::query()
+            ->from('inventory_stock_movements as m')
+            ->joinSub(
+                InventoryStockMovement::query()
+                    ->where('business_id', $businessId)
+                    ->where('occurred_at', '<', $fyStart)
+                    ->where(function ($query) use ($needLookup): void {
+                        foreach ($needLookup as $stock) {
+                            $query->orWhere(function ($inner) use ($stock): void {
+                                $inner->where('store_id', $stock->store_id)
+                                    ->where('item_id', $stock->item_id);
+                            });
+                        }
+                    })
+                    ->selectRaw('store_id, item_id, MAX(occurred_at) as max_occurred_at')
+                    ->groupBy('store_id', 'item_id'),
+                'latest',
+                function ($join): void {
+                    $join->on('m.store_id', '=', 'latest.store_id')
+                        ->on('m.item_id', '=', 'latest.item_id')
+                        ->on('m.occurred_at', '=', 'latest.max_occurred_at');
+                }
+            )
+            ->where('m.business_id', $businessId)
+            ->select(['m.store_id', 'm.item_id', 'm.balance_after'])
+            ->get();
+
+        foreach ($rows as $row) {
+            $openings["{$row->store_id}-{$row->item_id}"] = (float) $row->balance_after;
+        }
+
+        foreach ($needLookup as $stock) {
+            $key = $this->pageMetricKey($stock);
+            $openings[$key] = $openings[$key] ?? 0.0;
+        }
+
+        return $openings;
+    }
+
+    /**
+     * @param  Collection<int, InventoryStockLevel>  $stocks
+     * @return array<string, float>
+     */
+    private function batchPhysicalMovementSums(int $businessId, Collection $stocks): array
+    {
+        $sinceByKey = [];
+
+        foreach ($stocks as $stock) {
+            if ($stock->physical_counted_at !== null) {
+                $sinceByKey[$this->pageMetricKey($stock)] = Carbon::parse($stock->physical_counted_at)->startOfDay();
+            }
+        }
+
+        if ($sinceByKey === []) {
+            return [];
+        }
+
+        $minSince = collect($sinceByKey)->min();
+
+        $rows = InventoryStockMovement::query()
+            ->where('business_id', $businessId)
+            ->where('occurred_at', '>=', $minSince)
+            ->where(function ($query) use ($sinceByKey): void {
+                foreach ($sinceByKey as $key => $since) {
+                    [$storeId, $itemId] = array_map('intval', explode('-', $key));
+                    $query->orWhere(function ($inner) use ($storeId, $itemId): void {
+                        $inner->where('store_id', $storeId)->where('item_id', $itemId);
+                    });
+                }
+            })
+            ->select(['store_id', 'item_id', 'occurred_at', 'quantity_delta'])
+            ->get();
+
+        $sums = [];
+
+        foreach ($rows as $row) {
+            $key = "{$row->store_id}-{$row->item_id}";
+            $since = $sinceByKey[$key] ?? null;
+
+            if ($since === null || Carbon::parse($row->occurred_at)->lt($since)) {
+                continue;
+            }
+
+            $sums[$key] = ($sums[$key] ?? 0.0) + (float) $row->quantity_delta;
+        }
+
+        return $sums;
+    }
+
+    /**
+     * @param  Collection<int, InventoryStockLevel>  $stocks
+     * @return array<string, float>
+     */
+    private function batchPurchasePrices(int $businessId, Collection $stocks): array
+    {
+        $prices = [];
+        $needGrn = [];
+
+        foreach ($stocks as $stock) {
+            $key = $this->pageMetricKey($stock);
+            $fromStock = $stock->weighted_avg_cost ?? $stock->last_purchase_price;
+
+            if ($fromStock !== null && (float) $fromStock > 0) {
+                $prices[$key] = (float) $fromStock;
+            } else {
+                $needGrn[] = $stock;
+            }
+        }
+
+        if ($needGrn === []) {
+            return $prices;
+        }
+
+        $rows = GoodsReceivedNoteLine::query()
+            ->from('goods_received_note_lines as lines')
+            ->join('goods_received_notes as grn', 'grn.id', '=', 'lines.goods_received_note_id')
+            ->where('grn.business_id', $businessId)
+            ->where('grn.status', GoodsReceivedNote::STATUS_APPROVED)
+            ->where(function ($query) use ($needGrn): void {
+                foreach ($needGrn as $stock) {
+                    $query->orWhere(function ($inner) use ($stock): void {
+                        $inner->where('grn.store_id', $stock->store_id)
+                            ->where('lines.item_id', $stock->item_id);
+                    });
+                }
+            })
+            ->selectRaw('grn.store_id, lines.item_id, MAX(grn.date_of_delivery) as last_delivery')
+            ->groupBy('grn.store_id', 'lines.item_id')
+            ->get()
+            ->keyBy(fn ($row) => "{$row->store_id}-{$row->item_id}");
+
+        $lineRows = GoodsReceivedNoteLine::query()
+            ->from('goods_received_note_lines as lines')
+            ->join('goods_received_notes as grn', 'grn.id', '=', 'lines.goods_received_note_id')
+            ->where('grn.business_id', $businessId)
+            ->where('grn.status', GoodsReceivedNote::STATUS_APPROVED)
+            ->where(function ($query) use ($rows): void {
+                foreach ($rows as $key => $row) {
+                    $query->orWhere(function ($inner) use ($row): void {
+                        $inner->where('grn.store_id', $row->store_id)
+                            ->where('lines.item_id', $row->item_id)
+                            ->whereDate('grn.date_of_delivery', $row->last_delivery);
+                    });
+                }
+            })
+            ->select(['grn.store_id', 'lines.item_id', 'lines.purchase_price', 'lines.sale_units_per_purchase_unit'])
+            ->get();
+
+        foreach ($lineRows as $line) {
+            $key = "{$line->store_id}-{$line->item_id}";
+
+            if (isset($prices[$key])) {
+                continue;
+            }
+
+            if ((float) $line->sale_units_per_purchase_unit > 0) {
+                $prices[$key] = round((float) $line->purchase_price / (float) $line->sale_units_per_purchase_unit, 4);
+            }
+        }
+
+        foreach ($needGrn as $stock) {
+            $key = $this->pageMetricKey($stock);
+            $prices[$key] = $prices[$key]
+                ?? (float) ($stock->item?->default_price ?? 0);
+        }
+
+        return $prices;
     }
 
     public function recordConsumption(

@@ -15,7 +15,7 @@
 }">
     <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex-1 min-w-0">
-            <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">New order form</h2>
+            <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">New order</h2>
             <p class="mt-1 text-sm text-gray-500">
                 Suggested quantities use your stock position and <strong>auto-calculated consumption rates</strong> (15-day usage).
                 Filter by category or group to focus on essential items.

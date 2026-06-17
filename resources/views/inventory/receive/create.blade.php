@@ -6,6 +6,8 @@
         'name' => $i->name,
         'code' => $i->code,
         'suom' => $i->itemUnit?->name,
+        'order_unit' => $i->orderUnit?->name,
+        'suom_per_ouom' => (float) ($i->suom_per_ouom ?? 0),
         'default_price' => (float) ($i->default_price ?? 0),
     ])->values()),
     @js($supplierItemIds),
@@ -24,12 +26,17 @@
                 <h2 class="text-2xl font-bold text-gray-900">New Goods Received Note</h2>
                 <p class="mt-1 text-sm text-gray-500">
                     @if(!empty($inventoryOrder))
-                        Receiving against order <strong>{{ $inventoryOrder->order_number }}</strong>. Stock updates after GRN approvers sign off.
+                        Receiving against order <strong>{{ $inventoryOrder->order_number }}</strong>.
                     @else
-                        Record incoming goods from a supplier. Stock updates after approvers sign off.
+                        Record incoming goods from a supplier.
                     @endif
                 </p>
             </div>
+            @if(empty($inventoryOrder))
+                <a href="{{ route('inventory.receive.bulk-upload') }}" class="mt-4 md:mt-0 text-sm text-blue-600 hover:text-blue-800">
+                    Bulk upload instead
+                </a>
+            @endif
         </div>
 
         @include('inventory.partials.subnav')
@@ -120,6 +127,72 @@
                     </button>
                 </div>
 
+                <div x-show="completedLines().length > 0" x-cloak
+                     class="mb-6 rounded-lg border border-blue-200 bg-blue-50/60 overflow-hidden lg:sticky lg:top-4 lg:z-10">
+                    <div class="px-4 py-3 border-b border-blue-200/80 flex flex-wrap items-center justify-between gap-2">
+                        <h4 class="text-sm font-semibold text-blue-900">
+                            Summary
+                            <span class="font-normal text-blue-700" x-text="'(' + completedLines().length + ' item' + (completedLines().length === 1 ? '' : 's') + ')'"></span>
+                        </h4>
+                        <dl class="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                            <div class="flex gap-1.5">
+                                <dt class="text-blue-700">Sale units:</dt>
+                                <dd class="font-semibold text-blue-900 tabular-nums" x-text="formatNumber(totals().saleUnits)"></dd>
+                            </div>
+                            <div class="flex gap-1.5">
+                                <dt class="text-blue-700">Purchase value:</dt>
+                                <dd class="font-semibold text-blue-900 tabular-nums" x-text="'UGX ' + formatMoney(totals().purchaseValue)"></dd>
+                            </div>
+                        </dl>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-blue-100/50 text-xs tracking-wide text-blue-800">
+                                <tr>
+                                    <th class="px-4 py-2 text-left font-medium">#</th>
+                                    <th class="px-4 py-2 text-left font-medium">Item</th>
+                                    <th class="px-4 py-2 text-right font-medium">Delivery qty</th>
+                                    <th class="px-4 py-2 text-left font-medium">Delivery unit</th>
+                                    <th class="px-4 py-2 text-left font-medium">Sale unit</th>
+                                    <th class="px-4 py-2 text-right font-medium">Sale units to stock</th>
+                                    <th class="px-4 py-2 text-right font-medium">Unit price</th>
+                                    <th class="px-4 py-2 text-right font-medium">Line total</th>
+                                    <th class="px-4 py-2 text-left font-medium">Batch</th>
+                                    <th class="px-4 py-2 text-left font-medium">Expiry</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-blue-100 bg-white/80">
+                                <template x-for="(line, index) in completedLines()" :key="'summary-' + line._index">
+                                    <tr class="hover:bg-blue-50/50">
+                                        <td class="px-4 py-2 text-gray-500 tabular-nums" x-text="index + 1"></td>
+                                        <td class="px-4 py-2">
+                                            <div class="font-medium text-gray-900" x-text="itemForLine(line)?.name || '—'"></div>
+                                            <div class="text-xs text-gray-500" x-text="itemForLine(line)?.code || ''"></div>
+                                        </td>
+                                        <td class="px-4 py-2 text-right tabular-nums text-gray-900" x-text="formatNumber(line.quantity)"></td>
+                                        <td class="px-4 py-2 text-gray-700" x-text="line.duom || '—'"></td>
+                                        <td class="px-4 py-2 text-gray-700" x-text="line.suom || '—'"></td>
+                                        <td class="px-4 py-2 text-right tabular-nums font-medium text-emerald-800" x-text="formatNumber(saleUnits(line))"></td>
+                                        <td class="px-4 py-2 text-right tabular-nums text-gray-700" x-text="'UGX ' + formatMoney(line.purchase_price)"></td>
+                                        <td class="px-4 py-2 text-right tabular-nums font-medium text-gray-900" x-text="'UGX ' + formatMoney(linePurchaseTotal(line))"></td>
+                                        <td class="px-4 py-2 text-gray-600" x-text="line.batch_number || '—'"></td>
+                                        <td class="px-4 py-2 text-gray-600 whitespace-nowrap" x-text="line.expiry_date ? formatDate(line.expiry_date) : '—'"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                            <tfoot class="bg-blue-100/40 text-sm font-semibold text-blue-900">
+                                <tr>
+                                    <td colspan="5" class="px-4 py-2 text-right">Totals</td>
+                                    <td class="px-4 py-2 text-right tabular-nums" x-text="formatNumber(totals().saleUnits)"></td>
+                                    <td class="px-4 py-2"></td>
+                                    <td class="px-4 py-2 text-right tabular-nums" x-text="'UGX ' + formatMoney(totals().purchaseValue)"></td>
+                                    <td colspan="2"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
                 <template x-if="lines.length === 0">
                     <p class="text-sm text-gray-500 py-6 text-center">Click “Add line” to add received items.</p>
                 </template>
@@ -203,11 +276,13 @@
                                         <p class="mt-1 text-xs text-gray-500">Fixed from the item master (SUOM). Sale units to stock = qty × conversion below.</p>
                                     </div>
                                     <div class="lg:col-span-3">
-                                        <label class="block text-xs font-medium text-gray-600 mb-1">Sale units per purchase <span class="text-red-500">*</span></label>
+                                        <label class="block text-xs font-medium text-gray-600 mb-1">Sale units per delivery <span class="text-red-500">*</span></label>
                                         <input type="number" step="1" min="1"
                                                :name="'lines[' + index + '][sale_units_per_purchase_unit]'" x-model.number="line.conversion" required
-                                               placeholder="e.g. 30"
+                                               placeholder="e.g. 100"
+                                               title="How many sale units are in one delivery unit"
                                                class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                                        <p class="mt-1 text-xs text-gray-500">e.g. 100 tablets in one box</p>
                                     </div>
                                     <div class="lg:col-span-3">
                                         <label class="block text-xs font-medium text-gray-600 mb-1">Sale units to stock</label>
@@ -315,19 +390,65 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
                 line.item_suom = '';
                 return;
             }
-            line.item_suom = item.suom || '';
-            if (item.suom) {
-                line.suom = item.suom;
+
+            const conversion = (parseFloat(item.suom_per_ouom) || 0) > 0 ? parseFloat(item.suom_per_ouom) : 1;
+            const suom = item.suom || '';
+            let duom = item.order_unit || suom;
+            if (duom && !this.itemUnits.includes(duom)) {
+                duom = suom && this.itemUnits.includes(suom) ? suom : '';
             }
-            if (! line.duom && item.suom && this.itemUnits.includes(item.suom)) {
-                line.duom = item.suom;
-            }
-            line.purchase_price = item.default_price || 0;
+
+            line.item_suom = suom;
+            line.suom = suom;
+            if (!line.duom && duom) line.duom = duom;
+            line.conversion = conversion;
+            line.purchase_price = Math.round((parseFloat(item.default_price) || 0) * conversion * 100) / 100;
         },
         saleUnits(line) {
             const q = parseFloat(line.quantity) || 0;
             const c = parseFloat(line.conversion) || 0;
             return Math.round(q * c * 10000) / 10000;
+        },
+        itemForLine(line) {
+            if (! line.item_id) {
+                return null;
+            }
+            return this.items.find(i => String(i.id) === String(line.item_id)) || null;
+        },
+        completedLines() {
+            return this.lines
+                .map((line, index) => ({ ...line, _index: index }))
+                .filter(line => line.item_id);
+        },
+        linePurchaseTotal(line) {
+            const q = parseFloat(line.quantity) || 0;
+            const p = parseFloat(line.purchase_price) || 0;
+            return Math.round(q * p * 100) / 100;
+        },
+        totals() {
+            const completed = this.completedLines();
+            return {
+                saleUnits: completed.reduce((sum, line) => sum + this.saleUnits(line), 0),
+                purchaseValue: completed.reduce((sum, line) => sum + this.linePurchaseTotal(line), 0),
+            };
+        },
+        formatNumber(value) {
+            const n = parseFloat(value) || 0;
+            return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        },
+        formatMoney(value) {
+            const n = parseFloat(value) || 0;
+            return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        },
+        formatDate(value) {
+            if (! value) {
+                return '—';
+            }
+            const date = new Date(value + 'T00:00:00');
+            if (Number.isNaN(date.getTime())) {
+                return value;
+            }
+            return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
         },
     };
 }

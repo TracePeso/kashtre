@@ -120,21 +120,18 @@ class EditStockCountLines extends Component implements HasForms, HasTable
                         return $state;
                     }),
 
-                TextColumn::make('verifiable_display')
-                    ->label('Verifiable')
+                TextColumn::make('verified_display')
+                    ->label('Verified')
                     ->alignEnd()
                     ->color('warning')
-                    ->state(fn (InventoryStockCountLine $record): float => (float) $record->damaged_quantity_suom + (float) ($record->expired_quantity_suom ?? 0))
+                    ->state(fn (InventoryStockCountLine $record): float => $record->verifiedLossSuom())
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('unverified_display')
                     ->label('Unverified')
                     ->alignEnd()
                     ->color('danger')
-                    ->state(fn (InventoryStockCountLine $record): float => max(
-                        0,
-                        (float) $record->system_quantity_suom - (float) $record->physical_quantity_suom
-                    ))
+                    ->state(fn (InventoryStockCountLine $record): float => $record->unverifiedLossSuom())
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
             ])
             ->paginated(false)

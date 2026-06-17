@@ -3,6 +3,7 @@
 namespace App\Livewire\Inventory;
 
 use App\Livewire\Inventory\Concerns\InteractsWithInventoryMetrics;
+use App\Livewire\Inventory\Concerns\WarmsInventoryFilamentTable;
 use App\Models\InventoryStockLevel;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -20,12 +21,11 @@ class ValuationReportTable extends Component implements HasForms, HasTable
 {
     use InteractsWithForms;
     use InteractsWithInventoryMetrics;
-    use InteractsWithTable;
+    use WarmsInventoryFilamentTable;
 
     public function table(Table $table): Table
     {
         $businessId = (int) Auth::user()->business_id;
-        $analytics = $this->metricsService();
 
         return $table
             ->query($this->inventoryReportQuery($businessId))
@@ -36,17 +36,17 @@ class ValuationReportTable extends Component implements HasForms, HasTable
                 TextColumn::make('current_m')
                     ->label('Current stock (M)')
                     ->alignEnd()
-                    ->state(fn (InventoryStockLevel $record): float => $analytics->currentStockLevelSuom($record))
+                    ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'current_m'))
                     ->formatStateUsing(fn ($state) => number_format((float) $state, 0)),
                 TextColumn::make('unit_cost')
                     ->label('Cost per SUOM (F/J)')
                     ->alignEnd()
-                    ->state(fn (InventoryStockLevel $record): float => $analytics->purchasePricePerSuom($record, $record->item))
+                    ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'purchase_price'))
                     ->formatStateUsing(fn ($state) => 'UGX '.number_format((float) $state, 2)),
                 TextColumn::make('valuation')
                     ->label('Valuation (O)')
                     ->alignEnd()
-                    ->state(fn (InventoryStockLevel $record): float => $analytics->inventoryValuationUgx($record, $record->item))
+                    ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'valuation'))
                     ->formatStateUsing(fn ($state) => 'UGX '.number_format((float) $state, 2)),
             ])
             ->filters([

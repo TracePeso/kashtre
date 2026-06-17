@@ -287,6 +287,11 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/', [InventoryController::class, 'index'])->name('index');
         Route::get('/receive', [InventoryController::class, 'receive'])->name('receive');
         Route::get('/receive/create', [GoodsReceivedNoteController::class, 'create'])->name('receive.create');
+        Route::get('/receive/bulk-upload', [GoodsReceivedNoteController::class, 'bulkUpload'])->name('receive.bulk-upload');
+        Route::get('/receive/bulk-template', [GoodsReceivedNoteController::class, 'downloadBulkTemplate'])->name('receive.bulk-template');
+        Route::get('/receive/items-reference', [GoodsReceivedNoteController::class, 'downloadItemsReference'])->name('receive.items-reference');
+        Route::post('/receive/bulk-import', [GoodsReceivedNoteController::class, 'bulkImport'])->name('receive.bulk-import');
+        Route::get('/receive/catalogue-lines', [GoodsReceivedNoteController::class, 'catalogueLines'])->name('receive.catalogue-lines');
         Route::post('/receive', [GoodsReceivedNoteController::class, 'store'])->name('receive.store');
         Route::get('/receive/{goodsReceivedNote}', [GoodsReceivedNoteController::class, 'show'])->name('receive.show');
         Route::post('/receive/{goodsReceivedNote}/submit', [GoodsReceivedNoteController::class, 'submit'])->name('receive.submit');
@@ -298,7 +303,9 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/stock-counts/create', [InventoryStockCountController::class, 'create'])->name('stock-counts.create');
         Route::post('/stock-counts', [InventoryStockCountController::class, 'store'])->name('stock-counts.store');
         Route::get('/stock-counts/{stockCount}', [InventoryStockCountController::class, 'show'])->name('stock-counts.show');
-        Route::post('/stock-counts/{stockCount}/finalize', [InventoryStockCountController::class, 'finalize'])->name('stock-counts.finalize');
+        Route::post('/stock-counts/{stockCount}/submit', [InventoryStockCountController::class, 'submit'])->name('stock-counts.submit');
+        Route::post('/stock-counts/{stockCount}/approve', [InventoryStockCountController::class, 'approve'])->name('stock-counts.approve');
+        Route::post('/stock-counts/{stockCount}/reject', [InventoryStockCountController::class, 'reject'])->name('stock-counts.reject');
         Route::get('/consumption', [InventoryDailyConsumptionController::class, 'index'])->name('consumption.index');
         Route::get('/consumption/items/{item}/months/{month}', [InventoryDailyConsumptionController::class, 'showMonth'])
             ->name('consumption.month')

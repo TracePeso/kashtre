@@ -56,27 +56,70 @@ class InventoryStockCountController extends Controller
 
         return redirect()
             ->route('inventory.stock-counts.show', $count)
-            ->with('success', 'Stock count created. Enter physical quantities and finalize when ready.');
+            ->with('success', 'Stock count created. Enter physical quantities, then submit for approval.');
     }
 
     public function show(InventoryStockCount $stockCount)
     {
         $this->authorizeStockCount($stockCount);
 
-        $stockCount->load(['lines.item.itemUnit', 'store', 'createdBy', 'finalizedBy']);
+        $stockCount->load([
+            'lines.item.itemUnit',
+            'store',
+            'createdBy',
+            'submittedBy',
+            'finalizedBy',
+            'approvals.approver',
+        ]);
 
-        return view('inventory.stock-counts.show', compact('stockCount'));
+        $canApprove = $this->service->userCanApprove($stockCount, Auth::user());
+
+        return view('inventory.stock-counts.show', compact('stockCount', 'canApprove'));
     }
 
-    public function finalize(InventoryStockCount $stockCount)
+    public function submit(InventoryStockCount $stockCount)
     {
         $this->authorizeStockCount($stockCount);
 
-        $this->service->finalize($stockCount, Auth::user());
+        $this->service->submit($stockCount, Auth::user());
 
         return redirect()
             ->route('inventory.stock-counts.show', $stockCount)
-            ->with('success', 'Stock count finalized. Physical stock and shrinkage have been recorded.');
+            ->with('success', 'Stock count submitted for approval.');
+    }
+
+    public function approve(Request $request, InventoryStockCount $stockCount)
+    {
+        $this->authorizeStockCount($stockCount);
+
+        $request->validate(['comment' => 'nullable|string|max:1000']);
+
+        $this->service->approve($stockCount, Auth::user(), $request->input('comment'));
+
+        $stockCount->refresh();
+
+        $message = $stockCount->isApproved()
+            ? 'Stock count approved. Physical stock and shrinkage have been recorded.'
+            : 'Approval recorded. Awaiting next approver.';
+
+        return redirect()
+            ->route('inventory.stock-counts.show', $stockCount)
+            ->with('success', $message);
+    }
+
+    public function reject(Request $request, InventoryStockCount $stockCount)
+    {
+        $this->authorizeStockCount($stockCount);
+
+        $validated = $request->validate([
+            'reason' => 'required|string|max:1000',
+        ]);
+
+        $this->service->reject($stockCount, Auth::user(), $validated['reason']);
+
+        return redirect()
+            ->route('inventory.stock-counts.show', $stockCount)
+            ->with('success', 'Stock count rejected.');
     }
 
     private function authorizeStockCount(InventoryStockCount $stockCount): void

@@ -153,7 +153,7 @@ class SampleInventoryOrdersSeeder extends Seeder
         }
 
         $this->command->newLine();
-        $this->command->info('Open Inventory → Order forms to review the sample orders.');
+        $this->command->info('Open Inventory → Order Goods to review the sample orders.');
     }
 
     private function tagStockedGoods(int $businessId, int $storeId): int

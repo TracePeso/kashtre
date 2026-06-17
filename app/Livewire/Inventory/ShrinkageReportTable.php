@@ -3,6 +3,8 @@
 namespace App\Livewire\Inventory;
 
 use App\Livewire\Inventory\Concerns\InteractsWithInventoryMetrics;
+use App\Livewire\Inventory\Concerns\WarmsInventoryFilamentTable;
+use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -20,13 +22,18 @@ class ShrinkageReportTable extends Component implements HasForms, HasTable
 {
     use InteractsWithForms;
     use InteractsWithInventoryMetrics;
-    use InteractsWithTable;
+    use WarmsInventoryFilamentTable;
+
+    public ?InventoryModuleConfig $inventoryModuleConfig = null;
+
+    public function mount(): void
+    {
+        $this->inventoryModuleConfig = $this->moduleConfigFor((int) Auth::user()->business_id);
+    }
 
     public function table(Table $table): Table
     {
         $businessId = (int) Auth::user()->business_id;
-        $config = $this->moduleConfigFor($businessId);
-        $analytics = $this->metricsService();
 
         return $table
             ->query($this->inventoryReportQuery($businessId))
@@ -37,30 +44,28 @@ class ShrinkageReportTable extends Component implements HasForms, HasTable
                 TextColumn::make('system_ar')
                     ->label('System stock (AR)')
                     ->alignEnd()
-                    ->state(fn (InventoryStockLevel $record): float => $analytics->systemStockArSuom($record, $config))
+                    ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'system_ar'))
                     ->formatStateUsing(fn ($state) => number_format((float) $state, 0)),
                 TextColumn::make('current_m')
                     ->label('Current stock (M)')
                     ->alignEnd()
-                    ->state(fn (InventoryStockLevel $record): float => $analytics->currentStockLevelSuom($record))
+                    ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'current_m'))
                     ->formatStateUsing(fn ($state) => number_format((float) $state, 0)),
                 TextColumn::make('shrinkage_qty')
                     ->label('Shrinkage (SUOM)')
                     ->alignEnd()
-                    ->state(function (InventoryStockLevel $record) use ($analytics, $config): float {
-                        return max(0, $analytics->systemStockArSuom($record, $config) - $analytics->currentStockLevelSuom($record));
-                    })
+                    ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'shrinkage_qty'))
                     ->formatStateUsing(fn ($state) => number_format((float) $state, 0)),
                 TextColumn::make('shrinkage_pct')
                     ->label('Shrinkage % (AV)')
                     ->alignEnd()
-                    ->state(fn (InventoryStockLevel $record): ?float => $analytics->shrinkagePercentExcel($record, $config))
+                    ->state(fn (InventoryStockLevel $record): ?float => $this->m($record, 'shrinkage_pct'))
                     ->formatStateUsing(fn ($state) => $state !== null ? number_format((float) $state, 4).'%' : '—')
                     ->color(fn ($state) => $state !== null && (float) $state > 0 ? 'danger' : null),
                 TextColumn::make('shrinkage_ugx')
                     ->label('Shrinkage UGX (AW)')
                     ->alignEnd()
-                    ->state(fn (InventoryStockLevel $record): ?float => $analytics->shrinkageAmountUgx($record, $config, $record->item))
+                    ->state(fn (InventoryStockLevel $record): ?float => $this->m($record, 'shrinkage_ugx'))
                     ->formatStateUsing(fn ($state) => $state !== null ? 'UGX '.number_format((float) $state, 2) : '—'),
             ])
             ->filters([

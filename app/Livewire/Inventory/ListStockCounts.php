@@ -42,12 +42,16 @@ class ListStockCounts extends Component implements HasForms, HasTable
                     ->badge()
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'draft' => 'Draft',
-                        'finalized' => 'Finalized',
+                        'pending_approval' => 'Pending approval',
+                        'approved', 'finalized' => 'Approved',
+                        'rejected' => 'Rejected',
                         default => ucfirst($state),
                     })
                     ->color(fn (string $state): string => match ($state) {
                         'draft' => 'warning',
-                        'finalized' => 'success',
+                        'pending_approval' => 'info',
+                        'approved', 'finalized' => 'success',
+                        'rejected' => 'danger',
                         default => 'gray',
                     }),
 

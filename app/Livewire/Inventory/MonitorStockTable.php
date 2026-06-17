@@ -3,6 +3,7 @@
 namespace App\Livewire\Inventory;
 
 use App\Livewire\Inventory\Concerns\InteractsWithInventoryMetrics;
+use App\Livewire\Inventory\Concerns\WarmsInventoryFilamentTable;
 use App\Models\InventoryStockLevel;
 use App\Models\Item;
 use App\Models\Store;
@@ -11,12 +12,13 @@ use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Contracts\Pagination\Paginator;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 
@@ -24,22 +26,29 @@ class MonitorStockTable extends Component implements HasForms, HasTable
 {
     use InteractsWithForms;
     use InteractsWithInventoryMetrics;
-    use InteractsWithTable;
+    use WarmsInventoryFilamentTable;
 
     public ?\App\Models\InventoryModuleConfig $moduleConfig = null;
 
     public ?int $storeId = null;
 
+    /** @var array<int, string> */
+    public array $storeFilterOptions = [];
+
     public function mount(?int $storeId = null): void
     {
-        $this->moduleConfig = $this->moduleConfigFor((int) Auth::user()->business_id);
+        $businessId = (int) Auth::user()->business_id;
+        $this->moduleConfig = $this->moduleConfigFor($businessId);
         $this->storeId = $storeId;
+
+        if ($storeId === null) {
+            $this->storeFilterOptions = Store::optionsForSelect($businessId);
+        }
     }
 
     public function table(Table $table): Table
     {
         $config = $this->moduleConfig;
-        $analytics = $this->metricsService();
 
         return $table
             ->query($this->baseQuery())
@@ -74,14 +83,14 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->label('System stock (AR)')
                     ->tooltip('FY opening + purchases − sales + transfers since financial year start')
                     ->alignEnd()
-                    ->state(fn (Item $record): float => $analytics->systemStockArSuom($this->stockLevel($record), $config))
+                    ->state(fn (Item $record): float => (float) $this->mForItem($record, 'system_ar'))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('current_stock_m')
                     ->label('Current stock (M)')
                     ->tooltip('Physical count anchor + movements since last stock count')
                     ->alignEnd()
-                    ->state(fn (Item $record): float => $analytics->currentStockLevelSuom($this->stockLevel($record)))
+                    ->state(fn (Item $record): float => (float) $this->mForItem($record, 'current_m'))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('stock_physical_quantity_suom')
@@ -94,54 +103,54 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->label('Shrinkage % (AV)')
                     ->alignEnd()
                     ->tooltip('100 × (AR − M) ÷ AR')
-                    ->state(fn (Item $record): ?float => $analytics->shrinkagePercentExcel($this->stockLevel($record), $config))
+                    ->state(fn (Item $record): ?float => $this->mForItem($record, 'shrinkage_pct'))
                     ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 4).'%' : '—'),
 
                 TextColumn::make('shrinkage_excel_ugx')
                     ->label('Shrinkage UGX (AW)')
                     ->alignEnd()
-                    ->state(fn (Item $record): ?float => $analytics->shrinkageAmountUgx($this->stockLevel($record), $config, $record))
+                    ->state(fn (Item $record): ?float => $this->mForItem($record, 'shrinkage_ugx'))
                     ->formatStateUsing(fn ($state): string => $state !== null ? 'UGX '.number_format((float) $state, 2) : '—'),
 
                 TextColumn::make('stock_days_n')
                     ->label('Stock days (N)')
                     ->alignEnd()
                     ->tooltip('Estimated days until stock runs out at current usage')
-                    ->state(fn (Item $record): ?float => $analytics->stockDaysReport($this->stockLevel($record), $config))
+                    ->state(fn (Item $record): ?float => $this->mForItem($record, 'stock_days'))
                     ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 1) : '—'),
 
                 TextColumn::make('days_left_am')
                     ->label('Days left (AM)')
                     ->alignEnd()
                     ->tooltip('N − (safety days + buffer days)')
-                    ->state(fn (Item $record): ?float => $analytics->daysLeftToOrder($this->stockLevel($record), $config))
+                    ->state(fn (Item $record): ?float => $this->mForItem($record, 'days_left'))
                     ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 1) : '—')
                     ->color(fn ($state) => $state !== null && (float) $state <= 0 ? 'danger' : null),
 
                 TextColumn::make('order_notify_ay')
                     ->label('Order notify (AY)')
-                    ->state(fn (Item $record): ?string => $analytics->orderingNotificationDate($this->stockLevel($record), $config)?->format('M d, Y'))
+                    ->state(fn (Item $record): ?string => $this->mForItem($record, 'notify_date'))
                     ->placeholder('—'),
 
                 TextColumn::make('safety_stock_suom')
                     ->label('Safety stock (AC)')
                     ->alignEnd()
                     ->visible($config !== null)
-                    ->state(fn (Item $record): float => $analytics->safetyStockSuom($this->stockLevel($record), $config))
+                    ->state(fn (Item $record): float => (float) $this->mForItem($record, 'safety_stock_suom'))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('buffer_stock_suom')
                     ->label('Buffer stock (AE)')
                     ->alignEnd()
                     ->visible($config !== null)
-                    ->state(fn (Item $record): float => $analytics->bufferStockSuom($this->stockLevel($record), $config))
+                    ->state(fn (Item $record): float => (float) $this->mForItem($record, 'buffer_stock_suom'))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('stock_aging_days')
                     ->label('Stock aging (U)')
                     ->alignEnd()
                     ->state(function (Item $record): ?int {
-                        return app(InventoryStockAgingService::class)->agingDays(
+                        return app(InventoryStockAgingService::class)->pageAgingDays(
                             (int) Auth::user()->business_id,
                             (int) $record->stock_store_id,
                             (int) $record->id
@@ -152,7 +161,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                 TextColumn::make('valuation_o')
                     ->label('Valuation (O)')
                     ->alignEnd()
-                    ->state(fn (Item $record): float => $analytics->inventoryValuationUgx($this->stockLevel($record), $record))
+                    ->state(fn (Item $record): float => (float) $this->mForItem($record, 'valuation'))
                     ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2)),
             ])
             ->actions([
@@ -164,7 +173,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
             ->filters($this->storeId === null ? [
                 SelectFilter::make('store_id')
                     ->label('Store')
-                    ->options(fn (): array => Store::optionsForSelect((int) Auth::user()->business_id))
+                    ->options($this->storeFilterOptions)
                     ->query(function (Builder $query, array $data): Builder {
                         if (empty($data['value'])) {
                             return $query;
@@ -180,6 +189,24 @@ class MonitorStockTable extends Component implements HasForms, HasTable
             ->emptyStateDescription($this->storeId
                 ? 'No stock or consumption recorded at this store yet.'
                 : 'Items appear after goods are received or consumption is recorded.');
+    }
+
+    protected function stockLevelsFromPaginator(Paginator $paginator): Collection
+    {
+        return $paginator->getCollection()->map(fn (Item $item): InventoryStockLevel => $this->stockLevel($item));
+    }
+
+    protected function warmAgingMetricsForStocks(iterable $stockLevels): void
+    {
+        app(InventoryStockAgingService::class)->warmPageAging(
+            (int) Auth::user()->business_id,
+            $stockLevels
+        );
+    }
+
+    protected function mForItem(Item $item, string $field): mixed
+    {
+        return $this->m($this->stockLevel($item), $field);
     }
 
     public function render(): View
@@ -253,6 +280,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
             'weighted_avg_cost' => $item->stock_weighted_avg_cost,
         ]);
         $level->exists = true;
+        $level->setRelation('item', $item);
 
         return $level;
     }
