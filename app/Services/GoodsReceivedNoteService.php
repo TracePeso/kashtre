@@ -154,17 +154,32 @@ class GoodsReceivedNoteService
     public function applyStockIfNeeded(GoodsReceivedNote $grn): void
     {
         $grn->refresh();
+        $grn->loadMissing('lines');
 
-        if ($grn->stock_applied_at || ! $grn->isApproved()) {
+        if (! $grn->isApproved()) {
             return;
         }
 
-        $this->applyStock($grn);
+        if ($grn->stock_applied_at && $this->hasCompleteStockPostings($grn)) {
+            return;
+        }
 
-        $grn->update(['stock_applied_at' => now()]);
+        $this->ensureLineSaleUnits($grn);
+
+        $postedUnits = $this->applyStock($grn);
+
+        if ($grn->lines->isNotEmpty() && $postedUnits <= 0) {
+            throw ValidationException::withMessages([
+                'lines' => 'Stock could not be posted because line sale units are zero. Check delivery quantities and sale units per delivery on each line.',
+            ]);
+        }
+
+        if (! $grn->stock_applied_at) {
+            $grn->update(['stock_applied_at' => now()]);
+        }
     }
 
-    public function applyStock(GoodsReceivedNote $grn): void
+    public function applyStock(GoodsReceivedNote $grn): float
     {
         $grn->loadMissing('lines');
 
@@ -174,10 +189,18 @@ class GoodsReceivedNoteService
             ]);
         }
 
+        $postedUnits = 0.0;
+
         foreach ($grn->lines as $line) {
-            $saleUnits = (float) $line->sale_units_purchased;
+            $saleUnits = $this->effectiveSaleUnits($line);
 
             if ($saleUnits <= 0) {
+                continue;
+            }
+
+            if ($this->movementExistsForLine($line)) {
+                $postedUnits += $saleUnits;
+
                 continue;
             }
 
@@ -192,7 +215,9 @@ class GoodsReceivedNoteService
                 ]
             );
 
-            $unitPrice = (float) $line->purchase_price;
+            $conversion = max((float) $line->sale_units_per_purchase_unit, 0.0001);
+            $pricePerSuom = (float) $line->purchase_price / $conversion;
+            $unitPrice = $pricePerSuom;
             $balanceBefore = (float) $stock->quantity_suom;
             $balanceAfter = $balanceBefore + $saleUnits;
             $valueBefore = $balanceBefore * (float) ($stock->weighted_avg_cost ?? $stock->last_purchase_price ?? $unitPrice);
@@ -203,7 +228,7 @@ class GoodsReceivedNoteService
                 : 0.0;
 
             $stock->quantity_suom = $balanceAfter;
-            $stock->last_purchase_price = $unitPrice;
+            $stock->last_purchase_price = round($unitPrice, 2);
             $stock->weighted_avg_cost = $weightedAvgCost;
             $stock->save();
 
@@ -214,7 +239,7 @@ class GoodsReceivedNoteService
                 'movement_type' => InventoryStockMovement::TYPE_GRN_RECEIPT,
                 'quantity_delta' => $saleUnits,
                 'balance_after' => $balanceAfter,
-                'unit_price' => $unitPrice,
+                'unit_price' => round($unitPrice, 2),
                 'line_valuation' => $lineValuation,
                 'balance_valuation' => $balanceValuation,
                 'goods_received_note_id' => $grn->id,
@@ -223,7 +248,11 @@ class GoodsReceivedNoteService
                 'recorded_by_user_id' => $grn->entry_by_user_id,
                 'occurred_at' => now(),
             ]);
+
+            $postedUnits += $saleUnits;
         }
+
+        return $postedUnits;
     }
 
     public function calculateLeadTimeDays(string $dateOfOrder, string $dateOfDelivery): int
@@ -281,5 +310,58 @@ class GoodsReceivedNoteService
         }
 
         return $config->approvers()->orderBy('approval_order')->get();
+    }
+
+    private function ensureLineSaleUnits(GoodsReceivedNote $grn): void
+    {
+        foreach ($grn->lines as $line) {
+            $expected = GoodsReceivedNoteLine::calculateSaleUnitsPurchased(
+                (float) $line->quantity,
+                (float) $line->sale_units_per_purchase_unit
+            );
+
+            if ((float) $line->sale_units_purchased !== $expected) {
+                $line->update(['sale_units_purchased' => $expected]);
+            }
+        }
+
+        $grn->load('lines');
+    }
+
+    private function effectiveSaleUnits(GoodsReceivedNoteLine $line): float
+    {
+        $stored = (float) $line->sale_units_purchased;
+
+        if ($stored > 0) {
+            return $stored;
+        }
+
+        return GoodsReceivedNoteLine::calculateSaleUnitsPurchased(
+            (float) $line->quantity,
+            (float) $line->sale_units_per_purchase_unit
+        );
+    }
+
+    private function movementExistsForLine(GoodsReceivedNoteLine $line): bool
+    {
+        return InventoryStockMovement::query()
+            ->where('goods_received_note_line_id', $line->id)
+            ->where('movement_type', InventoryStockMovement::TYPE_GRN_RECEIPT)
+            ->exists();
+    }
+
+    private function hasCompleteStockPostings(GoodsReceivedNote $grn): bool
+    {
+        foreach ($grn->lines as $line) {
+            if ($this->effectiveSaleUnits($line) <= 0) {
+                continue;
+            }
+
+            if (! $this->movementExistsForLine($line)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

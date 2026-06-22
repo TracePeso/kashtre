@@ -161,8 +161,7 @@
                 @if($goodsReceivedNote->isApproved())
                     <div class="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-800">
                         @if($goodsReceivedNote->stock_applied_at)
-                            Stock was updated on {{ $goodsReceivedNote->stock_applied_at->format('M d, Y H:i') }}
-                            (qty of sale units purchased per line).
+                            Stock was updated on {{ $goodsReceivedNote->stock_applied_at->format('M d, Y H:i') }}.
                         @else
                             Approved on {{ $goodsReceivedNote->approved_at?->format('M d, Y H:i') }} — stock will post shortly.
                         @endif

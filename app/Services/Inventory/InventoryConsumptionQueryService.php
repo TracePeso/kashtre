@@ -25,7 +25,7 @@ class InventoryConsumptionQueryService
      *     total_quantity_suom: float
      * }
      */
-    public function periodSummary(int $businessId, string $from, string $until): array
+    public function periodSummary(int $businessId, string $from, string $until, ?int $storeId = null): array
     {
         $periodDays = $this->periodDays($from, $until);
 
@@ -33,7 +33,8 @@ class InventoryConsumptionQueryService
             ->where('business_id', $businessId)
             ->whereDate('consumption_date', '>=', $from)
             ->whereDate('consumption_date', '<=', $until)
-            ->selectRaw('COUNT(DISTINCT CONCAT(item_id, "-", store_id)) as item_store_pairs')
+            ->when($storeId, fn (Builder $q) => $q->where('store_id', $storeId))
+            ->selectRaw('COUNT(DISTINCT CONCAT(item_id, "-", consumption_date)) as item_day_rows')
             ->selectRaw('COUNT(DISTINCT item_id) as distinct_items')
             ->selectRaw('COALESCE(SUM(quantity_suom), 0) as total_quantity_suom')
             ->first();
@@ -42,10 +43,57 @@ class InventoryConsumptionQueryService
             'from' => $from,
             'until' => $until,
             'period_days' => $periodDays,
-            'item_store_pairs' => (int) ($row->item_store_pairs ?? 0),
+            'item_day_rows' => (int) ($row->item_day_rows ?? 0),
             'distinct_items' => (int) ($row->distinct_items ?? 0),
             'total_quantity_suom' => (float) ($row->total_quantity_suom ?? 0),
         ];
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    public function recentDaysBounds(int $days = 10): array
+    {
+        $until = now()->toDateString();
+        $from = now()->subDays(max(1, $days) - 1)->toDateString();
+
+        return [$from, $until];
+    }
+
+    public function itemStoreDailySummariesQuery(
+        int $businessId,
+        string $from,
+        string $until,
+        ?int $storeId = null,
+    ): Builder {
+        return InventoryDailyConsumption::query()
+            ->from('inventory_daily_consumptions as idc')
+            ->where('idc.business_id', $businessId)
+            ->whereDate('idc.consumption_date', '>=', $from)
+            ->whereDate('idc.consumption_date', '<=', $until)
+            ->when($storeId, fn (Builder $query) => $query->where('idc.store_id', $storeId))
+            ->join('items', 'items.id', '=', 'idc.item_id')
+            ->join('stores', 'stores.id', '=', 'idc.store_id')
+            ->whereNull('items.deleted_at')
+            ->groupBy(
+                'idc.store_id',
+                'idc.item_id',
+                'idc.consumption_date',
+                'items.id',
+                'items.name',
+                'items.code',
+                'stores.id',
+                'stores.name',
+            )
+            ->select([
+                'idc.store_id',
+                'idc.item_id',
+                'idc.consumption_date',
+            ])
+            ->selectRaw('items.name as item_name')
+            ->selectRaw('items.code as item_code')
+            ->selectRaw('stores.name as store_name')
+            ->selectRaw('SUM(idc.quantity_suom) as total_quantity_suom');
     }
 
     /**

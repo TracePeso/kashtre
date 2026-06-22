@@ -60,7 +60,7 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div>
                         <label for="supplier_id" class="block text-sm font-medium text-gray-700">Supplier</label>
-                        <select name="supplier_id" id="supplier_id" x-model="supplierId"
+                        <select name="supplier_id" id="supplier_id" x-model="supplierId" @change="onSupplierChange()"
                                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
                             <option value="">— Select —</option>
                             @foreach($suppliers as $supplier)
@@ -108,21 +108,54 @@
                             <span class="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">1</span>
                             <h4 class="text-sm font-semibold text-gray-900">Download template</h4>
                         </div>
-                        <p class="text-sm text-gray-600 flex-1">
-                            Pre-filled with your catalogue
-                            <span x-show="supplierId" x-cloak>for the selected supplier</span>.
-                            Add quantities, batch numbers, and expiry dates, then save as CSV.
+                        <p class="text-sm text-gray-600">
+                            Choose items below, then download a template with only those rows.
                         </p>
+
+                        <div class="mt-4 rounded-lg border border-blue-200 bg-white p-3">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                <label class="text-xs font-semibold text-gray-700">Items for template</label>
+                                <span class="text-xs text-gray-500" x-text="selectedItemIds.length + ' of ' + catalogItems().length + ' selected'"></span>
+                            </div>
+                            <input type="search" x-model="itemSearch" placeholder="Search by name or code…"
+                                   class="block w-full rounded-md border-gray-300 py-1.5 px-2 text-xs shadow-sm">
+                            <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                                <button type="button" @click="selectAllVisible()"
+                                        class="text-blue-700 hover:text-blue-900 font-medium">Select all</button>
+                                <span class="text-gray-300">|</span>
+                                <button type="button" @click="clearSelection()"
+                                        class="text-gray-600 hover:text-gray-800 font-medium">Clear</button>
+                            </div>
+                            <div class="mt-2 max-h-44 overflow-y-auto rounded border border-gray-200 divide-y divide-gray-100">
+                                <template x-if="catalogItems().length === 0">
+                                    <p class="px-3 py-4 text-xs text-gray-500 text-center">No items match your search.</p>
+                                </template>
+                                <template x-for="item in catalogItems()" :key="'pick-' + item.id">
+                                    <label class="flex items-start gap-2 px-2 py-1.5 hover:bg-gray-50 cursor-pointer">
+                                        <input type="checkbox" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                               :checked="isItemSelected(item.id)" @change="toggleItem(item.id)">
+                                        <span class="min-w-0 flex-1">
+                                            <span class="block text-xs font-medium text-gray-900 truncate" x-text="item.name"></span>
+                                            <span class="block text-[10px] text-gray-400" x-text="item.code"></span>
+                                        </span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
+
                         <p class="mt-3 text-xs text-gray-500 rounded-md bg-white/80 border border-blue-100 px-3 py-2">
                             <span class="font-medium text-gray-700">Expiry date:</span> optional, use <span class="font-mono text-gray-800">YYYY-MM-DD</span> (e.g. <span class="font-mono text-gray-800">2026-12-31</span>).
                         </p>
                         <a :href="templateDownloadUrl()"
+                           @click="if (selectedItemIds.length === 0) { $event.preventDefault(); templateError = 'Select at least one item for the template.'; }"
+                           :class="selectedItemIds.length === 0 ? 'opacity-50 pointer-events-none' : ''"
                            class="mt-4 inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                             </svg>
                             Download template
                         </a>
+                        <p x-show="templateError" x-cloak class="mt-2 text-xs text-red-600" x-text="templateError"></p>
                     </div>
 
                     {{-- Step 2: Upload --}}
@@ -218,7 +251,7 @@
                                 <th class="px-1.5 py-1.5 text-left font-semibold text-gray-700 w-24" title="Unit on the supplier delivery note">Del. unit</th>
                                 <th class="px-1.5 py-1.5 text-right font-semibold text-gray-700 w-20" title="Price per delivery unit">Price</th>
                                 <th class="px-1.5 py-1.5 text-right font-semibold text-gray-700 w-16" title="Sale units in one delivery unit">Per del.</th>
-                                <th class="px-1.5 py-1.5 text-right font-semibold text-gray-700 w-16" title="Total sale units to stock">To stock</th>
+                                <th class="px-1.5 py-1.5 text-right font-semibold text-gray-700 w-16" title="Total sale units">Sale units</th>
                                 <th class="px-1 py-1.5 w-14"></th>
                             </tr>
                         </thead>
@@ -305,6 +338,9 @@ function grnBulkUploadForm(itemUnits, items, supplierItemIds, urls) {
         items,
         supplierItemIds: supplierItemIds || {},
         supplierId: '',
+        itemSearch: '',
+        selectedItemIds: [],
+        templateError: '',
         urls: urls || {},
         bulkImporting: false,
         bulkImportMessage: '',
@@ -315,6 +351,62 @@ function grnBulkUploadForm(itemUnits, items, supplierItemIds, urls) {
         submitError: '',
         submitting: false,
         lines: [],
+        init() {
+            this.selectAllVisible();
+        },
+        catalogItems() {
+            let list = this.items;
+
+            if (this.supplierId) {
+                const allowed = this.supplierItemIds[this.supplierId] || this.supplierItemIds[String(this.supplierId)];
+
+                if (Array.isArray(allowed) && allowed.length > 0) {
+                    const allowedSet = new Set(allowed.map(id => String(id)));
+                    list = list.filter(item => allowedSet.has(String(item.id)));
+                }
+            }
+
+            const query = this.itemSearch.trim().toLowerCase();
+
+            if (query) {
+                list = list.filter(item => {
+                    const name = (item.name || '').toLowerCase();
+                    const code = (item.code || '').toLowerCase();
+
+                    return name.includes(query) || code.includes(query);
+                });
+            }
+
+            return list;
+        },
+        onSupplierChange() {
+            this.templateError = '';
+            this.itemSearch = '';
+            this.selectAllVisible();
+        },
+        isItemSelected(id) {
+            return this.selectedItemIds.includes(String(id));
+        },
+        toggleItem(id) {
+            const key = String(id);
+            const index = this.selectedItemIds.indexOf(key);
+
+            if (index >= 0) {
+                this.selectedItemIds.splice(index, 1);
+            } else {
+                this.selectedItemIds.push(key);
+            }
+
+            this.templateError = '';
+        },
+        selectAllVisible() {
+            this.selectedItemIds = this.catalogItems().map(item => String(item.id));
+            this.templateError = '';
+        },
+        clearSelection() {
+            this.selectedItemIds = [];
+            this.templateError = '';
+        },
         itemForLine(line) {
             return this.items.find(i => String(i.id) === String(line.item_id)) || null;
         },
@@ -416,9 +508,17 @@ function grnBulkUploadForm(itemUnits, items, supplierItemIds, urls) {
         },
         templateDownloadUrl() {
             const url = new URL(this.urls.bulkTemplate, window.location.origin);
+
             if (this.supplierId) {
                 url.searchParams.set('supplier_id', this.supplierId);
             }
+
+            if (this.selectedItemIds.length > 0) {
+                url.searchParams.set('item_ids', this.selectedItemIds.join(','));
+            }
+
+            this.templateError = '';
+
             return url.toString();
         },
         handleDrop(event) {

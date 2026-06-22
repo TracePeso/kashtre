@@ -245,9 +245,10 @@ class GrnBulkImportService
     }
 
     /**
+     * @param  array<int>|null  $itemIds
      * @return Collection<int, Item>
      */
-    public function itemsForBusiness(int $businessId, ?int $supplierId = null): Collection
+    public function itemsForBusiness(int $businessId, ?int $supplierId = null, ?array $itemIds = null): Collection
     {
         $query = Item::query()
             ->where('business_id', $businessId)
@@ -267,18 +268,23 @@ class GrnBulkImportService
             }
         }
 
+        if ($itemIds !== null && $itemIds !== []) {
+            $query->whereIn('id', array_map('intval', $itemIds));
+        }
+
         return $query->get();
     }
 
     /**
+     * @param  array<int>|null  $itemIds
      * @return array<int, array<int, string>>
      */
-    public function templateRows(int $businessId, ?int $supplierId = null): array
+    public function templateRows(int $businessId, ?int $supplierId = null, ?array $itemIds = null): array
     {
-        $items = $this->itemsForBusiness($businessId, $supplierId);
+        $items = $this->itemsForBusiness($businessId, $supplierId, $itemIds);
 
         $rows = [
-            ['# All catalogue items are listed below. Fill quantity (and batch/expiry if needed) only for items received.'],
+            ['# Fill quantity (and batch/expiry if needed) only for items received.'],
             ['# Leave quantity blank to skip a row on upload. Other columns are pre-filled from the item master.'],
             ['# expiry_date is optional. Use '.self::EXPIRY_DATE_FORMAT.' only (example: '.self::EXPIRY_DATE_EXAMPLE.').'],
             ['# sale_units_per_delivery: how many sale units are in one delivery unit (e.g. 100 tablets per box).'],

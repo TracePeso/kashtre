@@ -58,7 +58,7 @@
             </div>
         @endif
 
-        <form method="POST" action="{{ route('inventory.receive.store') }}" enctype="multipart/form-data" class="mt-6 space-y-6">
+        <form method="POST" action="{{ route('inventory.receive.store') }}" enctype="multipart/form-data" class="mt-6 space-y-6" novalidate @submit="handleFormSubmit($event)">
             @csrf
             <input type="hidden" name="inventory_order_id" :value="inventoryOrderId ?? ''">
 
@@ -121,18 +121,14 @@
             <div class="bg-white shadow sm:rounded-lg p-6">
                 <div class="flex items-center justify-between border-b border-gray-200 pb-3 mb-4">
                     <h3 class="text-lg font-medium text-gray-900">Line items</h3>
-                    <button type="button" @click="addLine()"
-                            class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                        + Add line
-                    </button>
                 </div>
 
-                <div x-show="completedLines().length > 0" x-cloak
-                     class="mb-6 rounded-lg border border-blue-200 bg-blue-50/60 overflow-hidden lg:sticky lg:top-4 lg:z-10">
+                <div x-show="lines.length > 0" x-cloak
+                     class="mb-6 rounded-lg border border-blue-200 bg-blue-50/60 overflow-hidden">
                     <div class="px-4 py-3 border-b border-blue-200/80 flex flex-wrap items-center justify-between gap-2">
                         <h4 class="text-sm font-semibold text-blue-900">
                             Summary
-                            <span class="font-normal text-blue-700" x-text="'(' + completedLines().length + ' item' + (completedLines().length === 1 ? '' : 's') + ')'"></span>
+                            <span class="font-normal text-blue-700" x-text="'(' + lines.length + ' item' + (lines.length === 1 ? '' : 's') + ')'"></span>
                         </h4>
                         <dl class="flex flex-wrap gap-x-5 gap-y-1 text-sm">
                             <div class="flex gap-1.5">
@@ -154,16 +150,17 @@
                                     <th class="px-4 py-2 text-right font-medium">Delivery qty</th>
                                     <th class="px-4 py-2 text-left font-medium">Delivery unit</th>
                                     <th class="px-4 py-2 text-left font-medium">Sale unit</th>
-                                    <th class="px-4 py-2 text-right font-medium">Sale units to stock</th>
+                                    <th class="px-4 py-2 text-right font-medium">Sale units</th>
                                     <th class="px-4 py-2 text-right font-medium">Unit price</th>
                                     <th class="px-4 py-2 text-right font-medium">Line total</th>
                                     <th class="px-4 py-2 text-left font-medium">Batch</th>
                                     <th class="px-4 py-2 text-left font-medium">Expiry</th>
+                                    <th class="px-4 py-2 text-right font-medium">Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-blue-100 bg-white/80">
-                                <template x-for="(line, index) in completedLines()" :key="'summary-' + line._index">
-                                    <tr class="hover:bg-blue-50/50">
+                                <template x-for="(line, index) in lines" :key="'summary-' + index">
+                                    <tr class="hover:bg-blue-50/50" :class="editingIndex === index ? 'ring-2 ring-inset ring-blue-400' : ''">
                                         <td class="px-4 py-2 text-gray-500 tabular-nums" x-text="index + 1"></td>
                                         <td class="px-4 py-2">
                                             <div class="font-medium text-gray-900" x-text="itemForLine(line)?.name || '—'"></div>
@@ -177,6 +174,13 @@
                                         <td class="px-4 py-2 text-right tabular-nums font-medium text-gray-900" x-text="'UGX ' + formatMoney(linePurchaseTotal(line))"></td>
                                         <td class="px-4 py-2 text-gray-600" x-text="line.batch_number || '—'"></td>
                                         <td class="px-4 py-2 text-gray-600 whitespace-nowrap" x-text="line.expiry_date ? formatDate(line.expiry_date) : '—'"></td>
+                                        <td class="px-4 py-2 text-right whitespace-nowrap">
+                                            <button type="button" @click="editLine(index)"
+                                                    class="text-xs font-medium text-blue-600 hover:text-blue-800">Edit</button>
+                                            <span class="text-gray-300 mx-1">|</span>
+                                            <button type="button" @click="deleteLine(index)"
+                                                    class="text-xs font-medium text-red-600 hover:text-red-800">Delete</button>
+                                        </td>
                                     </tr>
                                 </template>
                             </tbody>
@@ -186,116 +190,114 @@
                                     <td class="px-4 py-2 text-right tabular-nums" x-text="formatNumber(totals().saleUnits)"></td>
                                     <td class="px-4 py-2"></td>
                                     <td class="px-4 py-2 text-right tabular-nums" x-text="'UGX ' + formatMoney(totals().purchaseValue)"></td>
-                                    <td colspan="2"></td>
+                                    <td colspan="3"></td>
                                 </tr>
                             </tfoot>
                         </table>
                     </div>
                 </div>
 
-                <template x-if="lines.length === 0">
-                    <p class="text-sm text-gray-500 py-6 text-center">Click “Add line” to add received items.</p>
-                </template>
+                <p x-show="lines.length === 0" class="mb-4 text-sm text-gray-500 text-center py-2">No lines yet. Add an item below.</p>
 
-                <div class="space-y-4" x-show="lines.length > 0">
-                    <div class="hidden lg:grid lg:grid-cols-12 gap-3 px-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        <div class="lg:col-span-4">Item</div>
-                        <div class="lg:col-span-1">Qty</div>
-                        <div class="lg:col-span-2">Batch</div>
-                        <div class="lg:col-span-2">Expiry</div>
-                        <div class="lg:col-span-2">Purchase price</div>
-                        <div class="lg:col-span-1"></div>
+                <div class="border border-gray-200 rounded-lg bg-gray-50/50 overflow-hidden" x-ref="draftForm">
+                    <div class="px-4 py-3 border-b border-gray-200 bg-white flex flex-wrap items-center justify-between gap-2">
+                        <h4 class="text-sm font-semibold text-gray-900" x-text="editingIndex !== null ? 'Edit line' : 'Add line'"></h4>
+                        <button type="button" x-show="editingIndex !== null" @click="cancelEdit()" x-cloak
+                                class="text-xs font-medium text-gray-600 hover:text-gray-800">Cancel edit</button>
                     </div>
+                    <div class="px-4 py-4 space-y-3 bg-white">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+                            <div class="sm:col-span-2 lg:col-span-4">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Item <span class="text-red-500">*</span></label>
+                                <select x-model="draftLine.item_id" @change="onDraftItemChange()" required
+                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <option value="">Select item</option>
+                                    <template x-for="item in filteredItems()" :key="item.id">
+                                        <option :value="item.id"
+                                                :disabled="isItemTaken(item.id)"
+                                                x-text="itemLabel(item)"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div class="lg:col-span-1">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Qty <span class="text-red-500">*</span></label>
+                                <input type="number" step="1" min="1" x-model.number="draftLine.quantity" required
+                                       class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Batch no.</label>
+                                <input type="text" x-model="draftLine.batch_number"
+                                       class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Expiry date</label>
+                                <input type="date" x-model="draftLine.expiry_date"
+                                       class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Purchase price <span class="text-red-500">*</span></label>
+                                <input type="number" step="0.01" min="0" x-model.number="draftLine.purchase_price" required
+                                       class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                        </div>
 
-                    <template x-for="(line, index) in lines" :key="index">
-                        <div class="border border-gray-200 rounded-lg bg-white shadow-sm overflow-hidden">
-                            <div class="px-4 py-3 space-y-3">
-                                {{-- Row 1: item & receipt details --}}
-                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
-                                    <div class="sm:col-span-2 lg:col-span-4">
-                                        <label class="block text-xs font-medium text-gray-600 mb-1">Item <span class="text-red-500">*</span></label>
-                                        <select :name="'lines[' + index + '][item_id]'" x-model="line.item_id" @change="onItemChange(line, index)" required
-                                                class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
-                                            <option value="">Select item</option>
-                                            <template x-for="item in filteredItems()" :key="item.id">
-                                                <option :value="item.id"
-                                                        :disabled="isItemTaken(item.id, index)"
-                                                        x-text="itemLabel(item, index)"></option>
-                                            </template>
-                                        </select>
-                                    </div>
-                                    <div class="lg:col-span-1">
-                                        <label class="block text-xs font-medium text-gray-600 mb-1">Qty <span class="text-red-500">*</span></label>
-                                        <input type="number" step="1" min="1" :name="'lines[' + index + '][quantity]'" x-model.number="line.quantity" required
-                                               class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
-                                    </div>
-                                    <div class="lg:col-span-2">
-                                        <label class="block text-xs font-medium text-gray-600 mb-1">Batch no.</label>
-                                        <input type="text" :name="'lines[' + index + '][batch_number]'" x-model="line.batch_number"
-                                               class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
-                                    </div>
-                                    <div class="lg:col-span-2">
-                                        <label class="block text-xs font-medium text-gray-600 mb-1">Expiry date</label>
-                                        <input type="date" :name="'lines[' + index + '][expiry_date]'" x-model="line.expiry_date"
-                                               class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
-                                    </div>
-                                    <div class="lg:col-span-2">
-                                        <label class="block text-xs font-medium text-gray-600 mb-1">Purchase price <span class="text-red-500">*</span></label>
-                                        <input type="number" step="0.01" min="0" :name="'lines[' + index + '][purchase_price]'" x-model.number="line.purchase_price" required
-                                               class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
-                                    </div>
-                                    <div class="lg:col-span-1 flex lg:justify-end">
-                                        <button type="button" @click="removeLine(index)" x-show="lines.length > 1"
-                                                class="text-sm text-red-600 hover:text-red-800 font-medium py-2">
-                                            Remove
-                                        </button>
-                                    </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end pt-3 border-t border-gray-100">
+                            <div class="lg:col-span-3">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Delivery unit <span class="text-red-500">*</span></label>
+                                <select x-model="draftLine.duom" required
+                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500"
+                                        :disabled="itemUnits.length === 0">
+                                    <option value="">Select delivery unit</option>
+                                    <template x-for="name in itemUnits" :key="'draft-duom-' + name">
+                                        <option :value="name" x-text="name"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div class="lg:col-span-3">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Sale unit</label>
+                                <div class="flex h-[38px] items-center rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800">
+                                    <span x-text="draftLine.suom || 'Select an item first'"></span>
                                 </div>
-
-                                {{-- Row 2: units & stock calculation --}}
-                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end pt-3 border-t border-gray-100">
-                                    <div class="lg:col-span-3">
-                                        <label class="block text-xs font-medium text-gray-600 mb-1">Delivery unit (DUOM) <span class="text-red-500">*</span></label>
-                                        <select :name="'lines[' + index + '][duom]'" x-model="line.duom" required
-                                                class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500"
-                                                :disabled="itemUnits.length === 0">
-                                            <option value="">Select delivery unit</option>
-                                            <template x-for="name in itemUnits" :key="'duom-' + index + name">
-                                                <option :value="name" x-text="name"></option>
-                                            </template>
-                                        </select>
-                                        <p class="mt-1 text-xs text-gray-500">Unit shown on the supplier delivery note — e.g. box, carton, bottle. May differ from the item’s sale unit.</p>
-                                    </div>
-                                    <div class="lg:col-span-3">
-                                        <label class="block text-xs font-medium text-gray-600 mb-1">Sale unit</label>
-                                        <div class="flex h-[38px] items-center rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800">
-                                            <span x-text="line.suom || 'Select an item first'"></span>
-                                        </div>
-                                        <input type="hidden" :name="'lines[' + index + '][inventory_order_line_id]'" :value="line.inventory_order_line_id || ''">
-                                        <input type="hidden" :name="'lines[' + index + '][suom]'" :value="line.suom">
-                                        <p class="mt-1 text-xs text-gray-500">Fixed from the item master (SUOM). Sale units to stock = qty × conversion below.</p>
-                                    </div>
-                                    <div class="lg:col-span-3">
-                                        <label class="block text-xs font-medium text-gray-600 mb-1">Sale units per delivery <span class="text-red-500">*</span></label>
-                                        <input type="number" step="1" min="1"
-                                               :name="'lines[' + index + '][sale_units_per_purchase_unit]'" x-model.number="line.conversion" required
-                                               placeholder="e.g. 100"
-                                               title="How many sale units are in one delivery unit"
-                                               class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
-                                        <p class="mt-1 text-xs text-gray-500">e.g. 100 tablets in one box</p>
-                                    </div>
-                                    <div class="lg:col-span-3">
-                                        <label class="block text-xs font-medium text-gray-600 mb-1">Sale units to stock</label>
-                                        <div class="flex h-[38px] items-center rounded-md border border-emerald-200 bg-emerald-50 px-3">
-                                            <span class="text-lg font-semibold text-emerald-900 tabular-nums"
-                                                  x-text="saleUnits(line).toLocaleString(undefined, {maximumFractionDigits: 0})"></span>
-                                        </div>
-                                    </div>
+                            </div>
+                            <div class="lg:col-span-3">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Sale units per delivery <span class="text-red-500">*</span></label>
+                                <input type="number" step="1" min="1" x-model.number="draftLine.conversion" required
+                                       placeholder="e.g. 100"
+                                       class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                            <div class="lg:col-span-3">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Sale units</label>
+                                <div class="flex h-[38px] items-center rounded-md border border-emerald-200 bg-emerald-50 px-3">
+                                    <span class="text-lg font-semibold text-emerald-900 tabular-nums"
+                                          x-text="saleUnits(draftLine).toLocaleString(undefined, {maximumFractionDigits: 0})"></span>
                                 </div>
                             </div>
                         </div>
-                    </template>
+
+                        <div x-show="draftError" x-cloak class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800" x-text="draftError"></div>
+
+                        <div class="flex justify-end pt-1">
+                            <button type="button" @click="saveDraftLine()"
+                                    class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                                <span x-text="editingIndex !== null ? 'Update line' : 'Add line'"></span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
+
+                <template x-for="(line, index) in lines" :key="'post-' + index">
+                    <div class="hidden" aria-hidden="true">
+                        <input type="hidden" :name="'lines[' + index + '][item_id]'" :value="line.item_id">
+                        <input type="hidden" :name="'lines[' + index + '][inventory_order_line_id]'" :value="line.inventory_order_line_id || ''">
+                        <input type="hidden" :name="'lines[' + index + '][suom]'" :value="line.suom">
+                        <input type="hidden" :name="'lines[' + index + '][quantity]'" :value="line.quantity">
+                        <input type="hidden" :name="'lines[' + index + '][batch_number]'" :value="line.batch_number || ''">
+                        <input type="hidden" :name="'lines[' + index + '][expiry_date]'" :value="line.expiry_date || ''">
+                        <input type="hidden" :name="'lines[' + index + '][duom]'" :value="line.duom">
+                        <input type="hidden" :name="'lines[' + index + '][purchase_price]'" :value="line.purchase_price">
+                        <input type="hidden" :name="'lines[' + index + '][sale_units_per_purchase_unit]'" :value="line.conversion">
+                    </div>
+                </template>
             </div>
 
             <div class="flex justify-end gap-3">
@@ -335,7 +337,7 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
 
     const initialLines = (prefillLines && prefillLines.length)
         ? prefillLines.map(mapPrefill)
-        : [blankLine()];
+        : [];
 
     return {
         itemUnits,
@@ -345,6 +347,17 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
         inventoryOrderId: inventoryOrderId || null,
         deliveryNoteName: '',
         lines: initialLines,
+        draftLine: blankLine(),
+        editingIndex: null,
+        draftError: '',
+        cloneLine(line) {
+            return { ...line };
+        },
+        resetDraft() {
+            this.draftLine = blankLine();
+            this.editingIndex = null;
+            this.draftError = '';
+        },
         filteredItems() {
             if (!this.supplierId) {
                 return this.items;
@@ -358,36 +371,38 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
         },
         onSupplierChange() {
             const allowed = this.filteredItems().map(item => String(item.id));
-            this.lines.forEach(line => {
-                if (line.item_id && !allowed.includes(String(line.item_id))) {
-                    Object.assign(line, blankLine());
+            this.lines = this.lines.filter(line => !line.item_id || allowed.includes(String(line.item_id)));
+            if (this.draftLine.item_id && !allowed.includes(String(this.draftLine.item_id))) {
+                this.resetDraft();
+            }
+        },
+        isItemTaken(itemId) {
+            const id = String(itemId);
+            if (!id) {
+                return false;
+            }
+            return this.lines.some((line, index) => {
+                if (this.editingIndex !== null && index === this.editingIndex) {
+                    return false;
                 }
+                return String(line.item_id) === id;
             });
         },
-        addLine() {
-            this.lines.push(blankLine());
-        },
-        removeLine(index) {
-            this.lines.splice(index, 1);
-        },
-        isItemTaken(itemId, currentIndex) {
-            const id = String(itemId);
-            if (!id) return false;
-            return this.lines.some((line, i) => i !== currentIndex && String(line.item_id) === id);
-        },
-        itemLabel(item, currentIndex) {
+        itemLabel(item) {
             const label = item.name + (item.code ? ' (' + item.code + ')' : '');
-            return this.isItemTaken(item.id, currentIndex) ? label + ' — already added' : label;
+            return this.isItemTaken(item.id) ? label + ' — already added' : label;
         },
-        onItemChange(line, index) {
+        onDraftItemChange() {
+            const line = this.draftLine;
             const item = this.items.find(i => String(i.id) === String(line.item_id));
             if (!item) {
                 line.item_suom = '';
                 return;
             }
-            if (this.isItemTaken(item.id, index)) {
+            if (this.isItemTaken(item.id)) {
                 line.item_id = '';
                 line.item_suom = '';
+                this.draftError = 'That item is already in the summary.';
                 return;
             }
 
@@ -400,9 +415,83 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
 
             line.item_suom = suom;
             line.suom = suom;
-            if (!line.duom && duom) line.duom = duom;
+            if (!line.duom && duom) {
+                line.duom = duom;
+            }
             line.conversion = conversion;
             line.purchase_price = Math.round((parseFloat(item.default_price) || 0) * conversion * 100) / 100;
+            this.draftError = '';
+        },
+        validateDraft() {
+            const line = this.draftLine;
+
+            if (!line.item_id) {
+                return 'Select an item.';
+            }
+            if (this.isItemTaken(line.item_id)) {
+                return 'That item is already in the summary.';
+            }
+            if (!line.quantity || parseFloat(line.quantity) <= 0) {
+                return 'Enter a quantity greater than zero.';
+            }
+            if (!line.duom) {
+                return 'Select a delivery unit.';
+            }
+            if (line.purchase_price === '' || line.purchase_price === null || parseFloat(line.purchase_price) < 0) {
+                return 'Enter a valid purchase price.';
+            }
+            if (!line.conversion || parseFloat(line.conversion) <= 0) {
+                return 'Sale units per delivery must be greater than zero.';
+            }
+
+            return '';
+        },
+        saveDraftLine() {
+            const error = this.validateDraft();
+            if (error) {
+                this.draftError = error;
+                return;
+            }
+
+            const saved = this.cloneLine(this.draftLine);
+
+            if (this.editingIndex !== null) {
+                this.lines.splice(this.editingIndex, 1, saved);
+            } else {
+                this.lines.push(saved);
+            }
+
+            this.resetDraft();
+            this.$nextTick(() => this.$refs.draftForm?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+        },
+        editLine(index) {
+            this.draftLine = this.cloneLine(this.lines[index]);
+            this.editingIndex = index;
+            this.draftError = '';
+            this.$nextTick(() => this.$refs.draftForm?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+        },
+        deleteLine(index) {
+            if (! confirm('Remove this line from the GRN?')) {
+                return;
+            }
+
+            if (this.editingIndex === index) {
+                this.resetDraft();
+            } else if (this.editingIndex !== null && this.editingIndex > index) {
+                this.editingIndex -= 1;
+            }
+
+            this.lines.splice(index, 1);
+        },
+        cancelEdit() {
+            this.resetDraft();
+        },
+        handleFormSubmit(event) {
+            if (this.lines.length === 0) {
+                event.preventDefault();
+                this.draftError = 'Add at least one line before submitting.';
+                this.$refs.draftForm?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         },
         saleUnits(line) {
             const q = parseFloat(line.quantity) || 0;
@@ -415,21 +504,15 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             }
             return this.items.find(i => String(i.id) === String(line.item_id)) || null;
         },
-        completedLines() {
-            return this.lines
-                .map((line, index) => ({ ...line, _index: index }))
-                .filter(line => line.item_id);
-        },
         linePurchaseTotal(line) {
             const q = parseFloat(line.quantity) || 0;
             const p = parseFloat(line.purchase_price) || 0;
             return Math.round(q * p * 100) / 100;
         },
         totals() {
-            const completed = this.completedLines();
             return {
-                saleUnits: completed.reduce((sum, line) => sum + this.saleUnits(line), 0),
-                purchaseValue: completed.reduce((sum, line) => sum + this.linePurchaseTotal(line), 0),
+                saleUnits: this.lines.reduce((sum, line) => sum + this.saleUnits(line), 0),
+                purchaseValue: this.lines.reduce((sum, line) => sum + this.linePurchaseTotal(line), 0),
             };
         },
         formatNumber(value) {

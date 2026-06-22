@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Inventory;
 
+use App\Models\InventoryStockLevel;
 use App\Models\Store;
 use App\Services\Inventory\InventoryConsumptionQueryService;
 use Carbon\Carbon;
@@ -26,10 +27,14 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
     use InteractsWithForms;
     use InteractsWithTable;
 
+    public const RECENT_DAYS = 10;
+
     /** @var array<string, mixed> */
     public array $summary = [
-        'year' => 0,
-        'month_rows' => 0,
+        'from' => '',
+        'until' => '',
+        'period_days' => self::RECENT_DAYS,
+        'item_day_rows' => 0,
         'distinct_items' => 0,
         'total_quantity_suom' => 0,
     ];
@@ -41,13 +46,11 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
     {
         $this->storeOptions = Store::optionsForSelect((int) Auth::user()->business_id);
 
-        $defaultStoreId = array_key_first($this->storeOptions);
+        $defaultStoreId = $this->resolveDefaultStoreId();
 
         $this->tableFilters = [
             'scope' => [
                 'store_id' => $defaultStoreId ? (string) $defaultStoreId : null,
-                'year' => (string) now()->year,
-                'month' => null,
             ],
         ];
 
@@ -57,11 +60,14 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
     public function loadSummary(): void
     {
         $storeId = $this->selectedStoreId();
+        [$from, $until] = $this->periodBounds();
 
         if (! $storeId) {
             $this->summary = [
-                'year' => $this->selectedYear(),
-                'month_rows' => 0,
+                'from' => $from,
+                'until' => $until,
+                'period_days' => self::RECENT_DAYS,
+                'item_day_rows' => 0,
                 'distinct_items' => 0,
                 'total_quantity_suom' => 0,
             ];
@@ -69,10 +75,10 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
             return;
         }
 
-        $this->summary = app(InventoryConsumptionQueryService::class)->yearSummary(
+        $this->summary = app(InventoryConsumptionQueryService::class)->periodSummary(
             (int) Auth::user()->business_id,
-            $this->selectedYear(),
-            $this->selectedMonth(),
+            $from,
+            $until,
             $storeId,
         );
     }
@@ -81,13 +87,14 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
     {
         $businessId = (int) Auth::user()->business_id;
         $queries = app(InventoryConsumptionQueryService::class);
+        [$from, $until] = $this->periodBounds();
 
         return $table
-            ->query(fn (): Builder => $queries->itemStoreMonthlySummariesQuery($businessId))
+            ->query(fn (): Builder => $queries->itemStoreDailySummariesQuery($businessId, $from, $until))
             ->columns([
-                TextColumn::make('consumption_month')
-                    ->label('Month')
-                    ->formatStateUsing(fn (string $state): string => Carbon::parse($state.'-01')->format('F Y'))
+                TextColumn::make('consumption_date')
+                    ->label('Date')
+                    ->date('M j, Y')
                     ->sortable(),
 
                 TextColumn::make('item_name')
@@ -98,7 +105,7 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
 
                 TextColumn::make('total_quantity_suom')
                     ->label('Consumed (SUOM)')
-                    ->tooltip('Total quantity used in this month')
+                    ->tooltip('Quantity used on this day')
                     ->alignEnd()
                     ->sortable()
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
@@ -112,80 +119,43 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
                             ->required()
                             ->native(false)
                             ->live(),
-                        Select::make('year')
-                            ->label('Year')
-                            ->options($this->yearOptions())
-                            ->required()
-                            ->native(false)
-                            ->live(),
-                        Select::make('month')
-                            ->label('Month (optional)')
-                            ->options($this->monthOptions())
-                            ->placeholder('All months')
-                            ->nullable()
-                            ->native(false)
-                            ->live(),
                     ])
                     ->baseQuery(function (Builder $query, array $data): Builder {
-                        $service = app(InventoryConsumptionQueryService::class);
-
                         $storeId = filled($data['store_id'] ?? null) ? (int) $data['store_id'] : null;
 
                         if (! $storeId) {
                             return $query->whereRaw('0 = 1');
                         }
 
-                        $year = (int) ($data['year'] ?? now()->year);
-                        $month = filled($data['month'] ?? null) ? (int) $data['month'] : null;
-
-                        [$from, $until] = $service->yearMonthBounds($year, $month);
-                        [$monthFrom, $monthUntil] = $service->monthRangeBounds($from, $until);
-
-                        return $query
-                            ->where('imc.store_id', $storeId)
-                            ->whereBetween('imc.consumption_month', [$monthFrom, $monthUntil]);
+                        return $query->where('idc.store_id', $storeId);
                     })
                     ->indicateUsing(function (array $data): array {
-                        $indicators = [];
-
                         if ($data['store_id'] ?? null) {
-                            $indicators[] = $this->storeOptions[(string) $data['store_id']] ?? 'Store';
+                            return [$this->storeOptions[(string) $data['store_id']] ?? 'Store'];
                         }
 
-                        if ($data['year'] ?? null) {
-                            $indicators[] = 'Year '.$data['year'];
-                        }
-
-                        if (filled($data['month'] ?? null)) {
-                            $indicators[] = Carbon::create((int) ($data['year'] ?? now()->year), (int) $data['month'], 1)->format('F');
-                        }
-
-                        return $indicators;
+                        return [];
                     }),
             ], layout: FiltersLayout::AboveContent)
             ->filtersFormColumns(1)
             ->actions([
-                Action::make('view_days')
-                    ->label('Daily breakdown')
-                    ->icon('heroicon-o-calendar-days')
-                    ->url(fn ($record): string => route('inventory.consumption.month', [
+                Action::make('view_day')
+                    ->label('Hourly breakdown')
+                    ->icon('heroicon-o-clock')
+                    ->url(fn ($record): string => route('inventory.consumption.day', [
                         'item' => $record->item_id,
-                        'month' => $record->consumption_month,
+                        'date' => Carbon::parse($record->consumption_date)->toDateString(),
                         'store_id' => $record->store_id,
                     ])),
-                Action::make('item_stock')
-                    ->label('Item stock')
-                    ->icon('heroicon-o-cube')
-                    ->url(fn ($record): string => route('inventory.monitor.history', $record->item_id)),
             ])
-            ->defaultSort('consumption_month', 'desc')
+            ->defaultSort('consumption_date', 'desc')
             ->striped()
             ->paginated([25, 50, 100])
             ->defaultPaginationPageOption(25)
-            ->emptyStateHeading($this->selectedStoreId() ? 'No consumption for this store' : 'Select a store')
+            ->emptyStateHeading($this->selectedStoreId() ? 'No consumption in the last '.self::RECENT_DAYS.' days' : 'Select a store')
             ->emptyStateDescription($this->selectedStoreId()
-                ? 'Monthly usage per item will appear here once goods are consumed at this store.'
-                : 'Choose a store in the filters above to view monthly consumption.');
+                ? 'Daily usage per item will appear here once goods are consumed at this store.'
+                : 'Choose a store in the filter above to view recent consumption.');
     }
 
     public function updatedTableFilters(): void
@@ -201,7 +171,7 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
 
     public function getTableRecordKey(Model $record): string
     {
-        return $record->store_id.'-'.$record->item_id.'-'.$record->consumption_month;
+        return $record->store_id.'-'.$record->item_id.'-'.Carbon::parse($record->consumption_date)->toDateString();
     }
 
     public function selectedStoreLabel(): ?string
@@ -215,18 +185,19 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
         return $this->storeOptions[(string) $storeId] ?? null;
     }
 
-    private function selectedYear(): int
+    public function periodLabel(): string
     {
-        $year = $this->scopeFilterData()['year'] ?? now()->year;
+        [$from, $until] = $this->periodBounds();
 
-        return (int) $year;
+        return Carbon::parse($from)->format('M j').' – '.Carbon::parse($until)->format('M j, Y');
     }
 
-    private function selectedMonth(): ?int
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function periodBounds(): array
     {
-        $month = $this->scopeFilterData()['month'] ?? null;
-
-        return filled($month) ? (int) $month : null;
+        return app(InventoryConsumptionQueryService::class)->recentDaysBounds(self::RECENT_DAYS);
     }
 
     private function selectedStoreId(): ?int
@@ -244,32 +215,51 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
         return $this->tableFilters['scope'] ?? [];
     }
 
-    /**
-     * @return array<string, string>
-     */
-    private function yearOptions(): array
+    private function resolveDefaultStoreId(): ?int
     {
-        $current = (int) now()->year;
-        $options = [];
+        $businessId = (int) Auth::user()->business_id;
+        $user = Auth::user();
 
-        for ($year = $current; $year >= $current - 5; $year--) {
-            $options[(string) $year] = (string) $year;
+        if ($user->default_store_id) {
+            $exists = Store::query()
+                ->forBusiness($businessId)
+                ->whereKey($user->default_store_id)
+                ->exists();
+
+            if ($exists) {
+                return (int) $user->default_store_id;
+            }
         }
 
-        return $options;
-    }
+        if ($user->branch_id) {
+            $branchStoreId = Store::query()
+                ->forBusiness($businessId)
+                ->where('branch_id', $user->branch_id)
+                ->orderByRaw('CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END')
+                ->orderBy('name')
+                ->value('id');
 
-    /**
-     * @return array<string, string>
-     */
-    private function monthOptions(): array
-    {
-        $options = [];
-
-        for ($month = 1; $month <= 12; $month++) {
-            $options[(string) $month] = Carbon::create(null, $month, 1)->format('F');
+            if ($branchStoreId) {
+                return (int) $branchStoreId;
+            }
         }
 
-        return $options;
+        $stockStoreId = InventoryStockLevel::query()
+            ->where('business_id', $businessId)
+            ->where(function ($query) {
+                $query->where('quantity_suom', '>', 0)
+                    ->orWhere('ma_15_days', '>', 0)
+                    ->orWhere('ma_30_days', '>', 0);
+            })
+            ->orderByDesc('quantity_suom')
+            ->value('store_id');
+
+        if ($stockStoreId) {
+            return (int) $stockStoreId;
+        }
+
+        $first = array_key_first($this->storeOptions);
+
+        return $first ? (int) $first : null;
     }
 }

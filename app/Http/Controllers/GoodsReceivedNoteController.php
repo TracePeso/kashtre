@@ -182,6 +182,11 @@ class GoodsReceivedNoteController extends Controller
             'inventoryOrder',
         ]);
 
+        if ($goodsReceivedNote->isApproved()) {
+            $this->service->applyStockIfNeeded($goodsReceivedNote);
+            $goodsReceivedNote->refresh();
+        }
+
         $canApprove = $this->service->userCanApprove($goodsReceivedNote, Auth::user());
 
         return view('inventory.receive.show', compact('goodsReceivedNote', 'canApprove'));
@@ -233,6 +238,7 @@ class GoodsReceivedNoteController extends Controller
     {
         $businessId = (int) Auth::user()->business_id;
         $supplierId = $request->filled('supplier_id') ? (int) $request->query('supplier_id') : null;
+        $itemIds = $this->resolveTemplateItemIds($request, $businessId);
 
         if ($supplierId) {
             Supplier::query()
@@ -241,7 +247,7 @@ class GoodsReceivedNoteController extends Controller
                 ->firstOrFail();
         }
 
-        $rows = $this->bulkImport->templateRows($businessId, $supplierId);
+        $rows = $this->bulkImport->templateRows($businessId, $supplierId, $itemIds);
         $filename = 'grn_lines_template_'.now()->format('Ymd').'.csv';
 
         return response()->streamDownload(function () use ($rows): void {
@@ -458,5 +464,45 @@ class GoodsReceivedNoteController extends Controller
         if ((int) $grn->business_id !== (int) Auth::user()->business_id) {
             abort(403);
         }
+    }
+
+    /**
+     * @return array<int>|null
+     */
+    private function resolveTemplateItemIds(Request $request, int $businessId): ?array
+    {
+        if (! $request->filled('item_ids')) {
+            return null;
+        }
+
+        $raw = $request->query('item_ids');
+
+        if (is_array($raw)) {
+            $itemIds = array_values(array_unique(array_filter(array_map('intval', $raw))));
+        } else {
+            $itemIds = array_values(array_unique(array_filter(array_map('intval', explode(',', (string) $raw)))));
+        }
+
+        if ($itemIds === []) {
+            throw ValidationException::withMessages([
+                'item_ids' => 'Select at least one item for the template.',
+            ]);
+        }
+
+        $validIds = Item::query()
+            ->where('business_id', $businessId)
+            ->where('type', 'good')
+            ->whereIn('id', $itemIds)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if (count($validIds) !== count($itemIds)) {
+            throw ValidationException::withMessages([
+                'item_ids' => 'One or more selected items are not valid for your organisation.',
+            ]);
+        }
+
+        return $validIds;
     }
 }

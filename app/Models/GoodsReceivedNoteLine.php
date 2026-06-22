@@ -33,6 +33,18 @@ class GoodsReceivedNoteLine extends Model
         'expiry_date' => 'date',
     ];
 
+    protected static function booted(): void
+    {
+        static::saving(function (self $line) {
+            $quantity = (float) $line->quantity;
+            $conversion = (float) $line->sale_units_per_purchase_unit;
+
+            if ($quantity > 0 && $conversion > 0) {
+                $line->sale_units_purchased = self::calculateSaleUnitsPurchased($quantity, $conversion);
+            }
+        });
+    }
+
     public function goodsReceivedNote()
     {
         return $this->belongsTo(GoodsReceivedNote::class);

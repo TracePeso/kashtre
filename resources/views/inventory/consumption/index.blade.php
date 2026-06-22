@@ -4,7 +4,7 @@
         <div class="flex-1 min-w-0">
             <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">Consumption</h2>
             <p class="mt-1 text-sm text-gray-500">
-                Select a <strong>store</strong>, then view consumption by <strong>month</strong> and drill into <strong>days</strong> and <strong>hours</strong> per item.
+                View the last 10 days of consumption for your store. Drill into a day for hourly detail.
             </p>
         </div>
 
