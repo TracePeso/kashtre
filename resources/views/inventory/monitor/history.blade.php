@@ -32,7 +32,7 @@
 
         <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div class="rounded-lg bg-white border border-gray-200 px-4 py-3">
-                <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Current stock</p>
+                <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Physical stock</p>
                 <p class="mt-1 text-xl font-bold text-gray-900 tabular-nums">{{ number_format($currentStock, 0) }}</p>
                 <p class="text-xs text-gray-500 mt-0.5">Sale units on hand (all stores)</p>
             </div>

@@ -81,28 +81,22 @@ class MonitorStockTable extends Component implements HasForms, HasTable
 
                 TextColumn::make('system_stock_ar')
                     ->label('System stock (AR)')
-                    ->tooltip('FY opening + purchases − sales + transfers since financial year start')
+                    ->tooltip('Ledger stock since financial year start (opening + all recorded movements)')
                     ->alignEnd()
                     ->state(fn (Item $record): float => (float) $this->mForItem($record, 'system_ar'))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
-                TextColumn::make('current_stock_m')
-                    ->label('Current stock (M)')
-                    ->tooltip('Physical count anchor + movements since last stock count')
+                TextColumn::make('physical_stock')
+                    ->label('Physical stock')
+                    ->tooltip('Sale units at this store (updated by receipts, consumption, transfers, and stock counts)')
                     ->alignEnd()
-                    ->state(fn (Item $record): float => (float) $this->mForItem($record, 'current_m'))
+                    ->state(fn (Item $record): float => (float) ($record->stock_quantity_suom ?? 0))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
-
-                TextColumn::make('stock_physical_quantity_suom')
-                    ->label('Physical stock (AS)')
-                    ->alignEnd()
-                    ->placeholder('—')
-                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 0) : '—'),
 
                 TextColumn::make('shrinkage_excel_pct')
                     ->label('Shrinkage % (AV)')
                     ->alignEnd()
-                    ->tooltip('100 × (AR − M) ÷ AR')
+                    ->tooltip('100 × (AR − physical stock) ÷ AR')
                     ->state(fn (Item $record): ?float => $this->mForItem($record, 'shrinkage_pct'))
                     ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 4).'%' : '—'),
 

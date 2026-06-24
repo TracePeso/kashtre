@@ -55,6 +55,27 @@ class InventoryStockLevel extends Model
         return (float) $this->quantity_suom;
     }
 
+    /** Physical stock — kept equal to quantity_suom on every stock update. */
+    public function physicalStockSuom(): float
+    {
+        return (float) $this->quantity_suom;
+    }
+
+    /** @deprecated Use physicalStockSuom() */
+    public function onHandQuantitySuom(): float
+    {
+        return $this->physicalStockSuom();
+    }
+
+    public function applyOnHandBalance(float $balance): float
+    {
+        $qty = max(0, round($balance, 4));
+        $this->quantity_suom = $qty;
+        $this->physical_quantity_suom = $qty;
+
+        return $qty;
+    }
+
     public function verifiableLossSuom(): float
     {
         return round(
@@ -65,11 +86,7 @@ class InventoryStockLevel extends Model
 
     public function physicalUsableQuantitySuom(): float
     {
-        $base = $this->physical_quantity_suom !== null
-            ? (float) $this->physical_quantity_suom
-            : (float) $this->quantity_suom;
-
-        return max(0, round($base - $this->verifiableLossSuom(), 4));
+        return max(0, round($this->physicalStockSuom() - $this->verifiableLossSuom(), 4));
     }
 
     /** @deprecated Use physicalUsableQuantitySuom() */

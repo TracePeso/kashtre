@@ -253,23 +253,20 @@ class InventoryStockCountService
                     'store_id' => $count->store_id,
                     'item_id' => $line->item_id,
                 ],
-                ['quantity_suom' => 0]
+                ['quantity_suom' => 0, 'physical_quantity_suom' => 0]
             );
 
             $balanceBefore = (float) $stock->quantity_suom;
             $physical = (float) $line->physical_quantity_suom;
             $variance = round($physical - $balanceBefore, 4);
 
-            $stock->update([
-                'physical_quantity_suom' => $physical,
-                'physical_counted_at' => $count->counted_at ?? now(),
-                'damaged_quantity_suom' => (float) $line->damaged_quantity_suom,
-                'expired_quantity_suom' => (float) $line->expired_quantity_suom,
-            ]);
+            $stock->applyOnHandBalance($physical);
+            $stock->physical_counted_at = $count->counted_at ?? now();
+            $stock->damaged_quantity_suom = (float) $line->damaged_quantity_suom;
+            $stock->expired_quantity_suom = (float) $line->expired_quantity_suom;
+            $stock->save();
 
             if ($variance != 0.0) {
-                $stock->update(['quantity_suom' => $physical]);
-
                 InventoryStockMovement::create([
                     'business_id' => $count->business_id,
                     'item_id' => $line->item_id,

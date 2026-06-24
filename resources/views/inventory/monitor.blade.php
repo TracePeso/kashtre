@@ -18,8 +18,9 @@
         </div>
 
         <p class="mt-4 text-xs text-gray-500">
-            <strong>Local store</strong> shows item-level Excel columns (M, AR, N, shrinkage, etc.) for the selected store.
-            <strong>Network rollup</strong> sums system, physical, and usable stock across the store hierarchy (Main → Branch → Unit).
+            <strong>Local store</strong> shows <strong>System stock (AR)</strong> (ledger since financial year start) and
+            <strong>Physical stock</strong> (live quantity at the store). Shrinkage compares the two.
+            <strong>Network rollup</strong> sums physical stock across the store hierarchy.
             Open <strong>History</strong> on an item row in local view for price movements.
         </p>
     </div>

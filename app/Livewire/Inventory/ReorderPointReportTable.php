@@ -67,7 +67,7 @@ class ReorderPointReportTable extends Component implements HasForms, HasTable
                     ->state(fn (InventoryStockLevel $record): ?string => $this->m($record, 'notify_date'))
                     ->placeholder('—'),
                 TextColumn::make('current_m')
-                    ->label('Current stock (M)')
+                    ->label('Physical stock')
                     ->alignEnd()
                     ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'current_m'))
                     ->formatStateUsing(fn ($state) => number_format((float) $state, 0)),

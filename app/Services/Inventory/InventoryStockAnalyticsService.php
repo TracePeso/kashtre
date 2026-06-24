@@ -128,18 +128,11 @@ class InventoryStockAnalyticsService
     }
 
     /**
-     * Excel column M: physical count anchor + movements since last count.
+     * Excel column M: physical stock (quantity_suom; synced on every stock update).
      */
     public function currentStockLevelSuom(InventoryStockLevel $stock): float
     {
-        if ($stock->physical_counted_at === null) {
-            return (float) $stock->quantity_suom;
-        }
-
-        $since = Carbon::parse($stock->physical_counted_at)->startOfDay();
-        $anchor = (float) ($stock->physical_quantity_suom ?? 0);
-
-        return max(0, round($anchor + $this->movementSumSince($stock, $since), 4));
+        return $stock->physicalStockSuom();
     }
 
     /**
@@ -408,22 +401,14 @@ class InventoryStockAnalyticsService
         return (float) $stock->quantity_suom;
     }
 
-    public function physicalQuantitySuom(InventoryStockLevel $stock): ?float
+    public function physicalQuantitySuom(InventoryStockLevel $stock): float
     {
-        if ($stock->physical_quantity_suom === null) {
-            return null;
-        }
-
-        return (float) $stock->physical_quantity_suom;
+        return $stock->physicalStockSuom();
     }
 
     public function usableQuantitySuom(InventoryStockLevel $stock): float
     {
-        $physical = $this->physicalQuantitySuom($stock);
-        $base = $physical ?? $this->systemQuantitySuom($stock);
-        $verifiable = (float) ($stock->damaged_quantity_suom ?? 0) + (float) ($stock->expired_quantity_suom ?? 0);
-
-        return max(0, round($base - $verifiable, 4));
+        return $stock->physicalUsableQuantitySuom();
     }
 
     public function verifiableShrinkageSuom(InventoryStockLevel $stock): float
@@ -434,27 +419,17 @@ class InventoryStockAnalyticsService
         );
     }
 
-    public function totalShrinkageSuom(InventoryStockLevel $stock): ?float
+    public function totalShrinkageSuom(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null): float
     {
-        $physical = $this->physicalQuantitySuom($stock);
+        $ar = $this->systemStockArSuom($stock, $config);
 
-        if ($physical === null) {
-            return null;
-        }
-
-        return max(0, round($this->systemQuantitySuom($stock) - $physical, 4));
+        return max(0, round($ar - $stock->physicalStockSuom(), 4));
     }
 
-    public function unverifiedShrinkageSuom(InventoryStockLevel $stock): ?float
+    public function unverifiedShrinkageSuom(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null): float
     {
-        $physical = $this->physicalQuantitySuom($stock);
-
-        if ($physical === null) {
-            return null;
-        }
-
         return max(0, round(
-            $this->systemQuantitySuom($stock) - $physical - $this->verifiableShrinkageSuom($stock),
+            $this->totalShrinkageSuom($stock, $config) - $this->verifiableShrinkageSuom($stock),
             4
         ));
     }
@@ -534,7 +509,6 @@ class InventoryStockAnalyticsService
 
         $fyMovementSums = $this->batchMovementSums($businessId, $pairs, $fyStart);
         $openings = $this->batchOpeningQuantities($stocks, $fyStart);
-        $physicalMovementSums = $this->batchPhysicalMovementSums($businessId, $stocks);
         $purchasePrices = $this->batchPurchasePrices($businessId, $stocks);
 
         $this->pageMetricsCache = [];
@@ -544,14 +518,7 @@ class InventoryStockAnalyticsService
 
             $opening = $openings[$key] ?? 0.0;
             $ar = max(0, round($opening + ($fyMovementSums[$key] ?? 0.0), 4));
-
-            if ($stock->physical_counted_at === null) {
-                $currentM = (float) $stock->quantity_suom;
-            } else {
-                $anchor = (float) ($stock->physical_quantity_suom ?? 0);
-                $delta = $physicalMovementSums[$key] ?? 0.0;
-                $currentM = max(0, round($anchor + $delta, 4));
-            }
+            $currentM = $stock->physicalStockSuom();
 
             $purchasePrice = $purchasePrices[$key] ?? 0.0;
             $excelUsage = $this->excelDailyUsageFromStock($stock, $config);
@@ -942,15 +909,15 @@ class InventoryStockAnalyticsService
                     'store_id' => $storeId,
                     'item_id' => $itemId,
                 ],
-                ['quantity_suom' => 0]
+                ['quantity_suom' => 0, 'physical_quantity_suom' => 0]
             );
 
             $this->recalculateForStockLevel($stock);
 
             $balanceBefore = (float) $stock->quantity_suom;
-            $balanceAfter = max(0, $balanceBefore - $quantitySuom);
+            $balanceAfter = $stock->applyOnHandBalance(max(0, $balanceBefore - $quantitySuom));
 
-            $stock->update(['quantity_suom' => $balanceAfter]);
+            $stock->save();
 
             InventoryStockMovement::create([
                 'business_id' => $businessId,

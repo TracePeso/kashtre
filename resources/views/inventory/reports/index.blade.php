@@ -8,8 +8,8 @@
         <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             @foreach([
                 ['route' => 'inventory.reports.reorder', 'title' => 'Reorder Point', 'desc' => 'Days left to order (AM) and notification dates (AY).'],
-                ['route' => 'inventory.reports.valuation', 'title' => 'Inventory Valuation', 'desc' => 'Current stock value (O = M × F/J).'],
-                ['route' => 'inventory.reports.shrinkage', 'title' => 'Shrinkage', 'desc' => 'System vs current stock variance (AV / AW).'],
+                ['route' => 'inventory.reports.valuation', 'title' => 'Inventory Valuation', 'desc' => 'Physical stock value (O = M × F/J).'],
+                ['route' => 'inventory.reports.shrinkage', 'title' => 'Shrinkage', 'desc' => 'System stock vs physical stock (AV / AW).'],
                 ['route' => 'inventory.reports.demand', 'title' => 'Demand Forecast', 'desc' => 'Suggested order quantities and amounts (AF / AG).'],
                 ['route' => 'inventory.reports.aging', 'title' => 'Stock Aging', 'desc' => 'Days since last GRN delivery (U).'],
             ] as $report)

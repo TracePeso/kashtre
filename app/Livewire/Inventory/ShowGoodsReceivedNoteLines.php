@@ -36,11 +36,15 @@ class ShowGoodsReceivedNoteLines extends Component implements HasForms, HasTable
             ->query(
                 GoodsReceivedNoteLine::query()
                     ->where('goods_received_note_id', $this->goodsReceivedNote->id)
+                    ->with('item')
             )
             ->columns([
                 TextColumn::make('item_name')
                     ->label('Item')
-                    ->weight('medium'),
+                    ->description(fn (GoodsReceivedNoteLine $record): ?string => $record->item?->code)
+                    ->weight('medium')
+                    ->wrap()
+                    ->searchable(),
 
                 TextColumn::make('batch_number')
                     ->label('Batch')
@@ -70,9 +74,16 @@ class ShowGoodsReceivedNoteLines extends Component implements HasForms, HasTable
                     ->placeholder('—'),
 
                 TextColumn::make('purchase_price')
-                    ->label('Price')
+                    ->label('Unit price')
                     ->alignEnd()
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 2)),
+                    ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2)),
+
+                TextColumn::make('line_total')
+                    ->label('Item total')
+                    ->alignEnd()
+                    ->state(fn (GoodsReceivedNoteLine $record): float => (float) $record->quantity * (float) $record->purchase_price)
+                    ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2))
+                    ->weight('medium'),
 
                 TextColumn::make('sale_units_purchased')
                     ->label('Sale units purchased')
@@ -81,9 +92,10 @@ class ShowGoodsReceivedNoteLines extends Component implements HasForms, HasTable
                     ->color('success')
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
             ])
-            ->paginated(false)
+            ->paginated([25, 50, 100])
+            ->defaultPaginationPageOption(25)
             ->striped()
-            ->emptyStateHeading('No line items')
+            ->emptyStateHeading('No items')
             ->emptyStateDescription('This GRN has no items recorded.');
     }
 

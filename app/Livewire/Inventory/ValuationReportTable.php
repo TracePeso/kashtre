@@ -34,7 +34,7 @@ class ValuationReportTable extends Component implements HasForms, HasTable
                 TextColumn::make('item_code')->label('Code')->searchable(),
                 TextColumn::make('store_name')->label('Store')->sortable(),
                 TextColumn::make('current_m')
-                    ->label('Current stock (M)')
+                    ->label('Physical stock')
                     ->alignEnd()
                     ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'current_m'))
                     ->formatStateUsing(fn ($state) => number_format((float) $state, 0)),

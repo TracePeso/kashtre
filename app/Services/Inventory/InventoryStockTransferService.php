@@ -213,7 +213,7 @@ class InventoryStockTransferService
                 'store_id' => $storeId,
                 'item_id' => $itemId,
             ],
-            ['quantity_suom' => 0]
+            ['quantity_suom' => 0, 'physical_quantity_suom' => 0]
         );
 
         $before = (float) $stock->quantity_suom;
@@ -224,9 +224,9 @@ class InventoryStockTransferService
             ]);
         }
 
-        $after = max(0, round($before + $delta, 4));
+        $after = $stock->applyOnHandBalance(max(0, round($before + $delta, 4)));
 
-        $stock->update(['quantity_suom' => $after]);
+        $stock->save();
 
         InventoryStockMovement::create([
             'business_id' => $businessId,

@@ -111,8 +111,10 @@ class InventoryGoodsReturnService
                         'store_id' => $note->store_id,
                         'item_id' => $line->item_id,
                     ],
-                    ['quantity_suom' => $after]
+                    ['quantity_suom' => 0, 'physical_quantity_suom' => 0]
                 );
+                $stock->applyOnHandBalance($after);
+                $stock->save();
 
                 InventoryStockMovement::create([
                     'business_id' => $note->business_id,

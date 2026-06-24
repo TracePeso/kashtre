@@ -61,22 +61,10 @@ class NetworkStockTable extends Component implements HasForms, HasTable
                     ->alignEnd()
                     ->sortable(),
 
-                TextColumn::make('rollup_system_quantity_suom')
-                    ->label('System stock (AR)')
-                    ->tooltip('Sum of system stock across the network')
-                    ->alignEnd()
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
-
                 TextColumn::make('rollup_physical_quantity_suom')
-                    ->label('Physical stock (AS)')
+                    ->label('Physical stock')
+                    ->tooltip('Sum of physical stock across stores in this network')
                     ->alignEnd()
-                    ->state(fn (Item $record): ?float => $this->physicalQuantity($record))
-                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 0) : '—'),
-
-                TextColumn::make('rollup_usable_quantity_suom')
-                    ->label('Usable')
-                    ->alignEnd()
-                    ->state(fn (Item $record): float => $this->usableQuantity($record))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('rollup_damaged_quantity_suom')
@@ -131,9 +119,7 @@ class NetworkStockTable extends Component implements HasForms, HasTable
             })
             ->groupBy('item_id')
             ->selectRaw('item_id,
-                SUM(quantity_suom) as rollup_system_quantity_suom,
-                SUM(CASE WHEN physical_quantity_suom IS NOT NULL THEN physical_quantity_suom ELSE quantity_suom END) as rollup_physical_quantity_suom,
-                MAX(CASE WHEN physical_quantity_suom IS NOT NULL THEN 1 ELSE 0 END) as rollup_has_physical,
+                SUM(quantity_suom) as rollup_physical_quantity_suom,
                 SUM(COALESCE(damaged_quantity_suom, 0)) as rollup_damaged_quantity_suom,
                 SUM(COALESCE(expired_quantity_suom, 0)) as rollup_expired_quantity_suom,
                 COUNT(DISTINCT store_id) as rollup_store_count');
@@ -144,32 +130,11 @@ class NetworkStockTable extends Component implements HasForms, HasTable
             ->joinSub($rollupSub, 'rollup', fn ($join) => $join->on('rollup.item_id', '=', 'items.id'))
             ->select([
                 'items.*',
-                'rollup.rollup_system_quantity_suom',
                 'rollup.rollup_physical_quantity_suom',
-                'rollup.rollup_has_physical',
                 'rollup.rollup_damaged_quantity_suom',
                 'rollup.rollup_expired_quantity_suom',
                 'rollup.rollup_store_count',
             ])
             ->with('itemUnit');
-    }
-
-    private function physicalQuantity(Item $record): ?float
-    {
-        if ((int) ($record->rollup_has_physical ?? 0) <= 0) {
-            return null;
-        }
-
-        return (float) $record->rollup_physical_quantity_suom;
-    }
-
-    private function usableQuantity(Item $record): float
-    {
-        $system = (float) $record->rollup_system_quantity_suom;
-        $physical = $this->physicalQuantity($record);
-        $damaged = (float) $record->rollup_damaged_quantity_suom;
-        $expired = (float) $record->rollup_expired_quantity_suom;
-
-        return max(0, round(($physical ?? $system) - $damaged - $expired, 4));
     }
 }

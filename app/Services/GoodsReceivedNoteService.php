@@ -212,6 +212,7 @@ class GoodsReceivedNoteService
                 ],
                 [
                     'quantity_suom' => 0,
+                    'physical_quantity_suom' => 0,
                 ]
             );
 
@@ -227,7 +228,7 @@ class GoodsReceivedNoteService
                 ? round($balanceValuation / $balanceAfter, 2)
                 : 0.0;
 
-            $stock->quantity_suom = $balanceAfter;
+            $stock->applyOnHandBalance($balanceAfter);
             $stock->last_purchase_price = round($unitPrice, 2);
             $stock->weighted_avg_cost = $weightedAvgCost;
             $stock->save();

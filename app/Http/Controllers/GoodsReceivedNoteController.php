@@ -232,8 +232,8 @@ class GoodsReceivedNoteController extends Controller
         $goodsReceivedNote->refresh();
 
         $message = $goodsReceivedNote->isApproved()
-            ? 'GRN approved. Stock levels have been updated.'
-            : 'Approval recorded. Awaiting next approver.';
+            ? 'All approvers have signed off. Stock at '.($goodsReceivedNote->store->name ?? 'the store').' has been updated.'
+            : 'Your approval was recorded. Waiting for the next approver — stock is not updated yet.';
 
         return redirect()->route('inventory.receive.show', $goodsReceivedNote)
             ->with('success', $message);
