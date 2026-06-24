@@ -175,8 +175,13 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
         }
 
         $columns = array_merge($columns, [
+            TextColumn::make('unit_price')
+                ->label('Unit price')
+                ->alignEnd()
+                ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) ($state ?? 0), 2)),
+
             TextColumn::make('line_total')
-                ->label('Line total')
+                ->label('Item total')
                 ->alignEnd()
                 ->weight('medium')
                 ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) ($state ?? 0), 2)),
@@ -239,7 +244,7 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
             ->defaultPaginationPageOption(25)
             ->paginated([25, 50, 100])
             ->striped()
-            ->emptyStateHeading('No order lines')
+            ->emptyStateHeading('No order items')
             ->emptyStateDescription(fn (): string => app(InventoryOrderService::class)->explainEmptyOrder($this->order));
     }
 

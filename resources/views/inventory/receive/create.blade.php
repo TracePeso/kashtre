@@ -14,7 +14,7 @@
     @js($prefillLines ?? []),
     @js($prefillStoreId),
     @js($prefillSupplierId),
-    {{ $inventoryOrder?->id ?? 'null' }}
+    @js(old('inventory_order_id', $inventoryOrder?->id))
 )">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="mb-6">
@@ -195,13 +195,24 @@
                             </tfoot>
                         </table>
                     </div>
+                    <div class="px-4 py-3 border-t border-blue-200/80 bg-white/80 flex flex-wrap justify-end gap-3">
+                        <a href="{{ route('inventory.receive') }}" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</a>
+                        <button type="submit" name="action" value="draft" @disabled($itemUnits->isEmpty())
+                                class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                            Save draft
+                        </button>
+                        <button type="submit" name="action" value="submit" @disabled($itemUnits->isEmpty())
+                                class="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                            Submit for approval
+                        </button>
+                    </div>
                 </div>
 
-                <p x-show="lines.length === 0" class="mb-4 text-sm text-gray-500 text-center py-2">No lines yet. Add an item below.</p>
+                <p x-show="lines.length === 0" class="mb-4 text-sm text-gray-500 text-center py-2">No items yet. Add an item below.</p>
 
                 <div class="border border-gray-200 rounded-lg bg-gray-50/50 overflow-hidden" x-ref="draftForm">
                     <div class="px-4 py-3 border-b border-gray-200 bg-white flex flex-wrap items-center justify-between gap-2">
-                        <h4 class="text-sm font-semibold text-gray-900" x-text="editingIndex !== null ? 'Edit line' : 'Add line'"></h4>
+                        <h4 class="text-sm font-semibold text-gray-900" x-text="editingIndex !== null ? 'Edit item' : 'Add item'"></h4>
                         <button type="button" x-show="editingIndex !== null" @click="cancelEdit()" x-cloak
                                 class="text-xs font-medium text-gray-600 hover:text-gray-800">Cancel edit</button>
                     </div>
@@ -279,7 +290,7 @@
                         <div class="flex justify-end pt-1">
                             <button type="button" @click="saveDraftLine()"
                                     class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                                <span x-text="editingIndex !== null ? 'Update line' : 'Add line'"></span>
+                                <span x-text="editingIndex !== null ? 'Update item' : 'Add item'"></span>
                             </button>
                         </div>
                     </div>
@@ -298,18 +309,18 @@
                         <input type="hidden" :name="'lines[' + index + '][sale_units_per_purchase_unit]'" :value="line.conversion">
                     </div>
                 </template>
-            </div>
 
-            <div class="flex justify-end gap-3">
-                <a href="{{ route('inventory.receive') }}" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</a>
-                <button type="submit" name="action" value="draft" @disabled($itemUnits->isEmpty())
-                        class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                    Save draft
-                </button>
-                <button type="submit" name="action" value="submit" @disabled($itemUnits->isEmpty())
-                        class="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                    Submit for approval
-                </button>
+                <div x-show="lines.length === 0" x-cloak class="mt-4 flex flex-wrap justify-end gap-3">
+                    <a href="{{ route('inventory.receive') }}" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</a>
+                    <button type="submit" name="action" value="draft" @disabled($itemUnits->isEmpty())
+                            class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Save draft
+                    </button>
+                    <button type="submit" name="action" value="submit" @disabled($itemUnits->isEmpty())
+                            class="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Submit for approval
+                    </button>
+                </div>
             </div>
         </form>
     </div>
@@ -471,7 +482,7 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             this.$nextTick(() => this.$refs.draftForm?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
         },
         deleteLine(index) {
-            if (! confirm('Remove this line from the GRN?')) {
+            if (! confirm('Remove this item from the GRN?')) {
                 return;
             }
 
@@ -489,7 +500,7 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
         handleFormSubmit(event) {
             if (this.lines.length === 0) {
                 event.preventDefault();
-                this.draftError = 'Add at least one line before submitting.';
+                this.draftError = 'Add at least one item before submitting.';
                 this.$refs.draftForm?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         },

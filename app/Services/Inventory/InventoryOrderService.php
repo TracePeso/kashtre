@@ -47,9 +47,12 @@ class InventoryOrderService
         ?float $peakPeriodPercent = null,
         ?float $safetyStockDays = null,
         ?float $bufferStockDays = null,
-        ?float $notificationToOrderDays = null
+        ?float $notificationToOrderDays = null,
+        ?array $itemIds = null
     ): InventoryOrder {
-        return DB::transaction(function () use ($businessId, $storeId, $user, $importanceFilter, $budgetMode, $budgetValue, $periodOfOrderDays, $notes, $groupId, $subgroupId, $peakPeriodPercent, $safetyStockDays, $bufferStockDays, $notificationToOrderDays) {
+        $normalizedItemIds = $this->normalizeItemIds($itemIds);
+
+        return DB::transaction(function () use ($businessId, $storeId, $user, $importanceFilter, $budgetMode, $budgetValue, $periodOfOrderDays, $notes, $groupId, $subgroupId, $peakPeriodPercent, $safetyStockDays, $bufferStockDays, $notificationToOrderDays, $normalizedItemIds) {
             $config = InventoryModuleConfig::query()
                 ->forBusiness($businessId)
                 ->active()
@@ -63,6 +66,7 @@ class InventoryOrderService
                 'importance_filter' => $importanceFilter,
                 'group_id' => $groupId,
                 'subgroup_id' => $subgroupId,
+                'item_ids' => $normalizedItemIds,
                 'budget_mode' => $budgetMode,
                 'budget_value' => $budgetValue,
                 'moving_average_days' => self::AUTO_CONSUMPTION_RATE_DAYS,
@@ -88,16 +92,7 @@ class InventoryOrderService
             ->active()
             ->first();
 
-        $stockLevels = InventoryStockLevel::query()
-            ->where('business_id', $order->business_id)
-            ->where('store_id', $order->store_id)
-            ->where(function ($query) {
-                $query->where('quantity_suom', '>', 0)
-                    ->orWhere('ma_15_days', '>', 0)
-                    ->orWhere('ma_30_days', '>', 0);
-            })
-            ->with(['item.itemUnit', 'item.orderUnit', 'item.suppliers'])
-            ->get();
+        $stockLevels = $this->stockLevelsForOrder($order);
 
         $order->lines()->delete();
 
@@ -147,7 +142,7 @@ class InventoryOrderService
         Collection $stockLevels,
         ?InventoryModuleConfig $config
     ): void {
-        $budgetDays = (float) $order->budget_value;
+        $budgetDays = min(366, max(1, (int) round((float) $order->budget_value)));
         $rows = [];
 
         foreach ($stockLevels as $stock) {
@@ -269,6 +264,12 @@ class InventoryOrderService
 
     public function explainEmptyOrder(InventoryOrder $order): string
     {
+        if (! empty($order->item_ids)) {
+            $selectedCount = count($order->item_ids);
+
+            return "No order items were generated for the {$selectedCount} selected item(s). Check that they are goods with consumption or stock at this store, then refresh items.";
+        }
+
         $stockCount = InventoryStockLevel::query()
             ->where('business_id', $order->business_id)
             ->where('store_id', $order->store_id)
@@ -280,7 +281,7 @@ class InventoryOrderService
             ->count();
 
         if ($stockCount === 0) {
-            return 'No items have stock or consumption history at this store. Receive goods via a GRN or wait for sale consumption, then refresh lines.';
+            return 'No items have stock or consumption history at this store. Receive goods via a GRN or wait for sale consumption, then refresh items.';
         }
 
         if ($order->importance_filter) {
@@ -338,7 +339,14 @@ class InventoryOrderService
 
             foreach ($order->lines as $line) {
                 $qty = round((float) $line->order_quantity_suom * $factor, 4);
-                $this->updateLine($line, $qty);
+                $unitPrice = (float) ($line->unit_price ?? 0);
+
+                $line->update([
+                    'order_quantity_suom' => max(0, $qty),
+                    'order_quantity_ouom' => $line->item ? $this->toOuom($line->item, $qty) : null,
+                    'suggested_quantity_suom' => max(0, $qty),
+                    'line_total' => round(max(0, $qty) * $unitPrice, 2),
+                ]);
             }
         }
     }
@@ -383,6 +391,10 @@ class InventoryOrderService
             return false;
         }
 
+        if (! empty($order->item_ids)) {
+            return in_array((int) $item->id, array_map('intval', $order->item_ids), true);
+        }
+
         if ($order->importance_filter && $item->importance_category !== $order->importance_filter) {
             return false;
         }
@@ -396,5 +408,78 @@ class InventoryOrderService
         }
 
         return true;
+    }
+
+    /**
+     * @param  array<int|string>|null  $itemIds
+     * @return array<int, int>|null
+     */
+    private function normalizeItemIds(?array $itemIds): ?array
+    {
+        if ($itemIds === null || $itemIds === []) {
+            return null;
+        }
+
+        $normalized = array_values(array_unique(array_map('intval', $itemIds)));
+
+        return $normalized === [] ? null : $normalized;
+    }
+
+    /**
+     * @return Collection<int, InventoryStockLevel>
+     */
+    private function stockLevelsForOrder(InventoryOrder $order): Collection
+    {
+        $itemIds = $this->normalizeItemIds($order->item_ids);
+
+        $query = InventoryStockLevel::query()
+            ->where('business_id', $order->business_id)
+            ->where('store_id', $order->store_id)
+            ->with(['item.itemUnit', 'item.orderUnit', 'item.suppliers']);
+
+        if ($itemIds === null) {
+            $query->where(function ($subQuery) {
+                $subQuery->where('quantity_suom', '>', 0)
+                    ->orWhere('ma_15_days', '>', 0)
+                    ->orWhere('ma_30_days', '>', 0);
+            });
+
+            return $query->get();
+        }
+
+        $levels = $query
+            ->whereIn('item_id', $itemIds)
+            ->get()
+            ->keyBy('item_id');
+
+        $items = Item::query()
+            ->where('business_id', $order->business_id)
+            ->where('type', 'good')
+            ->whereIn('id', $itemIds)
+            ->with(['itemUnit', 'orderUnit', 'suppliers'])
+            ->get();
+
+        return $items->map(function (Item $item) use ($order, $levels): InventoryStockLevel {
+            if ($levels->has($item->id)) {
+                return $levels->get($item->id);
+            }
+
+            return $this->emptyStockLevel($order, $item);
+        })->values();
+    }
+
+    private function emptyStockLevel(InventoryOrder $order, Item $item): InventoryStockLevel
+    {
+        $level = new InventoryStockLevel([
+            'business_id' => $order->business_id,
+            'store_id' => $order->store_id,
+            'item_id' => $item->id,
+            'quantity_suom' => 0,
+            'ma_15_days' => 0,
+            'ma_30_days' => 0,
+        ]);
+        $level->setRelation('item', $item);
+
+        return $level;
     }
 }

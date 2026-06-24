@@ -1,4 +1,22 @@
 <div>
+    @if($this->selectedStoreLabel())
+        <div class="mb-4 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+                <p class="text-xs font-medium uppercase tracking-wide text-blue-700">
+                    {{ $stockView === 'network' ? 'Roll up from' : 'Your store' }}
+                </p>
+                <p class="text-sm font-semibold text-blue-950">{{ $this->selectedStoreLabel() }}</p>
+            </div>
+            <p class="text-sm text-blue-800">
+                @if($stockView === 'network' && $networkScope)
+                    {{ $networkScope }}
+                @elseif($stockView === 'local' && $store)
+                    {{ $store->hierarchyLabel() }} · stock for this store only
+                @endif
+            </p>
+        </div>
+    @endif
+
     <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
             <span class="text-sm font-medium text-gray-700">Stock view</span>
@@ -27,11 +45,6 @@
                     <option value="{{ $id }}">{{ $label }}</option>
                 @endforeach
             </select>
-            @if($stockView === 'network' && $networkScope)
-                <p class="mt-1 text-xs text-gray-500">{{ $networkScope }}</p>
-            @elseif($stockView === 'local' && $store)
-                <p class="mt-1 text-xs text-gray-500">{{ $store->hierarchyLabel() }} · stock for this store only</p>
-            @endif
         </div>
     </div>
 

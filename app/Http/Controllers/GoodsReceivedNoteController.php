@@ -54,18 +54,37 @@ class GoodsReceivedNoteController extends Controller
         $prefillStoreId = old('store_id');
         $prefillSupplierId = old('supplier_id', $request->query('supplier_id'));
 
-        if ($request->filled('inventory_order_id')) {
+        if (is_array(old('lines')) && old('lines') !== []) {
+            $prefillLines = collect(old('lines'))->map(fn (array $line): array => [
+                'item_id' => $line['item_id'] ?? '',
+                'inventory_order_line_id' => $line['inventory_order_line_id'] ?? '',
+                'suom' => $line['suom'] ?? '',
+                'duom' => $line['duom'] ?? '',
+                'quantity' => $line['quantity'] ?? 1,
+                'batch_number' => $line['batch_number'] ?? '',
+                'expiry_date' => $line['expiry_date'] ?? '',
+                'purchase_price' => $line['purchase_price'] ?? 0,
+                'conversion' => $line['sale_units_per_purchase_unit'] ?? $line['conversion'] ?? 1,
+            ])->values()->all();
+
+            if (old('inventory_order_id')) {
+                $inventoryOrder = InventoryOrder::query()
+                    ->where('business_id', $businessId)
+                    ->with(['store'])
+                    ->find(old('inventory_order_id'));
+            }
+        } elseif ($orderId = $request->query('inventory_order_id') ?? old('inventory_order_id')) {
             $inventoryOrder = InventoryOrder::query()
                 ->where('business_id', $businessId)
                 ->with(['store', 'lines.item.itemUnit', 'lines.item.orderUnit', 'lines.supplier'])
-                ->findOrFail($request->query('inventory_order_id'));
+                ->findOrFail($orderId);
 
             if (! $inventoryOrder->canReceiveGoods()) {
                 abort(403, 'This order is not approved for receiving.');
             }
 
             $fulfillment = app(\App\Services\Inventory\InventoryOrderFulfillmentService::class);
-            $prefillLines =             $fulfillment->prefillGrnLines(
+            $prefillLines = $fulfillment->prefillGrnLines(
                 $inventoryOrder,
                 ($prefillSupplierId !== null && $prefillSupplierId !== '' && (int) $prefillSupplierId !== 0)
                     ? (int) $prefillSupplierId

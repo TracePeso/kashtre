@@ -32,6 +32,7 @@ class InventoryOrder extends Model
         'importance_filter',
         'group_id',
         'subgroup_id',
+        'item_ids',
         'budget_mode',
         'budget_value',
         'moving_average_days',
@@ -50,6 +51,7 @@ class InventoryOrder extends Model
     ];
 
     protected $casts = [
+        'item_ids' => 'array',
         'budget_value' => 'decimal:2',
         'moving_average_days' => 'integer',
         'period_of_order_days' => 'decimal:2',
@@ -172,5 +174,31 @@ class InventoryOrder extends Model
         }
 
         return 'Period (days)';
+    }
+
+    public function orderingTypeLabel(): string
+    {
+        if ($this->budget_mode === self::BUDGET_MODE_DAYS) {
+            return 'By budget · Stock days';
+        }
+
+        if ($this->budget_mode === self::BUDGET_MODE_AMOUNT) {
+            return 'By budget · Amount (UGX)';
+        }
+
+        return 'By period (days)';
+    }
+
+    public function orderingTypeValueLabel(): string
+    {
+        if ($this->budget_mode === self::BUDGET_MODE_DAYS) {
+            return number_format((float) ($this->budget_value ?? 0), 0).' stock-days';
+        }
+
+        if ($this->budget_mode === self::BUDGET_MODE_AMOUNT) {
+            return 'UGX '.number_format((float) ($this->budget_value ?? 0), 0).' budget cap';
+        }
+
+        return number_format((float) ($this->period_of_order_days ?? 0), 0).' day period';
     }
 }

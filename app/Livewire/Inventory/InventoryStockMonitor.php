@@ -40,6 +40,15 @@ class InventoryStockMonitor extends Component
         }
     }
 
+    public function selectedStoreLabel(): ?string
+    {
+        if (! $this->storeId) {
+            return null;
+        }
+
+        return $this->storeOptions[(string) $this->storeId] ?? null;
+    }
+
     public function render(): View
     {
         $businessId = (int) Auth::user()->business_id;
@@ -68,6 +77,19 @@ class InventoryStockMonitor extends Component
             }
         }
 
+        if ($user->branch_id) {
+            $branchStoreId = Store::query()
+                ->forBusiness($businessId)
+                ->where('branch_id', $user->branch_id)
+                ->orderByRaw('CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END')
+                ->orderBy('name')
+                ->value('id');
+
+            if ($branchStoreId) {
+                return (int) $branchStoreId;
+            }
+        }
+
         $stockStoreId = InventoryStockLevel::query()
             ->where('business_id', $businessId)
             ->where(function ($query) {
@@ -82,10 +104,8 @@ class InventoryStockMonitor extends Component
             return (int) $stockStoreId;
         }
 
-        return Store::query()
-            ->forBusiness($businessId)
-            ->roots()
-            ->orderBy('name')
-            ->value('id');
+        $first = array_key_first($this->storeOptions);
+
+        return $first ? (int) $first : null;
     }
 }

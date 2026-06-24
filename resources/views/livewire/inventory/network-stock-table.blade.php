@@ -13,40 +13,10 @@
     @endif
 
     @if(! $storeId)
-        <p class="text-sm text-gray-500 py-8 text-center">Select a store to view network stock totals.</p>
-    @elseif(count($rows) === 0)
-        <p class="text-sm text-gray-500 py-8 text-center">No stock on hand in this store network.</p>
+        <p class="text-sm text-gray-500 py-12 text-center border border-dashed border-gray-200 rounded-lg">
+            Select a store to view network stock totals.
+        </p>
     @else
-        <div class="overflow-x-auto border border-gray-200 rounded-lg">
-            <table class="min-w-full divide-y divide-gray-200 text-sm">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="px-4 py-3 text-left font-medium text-gray-600">Item</th>
-                        <th class="px-4 py-3 text-right font-medium text-gray-600">Stores</th>
-                        <th class="px-4 py-3 text-right font-medium text-gray-600">System</th>
-                        <th class="px-4 py-3 text-right font-medium text-gray-600">Physical</th>
-                        <th class="px-4 py-3 text-right font-medium text-gray-600">Usable</th>
-                        <th class="px-4 py-3 text-right font-medium text-gray-600">Damaged</th>
-                        <th class="px-4 py-3 text-right font-medium text-gray-600">Expired</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100 bg-white">
-                    @foreach($rows as $row)
-                        <tr>
-                            <td class="px-4 py-3">
-                                <div class="font-medium text-gray-900">{{ $row['item']->name ?? '—' }}</div>
-                                <div class="text-xs text-gray-500">{{ $row['item']->code ?? '' }}</div>
-                            </td>
-                            <td class="px-4 py-3 text-right tabular-nums">{{ $row['store_count'] }}</td>
-                            <td class="px-4 py-3 text-right tabular-nums">{{ number_format($row['system_quantity_suom'], 0) }}</td>
-                            <td class="px-4 py-3 text-right tabular-nums">{{ $row['physical_quantity_suom'] !== null ? number_format($row['physical_quantity_suom'], 0) : '—' }}</td>
-                            <td class="px-4 py-3 text-right tabular-nums">{{ number_format($row['usable_quantity_suom'], 0) }}</td>
-                            <td class="px-4 py-3 text-right tabular-nums text-amber-700">{{ number_format($row['damaged_quantity_suom'], 0) }}</td>
-                            <td class="px-4 py-3 text-right tabular-nums text-amber-700">{{ number_format($row['expired_quantity_suom'], 0) }}</td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </div>
+        {{ $this->table }}
     @endif
 </div>

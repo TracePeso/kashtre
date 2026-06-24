@@ -11,7 +11,7 @@
     };
 @endphp
 <div class="min-h-screen bg-gray-50 py-6">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8">
         <div class="md:flex md:items-start md:justify-between gap-4">
             <div class="flex-1 min-w-0">
                 <a href="{{ route('inventory.orders.index') }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to order goods</a>
@@ -20,16 +20,17 @@
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $statusColors }}">
                         {{ $order->statusLabel() }}
                     </span>
+                    <span @class([
+                        'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+                        'bg-blue-100 text-blue-800' => ! $order->budget_mode,
+                        'bg-violet-100 text-violet-800' => $order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_DAYS,
+                        'bg-emerald-100 text-emerald-800' => $order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT,
+                    ])>
+                        {{ $order->orderingTypeLabel() }}
+                    </span>
                 </div>
                 <p class="mt-1 text-sm text-gray-500">
-                    {{ $order->store->selectLabel() }} · {{ $order->orderingMethodLabel() }}
-                    @if(!$order->budget_mode)
-                        · {{ $order->period_of_order_days ?? '—' }} day period
-                    @elseif($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_DAYS)
-                        · {{ number_format((float) ($order->budget_value ?? 0), 2) }} stock-days budget
-                    @elseif($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT)
-                        · UGX {{ number_format((float) ($order->budget_value ?? 0), 2) }} cap
-                    @endif
+                    {{ $order->store->selectLabel() }} · {{ $order->orderingTypeValueLabel() }}
                 </p>
             </div>
             @if($order->isDraft())
@@ -37,7 +38,7 @@
                     <form action="{{ route('inventory.orders.regenerate', $order) }}" method="POST">
                         @csrf
                         <button type="submit" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                            Refresh lines
+                            Refresh items
                         </button>
                     </form>
                     <form id="inventory-order-submit-form" action="{{ route('inventory.orders.submit', $order) }}" method="POST">
@@ -81,7 +82,7 @@
 
         @if($order->isDraft())
             <div class="mt-4 bg-slate-50 border border-slate-200 text-slate-800 px-4 py-3 rounded text-sm">
-                <strong>Draft order.</strong> Review lines below, then <strong>Submit for approval</strong>. Receiving goods is only available after approvers sign off.
+                <strong>Draft order.</strong> Review items below, then <strong>Submit for approval</strong>. Receiving goods is only available after approvers sign off.
             </div>
         @endif
 
@@ -105,52 +106,151 @@
 
         @if(!empty($emptyOrderReason))
             <div class="mt-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded text-sm">
-                <strong>No order lines were generated.</strong> {{ $emptyOrderReason }}
+                <strong>No order items were generated.</strong> {{ $emptyOrderReason }}
             </div>
         @endif
 
-        <div class="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-2 space-y-6 min-w-0">
-                @if($order->notes)
-                    <div class="bg-white shadow sm:rounded-lg p-4 text-sm text-gray-600">
-                        <strong class="text-gray-900">Notes:</strong> {{ $order->notes }}
-                    </div>
-                @endif
+        @php
+            $importanceLabel = $order->importance_filter
+                ? (\App\Models\Item::importanceOptions()[$order->importance_filter] ?? $order->importance_filter)
+                : 'All items';
+            $scopeParts = array_filter([
+                $importanceLabel !== 'All items' ? $importanceLabel : null,
+                $order->group?->name,
+                $order->subgroup?->name,
+                ! empty($order->item_ids) ? count($order->item_ids).' selected items' : null,
+            ]);
+            $orderTotal = $order->orderTotal();
+            $budgetCap = (float) ($order->budget_value ?? 0);
+            $budgetUsedPct = $order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT && $budgetCap > 0
+                ? min(100, round(($orderTotal / $budgetCap) * 100, 1))
+                : null;
+        @endphp
 
-                <div class="bg-white shadow sm:rounded-lg p-4">
-                    <h3 class="text-sm font-semibold text-gray-900">Order settings</h3>
-                    <dl class="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-                        <div>
-                            <dt class="text-xs text-gray-500">Ordering method</dt>
-                            <dd class="font-medium text-gray-900">{{ $order->orderingMethodLabel() }}</dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs text-gray-500">Order period</dt>
-                            <dd class="font-medium text-gray-900">{{ number_format((float) ($order->period_of_order_days ?? 0), 2) }} days</dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs text-gray-500">Safety / buffer</dt>
-                            <dd class="font-medium text-gray-900">{{ number_format((float) ($order->safety_stock_days ?? 0), 0) }} / {{ number_format((float) ($order->buffer_stock_days ?? 0), 0) }} days</dd>
-                        </div>
-                    </dl>
+        <div class="mt-6 bg-white shadow sm:rounded-lg overflow-hidden">
+            <div class="px-4 py-3 sm:px-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-sm font-semibold text-gray-900">Order summary</h3>
+                <p class="text-xs text-gray-500">
+                    {{ $order->lines->count() }} item(s) · Order total
+                    <span class="font-semibold text-gray-900">UGX {{ number_format($orderTotal, 2) }}</span>
+                    @if($budgetUsedPct !== null)
+                        <span class="text-gray-400">·</span>
+                        <span @class([
+                            'font-medium',
+                            'text-emerald-700' => $budgetUsedPct < 90,
+                            'text-amber-700' => $budgetUsedPct >= 90 && $budgetUsedPct < 100,
+                            'text-red-700' => $budgetUsedPct >= 100,
+                        ])>{{ $budgetUsedPct }}% of cap</span>
+                    @endif
+                </p>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
+                <div class="px-4 py-3 sm:px-5">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Order type</p>
+                    <p class="mt-1 text-sm font-semibold text-gray-900">{{ $order->orderingTypeLabel() }}</p>
+                    <p class="text-xs text-gray-500 mt-0.5">{{ $order->orderingTypeValueLabel() }}</p>
                 </div>
-
-                <div class="bg-white shadow sm:rounded-lg p-4 sm:p-6 min-w-0 overflow-hidden">
-                    <div class="mb-4">
-                        <h3 class="text-sm font-semibold text-gray-900">Order lines</h3>
-                        <p class="text-xs text-gray-500 mt-0.5">
-                            @if($order->isDraft())
-                                Use search and filters to find items. Paginated for large orders.
-                            @else
-                                Ordered vs received (SUOM). Received totals update when linked GRNs are approved.
-                            @endif
-                        </p>
-                    </div>
-                    @livewire('inventory.edit-inventory-order-lines', ['order' => $order], key('order-'.$order->id))
+                <div class="px-4 py-3 sm:px-5">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Order period</p>
+                    <p class="mt-1 text-sm font-semibold text-gray-900 tabular-nums">{{ number_format((float) ($order->period_of_order_days ?? 0), 0) }} days</p>
+                    <p class="text-xs text-gray-500 mt-0.5">
+                        @if($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT)
+                            Before amount cap
+                        @elseif($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_DAYS)
+                            Reference period
+                        @else
+                            Drives suggested qty
+                        @endif
+                    </p>
+                </div>
+                <div class="px-4 py-3 sm:px-5">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Budget</p>
+                    <p class="mt-1 text-sm font-semibold text-gray-900 tabular-nums">
+                        @if($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_DAYS)
+                            {{ number_format($budgetCap, 0) }} days
+                        @elseif($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT)
+                            UGX {{ number_format($budgetCap, 0) }}
+                        @else
+                            —
+                        @endif
+                    </p>
+                    <p class="text-xs text-gray-500 mt-0.5">
+                        @if($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT)
+                            UGX {{ number_format($orderTotal, 0) }} of cap
+                        @elseif($order->budget_mode)
+                            Applied at generation
+                        @else
+                            Period-based order
+                        @endif
+                    </p>
+                    @if($budgetUsedPct !== null)
+                        <div class="mt-2 h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                            <div @class([
+                                'h-full rounded-full',
+                                'bg-emerald-500' => $budgetUsedPct < 90,
+                                'bg-amber-500' => $budgetUsedPct >= 90 && $budgetUsedPct < 100,
+                                'bg-red-500' => $budgetUsedPct >= 100,
+                            ]) style="width: {{ $budgetUsedPct }}%"></div>
+                        </div>
+                    @endif
+                </div>
+                <div class="px-4 py-3 sm:px-5">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Safety / buffer</p>
+                    <p class="mt-1 text-sm font-semibold text-gray-900 tabular-nums">
+                        {{ number_format((float) ($order->safety_stock_days ?? 0), 0) }}
+                        <span class="text-gray-400 font-normal">/</span>
+                        {{ number_format((float) ($order->buffer_stock_days ?? 0), 0) }} days
+                    </p>
+                    <p class="text-xs text-gray-500 mt-0.5">Notify {{ number_format((float) ($order->notification_to_order_days ?? 0), 0) }} days ahead</p>
+                </div>
+                <div class="px-4 py-3 sm:px-5">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Peak period</p>
+                    <p class="mt-1 text-sm font-semibold text-gray-900 tabular-nums">
+                        {{ number_format((float) ($order->peak_period_percent ?? 0), 0) }}%
+                    </p>
+                    <p class="text-xs text-gray-500 mt-0.5">{{ $order->moving_average_days }}-day consumption rate</p>
+                </div>
+                <div class="px-4 py-3 sm:px-5">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Item scope</p>
+                    <p class="mt-1 text-sm font-semibold text-gray-900">{{ $importanceLabel }}</p>
+                    <p class="text-xs text-gray-500 mt-0.5 truncate" title="{{ implode(' · ', $scopeParts) ?: 'All stocked items at store' }}">
+                        {{ $scopeParts !== [] ? implode(' · ', $scopeParts) : 'All stocked items at store' }}
+                    </p>
                 </div>
             </div>
 
-            <div class="space-y-6 lg:sticky lg:top-6 lg:self-start">
+            @if($order->notes)
+                <div class="px-4 py-3 sm:px-6 border-t border-gray-100 bg-gray-50/80">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Notes</p>
+                    <p class="mt-1 text-sm text-gray-800 whitespace-pre-wrap">{{ $order->notes }}</p>
+                </div>
+            @endif
+        </div>
+
+        <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6 w-full min-w-0">
+            <div class="mb-4">
+                <h3 class="text-sm font-semibold text-gray-900">Order items</h3>
+                <p class="text-xs text-gray-500 mt-0.5">
+                    @if($order->isDraft())
+                        Use search and filters to find items. Paginated for large orders.
+                    @else
+                        Ordered vs received (SUOM). Received totals update when linked GRNs are approved.
+                    @endif
+                </p>
+            </div>
+            @livewire('inventory.edit-inventory-order-lines', ['order' => $order], key('order-'.$order->id))
+        </div>
+
+        @php
+            $hasSidebar = (! $order->isDraft() && $order->approvals->isNotEmpty())
+                || $canApprove
+                || $order->goodsReceivedNotes->isNotEmpty()
+                || $order->isFulfilled();
+        @endphp
+
+        @if($hasSidebar)
+            <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
                 @if(!$order->isDraft())
                 <div class="bg-white shadow sm:rounded-lg p-6">
                     <h3 class="text-sm font-semibold text-gray-900 mb-4">Order approval</h3>
@@ -212,12 +312,12 @@
 
                 @if($order->isFulfilled())
                     <div class="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-800">
-                        All order lines have been fully received and posted to stock.
+                        All order items have been fully received and posted to stock.
                         <a href="{{ route('inventory.monitor') }}" class="underline font-medium block mt-1">View Monitor Stock</a>
                     </div>
                 @endif
             </div>
-        </div>
+        @endif
     </div>
 
     @if($order->isDraft())

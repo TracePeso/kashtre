@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Group;
 use App\Models\InventoryModuleConfig;
 use App\Models\InventoryOrder;
+use App\Models\Item;
 use App\Models\Store;
 use App\Models\SubGroup;
 use App\Services\Inventory\InventoryOrderApprovalService;
@@ -12,6 +13,7 @@ use App\Services\Inventory\InventoryOrderFulfillmentService;
 use App\Services\Inventory\InventoryOrderService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
 
 class InventoryOrderController extends Controller
 {
@@ -40,6 +42,11 @@ class InventoryOrderController extends Controller
 
         return view('inventory.orders.create', [
             'stores' => Store::optionsForSelect($businessId),
+            'items' => Item::query()
+                ->where('business_id', $businessId)
+                ->where('type', 'good')
+                ->orderBy('name')
+                ->get(['id', 'name', 'code', 'importance_category', 'group_id', 'subgroup_id']),
             'importanceOptions' => \App\Models\Item::importanceOptions(),
             'groupOptions' => Group::query()
                 ->where('business_id', $businessId)
@@ -68,7 +75,11 @@ class InventoryOrderController extends Controller
             'notification_to_order_days' => 'nullable|numeric|min:0',
             'peak_period_percent' => 'nullable|numeric|min:0|max:100',
             'notes' => 'nullable|string|max:2000',
+            'item_ids' => 'nullable|array',
+            'item_ids.*' => 'integer|exists:items,id',
         ]);
+
+        $this->validateOrderBudget($request, $validated);
 
         $businessId = (int) Auth::user()->business_id;
 
@@ -91,6 +102,22 @@ class InventoryOrderController extends Controller
                 ->firstOrFail();
         }
 
+        $itemIds = $validated['item_ids'] ?? null;
+
+        if ($itemIds !== null && $itemIds !== []) {
+            $validItemCount = Item::query()
+                ->where('business_id', $businessId)
+                ->where('type', 'good')
+                ->whereIn('id', $itemIds)
+                ->count();
+
+            if ($validItemCount !== count(array_unique($itemIds))) {
+                return back()
+                    ->withInput()
+                    ->withErrors(['item_ids' => 'One or more selected items are invalid for your organisation.']);
+            }
+        }
+
         $order = $this->service->createDraft(
             $businessId,
             (int) $validated['store_id'],
@@ -98,14 +125,15 @@ class InventoryOrderController extends Controller
             $validated['importance_filter'] ?? null,
             $validated['budget_mode'] ?? null,
             isset($validated['budget_value']) ? (float) $validated['budget_value'] : null,
-            isset($validated['period_of_order_days']) ? (float) $validated['period_of_order_days'] : null,
+            isset($validated['period_of_order_days']) ? (int) $validated['period_of_order_days'] : null,
             $validated['notes'] ?? null,
             isset($validated['group_id']) ? (int) $validated['group_id'] : null,
             isset($validated['subgroup_id']) ? (int) $validated['subgroup_id'] : null,
             isset($validated['peak_period_percent']) ? (float) $validated['peak_period_percent'] : null,
-            isset($validated['safety_stock_days']) ? (float) $validated['safety_stock_days'] : null,
-            isset($validated['buffer_stock_days']) ? (float) $validated['buffer_stock_days'] : null,
-            isset($validated['notification_to_order_days']) ? (float) $validated['notification_to_order_days'] : null,
+            isset($validated['safety_stock_days']) ? (int) $validated['safety_stock_days'] : null,
+            isset($validated['buffer_stock_days']) ? (int) $validated['buffer_stock_days'] : null,
+            isset($validated['notification_to_order_days']) ? (int) $validated['notification_to_order_days'] : null,
+            $itemIds,
         );
 
         $redirect = redirect()->route('inventory.orders.show', $order);
@@ -264,7 +292,7 @@ class InventoryOrderController extends Controller
             return $redirect->with('warning', $this->service->explainEmptyOrder($order));
         }
 
-        return $redirect->with('success', 'Order lines refreshed from current stock and consumption.');
+        return $redirect->with('success', 'Order items refreshed from current stock and consumption.');
     }
 
     private function authorizeOrder(InventoryOrder $order): void
@@ -272,6 +300,41 @@ class InventoryOrderController extends Controller
         if ((int) $order->business_id !== (int) Auth::user()->business_id) {
             abort(403);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function validateOrderBudget(Request $request, array $validated): void
+    {
+        $mode = $validated['budget_mode'] ?? null;
+        $value = isset($validated['budget_value']) ? (float) $validated['budget_value'] : null;
+
+        if (! $mode || $value === null) {
+            return;
+        }
+
+        Validator::make(
+            ['budget_value' => $value],
+            [
+                'budget_value' => match ($mode) {
+                    InventoryOrder::BUDGET_MODE_DAYS => [
+                        'integer',
+                        'min:1',
+                        'max:366',
+                    ],
+                    InventoryOrder::BUDGET_MODE_AMOUNT => [
+                        'numeric',
+                        'min:1',
+                    ],
+                    default => ['numeric', 'min:0'],
+                },
+            ],
+            [
+                'budget_value.max' => 'Stock-days budget cannot exceed 366 days. Switch to Amount (UGX) if you meant a money cap.',
+                'budget_value.integer' => 'Stock-days budget must be a whole number of days.',
+            ]
+        )->validate();
     }
 
     private function inventoryMiddleware($request, $next)
