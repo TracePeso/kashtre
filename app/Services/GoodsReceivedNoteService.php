@@ -9,7 +9,7 @@ use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
 use App\Models\InventoryStockMovement;
 use App\Models\User;
-use App\Services\Inventory\InventoryOrderFulfillmentService;
+use App\Services\Inventory\InventoryPurchaseOrderFulfillmentService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -286,8 +286,8 @@ class GoodsReceivedNoteService
 
         $this->applyStockIfNeeded($grn->fresh());
 
-        if ($grn->inventory_order_id) {
-            app(InventoryOrderFulfillmentService::class)->applyGrnReceipt($grn->fresh(['lines', 'inventoryOrder.lines']));
+        if ($grn->inventory_order_id || $grn->inventory_purchase_order_id) {
+            app(InventoryPurchaseOrderFulfillmentService::class)->applyGrnReceipt($grn->fresh(['lines', 'inventoryOrder.lines', 'purchaseOrder.lines']));
         }
     }
 

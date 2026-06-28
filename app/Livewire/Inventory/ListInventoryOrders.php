@@ -3,6 +3,7 @@
 namespace App\Livewire\Inventory;
 
 use App\Models\InventoryOrder;
+use App\Models\ItemImportanceCategory;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Tables\Actions\Action;
@@ -45,6 +46,7 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
                         InventoryOrder::STATUS_DRAFT => 'warning',
                         InventoryOrder::STATUS_PENDING_APPROVAL => 'warning',
                         InventoryOrder::STATUS_APPROVED => 'info',
+                        InventoryOrder::STATUS_PO_ISSUED => 'primary',
                         InventoryOrder::STATUS_PARTIALLY_RECEIVED => 'primary',
                         InventoryOrder::STATUS_FULFILLED => 'success',
                         InventoryOrder::STATUS_REJECTED => 'danger',
@@ -53,11 +55,9 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
 
                 TextColumn::make('importance_filter')
                     ->label('Importance')
-                    ->formatStateUsing(fn (?string $state): string => match ($state) {
-                        'essential' => 'Essential',
-                        'non_essential' => 'Non-essential',
-                        default => 'All',
-                    }),
+                    ->formatStateUsing(fn (?string $state, InventoryOrder $record): string => $state
+                        ? (ItemImportanceCategory::labelForSlug((int) $record->business_id, $state) ?? $state)
+                        : 'All'),
 
                 TextColumn::make('group.name')
                     ->label('Group')

@@ -6,6 +6,7 @@ use App\Livewire\Admins;
 use App\Livewire\AuditLogs;
 use App\Livewire\Departments\ListDepartments;
 use App\Livewire\Groups\ListGroups;
+use App\Livewire\ItemImportanceCategories\ListItemImportanceCategories;
 use App\Livewire\ItemUnits\ListItemUnits;
 use App\Livewire\Items\CompositeItems;
 use App\Livewire\Items\SimpleItems;
@@ -35,6 +36,7 @@ class LivewireServiceProvider extends ServiceProvider
         'transactions.transactions' => Transactions::class,
         'suppliers.list-suppliers' => ListSuppliers::class,
         'stores.list-stores' => ListStores::class,
+        'item-importance-categories.list-item-importance-categories' => ListItemImportanceCategories::class,
         'item-units.list-item-units' => ListItemUnits::class,
         'departments.list-departments' => ListDepartments::class,
         'groups.list-groups' => ListGroups::class,
@@ -53,6 +55,7 @@ class LivewireServiceProvider extends ServiceProvider
      * @var array<string, class-string>
      */
     protected array $legacyAliases = [
+        'itemImportanceCategories.list-item-importance-categories' => ListItemImportanceCategories::class,
         'itemUnits.list-item-units' => ListItemUnits::class,
         'suppliers.list-suppliers' => ListSuppliers::class,
         'stores.list-stores' => ListStores::class,

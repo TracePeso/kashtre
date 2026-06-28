@@ -14,23 +14,31 @@
     @js($prefillLines ?? []),
     @js($prefillStoreId),
     @js($prefillSupplierId),
-    @js(old('inventory_order_id', $inventoryOrder?->id))
-)">
+    @js(old('inventory_order_id', $inventoryOrder?->id)),
+    @js(old('inventory_purchase_order_id', $purchaseOrder?->id)),
+    @js((int) auth()->user()->business_id),
+    @js(is_array(old('lines')) && count(old('lines')) > 0),
+    @js(old('date_of_order', now()->toDateString())),
+    @js(old('date_of_delivery', now()->toDateString()))
+)" x-init="initDraftPersistence()">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="mb-6">
-            <a href="{{ route('inventory.receive') }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to Receive Goods</a>
+            <a href="{{ route('inventory.receive') }}" @click.prevent="cancelForm()"
+               class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to Receive Goods</a>
         </div>
 
         <div class="md:flex md:items-center md:justify-between mb-6">
             <div>
                 <h2 class="text-2xl font-bold text-gray-900">New Goods Received Note</h2>
-                <p class="mt-1 text-sm text-gray-500">
-                    @if(!empty($inventoryOrder))
-                        Receiving against order <strong>{{ $inventoryOrder->order_number }}</strong>.
-                    @else
-                        Record incoming goods from a supplier.
-                    @endif
-                </p>
+                @if(!empty($inventoryOrder))
+                    <p class="mt-1 text-sm text-gray-500">
+                        Receiving against RFQ <strong>{{ $inventoryOrder->order_number }}</strong>
+                        @if(!empty($purchaseOrder))
+                            · LPO <strong>{{ $purchaseOrder->po_number }}</strong>
+                        @endif
+                        .
+                    </p>
+                @endif
             </div>
             @if(empty($inventoryOrder))
                 <a href="{{ route('inventory.receive.bulk-upload') }}" class="mt-4 md:mt-0 text-sm text-blue-600 hover:text-blue-800">
@@ -58,12 +66,24 @@
             </div>
         @endif
 
+        <div x-show="draftRestored" x-cloak class="mt-4 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm flex flex-wrap items-center justify-between gap-3">
+            <p>
+                <strong>Draft restored.</strong> Your unsaved entries were recovered from this browser.
+                Re-attach the delivery note file if you had selected one.
+            </p>
+            <button type="button" @click="discardSavedDraft()"
+                    class="shrink-0 text-sm font-medium text-blue-800 hover:text-blue-950 underline">
+                Clear saved draft
+            </button>
+        </div>
+
         <form method="POST" action="{{ route('inventory.receive.store') }}" enctype="multipart/form-data" class="mt-6 space-y-6" novalidate @submit="handleFormSubmit($event)">
             @csrf
             <input type="hidden" name="inventory_order_id" :value="inventoryOrderId ?? ''">
+            <input type="hidden" name="inventory_purchase_order_id" value="{{ old('inventory_purchase_order_id', $purchaseOrder?->id) }}">
 
             <div class="bg-white shadow sm:rounded-lg p-6 space-y-5">
-                <h3 class="text-lg font-medium text-gray-900 border-b border-gray-200 pb-3">Delivery note header</h3>
+                <h3 class="text-lg font-medium text-gray-900 border-b border-gray-200 pb-3">Goods Received Note header</h3>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
@@ -78,7 +98,8 @@
                     </div>
                     <div>
                         <label for="store_id" class="block text-sm font-medium text-gray-700">Receiving store <span class="text-red-500">*</span></label>
-                        <select name="store_id" id="store_id" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                        <select name="store_id" id="store_id" required x-model="storeId"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
                             <option value="">— Select store —</option>
                             @foreach($stores as $store)
                                 <option value="{{ $store->id }}" @selected(old('store_id', $prefillStoreId ?? null) == $store->id)>{{ $store->selectLabel() }}</option>
@@ -87,14 +108,12 @@
                     </div>
                     <div>
                         <label for="date_of_order" class="block text-sm font-medium text-gray-700">Date of order <span class="text-red-500">*</span></label>
-                        <input type="date" name="date_of_order" id="date_of_order" required
-                               value="{{ old('date_of_order', now()->toDateString()) }}"
+                        <input type="date" name="date_of_order" id="date_of_order" required x-model="dateOfOrder"
                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
                     </div>
                     <div>
                         <label for="date_of_delivery" class="block text-sm font-medium text-gray-700">Date of delivery <span class="text-red-500">*</span></label>
-                        <input type="date" name="date_of_delivery" id="date_of_delivery" required
-                               value="{{ old('date_of_delivery', now()->toDateString()) }}"
+                        <input type="date" name="date_of_delivery" id="date_of_delivery" required x-model="dateOfDelivery"
                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
                     </div>
                     <div>
@@ -196,7 +215,8 @@
                         </table>
                     </div>
                     <div class="px-4 py-3 border-t border-blue-200/80 bg-white/80 flex flex-wrap justify-end gap-3">
-                        <a href="{{ route('inventory.receive') }}" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</a>
+                        <button type="button" @click="cancelForm()"
+                                class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
                         <button type="submit" name="action" value="draft" @disabled($itemUnits->isEmpty())
                                 class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
                             Save draft
@@ -311,7 +331,8 @@
                 </template>
 
                 <div x-show="lines.length === 0" x-cloak class="mt-4 flex flex-wrap justify-end gap-3">
-                    <a href="{{ route('inventory.receive') }}" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</a>
+                    <button type="button" @click="cancelForm()"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
                     <button type="submit" name="action" value="draft" @disabled($itemUnits->isEmpty())
                             class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
                         Save draft
@@ -327,7 +348,7 @@
 </div>
 
 <script>
-function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillStoreId, prefillSupplierId, inventoryOrderId) {
+function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillStoreId, prefillSupplierId, inventoryOrderId, businessId, hasServerOldState, defaultDateOfOrder, defaultDateOfDelivery) {
     const blankLine = () => ({
         item_id: '', inventory_order_line_id: '', suom: '', duom: '', item_suom: '', quantity: 1, batch_number: '', expiry_date: '',
         purchase_price: 0, conversion: 1,
@@ -350,17 +371,135 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
         ? prefillLines.map(mapPrefill)
         : [];
 
+    const draftStorageKey = () => {
+        const orderKey = inventoryOrderId ? String(inventoryOrderId) : 'standalone';
+        return `kashtre:grn-create-draft:${businessId}:${orderKey}`;
+    };
+
     return {
         itemUnits,
         items,
         supplierItemIds: supplierItemIds || {},
         supplierId: prefillSupplierId ? String(prefillSupplierId) : '',
+        storeId: prefillStoreId ? String(prefillStoreId) : '',
+        dateOfOrder: defaultDateOfOrder || '',
+        dateOfDelivery: defaultDateOfDelivery || '',
         inventoryOrderId: inventoryOrderId || null,
         deliveryNoteName: '',
         lines: initialLines,
         draftLine: blankLine(),
         editingIndex: null,
         draftError: '',
+        draftRestored: false,
+        _persistTimer: null,
+        _draftAbandoned: false,
+        initDraftPersistence() {
+            if (hasServerOldState) {
+                this.schedulePersist();
+                return;
+            }
+
+            const saved = this.loadDraft();
+            if (saved && this.hasDraftContent(saved)) {
+                this.applyDraft(saved);
+                this.draftRestored = true;
+            }
+
+            this.$watch('supplierId', () => this.schedulePersist());
+            this.$watch('storeId', () => this.schedulePersist());
+            this.$watch('dateOfOrder', () => this.schedulePersist());
+            this.$watch('dateOfDelivery', () => this.schedulePersist());
+            this.$watch('lines', () => this.schedulePersist(), { deep: true });
+            this.$watch('draftLine', () => this.schedulePersist(), { deep: true });
+            this.$watch('editingIndex', () => this.schedulePersist());
+
+            window.addEventListener('beforeunload', () => this.persistDraft());
+        },
+        hasDraftContent(saved) {
+            return (saved.lines && saved.lines.length > 0)
+                || saved.supplierId
+                || saved.storeId
+                || saved.draftLine?.item_id;
+        },
+        draftSnapshot() {
+            return {
+                supplierId: this.supplierId,
+                storeId: this.storeId,
+                dateOfOrder: this.dateOfOrder,
+                dateOfDelivery: this.dateOfDelivery,
+                inventoryOrderId: this.inventoryOrderId,
+                lines: this.lines.map(line => ({ ...line })),
+                draftLine: { ...this.draftLine },
+                editingIndex: this.editingIndex,
+                savedAt: new Date().toISOString(),
+            };
+        },
+        schedulePersist() {
+            clearTimeout(this._persistTimer);
+            this._persistTimer = setTimeout(() => this.persistDraft(), 350);
+        },
+        persistDraft() {
+            if (this._draftAbandoned) {
+                return;
+            }
+
+            if (! this.hasDraftContent(this.draftSnapshot())) {
+                this.clearDraft();
+                return;
+            }
+
+            try {
+                localStorage.setItem(draftStorageKey(), JSON.stringify(this.draftSnapshot()));
+            } catch (error) {
+                // localStorage unavailable or quota exceeded
+            }
+        },
+        loadDraft() {
+            try {
+                const raw = localStorage.getItem(draftStorageKey());
+                return raw ? JSON.parse(raw) : null;
+            } catch (error) {
+                return null;
+            }
+        },
+        applyDraft(saved) {
+            this.supplierId = saved.supplierId ? String(saved.supplierId) : '';
+            this.storeId = saved.storeId ? String(saved.storeId) : '';
+            this.dateOfOrder = saved.dateOfOrder || this.dateOfOrder;
+            this.dateOfDelivery = saved.dateOfDelivery || this.dateOfDelivery;
+
+            if (Array.isArray(saved.lines) && saved.lines.length > 0) {
+                this.lines = saved.lines.map(line => ({ ...blankLine(), ...line, item_id: String(line.item_id || '') }));
+            }
+
+            if (saved.draftLine) {
+                this.draftLine = { ...blankLine(), ...saved.draftLine, item_id: String(saved.draftLine.item_id || '') };
+            }
+
+            if (saved.editingIndex !== null && saved.editingIndex !== undefined) {
+                this.editingIndex = saved.editingIndex;
+            }
+        },
+        clearDraft() {
+            try {
+                localStorage.removeItem(draftStorageKey());
+            } catch (error) {
+                // ignore
+            }
+        },
+        discardSavedDraft() {
+            if (! confirm('Clear the saved draft and reset this form?')) {
+                return;
+            }
+
+            this.clearDraft();
+            window.location.reload();
+        },
+        cancelForm() {
+            this._draftAbandoned = true;
+            this.clearDraft();
+            window.location.href = @js(route('inventory.receive'));
+        },
         cloneLine(line) {
             return { ...line };
         },
@@ -386,6 +525,7 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             if (this.draftLine.item_id && !allowed.includes(String(this.draftLine.item_id))) {
                 this.resetDraft();
             }
+            this.schedulePersist();
         },
         isItemTaken(itemId) {
             const id = String(itemId);
@@ -473,6 +613,7 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             }
 
             this.resetDraft();
+            this.schedulePersist();
             this.$nextTick(() => this.$refs.draftForm?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
         },
         editLine(index) {
@@ -493,6 +634,7 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             }
 
             this.lines.splice(index, 1);
+            this.schedulePersist();
         },
         cancelEdit() {
             this.resetDraft();
@@ -502,7 +644,11 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
                 event.preventDefault();
                 this.draftError = 'Add at least one item before submitting.';
                 this.$refs.draftForm?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return;
             }
+
+            this._draftAbandoned = true;
+            this.clearDraft();
         },
         saleUnits(line) {
             const q = parseFloat(line.quantity) || 0;

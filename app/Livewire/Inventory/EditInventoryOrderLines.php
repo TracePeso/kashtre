@@ -8,7 +8,9 @@ use App\Models\InventoryOrder;
 use App\Models\InventoryOrderLine;
 use App\Models\InventoryStockLevel;
 use App\Models\Item;
+use App\Models\ItemImportanceCategory;
 use App\Models\SubGroup;
+use App\Models\Supplier;
 use App\Services\Inventory\InventoryOrderService;
 use App\Services\Inventory\InventoryStockAnalyticsService;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -34,6 +36,15 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
 
     public InventoryOrder $order;
 
+    public bool $budgetCapEnforced = true;
+
+    public bool $showBudgetCapNotice = false;
+
+    public ?int $supplierId = null;
+
+    /** @var array<int, string> */
+    public array $supplierOptions = [];
+
     /** @var Collection<int, InventoryStockLevel>|null */
     private ?Collection $stockByItemId = null;
 
@@ -46,6 +57,13 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
         }
 
         $this->order = $order;
+        $this->budgetCapEnforced = (bool) ($order->budget_cap_enforced ?? true);
+        $this->supplierId = $order->supplier_id ? (int) $order->supplier_id : null;
+        $this->supplierOptions = Supplier::query()
+            ->where('business_id', (int) $order->business_id)
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->all();
         $this->orderModuleConfig = InventoryModuleConfig::query()
             ->forBusiness((int) $order->business_id)
             ->active()
@@ -90,22 +108,9 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
 
             TextColumn::make('item.importance_category')
                 ->label('Importance')
-                ->formatStateUsing(fn (?string $state): string => match ($state) {
-                    Item::IMPORTANCE_ESSENTIAL => 'Essential',
-                    Item::IMPORTANCE_NON_ESSENTIAL => 'Non-essential',
-                    default => '—',
-                })
+                ->formatStateUsing(fn (?string $state): string => ItemImportanceCategory::labelForSlug((int) $this->order->business_id, $state) ?? '—')
                 ->badge()
-                ->color(fn (?string $state): string => match ($state) {
-                    Item::IMPORTANCE_ESSENTIAL => 'success',
-                    Item::IMPORTANCE_NON_ESSENTIAL => 'gray',
-                    default => 'warning',
-                })
-                ->toggleable(isToggledHiddenByDefault: true),
-
-            TextColumn::make('supplier.name')
-                ->label('Supplier')
-                ->placeholder('—')
+                ->color('primary')
                 ->toggleable(isToggledHiddenByDefault: true),
 
             TextColumn::make('suggested_quantity_suom')
@@ -126,18 +131,17 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
                         return $state;
                     }
 
-                    $qty = (float) ($state ?? 0);
-                    $ouom = null;
-                    $item = $record->item;
-
-                    if ($item && $item->suom_per_ouom && (float) $item->suom_per_ouom > 0) {
-                        $ouom = round($qty / (float) $item->suom_per_ouom, 4);
-                    }
-
-                    $service->updateLine($record, $qty, $ouom);
+                    $requestedQty = (float) ($state ?? 0);
+                    $updated = $service->updateLine($record, $requestedQty);
                     $this->order->refresh();
 
-                    return $state;
+                    $actualQty = (float) $updated->order_quantity_suom;
+
+                    if ($this->order->enforcesBudgetCap() && $actualQty < $requestedQty) {
+                        $this->showBudgetCapNotice = true;
+                    }
+
+                    return $actualQty;
                 }),
         ];
 
@@ -153,8 +157,14 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
                         return $state;
                     }
 
-                    $service->updateLinePeakIncrease($record, (float) ($state ?? 0));
+                    $requestedIncrease = (float) ($state ?? 0);
+                    $beforeQty = (float) $record->order_quantity_suom;
+                    $updated = $service->updateLinePeakIncrease($record, $requestedIncrease);
                     $this->order->refresh();
+
+                    if ($this->order->enforcesBudgetCap() && (float) $updated->order_quantity_suom < $beforeQty) {
+                        $this->showBudgetCapNotice = true;
+                    }
 
                     return $state;
                 });
@@ -214,7 +224,7 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
             ->filters([
                 SelectFilter::make('importance')
                     ->label('Importance')
-                    ->options(Item::importanceOptions())
+                    ->options(Item::importanceOptions((int) $this->order->business_id))
                     ->query(fn (Builder $query, array $data): Builder => $data['value']
                         ? $query->whereHas('item', fn (Builder $q) => $q->where('importance_category', $data['value']))
                         : $query),
@@ -251,6 +261,42 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
     public function getTableRecordKey(Model $record): string
     {
         return (string) $record->getKey();
+    }
+
+    public function updatedSupplierId($value): void
+    {
+        if (! $this->order->isDraft() || ! filled($value)) {
+            return;
+        }
+
+        try {
+            $this->order = app(InventoryOrderService::class)->setOrderSupplier(
+                $this->order,
+                (int) $value
+            );
+            $this->supplierId = (int) $this->order->supplier_id;
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->addError('supplierId', collect($e->errors())->flatten()->first() ?? 'Invalid supplier.');
+            $this->supplierId = $this->order->supplier_id ? (int) $this->order->supplier_id : null;
+        }
+    }
+
+    public function toggleBudgetCapEnforced(): void
+    {
+        if (! $this->order->isDraft()) {
+            return;
+        }
+
+        if ($this->order->effectiveAmountCap() === null) {
+            return;
+        }
+
+        $this->budgetCapEnforced = ! $this->budgetCapEnforced;
+        $this->showBudgetCapNotice = false;
+        $this->order = app(InventoryOrderService::class)->setBudgetCapEnforced(
+            $this->order,
+            $this->budgetCapEnforced
+        );
     }
 
     public function render(): View

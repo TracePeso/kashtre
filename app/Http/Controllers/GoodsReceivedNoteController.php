@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\GoodsReceivedNote;
 use App\Models\GoodsReceivedNoteLine;
 use App\Models\InventoryModuleConfig;
-use App\Models\InventoryOrder;
+use App\Models\InventoryPurchaseOrder;
 use App\Models\Item;
 use App\Models\ItemUnit;
 use App\Models\Store;
@@ -50,6 +50,7 @@ class GoodsReceivedNoteController extends Controller
         $businessId = Auth::user()->business_id;
 
         $inventoryOrder = null;
+        $purchaseOrder = null;
         $prefillLines = [];
         $prefillStoreId = old('store_id');
         $prefillSupplierId = old('supplier_id', $request->query('supplier_id'));
@@ -73,6 +74,28 @@ class GoodsReceivedNoteController extends Controller
                     ->with(['store'])
                     ->find(old('inventory_order_id'));
             }
+        } elseif ($poId = $request->query('inventory_purchase_order_id') ?? old('inventory_purchase_order_id')) {
+            $purchaseOrder = InventoryPurchaseOrder::query()
+                ->where('business_id', $businessId)
+                ->with(['store', 'supplier', 'inventoryOrder', 'lines.item.itemUnit', 'lines.item.orderUnit'])
+                ->findOrFail($poId);
+
+            if (! $purchaseOrder->canReceiveGoods()) {
+                abort(403, 'This LPO is not issued for receiving.');
+            }
+
+            $fulfillment = app(\App\Services\Inventory\InventoryPurchaseOrderFulfillmentService::class);
+            $prefillLines = $fulfillment->prefillGrnLines($purchaseOrder);
+            $inventoryOrder = $purchaseOrder->inventoryOrder;
+
+            if ($prefillLines === []) {
+                return redirect()
+                    ->route('inventory.purchase-orders.show', $purchaseOrder)
+                    ->with('warning', 'No remaining quantities to receive on this LPO.');
+            }
+
+            $prefillStoreId = $purchaseOrder->store_id;
+            $prefillSupplierId = $purchaseOrder->supplier_id;
         } elseif ($orderId = $request->query('inventory_order_id') ?? old('inventory_order_id')) {
             $inventoryOrder = InventoryOrder::query()
                 ->where('business_id', $businessId)
@@ -80,7 +103,7 @@ class GoodsReceivedNoteController extends Controller
                 ->findOrFail($orderId);
 
             if (! $inventoryOrder->canReceiveGoods()) {
-                abort(403, 'This order is not approved for receiving.');
+                abort(403, 'This RFQ has no issued LPO available for receiving.');
             }
 
             $fulfillment = app(\App\Services\Inventory\InventoryOrderFulfillmentService::class);
@@ -108,6 +131,7 @@ class GoodsReceivedNoteController extends Controller
 
         return view('inventory.receive.create', array_merge($this->grnFormOptions($businessId), [
             'inventoryOrder' => $inventoryOrder,
+            'purchaseOrder' => $purchaseOrder,
             'prefillLines' => $prefillLines,
             'prefillStoreId' => $prefillStoreId,
             'prefillSupplierId' => $prefillSupplierId,
@@ -127,7 +151,17 @@ class GoodsReceivedNoteController extends Controller
         $businessId = $user->business_id;
         $action = $request->input('action', 'draft');
 
-        if (! empty($validated['inventory_order_id'])) {
+        if (! empty($validated['inventory_purchase_order_id'])) {
+            $linkedPo = InventoryPurchaseOrder::query()
+                ->where('business_id', $businessId)
+                ->findOrFail($validated['inventory_purchase_order_id']);
+
+            if (! $linkedPo->canReceiveGoods()) {
+                throw ValidationException::withMessages([
+                    'inventory_purchase_order_id' => 'The linked LPO is not issued for receiving.',
+                ]);
+            }
+        } elseif (! empty($validated['inventory_order_id'])) {
             $linkedOrder = InventoryOrder::query()
                 ->where('business_id', $businessId)
                 ->findOrFail($validated['inventory_order_id']);
@@ -160,6 +194,7 @@ class GoodsReceivedNoteController extends Controller
                 'supplier_id' => $validated['supplier_id'] ?? null,
                 'store_id' => $validated['store_id'] ?? null,
                 'inventory_order_id' => $validated['inventory_order_id'] ?? null,
+                'inventory_purchase_order_id' => $validated['inventory_purchase_order_id'] ?? null,
                 'date_of_order' => $validated['date_of_order'],
                 'date_of_delivery' => $validated['date_of_delivery'],
                 'lead_time_days' => $leadTime,
@@ -381,6 +416,7 @@ class GoodsReceivedNoteController extends Controller
 
         return $request->validate([
             'inventory_order_id' => 'nullable|exists:inventory_orders,id',
+            'inventory_purchase_order_id' => 'nullable|exists:inventory_purchase_orders,id',
             'supplier_id' => 'nullable|exists:suppliers,id',
             'store_id' => 'required|exists:stores,id',
             'date_of_order' => 'required|date',

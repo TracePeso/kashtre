@@ -12,12 +12,15 @@ use App\Models\ItemUnit;
 use App\Models\ServicePoint;
 use App\Models\ContractorProfile;
 use App\Models\Item;
+use App\Models\ItemImportanceCategory;
 use App\Models\Branch;
 use App\Models\BranchItemPrice;
 use App\Models\PackageItem;
 use App\Models\BulkItem;
 use App\Models\BranchServicePoint;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class ItemController extends Controller
 {
@@ -89,18 +92,21 @@ class ItemController extends Controller
             Log::info("Available items (all): " . $availableItems->pluck('name', 'id')->toJson());
         }
 
+        $importanceOptions = Item::importanceOptions($selectedBusinessId);
+
         return view('items.create', compact(
-            'businesses', 
-            'groups', 
+            'businesses',
+            'groups',
             'subGroups',
-            'departments', 
-            'itemUnits', 
-            'servicePoints', 
+            'departments',
+            'itemUnits',
+            'servicePoints',
             'contractors',
             'branches',
             'availableItems',
             'canSelectBusiness',
-            'selectedBusinessId'
+            'selectedBusinessId',
+            'importanceOptions',
         ));
     }
 
@@ -120,7 +126,7 @@ class ItemController extends Controller
             'subgroup_id' => 'required_if:type,service,good|nullable|exists:sub_groups,id',
             'department_id' => 'required_if:type,service,good|nullable|exists:departments,id',
             'uom_id' => 'required_unless:type,package,bulk|nullable|exists:item_units,id',
-            'importance_category' => 'nullable|in:essential,non_essential',
+            'importance_category' => 'nullable|string|max:64',
             'order_unit_id' => 'nullable|exists:item_units,id',
             'suom_per_ouom' => 'nullable|numeric|min:0.0001',
             'default_price' => 'required|numeric|min:0',
@@ -151,6 +157,8 @@ class ItemController extends Controller
             $validated['business_id'] = Auth::user()->business_id;
         }
 
+        $this->validateImportanceCategory($request, (int) $validated['business_id'], $validated['type']);
+
         // Set hospital_share to 100 for package and bulk types
         if (in_array($validated['type'], ['package', 'bulk'])) {
             $validated['hospital_share'] = 100;
@@ -175,6 +183,8 @@ class ItemController extends Controller
             $validated['order_unit_id'] = null;
             $validated['suom_per_ouom'] = null;
         }
+
+        $this->applyImportanceCategoryToItem($validated);
 
         // Validate contractor selection when hospital share is not 100% for goods and services
         if (in_array($validated['type'], ['service', 'good']) && $validated['hospital_share'] != 100 && empty($validated['contractor_account_id'])) {
@@ -326,13 +336,15 @@ class ItemController extends Controller
             ->where('id', '!=', $item->id)
             ->get();
 
+        $importanceOptions = Item::importanceOptions($selectedBusinessId);
+
         return view('items.edit', compact(
-            'item', 
-            'businesses', 
-            'groups', 
-            'departments', 
-            'itemUnits', 
-            'servicePoints', 
+            'item',
+            'businesses',
+            'groups',
+            'departments',
+            'itemUnits',
+            'servicePoints',
             'contractors',
             'branches',
             'branchPrices',
@@ -341,7 +353,8 @@ class ItemController extends Controller
             'bulkItems',
             'availableItems',
             'canSelectBusiness',
-            'selectedBusinessId'
+            'selectedBusinessId',
+            'importanceOptions',
         ));
     }
 
@@ -361,7 +374,7 @@ class ItemController extends Controller
             'subgroup_id' => 'required_if:type,service,good|nullable|exists:sub_groups,id',
             'department_id' => 'required_if:type,service,good|nullable|exists:departments,id',
             'uom_id' => 'required_unless:type,package,bulk|nullable|exists:item_units,id',
-            'importance_category' => 'nullable|in:essential,non_essential',
+            'importance_category' => 'nullable|string|max:64',
             'order_unit_id' => 'nullable|exists:item_units,id',
             'suom_per_ouom' => 'nullable|numeric|min:0.0001',
             'default_price' => 'required|numeric|min:0',
@@ -392,6 +405,8 @@ class ItemController extends Controller
             $validated['business_id'] = Auth::user()->business_id;
         }
 
+        $this->validateImportanceCategory($request, (int) $validated['business_id'], $validated['type']);
+
         // Set hospital_share to 100 for package and bulk types
         if (in_array($validated['type'], ['package', 'bulk'])) {
             $validated['hospital_share'] = 100;
@@ -416,6 +431,8 @@ class ItemController extends Controller
             $validated['order_unit_id'] = null;
             $validated['suom_per_ouom'] = null;
         }
+
+        $this->applyImportanceCategoryToItem($validated);
 
         // Validate contractor selection when hospital share is not 100% for goods and services
         if (in_array($validated['type'], ['service', 'good']) && $validated['hospital_share'] != 100 && empty($validated['contractor_account_id'])) {
@@ -541,9 +558,12 @@ class ItemController extends Controller
                 'servicePoints' => [],
                 'contractors' => [],
                 'branches' => [],
-                'availableItems' => []
+                'availableItems' => [],
+                'importanceCategories' => [],
             ]);
         }
+
+        $importanceCategories = ItemImportanceCategory::optionsForBusiness((int) $businessId);
 
         // Validate that the user has permission to access this business
         if (Auth::user()->business_id != 1 && Auth::user()->business_id != $businessId) {
@@ -599,8 +619,46 @@ class ItemController extends Controller
             'servicePoints' => $servicePoints,
             'contractors' => $contractors,
             'branches' => $branches,
-            'availableItems' => $availableItems
+            'availableItems' => $availableItems,
+            'importanceCategories' => collect($importanceCategories)
+                ->map(fn (string $name, string $slug) => ['slug' => $slug, 'name' => $name])
+                ->values(),
         ]);
+    }
+
+    private function validateImportanceCategory(Request $request, int $businessId, string $type): void
+    {
+        if ($type !== 'good') {
+            return;
+        }
+
+        Validator::make(
+            $request->only('importance_category'),
+            [
+                'importance_category' => [
+                    'required',
+                    Rule::exists('item_importance_categories', 'slug')->where('business_id', $businessId),
+                ],
+            ],
+            [
+                'importance_category.required' => 'Choose an importance category for this good.',
+                'importance_category.exists' => 'The selected importance category is invalid for this organisation.',
+            ]
+        )->validate();
+    }
+
+    private function applyImportanceCategoryToItem(array &$validated): void
+    {
+        if (($validated['type'] ?? null) === 'good' && ! empty($validated['importance_category'])) {
+            $validated['category'] = ItemImportanceCategory::labelForSlug(
+                (int) $validated['business_id'],
+                $validated['importance_category']
+            );
+
+            return;
+        }
+
+        $validated['category'] = null;
     }
 
     /**

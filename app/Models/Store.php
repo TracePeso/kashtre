@@ -16,6 +16,12 @@ class Store extends Model
     use HasFactory;
     use SoftDeletes;
 
+    /** Customer-facing POS or dispensing pharmacy. */
+    public const DISTRIBUTION_END = 'end_store';
+
+    /** Warehouse / interim distribution point. */
+    public const DISTRIBUTION_INTERIM = 'interim_distribution';
+
     protected $fillable = [
         'uuid',
         'business_id',
@@ -23,6 +29,7 @@ class Store extends Model
         'parent_id',
         'name',
         'description',
+        'distribution_type',
     ];
 
     protected static function booted(): void
@@ -87,6 +94,33 @@ class Store extends Model
             2 => 'Unit store',
             default => 'Store',
         };
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function distributionTypeOptions(): array
+    {
+        return [
+            self::DISTRIBUTION_END => 'End store',
+            self::DISTRIBUTION_INTERIM => 'Interim distribution store',
+        ];
+    }
+
+    public function distributionTypeLabel(): string
+    {
+        return self::distributionTypeOptions()[$this->distribution_type ?? self::DISTRIBUTION_END]
+            ?? 'End store';
+    }
+
+    public function isEndStore(): bool
+    {
+        return ($this->distribution_type ?? self::DISTRIBUTION_END) === self::DISTRIBUTION_END;
+    }
+
+    public function isInterimDistributionStore(): bool
+    {
+        return $this->distribution_type === self::DISTRIBUTION_INTERIM;
     }
 
     /**

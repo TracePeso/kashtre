@@ -132,7 +132,11 @@ class InventoryOrderFulfillmentService
 
     public function refreshOrderStatus(InventoryOrder $order): void
     {
-        if (! $order->isApproved() && ! $order->isPartiallyReceived()) {
+        if (! in_array($order->status, [
+            InventoryOrder::STATUS_PO_ISSUED,
+            InventoryOrder::STATUS_PARTIALLY_RECEIVED,
+            InventoryOrder::STATUS_FULFILLED,
+        ], true)) {
             return;
         }
 

@@ -4,7 +4,7 @@
         <div class="md:flex md:items-center md:justify-between">
             <div class="flex-1 min-w-0">
                 <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">GRN Approvers</h2>
-                <p class="mt-1 text-sm text-gray-500">Staff who approve goods received notes before stock is updated (1–2 approvers).</p>
+                <p class="mt-1 text-sm text-gray-500">Staff who approve RFQs and GRNs. LPO PDF copies can be emailed to finance and approvers.</p>
             </div>
         </div>
 
@@ -18,7 +18,7 @@
             <div class="px-6 py-5 border-b border-gray-200">
                 <h3 class="text-lg font-medium text-gray-900">Approval matrix</h3>
                 <p class="mt-1 text-sm text-gray-500">
-                    Each GRN must be approved by the assigned approvers below before stock levels change.
+                    Each GRN must be approved by the assigned approvers below before stock levels change. RFQs use the same approver matrix.
                 </p>
             </div>
 
@@ -31,6 +31,22 @@
                         'inventoryModuleConfig' => $config,
                         'businessUsers' => $businessUsers,
                     ])
+
+                    <div class="border border-gray-200 rounded-lg p-4 space-y-3">
+                        <div>
+                            <p class="text-sm font-medium text-gray-700">LPO email notifications</p>
+                            <p class="text-xs text-gray-500 mt-0.5">When an LPO is issued, PDF copies are sent to these addresses (comma or newline separated).</p>
+                        </div>
+                        <textarea name="finance_notification_emails" rows="3"
+                                  class="block w-full rounded-md border-gray-300 shadow-sm text-sm"
+                                  placeholder="finance@example.com, accounts@example.com">{{ old('finance_notification_emails', $config->finance_notification_emails) }}</textarea>
+                        <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                            <input type="checkbox" name="lpo_email_copy_to_approvers" value="1"
+                                   @checked(old('lpo_email_copy_to_approvers', $config->lpo_email_copy_to_approvers ?? true))
+                                   class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            Also email LPO copies to RFQ/GRN approvers
+                        </label>
+                    </div>
 
                     <div class="flex justify-end">
                         <button type="submit"

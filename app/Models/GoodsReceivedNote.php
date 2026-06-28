@@ -25,6 +25,7 @@ class GoodsReceivedNote extends Model
         'supplier_id',
         'store_id',
         'inventory_order_id',
+        'inventory_purchase_order_id',
         'date_of_order',
         'date_of_delivery',
         'lead_time_days',
@@ -79,6 +80,11 @@ class GoodsReceivedNote extends Model
     public function inventoryOrder()
     {
         return $this->belongsTo(InventoryOrder::class);
+    }
+
+    public function purchaseOrder()
+    {
+        return $this->belongsTo(InventoryPurchaseOrder::class, 'inventory_purchase_order_id');
     }
 
     public function entryBy()

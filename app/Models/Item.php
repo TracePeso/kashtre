@@ -130,7 +130,21 @@ class Item extends Model
         return $this->belongsToMany(Supplier::class, 'supplier_item')->withTimestamps();
     }
 
-    public static function importanceOptions(): array
+    public static function importanceOptions(?int $businessId = null): array
+    {
+        $options = ItemImportanceCategory::optionsForBusiness($businessId);
+
+        if ($options !== []) {
+            return $options;
+        }
+
+        return self::legacyImportanceOptions();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function legacyImportanceOptions(): array
     {
         return [
             self::IMPORTANCE_ESSENTIAL => 'Essential',

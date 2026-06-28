@@ -161,7 +161,7 @@
                             </li>
                             <li>
                                 <a href="{{ route('inventory.orders.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.orders*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
-                                    Order Goods
+                                    Make an Order
                                 </a>
                             </li>
                             <li>
@@ -732,6 +732,10 @@
 
                             @if(in_array('View Stores', $permissions))
                             <li><a href="{{ route('stores.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Stores</a></li>
+                            @endif
+
+                            @if(in_array('View Item Categories', $permissions))
+                            <li><a href="{{ route('item-importance-categories.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Item Categories</a></li>
                             @endif
 
 

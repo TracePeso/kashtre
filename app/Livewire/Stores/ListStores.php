@@ -52,7 +52,7 @@ class ListStores extends Component implements HasForms, HasTable
                         ? 'Child of ' . $record->parent->name
                         : ($record->children_count > 0 ? $record->children_count . ' child store(s)' : null)),
                 Tables\Columns\TextColumn::make('hierarchy')
-                    ->label('Type')
+                    ->label('Level')
                     ->badge()
                     ->state(fn (Store $record): string => $record->hierarchyLabel())
                     ->color(fn (Store $record): string => match ($record->depth()) {
@@ -61,6 +61,12 @@ class ListStores extends Component implements HasForms, HasTable
                         2 => 'warning',
                         default => 'gray',
                     }),
+                Tables\Columns\TextColumn::make('distribution_type')
+                    ->label('Store type')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state, Store $record): string => $record->distributionTypeLabel())
+                    ->color(fn (Store $record): string => $record->isInterimDistributionStore() ? 'warning' : 'primary')
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('parent.name')
                     ->label('Parent store')
                     ->placeholder('—')
@@ -92,7 +98,7 @@ class ListStores extends Component implements HasForms, HasTable
             ->filters([
                 TrashedFilter::make(),
                 Tables\Filters\SelectFilter::make('hierarchy')
-                    ->label('Store type')
+                    ->label('Level')
                     ->options([
                         'parent' => 'Parent stores',
                         'child' => 'Child stores',
@@ -104,6 +110,10 @@ class ListStores extends Component implements HasForms, HasTable
                             default => $query,
                         };
                     }),
+                Tables\Filters\SelectFilter::make('distribution_type')
+                    ->label('Store type')
+                    ->options(Store::distributionTypeOptions())
+                    ->searchable(),
                 ...(Auth::check() && Auth::user()->business_id === 1 ? [
                     Tables\Filters\SelectFilter::make('business_id')
                         ->label('Filter by Business')
@@ -184,6 +194,7 @@ class ListStores extends Component implements HasForms, HasTable
                 ->label('Store name')
                 ->required()
                 ->maxLength(255),
+            ...$this->distributionTypeFields(),
             Forms\Components\Textarea::make('description')
                 ->label('Description')
                 ->nullable()
@@ -221,6 +232,7 @@ class ListStores extends Component implements HasForms, HasTable
                 ->label('Child store name')
                 ->required()
                 ->maxLength(255),
+            ...$this->distributionTypeFields(),
             Forms\Components\Textarea::make('description')
                 ->label('Description')
                 ->nullable()
@@ -255,6 +267,7 @@ class ListStores extends Component implements HasForms, HasTable
                 Forms\Components\TextInput::make('name')
                     ->label('Store name')
                     ->required(),
+                ...$this->distributionTypeFields(),
                 Forms\Components\Textarea::make('description')
                     ->label('Description')
                     ->nullable(),
@@ -276,6 +289,7 @@ class ListStores extends Component implements HasForms, HasTable
             Forms\Components\TextInput::make('name')
                 ->label('Store name')
                 ->required(),
+            ...$this->distributionTypeFields(),
             Forms\Components\Textarea::make('description')
                 ->label('Description')
                 ->nullable(),
@@ -284,6 +298,22 @@ class ListStores extends Component implements HasForms, HasTable
                 ->content(fn () => $record->children()->count() > 0
                     ? $record->children()->count() . ' child store(s) linked to this parent.'
                     : 'No child stores yet. Use “Create Child Store” to add one.'),
+        ];
+    }
+
+    /**
+     * @return array<int, \Filament\Forms\Components\Component>
+     */
+    protected function distributionTypeFields(): array
+    {
+        return [
+            Forms\Components\Select::make('distribution_type')
+                ->label('Store type')
+                ->options(Store::distributionTypeOptions())
+                ->default(Store::DISTRIBUTION_END)
+                ->required()
+                ->native(false)
+                ->helperText('End stores face customers (POS or dispensing pharmacy). Interim distribution stores are warehouses.'),
         ];
     }
 

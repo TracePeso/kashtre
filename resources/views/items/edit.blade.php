@@ -45,9 +45,27 @@
                             <input type="text" name="generic_name" id="generic_name" value="{{ old('generic_name', $item->generic_name) }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="e.g. Paracetamol">
                         </div>
 
+                        <!-- Type -->
                         <div>
-                            <label for="category" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Category</label>
-                            <input type="text" name="category" id="category" value="{{ old('category', $item->category) }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="e.g. Analgesic, Laboratory">
+                            <label for="type" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type <span class="text-red-500">*</span></label>
+                            <select name="type" id="type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
+                                <option value="service" {{ old('type', $item->type) == 'service' ? 'selected' : '' }}>Service</option>
+                                <option value="good" {{ old('type', $item->type) == 'good' ? 'selected' : '' }}>Good</option>
+                                <option value="package" {{ old('type', $item->type) == 'package' ? 'selected' : '' }}>Package</option>
+                                <option value="bulk" {{ old('type', $item->type) == 'bulk' ? 'selected' : '' }}>Bulk</option>
+                            </select>
+                        </div>
+
+                        <!-- Category (importance) — goods only -->
+                        <div class="good-only inventory-good-fields">
+                            <label for="importance_category" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Category <span class="text-red-500">*</span></label>
+                            <select name="importance_category" id="importance_category" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
+                                <option value="" disabled {{ old('importance_category', $item->importance_category) ? '' : 'selected' }}>Select category</option>
+                                @foreach($importanceOptions as $value => $label)
+                                    <option value="{{ $value }}" {{ old('importance_category', $item->importance_category) === $value ? 'selected' : '' }}>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            @error('importance_category')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                         </div>
 
                         <!-- Code -->
@@ -62,17 +80,6 @@
                                 </button>
                             </div>
                             <p class="mt-1 text-sm text-gray-500">Click the refresh button to generate a new code</p>
-                        </div>
-
-                        <!-- Type -->
-                        <div>
-                            <label for="type" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type <span class="text-red-500">*</span></label>
-                            <select name="type" id="type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
-                                <option value="service" {{ old('type', $item->type) == 'service' ? 'selected' : '' }}>Service</option>
-                                <option value="good" {{ old('type', $item->type) == 'good' ? 'selected' : '' }}>Good</option>
-                                <option value="package" {{ old('type', $item->type) == 'package' ? 'selected' : '' }}>Package</option>
-                                <option value="bulk" {{ old('type', $item->type) == 'bulk' ? 'selected' : '' }}>Bulk</option>
-                            </select>
                         </div>
 
                         <!-- Group -->
@@ -126,16 +133,6 @@
                                 @endforeach
                             </select>
                             <p class="mt-1 text-xs text-gray-500">Unit in which the business sells or issues this item (Excel: SUOM).</p>
-                        </div>
-
-                        <div class="good-only inventory-good-fields">
-                            <label for="importance_category" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Category of importance</label>
-                            <select name="importance_category" id="importance_category" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                                <option value="">Not set</option>
-                                @foreach(\App\Models\Item::importanceOptions() as $value => $label)
-                                    <option value="{{ $value }}" {{ old('importance_category', $item->importance_category) === $value ? 'selected' : '' }}>{{ $label }}</option>
-                                @endforeach
-                            </select>
                         </div>
 
                         <div class="good-only inventory-good-fields">
@@ -528,6 +525,12 @@
                     goodOnlyElements.forEach(element => {
                         element.style.display = 'none';
                     });
+
+                    const importanceSelect = document.getElementById('importance_category');
+                    if (importanceSelect) {
+                        importanceSelect.required = false;
+                        importanceSelect.value = '';
+                    }
                     
                     // Set hospital share to 100 for packages and bulk
                     document.getElementById('hospital_share').value = '100';
@@ -549,6 +552,14 @@
                     goodOnlyElements.forEach(element => {
                         element.style.display = selectedType === 'good' ? 'block' : 'none';
                     });
+
+                    const importanceSelect = document.getElementById('importance_category');
+                    if (importanceSelect) {
+                        importanceSelect.required = selectedType === 'good';
+                        if (selectedType !== 'good') {
+                            importanceSelect.value = '';
+                        }
+                    }
                     
                     // Re-trigger contractor toggle
                     toggleContractor();
@@ -586,6 +597,7 @@
                         
                         // Update item units
                         updateSelect('uom_id', data.itemUnits);
+                        updateImportanceCategories(data.importanceCategories || []);
                         
                         // Update service points - show all service points grouped by branch
                         updateServicePointsByBranch(data.servicePoints);
@@ -622,6 +634,27 @@
 
                 // Restore value if it still exists in new options
                 if (currentValue && data.some(item => item.id == currentValue)) {
+                    select.value = currentValue;
+                } else {
+                    select.value = '';
+                }
+            }
+
+            function updateImportanceCategories(categories) {
+                const select = document.getElementById('importance_category');
+                if (!select) return;
+
+                const currentValue = select.value;
+                select.innerHTML = '<option value="" disabled selected>Select category</option>';
+
+                categories.forEach(category => {
+                    const option = document.createElement('option');
+                    option.value = category.slug;
+                    option.textContent = category.name;
+                    select.appendChild(option);
+                });
+
+                if (currentValue && categories.some(category => category.slug === currentValue)) {
                     select.value = currentValue;
                 } else {
                     select.value = '';

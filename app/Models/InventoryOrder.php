@@ -14,6 +14,7 @@ class InventoryOrder extends Model
     public const STATUS_DRAFT = 'draft';
     public const STATUS_PENDING_APPROVAL = 'pending_approval';
     public const STATUS_APPROVED = 'approved';
+    public const STATUS_PO_ISSUED = 'po_issued';
     public const STATUS_REJECTED = 'rejected';
     public const STATUS_PARTIALLY_RECEIVED = 'partially_received';
     public const STATUS_FULFILLED = 'fulfilled';
@@ -27,6 +28,7 @@ class InventoryOrder extends Model
     protected $fillable = [
         'business_id',
         'store_id',
+        'supplier_id',
         'order_number',
         'status',
         'importance_filter',
@@ -35,12 +37,15 @@ class InventoryOrder extends Model
         'item_ids',
         'budget_mode',
         'budget_value',
+        'budget_cap_enforced',
+        'initial_order_total',
         'moving_average_days',
         'period_of_order_days',
         'safety_stock_days',
         'buffer_stock_days',
         'notification_to_order_days',
         'peak_period_percent',
+        'peak_consumption_increase_percent',
         'notes',
         'created_by_user_id',
         'submitted_by_user_id',
@@ -53,12 +58,15 @@ class InventoryOrder extends Model
     protected $casts = [
         'item_ids' => 'array',
         'budget_value' => 'decimal:2',
+        'budget_cap_enforced' => 'boolean',
+        'initial_order_total' => 'decimal:2',
         'moving_average_days' => 'integer',
         'period_of_order_days' => 'decimal:2',
         'safety_stock_days' => 'decimal:2',
         'buffer_stock_days' => 'decimal:2',
         'notification_to_order_days' => 'decimal:2',
         'peak_period_percent' => 'decimal:4',
+        'peak_consumption_increase_percent' => 'decimal:4',
         'current_approval_order' => 'integer',
         'submitted_at' => 'datetime',
         'approved_at' => 'datetime',
@@ -72,6 +80,11 @@ class InventoryOrder extends Model
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
     }
 
     public function group(): BelongsTo
@@ -109,6 +122,32 @@ class InventoryOrder extends Model
         return $this->hasMany(GoodsReceivedNote::class);
     }
 
+    public function supplierQuotations(): HasMany
+    {
+        return $this->hasMany(InventorySupplierQuotation::class);
+    }
+
+    public function purchaseOrders(): HasMany
+    {
+        return $this->hasMany(InventoryPurchaseOrder::class);
+    }
+
+    public function documentNumber(): string
+    {
+        return (string) $this->order_number;
+    }
+
+    public function isRfq(): bool
+    {
+        return str_starts_with((string) $this->order_number, 'RFQ-')
+            || ! str_starts_with((string) $this->order_number, 'ORD-');
+    }
+
+    public function rfqLabel(): string
+    {
+        return $this->isRfq() ? 'RFQ' : 'Order';
+    }
+
     public function isDraft(): bool
     {
         return $this->status === self::STATUS_DRAFT;
@@ -121,7 +160,26 @@ class InventoryOrder extends Model
 
     public function isApproved(): bool
     {
+        return in_array($this->status, [
+            self::STATUS_APPROVED,
+            self::STATUS_PO_ISSUED,
+            self::STATUS_PARTIALLY_RECEIVED,
+            self::STATUS_FULFILLED,
+        ], true);
+    }
+
+    public function isRfqApproved(): bool
+    {
         return $this->status === self::STATUS_APPROVED;
+    }
+
+    public function isPoIssued(): bool
+    {
+        return in_array($this->status, [
+            self::STATUS_PO_ISSUED,
+            self::STATUS_PARTIALLY_RECEIVED,
+            self::STATUS_FULFILLED,
+        ], true);
     }
 
     public function isRejected(): bool
@@ -141,16 +199,27 @@ class InventoryOrder extends Model
 
     public function canReceiveGoods(): bool
     {
-        return $this->isApproved() || $this->isPartiallyReceived();
+        return $this->purchaseOrders()
+            ->whereIn('status', [
+                InventoryPurchaseOrder::STATUS_ISSUED,
+                InventoryPurchaseOrder::STATUS_PARTIALLY_RECEIVED,
+            ])
+            ->exists();
+    }
+
+    public function canManageSupplierQuotations(): bool
+    {
+        return $this->isRfqApproved();
     }
 
     public function statusLabel(): string
     {
         return match ($this->status) {
-            self::STATUS_DRAFT => 'Draft',
-            self::STATUS_PENDING_APPROVAL => 'Pending approval',
-            self::STATUS_APPROVED => 'Approved',
-            self::STATUS_REJECTED => 'Rejected',
+            self::STATUS_DRAFT => 'Draft RFQ',
+            self::STATUS_PENDING_APPROVAL => 'Pending RFQ approval',
+            self::STATUS_APPROVED => 'RFQ approved',
+            self::STATUS_PO_ISSUED => 'LPO issued',
+            self::STATUS_REJECTED => 'RFQ rejected',
             self::STATUS_PARTIALLY_RECEIVED => 'Partially received',
             self::STATUS_FULFILLED => 'Fulfilled',
             self::STATUS_SUBMITTED => 'Submitted',
@@ -161,6 +230,25 @@ class InventoryOrder extends Model
     public function orderTotal(): float
     {
         return round((float) $this->lines()->sum('line_total'), 2);
+    }
+
+    public function effectiveAmountCap(): ?float
+    {
+        if ($this->budget_mode === self::BUDGET_MODE_AMOUNT && (float) ($this->budget_value ?? 0) > 0) {
+            return (float) $this->budget_value;
+        }
+
+        if ((float) ($this->initial_order_total ?? 0) > 0) {
+            return (float) $this->initial_order_total;
+        }
+
+        return null;
+    }
+
+    public function enforcesBudgetCap(): bool
+    {
+        return (bool) ($this->budget_cap_enforced ?? true)
+            && $this->effectiveAmountCap() !== null;
     }
 
     public function orderingMethodLabel(): string

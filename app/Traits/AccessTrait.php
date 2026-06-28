@@ -84,6 +84,7 @@ trait AccessTrait
         "Client Spaces" => ['View Client Spaces', 'Edit Client Spaces', 'Add Client Spaces', 'Delete Client Spaces'],
         "Suppliers" => ['View Suppliers', 'Edit Suppliers', 'Add Suppliers', 'Bulky Update Suppliers'],
         "Stores" => ['View Stores', 'Edit Stores', 'Add Stores', 'Bulky Update Stores'],
+        "Item Categories" => ['View Item Categories', 'Edit Item Categories', 'Add Item Categories', 'Delete Item Categories'],
         "Insurance Companies" => ['View Insurance Companies', 'Edit Insurance Companies', 'Add Insurance Companies', 'Bulky Update Insurance Companies'],
         "Sub Groups" => ['View Sub Groups', 'Edit Sub Groups', 'Add Sub Groups', 'Bulky Update Sub Groups'],
         "Maturation Periods" => ['View Maturation Periods', 'Edit Maturation Periods', 'Add Maturation Periods', 'Manage Maturation Periods'],

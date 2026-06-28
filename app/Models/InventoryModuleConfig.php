@@ -19,6 +19,8 @@ class InventoryModuleConfig extends Model
         'notification_to_order_days',
         'period_of_order_days',
         'financial_year_start_month',
+        'finance_notification_emails',
+        'lpo_email_copy_to_approvers',
         'created_by',
         'updated_by',
     ];
@@ -31,6 +33,7 @@ class InventoryModuleConfig extends Model
         'notification_to_order_days' => 'decimal:2',
         'period_of_order_days' => 'decimal:2',
         'financial_year_start_month' => 'integer',
+        'lpo_email_copy_to_approvers' => 'boolean',
     ];
 
     /**
@@ -91,5 +94,22 @@ class InventoryModuleConfig extends Model
     public function approvers()
     {
         return $this->hasMany(InventoryModuleApprover::class)->orderBy('approval_order');
+    }
+
+    /** @return array<int, string> */
+    public function financeNotificationEmailList(): array
+    {
+        $raw = (string) ($this->finance_notification_emails ?? '');
+
+        if ($raw === '') {
+            return [];
+        }
+
+        return collect(preg_split('/[\s,;]+/', $raw) ?: [])
+            ->map(fn (string $email): string => trim($email))
+            ->filter(fn (string $email): bool => filter_var($email, FILTER_VALIDATE_EMAIL) !== false)
+            ->unique()
+            ->values()
+            ->all();
     }
 }

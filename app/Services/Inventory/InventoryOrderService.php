@@ -9,9 +9,12 @@ use App\Models\InventoryOrder;
 use App\Models\InventoryOrderLine;
 use App\Models\InventoryStockLevel;
 use App\Models\Item;
+use App\Models\ItemImportanceCategory;
+use App\Models\Supplier;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class InventoryOrderService
 {
@@ -24,7 +27,7 @@ class InventoryOrderService
 
     public function generateOrderNumber(int $businessId): string
     {
-        $prefix = 'ORD-'.now()->format('Ymd');
+        $prefix = 'RFQ-'.now()->format('Ymd');
         $count = InventoryOrder::query()
             ->where('business_id', $businessId)
             ->where('order_number', 'like', $prefix.'%')
@@ -45,22 +48,32 @@ class InventoryOrderService
         ?int $groupId = null,
         ?int $subgroupId = null,
         ?float $peakPeriodPercent = null,
+        ?float $peakConsumptionIncreasePercent = null,
         ?float $safetyStockDays = null,
         ?float $bufferStockDays = null,
         ?float $notificationToOrderDays = null,
-        ?array $itemIds = null
+        ?array $itemIds = null,
+        ?int $supplierId = null
     ): InventoryOrder {
         $normalizedItemIds = $this->normalizeItemIds($itemIds);
 
-        return DB::transaction(function () use ($businessId, $storeId, $user, $importanceFilter, $budgetMode, $budgetValue, $periodOfOrderDays, $notes, $groupId, $subgroupId, $peakPeriodPercent, $safetyStockDays, $bufferStockDays, $notificationToOrderDays, $normalizedItemIds) {
+        return DB::transaction(function () use ($businessId, $storeId, $user, $importanceFilter, $budgetMode, $budgetValue, $periodOfOrderDays, $notes, $groupId, $subgroupId, $peakPeriodPercent, $peakConsumptionIncreasePercent, $safetyStockDays, $bufferStockDays, $notificationToOrderDays, $normalizedItemIds, $supplierId) {
             $config = InventoryModuleConfig::query()
                 ->forBusiness($businessId)
                 ->active()
                 ->first();
 
+            if ($supplierId) {
+                Supplier::query()
+                    ->where('business_id', $businessId)
+                    ->whereKey($supplierId)
+                    ->firstOrFail();
+            }
+
             $order = InventoryOrder::create([
                 'business_id' => $businessId,
                 'store_id' => $storeId,
+                'supplier_id' => $supplierId,
                 'order_number' => $this->generateOrderNumber($businessId),
                 'status' => InventoryOrder::STATUS_DRAFT,
                 'importance_filter' => $importanceFilter,
@@ -75,13 +88,14 @@ class InventoryOrderService
                 'buffer_stock_days' => $bufferStockDays ?? (float) ($config?->buffer_stock_days ?? 0),
                 'notification_to_order_days' => $notificationToOrderDays ?? (float) ($config?->notification_to_order_days ?? 0),
                 'peak_period_percent' => max(0, (float) ($peakPeriodPercent ?? 0)),
+                'peak_consumption_increase_percent' => max(0, (float) ($peakConsumptionIncreasePercent ?? 0)),
                 'notes' => $notes,
                 'created_by_user_id' => $user->id,
             ]);
 
             $this->populateLines($order);
 
-            return $order->fresh(['lines.item.itemUnit', 'lines.item.orderUnit', 'lines.item.suppliers', 'lines.supplier', 'store']);
+            return $order->fresh(['lines.item.itemUnit', 'lines.item.orderUnit', 'lines.item.suppliers', 'lines.supplier', 'store', 'supplier']);
         });
     }
 
@@ -98,11 +112,13 @@ class InventoryOrderService
 
         if ($order->budget_mode === InventoryOrder::BUDGET_MODE_DAYS && $order->budget_value > 0) {
             $this->populateBudgetDaysLines($order, $stockLevels, $config);
+            $this->snapshotInitialOrderTotal($order->fresh(['lines']));
 
             return;
         }
 
         $periodDays = (float) ($order->period_of_order_days ?? $config?->period_of_order_days ?? 30);
+        $peakIncrease = max(0, (float) ($order->peak_consumption_increase_percent ?? 0));
 
         foreach ($stockLevels as $stock) {
             $item = $stock->item;
@@ -115,7 +131,6 @@ class InventoryOrderService
             $baseSuggested = $this->analytics->suggestedOrderQtyPeriod($stock, $config, $periodDays, $order);
             $arStock = $this->analytics->systemStockArSuom($stock, $config);
             $unitPrice = $this->analytics->purchasePricePerSuom($stock, $item);
-            $supplierId = $item->suppliers->first()?->id;
 
             $this->createOrderLine(
                 $order,
@@ -124,12 +139,21 @@ class InventoryOrderService
                 $dailyAvg,
                 $arStock,
                 $unitPrice,
-                $supplierId,
-                0
+                $peakIncrease
             );
         }
 
         $this->applyBudgetConstraints($order->fresh(['lines']), $config);
+        $this->snapshotInitialOrderTotal($order->fresh(['lines']));
+    }
+
+    public function snapshotInitialOrderTotal(InventoryOrder $order): void
+    {
+        $total = $order->orderTotal();
+
+        if ($total > 0) {
+            $order->update(['initial_order_total' => $total]);
+        }
     }
 
     /**
@@ -143,6 +167,7 @@ class InventoryOrderService
         ?InventoryModuleConfig $config
     ): void {
         $budgetDays = min(366, max(1, (int) round((float) $order->budget_value)));
+        $peakIncrease = max(0, (float) ($order->peak_consumption_increase_percent ?? 0));
         $rows = [];
 
         foreach ($stockLevels as $stock) {
@@ -176,7 +201,6 @@ class InventoryOrderService
                 ? max(0, (15 * $budgetDays / $sumTestAmount) - $gap)
                 : 0;
             $baseSuggested = max(0, round($orderDays * $row['daily_avg'], 4));
-            $supplierId = $row['item']->suppliers->first()?->id;
 
             $this->createOrderLine(
                 $order,
@@ -185,8 +209,7 @@ class InventoryOrderService
                 $row['daily_avg'],
                 $row['ar_stock'],
                 $row['unit_price'],
-                $supplierId,
-                0
+                $peakIncrease
             );
         }
     }
@@ -217,6 +240,7 @@ class InventoryOrderService
         $baseSuggested = (float) ($line->base_suggested_quantity_suom ?? $line->suggested_quantity_suom);
         $peakImpact = self::computePeakImpactPercent($line->order->peak_period_percent, $consumptionIncreasePercent);
         $suggested = $this->applyPeakToSuggestedQuantity($baseSuggested, $peakImpact);
+        $suggested = $this->constrainLineQuantityToBudget($line, $suggested);
         $unitPrice = (float) ($line->unit_price ?? 0);
 
         $line->update([
@@ -238,7 +262,6 @@ class InventoryOrderService
         float $dailyAvg,
         float $arStock,
         float $unitPrice,
-        ?int $supplierId,
         float $consumptionIncreasePercent
     ): void {
         $peakImpact = self::computePeakImpactPercent($order->peak_period_percent, $consumptionIncreasePercent);
@@ -247,7 +270,7 @@ class InventoryOrderService
         InventoryOrderLine::create([
             'inventory_order_id' => $order->id,
             'item_id' => $item->id,
-            'supplier_id' => $supplierId,
+            'supplier_id' => $order->supplier_id,
             'daily_average_suom' => $dailyAvg,
             'lead_time_days' => $this->averageLeadTimeDays((int) $order->business_id, (int) $item->id),
             'system_quantity_suom' => $arStock,
@@ -285,7 +308,7 @@ class InventoryOrderService
         }
 
         if ($order->importance_filter) {
-            $label = Item::importanceOptions()[$order->importance_filter] ?? $order->importance_filter;
+            $label = ItemImportanceCategory::labelForSlug((int) $order->business_id, $order->importance_filter) ?? $order->importance_filter;
 
             $matchingStock = InventoryStockLevel::query()
                 ->where('business_id', $order->business_id)
@@ -326,28 +349,43 @@ class InventoryOrderService
             return;
         }
 
-        $order->load('lines');
-
         if ($order->budget_mode === InventoryOrder::BUDGET_MODE_AMOUNT) {
-            $total = $order->orderTotal();
+            $this->scaleLinesToAmountCap($order, (float) $order->budget_value);
+        }
+    }
 
-            if ($total <= (float) $order->budget_value) {
-                return;
-            }
+    public function applyAmountCapConstraints(InventoryOrder $order): void
+    {
+        $cap = $order->effectiveAmountCap();
 
-            $factor = (float) $order->budget_value / $total;
+        if ($cap === null || $cap <= 0) {
+            return;
+        }
 
-            foreach ($order->lines as $line) {
-                $qty = round((float) $line->order_quantity_suom * $factor, 4);
-                $unitPrice = (float) ($line->unit_price ?? 0);
+        $this->scaleLinesToAmountCap($order, $cap);
+    }
 
-                $line->update([
-                    'order_quantity_suom' => max(0, $qty),
-                    'order_quantity_ouom' => $line->item ? $this->toOuom($line->item, $qty) : null,
-                    'suggested_quantity_suom' => max(0, $qty),
-                    'line_total' => round(max(0, $qty) * $unitPrice, 2),
-                ]);
-            }
+    private function scaleLinesToAmountCap(InventoryOrder $order, float $cap): void
+    {
+        $order->load('lines');
+        $total = $order->orderTotal();
+
+        if ($total <= $cap) {
+            return;
+        }
+
+        $factor = $cap / $total;
+
+        foreach ($order->lines as $line) {
+            $qty = round((float) $line->order_quantity_suom * $factor, 4);
+            $unitPrice = (float) ($line->unit_price ?? 0);
+
+            $line->update([
+                'order_quantity_suom' => max(0, $qty),
+                'order_quantity_ouom' => $line->item ? $this->toOuom($line->item, $qty) : null,
+                'suggested_quantity_suom' => max(0, $qty),
+                'line_total' => round(max(0, $qty) * $unitPrice, 2),
+            ]);
         }
     }
 
@@ -365,7 +403,13 @@ class InventoryOrderService
 
     public function updateLine(InventoryOrderLine $line, float $orderQtySuom, ?float $orderQtyOuom = null): InventoryOrderLine
     {
+        $line->loadMissing(['order', 'item']);
+        $orderQtySuom = $this->constrainLineQuantityToBudget($line, $orderQtySuom);
         $unitPrice = (float) ($line->unit_price ?? 0);
+
+        if ($orderQtyOuom === null && $line->item) {
+            $orderQtyOuom = $this->toOuom($line->item, $orderQtySuom);
+        }
 
         $line->update([
             'order_quantity_suom' => max(0, $orderQtySuom),
@@ -374,6 +418,63 @@ class InventoryOrderService
         ]);
 
         return $line->fresh('item');
+    }
+
+    public function setOrderSupplier(InventoryOrder $order, int $supplierId): InventoryOrder
+    {
+        if (! $order->isDraft()) {
+            throw ValidationException::withMessages([
+                'supplier_id' => 'Supplier can only be changed on draft RFQs.',
+            ]);
+        }
+
+        Supplier::query()
+            ->where('business_id', (int) $order->business_id)
+            ->whereKey($supplierId)
+            ->firstOrFail();
+
+        $order->update(['supplier_id' => $supplierId]);
+
+        if ($order->lines()->exists()) {
+            $this->populateLines($order->fresh());
+        }
+
+        return $order->fresh(['supplier', 'lines.item']);
+    }
+
+    public function setBudgetCapEnforced(InventoryOrder $order, bool $enforced): InventoryOrder
+    {
+        $order->update(['budget_cap_enforced' => $enforced]);
+
+        if ($enforced) {
+            $this->applyAmountCapConstraints($order->fresh(['lines']));
+        }
+
+        return $order->fresh(['lines']);
+    }
+
+    public function constrainLineQuantityToBudget(InventoryOrderLine $line, float $requestedQtySuom): float
+    {
+        $line->loadMissing('order');
+        $order = $line->order;
+
+        if (! $order->enforcesBudgetCap()) {
+            return max(0, $requestedQtySuom);
+        }
+
+        $unitPrice = (float) ($line->unit_price ?? 0);
+
+        if ($unitPrice <= 0) {
+            return max(0, $requestedQtySuom);
+        }
+
+        $budgetCap = (float) $order->effectiveAmountCap();
+        $currentLineTotal = (float) ($line->line_total ?? 0);
+        $otherLinesTotal = $order->orderTotal() - $currentLineTotal;
+        $availableForLine = max(0, $budgetCap - $otherLinesTotal);
+        $maxQty = floor(($availableForLine / $unitPrice) * 10000) / 10000;
+
+        return max(0, min($requestedQtySuom, $maxQty));
     }
 
     private function toOuom(Item $item, float $orderQtySuom): ?float
@@ -405,6 +506,14 @@ class InventoryOrderService
 
         if ($order->subgroup_id && (int) $item->subgroup_id !== (int) $order->subgroup_id) {
             return false;
+        }
+
+        if ($order->supplier_id) {
+            $item->loadMissing('suppliers');
+
+            if (! $item->suppliers->contains('id', (int) $order->supplier_id)) {
+                return false;
+            }
         }
 
         return true;

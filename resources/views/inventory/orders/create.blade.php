@@ -6,13 +6,12 @@
     $defaultBufferDays = (int) old('buffer_stock_days', $config?->buffer_stock_days ?? 0);
     $defaultNotificationDays = (int) old('notification_to_order_days', $config?->notification_to_order_days ?? 0);
     $initialBudgetMode = old('budget_mode');
-    $initialOrderApproach = $initialBudgetMode ? 'budget' : 'period';
-    $initialBudgetType = in_array($initialBudgetMode, ['days', 'amount'], true) ? $initialBudgetMode : 'amount';
+    $initialOrderApproach = old('ordering_approach', $initialBudgetMode ? 'budget' : 'period');
     $oldItemIds = collect(old('item_ids', []))->map(fn ($id) => (int) $id)->values();
+    $defaultImportance = old('importance_filter', '');
 @endphp
 <div class="min-h-screen bg-gray-50 py-6" x-data="{
     orderApproach: '{{ $initialOrderApproach }}',
-    budgetType: '{{ $initialBudgetType }}',
     items: @js($items->map(fn ($item) => [
         'id' => $item->id,
         'name' => $item->name,
@@ -89,6 +88,7 @@
 
         <form method="POST" action="{{ route('inventory.orders.store') }}" class="mt-6 bg-white shadow sm:rounded-lg p-6 space-y-6" novalidate>
             @csrf
+            <input type="hidden" name="ordering_approach" :value="orderApproach">
 
             @if ($errors->any())
                 <div class="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
@@ -113,6 +113,19 @@
                 @error('store_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
             </div>
 
+            <div>
+                <label for="supplier_id" class="block text-sm font-medium text-gray-700">Supplier</label>
+                <select name="supplier_id" id="supplier_id" required
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    <option value="">— Select supplier —</option>
+                    @foreach($suppliers as $supplier)
+                        <option value="{{ $supplier->id }}" @selected(old('supplier_id') == $supplier->id)>{{ $supplier->name }}</option>
+                    @endforeach
+                </select>
+                <p class="mt-1 text-xs text-gray-500">One supplier for the entire order, like a GRN. Only items linked to this supplier are included.</p>
+                @error('supplier_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+            </div>
+
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                     <label for="importance_filter" class="block text-sm font-medium text-gray-700">Importance</label>
@@ -120,10 +133,11 @@
                             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                         <option value="">All items</option>
                         @foreach($importanceOptions as $value => $label)
-                            <option value="{{ $value }}" @selected(old('importance_filter', 'essential') === $value)>{{ $label }}</option>
+                            <option value="{{ $value }}" @selected($defaultImportance === $value)>{{ $label }}</option>
                         @endforeach
                     </select>
-                    <p class="mt-1 text-xs text-gray-500">Defaults to essential items.</p>
+                    <p class="mt-1 text-xs text-gray-500">Optional filter. Leave as “All items” to include every stocked good.</p>
+                    @error('importance_filter')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
                 <div>
                     <label for="group_id" class="block text-sm font-medium text-gray-700">Group</label>
@@ -224,60 +238,19 @@
 
                 <template x-if="orderApproach === 'budget'">
                     <div class="space-y-4">
-                        <template x-if="budgetType === 'days'">
-                            <input type="hidden" name="budget_mode" value="days">
-                        </template>
-                        <template x-if="budgetType === 'amount'">
-                            <input type="hidden" name="budget_mode" value="amount">
-                        </template>
-
-                        <div class="inline-flex rounded-lg border border-gray-200 p-1 bg-gray-50" role="group" aria-label="Budget type">
-                            <button type="button"
-                                    @click="budgetType = 'days'"
-                                    :class="budgetType === 'days'
-                                        ? 'bg-white text-blue-700 shadow-sm ring-1 ring-gray-200'
-                                        : 'text-gray-600 hover:text-gray-900'"
-                                    class="px-3 py-1.5 text-sm font-medium rounded-md transition">
-                                Stock days
-                            </button>
-                            <button type="button"
-                                    @click="budgetType = 'amount'"
-                                    :class="budgetType === 'amount'
-                                        ? 'bg-white text-blue-700 shadow-sm ring-1 ring-gray-200'
-                                        : 'text-gray-600 hover:text-gray-900'"
-                                    class="px-3 py-1.5 text-sm font-medium rounded-md transition">
-                                Amount (UGX)
-                            </button>
-                        </div>
+                        <input type="hidden" name="budget_mode" value="amount">
 
                         <div>
-                            <label for="budget_value" class="block text-sm font-medium text-gray-700">
-                                <span x-text="budgetType === 'days' ? 'Stock-days budget' : 'Budget cap (UGX)'"></span>
-                            </label>
-                            <input type="number" :step="budgetType === 'days' ? 1 : 0.01" min="0" name="budget_value" id="budget_value"
+                            <label for="budget_value" class="block text-sm font-medium text-gray-700">Budget cap (UGX)</label>
+                            <input type="number" step="0.01" min="0" name="budget_value" id="budget_value"
                                    value="{{ old('budget_value') }}"
-                                   required
                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                            <p class="mt-1 text-xs text-gray-500" x-show="budgetType === 'days'">
-                                Target stock-days to distribute across items.
-                            </p>
-                            <p class="mt-1 text-xs text-gray-500" x-show="budgetType === 'amount'" x-cloak>
-                                Items are calculated from the order period, then scaled down to this total amount.
+                            <p class="mt-1 text-xs text-gray-500">
+                                Suggested quantities are calculated from consumption, then scaled down proportionally to fit this budget.
                             </p>
                             @error('budget_value')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                             @error('budget_mode')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                         </div>
-
-                        <template x-if="budgetType === 'amount'">
-                            <div>
-                                <label for="period_of_order_days_budget" class="block text-sm font-medium text-gray-700">Period of order (days)</label>
-                                <input type="number" step="1" min="0" name="period_of_order_days" id="period_of_order_days_budget"
-                                       value="{{ $defaultPeriodDays }}"
-                                       required
-                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                                <p class="mt-1 text-xs text-gray-500">Initial quantities use this period before the budget cap is applied.</p>
-                            </div>
-                        </template>
                     </div>
                 </template>
 
@@ -288,9 +261,8 @@
                         </div>
                         <div>
                             <label for="period_of_order_days" class="block text-sm font-medium text-gray-700">Period of order (days)</label>
-                            <input type="number" step="1" min="0" name="period_of_order_days" id="period_of_order_days"
+                            <input type="number" step="1" min="1" name="period_of_order_days" id="period_of_order_days"
                                    value="{{ $defaultPeriodDays }}"
-                                   required
                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                             <p class="mt-1 text-xs text-gray-500">Comfort stock period covered by this order.</p>
                         </div>
@@ -302,19 +274,36 @@
 
             <div class="border border-gray-200 rounded-lg p-4 space-y-4">
                 <div>
+                    <p class="text-sm font-medium text-gray-900">Peak period</p>
+                    <p class="text-xs text-gray-500 mt-0.5">Optional uplift applied to suggested quantities when demand is expected to spike.</p>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="peak_period_percent" class="block text-sm font-medium text-gray-700">Anticipated peak period (%)</label>
+                        <input type="number" step="0.01" min="0" max="100" name="peak_period_percent" id="peak_period_percent"
+                               value="{{ old('peak_period_percent', 0) }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <p class="mt-1 text-xs text-gray-500">Share of the order period expected to be peak demand.</p>
+                        @error('peak_period_percent')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label for="peak_consumption_increase_percent" class="block text-sm font-medium text-gray-700">Expected increase in consumption during peak period (%)</label>
+                        <input type="number" step="0.01" min="0" max="1000" name="peak_consumption_increase_percent" id="peak_consumption_increase_percent"
+                               value="{{ old('peak_consumption_increase_percent', 0) }}"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <p class="mt-1 text-xs text-gray-500">Applied to all items. Peak impact = peak period × this increase ÷ 100.</p>
+                        @error('peak_consumption_increase_percent')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                    </div>
+                </div>
+            </div>
+
+            <div class="border border-gray-200 rounded-lg p-4 space-y-4">
+                <div>
                     <p class="text-sm font-medium text-gray-900">Order settings</p>
                     <p class="text-xs text-gray-500 mt-0.5">
                         Pre-filled from your inventory module defaults. Safety and buffer days affect suggested quantities; notification days affect when to place the order.
                     </p>
-                </div>
-
-                <div>
-                    <label for="peak_period_percent" class="block text-sm font-medium text-gray-700">Anticipated peak period (%)</label>
-                    <input type="number" step="0.01" min="0" max="100" name="peak_period_percent" id="peak_period_percent"
-                           value="{{ old('peak_period_percent', 0) }}"
-                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                    <p class="mt-1 text-xs text-gray-500">Share of the order period expected to be peak demand.</p>
-                    @error('peak_period_percent')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">

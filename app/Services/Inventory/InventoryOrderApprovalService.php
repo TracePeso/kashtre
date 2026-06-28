@@ -17,13 +17,21 @@ class InventoryOrderApprovalService
     {
         if (! $order->isDraft()) {
             throw ValidationException::withMessages([
-                'status' => 'Only draft orders can be submitted for approval.',
+                'status' => 'Only draft RFQs can be submitted for approval.',
             ]);
         }
 
         if ($order->lines()->count() < 1) {
             throw ValidationException::withMessages([
-                'lines' => 'Add at least one order line before submitting.',
+                'lines' => 'Add at least one RFQ line before submitting.',
+            ]);
+        }
+
+        $missingSuppliers = $order->supplier_id ? 0 : 1;
+
+        if ($missingSuppliers > 0) {
+            throw ValidationException::withMessages([
+                'supplier' => 'Select a supplier for this RFQ before submitting.',
             ]);
         }
 
@@ -66,7 +74,7 @@ class InventoryOrderApprovalService
     {
         if (! $order->isPendingApproval()) {
             throw ValidationException::withMessages([
-                'status' => 'This order is not awaiting approval.',
+                'status' => 'This RFQ is not awaiting approval.',
             ]);
         }
 
@@ -110,7 +118,7 @@ class InventoryOrderApprovalService
     {
         if (! $order->isPendingApproval()) {
             throw ValidationException::withMessages([
-                'status' => 'This order is not awaiting approval.',
+                'status' => 'This RFQ is not awaiting approval.',
             ]);
         }
 

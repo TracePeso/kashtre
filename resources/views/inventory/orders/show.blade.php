@@ -4,6 +4,7 @@
         'draft' => 'bg-gray-100 text-gray-800',
         'pending_approval' => 'bg-amber-100 text-amber-800',
         'approved' => 'bg-blue-100 text-blue-800',
+        'po_issued' => 'bg-indigo-100 text-indigo-800',
         'partially_received' => 'bg-indigo-100 text-indigo-800',
         'fulfilled' => 'bg-green-100 text-green-800',
         'rejected' => 'bg-red-100 text-red-800',
@@ -17,6 +18,7 @@
                 <a href="{{ route('inventory.orders.index') }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to order goods</a>
                 <div class="mt-2 flex flex-wrap items-center gap-3">
                     <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">{{ $order->order_number }}</h2>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">RFQ</span>
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $statusColors }}">
                         {{ $order->statusLabel() }}
                     </span>
@@ -30,11 +32,19 @@
                     </span>
                 </div>
                 <p class="mt-1 text-sm text-gray-500">
-                    {{ $order->store->selectLabel() }} · {{ $order->orderingTypeValueLabel() }}
+                    {{ $order->store->selectLabel() }}
+                    @if($order->supplier)
+                        · {{ $order->supplier->name }}
+                    @endif
+                    · {{ $order->orderingTypeValueLabel() }}
                 </p>
             </div>
             @if($order->isDraft())
                 <div class="mt-4 md:mt-0 flex flex-wrap gap-2">
+                    <a href="{{ route('inventory.orders.pdf', $order) }}"
+                       class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Export RFQ PDF
+                    </a>
                     <form action="{{ route('inventory.orders.regenerate', $order) }}" method="POST">
                         @csrf
                         <button type="submit" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
@@ -46,16 +56,22 @@
                         <button type="button"
                                 onclick="confirmSubmitInventoryOrder()"
                                 class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                            Submit for approval
+                            Submit RFQ for approval
                         </button>
                     </form>
                 </div>
-            @elseif($order->canReceiveGoods() && !empty($receiptOptions))
-                <div class="mt-4 md:mt-0">
-                    <a href="{{ route('inventory.orders.receive', $order) }}"
-                       class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                        Receive goods
+            @else
+                <div class="mt-4 md:mt-0 flex flex-wrap gap-2">
+                    <a href="{{ route('inventory.orders.pdf', $order) }}"
+                       class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Export RFQ PDF
                     </a>
+                    @if($order->canReceiveGoods())
+                        <a href="{{ route('inventory.orders.receive', $order) }}"
+                           class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                            Receive goods
+                        </a>
+                    @endif
                 </div>
             @endif
         </div>
@@ -82,19 +98,25 @@
 
         @if($order->isDraft())
             <div class="mt-4 bg-slate-50 border border-slate-200 text-slate-800 px-4 py-3 rounded text-sm">
-                <strong>Draft order.</strong> Review items below, then <strong>Submit for approval</strong>. Receiving goods is only available after approvers sign off.
+                <strong>Draft RFQ.</strong> Choose the <strong>supplier</strong> for this order (above the line items), review quantities, then <strong>Submit RFQ for approval</strong>.
             </div>
         @endif
 
         @if($order->isPendingApproval())
             <div class="mt-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded text-sm">
-                <strong>Awaiting order approval.</strong> Goods can be received only after all configured approvers have signed off.
+                <strong>Awaiting RFQ approval.</strong> After approvers sign off, record supplier quotations and generate LPOs.
             </div>
         @endif
 
-        @if($order->isApproved())
+        @if($order->isRfqApproved())
             <div class="mt-4 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm">
-                <strong>Order approved.</strong> Record deliveries via Receive goods — stock updates when each GRN is approved.
+                <strong>RFQ approved.</strong> Record supplier quotations below, accept a quote, then generate and issue an LPO. Goods are received only against issued LPOs.
+            </div>
+        @endif
+
+        @if($order->isPoIssued() && ! $order->isFulfilled())
+            <div class="mt-4 bg-indigo-50 border border-indigo-200 text-indigo-900 px-4 py-3 rounded text-sm">
+                <strong>LPO issued.</strong> Receive goods against the LPO — stock updates when each GRN is approved.
             </div>
         @endif
 
@@ -112,7 +134,7 @@
 
         @php
             $importanceLabel = $order->importance_filter
-                ? (\App\Models\Item::importanceOptions()[$order->importance_filter] ?? $order->importance_filter)
+                ? (ItemImportanceCategory::labelForSlug((int) $order->business_id, $order->importance_filter) ?? $order->importance_filter)
                 : 'All items';
             $scopeParts = array_filter([
                 $importanceLabel !== 'All items' ? $importanceLabel : null,
@@ -121,10 +143,15 @@
                 ! empty($order->item_ids) ? count($order->item_ids).' selected items' : null,
             ]);
             $orderTotal = $order->orderTotal();
+            $amountCap = $order->effectiveAmountCap();
             $budgetCap = (float) ($order->budget_value ?? 0);
-            $budgetUsedPct = $order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT && $budgetCap > 0
-                ? min(100, round(($orderTotal / $budgetCap) * 100, 1))
+            $budgetCapEnforced = (bool) ($order->budget_cap_enforced ?? true);
+            $budgetUsedPct = $amountCap !== null && $amountCap > 0
+                ? round(($orderTotal / $amountCap) * 100, 1)
                 : null;
+            $budgetUsedDisplayPct = $budgetUsedPct !== null && $budgetCapEnforced
+                ? min(100, $budgetUsedPct)
+                : $budgetUsedPct;
         @endphp
 
         <div class="mt-6 bg-white shadow sm:rounded-lg overflow-hidden">
@@ -137,10 +164,16 @@
                         <span class="text-gray-400">·</span>
                         <span @class([
                             'font-medium',
-                            'text-emerald-700' => $budgetUsedPct < 90,
-                            'text-amber-700' => $budgetUsedPct >= 90 && $budgetUsedPct < 100,
-                            'text-red-700' => $budgetUsedPct >= 100,
-                        ])>{{ $budgetUsedPct }}% of cap</span>
+                            'text-emerald-700' => $budgetUsedDisplayPct < 90,
+                            'text-amber-700' => $budgetUsedDisplayPct >= 90 && $budgetUsedDisplayPct < 100,
+                            'text-red-700' => $budgetUsedDisplayPct >= 100,
+                        ])>
+                            @if($budgetCapEnforced)
+                                {{ $budgetUsedDisplayPct }}% of cap
+                            @else
+                                {{ $budgetUsedPct }}% of original cap
+                            @endif
+                        </span>
                     @endif
                 </p>
             </div>
@@ -171,6 +204,8 @@
                             {{ number_format($budgetCap, 0) }} days
                         @elseif($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT)
                             UGX {{ number_format($budgetCap, 0) }}
+                        @elseif($amountCap !== null && $amountCap > 0)
+                            UGX {{ number_format($amountCap, 0) }}
                         @else
                             —
                         @endif
@@ -178,20 +213,28 @@
                     <p class="text-xs text-gray-500 mt-0.5">
                         @if($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT)
                             UGX {{ number_format($orderTotal, 0) }} of cap
+                            @if($order->isDraft())
+                                · Cap {{ $budgetCapEnforced ? 'on' : 'off' }}
+                            @endif
                         @elseif($order->budget_mode)
                             Applied at generation
+                        @elseif($amountCap !== null && $amountCap > 0)
+                            UGX {{ number_format($orderTotal, 0) }} of generated total
+                            @if($order->isDraft())
+                                · Cap {{ $budgetCapEnforced ? 'on' : 'off' }}
+                            @endif
                         @else
                             Period-based order
                         @endif
                     </p>
-                    @if($budgetUsedPct !== null)
+                    @if($budgetUsedDisplayPct !== null)
                         <div class="mt-2 h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
                             <div @class([
                                 'h-full rounded-full',
-                                'bg-emerald-500' => $budgetUsedPct < 90,
-                                'bg-amber-500' => $budgetUsedPct >= 90 && $budgetUsedPct < 100,
-                                'bg-red-500' => $budgetUsedPct >= 100,
-                            ]) style="width: {{ $budgetUsedPct }}%"></div>
+                                'bg-emerald-500' => $budgetUsedDisplayPct < 90,
+                                'bg-amber-500' => $budgetUsedDisplayPct >= 90 && $budgetUsedDisplayPct < 100,
+                                'bg-red-500' => $budgetUsedDisplayPct >= 100,
+                            ]) style="width: {{ min(100, $budgetUsedDisplayPct) }}%"></div>
                         </div>
                     @endif
                 </div>
@@ -208,6 +251,10 @@
                     <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Peak period</p>
                     <p class="mt-1 text-sm font-semibold text-gray-900 tabular-nums">
                         {{ number_format((float) ($order->peak_period_percent ?? 0), 0) }}%
+                        @if((float) ($order->peak_consumption_increase_percent ?? 0) > 0)
+                            <span class="text-gray-400 font-normal">·</span>
+                            +{{ number_format((float) $order->peak_consumption_increase_percent, 0) }}% consumption
+                        @endif
                     </p>
                     <p class="text-xs text-gray-500 mt-0.5">{{ $order->moving_average_days }}-day consumption rate</p>
                 </div>
@@ -228,9 +275,36 @@
             @endif
         </div>
 
+        @if($order->canManageSupplierQuotations() && $order->supplier_id)
+            <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6">
+                <h3 class="text-sm font-semibold text-gray-900">Supplier quotation</h3>
+                <p class="text-xs text-gray-500 mt-0.5">Record the quote from {{ $order->supplier?->name }}, accept it, then generate an LPO.</p>
+                <div class="mt-4">
+                    @include('inventory.orders.partials.supplier-quotation-card', ['order' => $order])
+                </div>
+            </div>
+        @endif
+
+        @if($order->purchaseOrders->isNotEmpty())
+            <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6">
+                <h3 class="text-sm font-semibold text-gray-900">Local purchase orders</h3>
+                <ul class="mt-3 divide-y divide-gray-100 border border-gray-200 rounded-lg">
+                    @foreach($order->purchaseOrders as $po)
+                        <li class="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <a href="{{ route('inventory.purchase-orders.show', $po) }}" class="text-sm font-medium text-blue-600 hover:text-blue-800">{{ $po->po_number }}</a>
+                                <p class="text-xs text-gray-500">{{ $po->supplier?->name }} · {{ $po->statusLabel() }}</p>
+                            </div>
+                            <p class="text-sm font-semibold text-gray-900">UGX {{ number_format((float) $po->total_amount, 2) }}</p>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
+
         <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6 w-full min-w-0">
             <div class="mb-4">
-                <h3 class="text-sm font-semibold text-gray-900">Order items</h3>
+                <h3 class="text-sm font-semibold text-gray-900">RFQ line items</h3>
                 <p class="text-xs text-gray-500 mt-0.5">
                     @if($order->isDraft())
                         Use search and filters to find items. Paginated for large orders.
@@ -324,8 +398,8 @@
         <script>
             function confirmSubmitInventoryOrder() {
                 Swal.fire({
-                    title: 'Submit for approval?',
-                    html: 'Order <strong>{{ $order->order_number }}</strong> will be sent to your configured approvers. You will not be able to edit quantities after this.',
+                    title: 'Submit RFQ for approval?',
+                    html: 'RFQ <strong>{{ $order->order_number }}</strong> will be sent to your configured approvers. After approval, record supplier quotations before generating an LPO.',
                     icon: 'question',
                     showCancelButton: true,
                     confirmButtonText: 'Yes, submit',

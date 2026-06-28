@@ -3,17 +3,21 @@
 namespace App\Http\Controllers;
 
 use App\Models\Group;
+use App\Models\ItemImportanceCategory;
 use App\Models\InventoryModuleConfig;
 use App\Models\InventoryOrder;
 use App\Models\Item;
 use App\Models\Store;
 use App\Models\SubGroup;
+use App\Models\Supplier;
 use App\Services\Inventory\InventoryOrderApprovalService;
 use App\Services\Inventory\InventoryOrderFulfillmentService;
 use App\Services\Inventory\InventoryOrderService;
+use App\Services\Inventory\InventoryProcurementPdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class InventoryOrderController extends Controller
 {
@@ -21,6 +25,7 @@ class InventoryOrderController extends Controller
         private readonly InventoryOrderService $service,
         private readonly InventoryOrderApprovalService $approvalService,
         private readonly InventoryOrderFulfillmentService $fulfillmentService,
+        private readonly InventoryProcurementPdfService $pdfService,
     ) {
         $this->middleware(function ($request, $next) {
             return $this->inventoryMiddleware($request, $next);
@@ -35,6 +40,7 @@ class InventoryOrderController extends Controller
     public function create()
     {
         $businessId = (int) Auth::user()->business_id;
+        ItemImportanceCategory::ensureDefaultsForBusiness($businessId);
         $moduleConfig = InventoryModuleConfig::query()
             ->forBusiness($businessId)
             ->active()
@@ -42,12 +48,16 @@ class InventoryOrderController extends Controller
 
         return view('inventory.orders.create', [
             'stores' => Store::optionsForSelect($businessId),
+            'suppliers' => Supplier::query()
+                ->where('business_id', $businessId)
+                ->orderBy('name')
+                ->get(['id', 'name']),
             'items' => Item::query()
                 ->where('business_id', $businessId)
                 ->where('type', 'good')
                 ->orderBy('name')
                 ->get(['id', 'name', 'code', 'importance_category', 'group_id', 'subgroup_id']),
-            'importanceOptions' => \App\Models\Item::importanceOptions(),
+            'importanceOptions' => Item::importanceOptions($businessId),
             'groupOptions' => Group::query()
                 ->where('business_id', $businessId)
                 ->orderBy('name')
@@ -62,30 +72,67 @@ class InventoryOrderController extends Controller
 
     public function store(Request $request)
     {
+        $businessId = (int) Auth::user()->business_id;
+        ItemImportanceCategory::ensureDefaultsForBusiness($businessId);
+
+        $importanceSlugs = array_keys(Item::importanceOptions($businessId));
+
         $validated = $request->validate([
             'store_id' => 'required|exists:stores,id',
-            'importance_filter' => 'nullable|in:essential,non_essential',
+            'supplier_id' => 'required|exists:suppliers,id',
+            'ordering_approach' => 'nullable|in:period,budget',
+            'importance_filter' => array_merge(
+                ['nullable', 'string', 'max:64'],
+                $request->filled('importance_filter') ? [Rule::in($importanceSlugs)] : []
+            ),
             'group_id' => 'nullable|exists:groups,id',
             'subgroup_id' => 'nullable|exists:sub_groups,id',
             'budget_mode' => 'nullable|in:days,amount',
-            'budget_value' => 'nullable|numeric|min:0|required_with:budget_mode',
+            'budget_value' => 'nullable|numeric|min:0',
             'period_of_order_days' => 'nullable|numeric|min:0',
             'safety_stock_days' => 'nullable|numeric|min:0',
             'buffer_stock_days' => 'nullable|numeric|min:0',
             'notification_to_order_days' => 'nullable|numeric|min:0',
             'peak_period_percent' => 'nullable|numeric|min:0|max:100',
+            'peak_consumption_increase_percent' => 'nullable|numeric|min:0|max:1000',
             'notes' => 'nullable|string|max:2000',
             'item_ids' => 'nullable|array',
             'item_ids.*' => 'integer|exists:items,id',
         ]);
 
-        $this->validateOrderBudget($request, $validated);
+        $orderingApproach = $validated['ordering_approach']
+            ?? (($validated['budget_mode'] ?? null) ? 'budget' : 'period');
 
-        $businessId = (int) Auth::user()->business_id;
+        if ($orderingApproach === 'budget') {
+            Validator::make(
+                $request->only(['budget_mode', 'budget_value']),
+                [
+                    'budget_mode' => 'required|in:days,amount',
+                    'budget_value' => 'required|numeric|min:1',
+                ],
+                [
+                    'budget_value.required' => 'Enter a budget cap or stock-days target when ordering by budget.',
+                    'budget_value.min' => 'Budget must be at least 1.',
+                ]
+            )->validate();
+
+            $validated['budget_mode'] = $request->input('budget_mode');
+            $validated['budget_value'] = (float) $request->input('budget_value');
+        } else {
+            $validated['budget_mode'] = null;
+            $validated['budget_value'] = null;
+        }
+
+        $this->validateOrderBudget($request, $validated);
 
         Store::query()
             ->where('business_id', $businessId)
             ->where('id', $validated['store_id'])
+            ->firstOrFail();
+
+        Supplier::query()
+            ->where('business_id', $businessId)
+            ->whereKey($validated['supplier_id'])
             ->firstOrFail();
 
         if (! empty($validated['group_id'])) {
@@ -130,10 +177,12 @@ class InventoryOrderController extends Controller
             isset($validated['group_id']) ? (int) $validated['group_id'] : null,
             isset($validated['subgroup_id']) ? (int) $validated['subgroup_id'] : null,
             isset($validated['peak_period_percent']) ? (float) $validated['peak_period_percent'] : null,
+            isset($validated['peak_consumption_increase_percent']) ? (float) $validated['peak_consumption_increase_percent'] : null,
             isset($validated['safety_stock_days']) ? (int) $validated['safety_stock_days'] : null,
             isset($validated['buffer_stock_days']) ? (int) $validated['buffer_stock_days'] : null,
             isset($validated['notification_to_order_days']) ? (int) $validated['notification_to_order_days'] : null,
             $itemIds,
+            (int) $validated['supplier_id'],
         );
 
         $redirect = redirect()->route('inventory.orders.show', $order);
@@ -146,6 +195,13 @@ class InventoryOrderController extends Controller
             ->with('success', 'Order generated. Review and edit quantities before submitting.');
     }
 
+    public function pdf(InventoryOrder $order)
+    {
+        $this->authorizeOrder($order);
+
+        return $this->pdfService->rfqPdf($order)->download($order->order_number.'.pdf');
+    }
+
     public function show(InventoryOrder $order)
     {
         $this->authorizeOrder($order);
@@ -153,13 +209,20 @@ class InventoryOrderController extends Controller
         $order->load([
             'lines.item.itemUnit',
             'lines.item.orderUnit',
+            'lines.supplier',
             'store',
+            'supplier',
             'createdBy',
             'submittedBy',
             'group',
             'subgroup',
             'approvals.approver',
             'goodsReceivedNotes',
+            'supplierQuotations.lines.item',
+            'supplierQuotations.supplier',
+            'supplierQuotations.purchaseOrder',
+            'purchaseOrders.supplier',
+            'purchaseOrders.lines',
         ]);
 
         $emptyOrderReason = $order->lines->isEmpty()
@@ -167,9 +230,7 @@ class InventoryOrderController extends Controller
             : null;
 
         $canApprove = $this->approvalService->userCanApprove($order, Auth::user());
-        $receiptOptions = $order->canReceiveGoods()
-            ? $this->fulfillmentService->receiptOptionsBySupplier($order)
-            : [];
+        $receiptOptions = [];
 
         return view('inventory.orders.show', compact(
             'order',
@@ -195,7 +256,7 @@ class InventoryOrderController extends Controller
 
         return redirect()
             ->route('inventory.orders.show', $order)
-            ->with('success', 'Order submitted for approval.');
+            ->with('success', 'RFQ submitted for approval.');
     }
 
     public function approve(Request $request, InventoryOrder $order)
@@ -212,9 +273,13 @@ class InventoryOrderController extends Controller
 
         $order->refresh();
 
-        $message = $order->isApproved()
-            ? 'Order approved. You can now receive goods against this order.'
-            : 'Approval recorded. Awaiting next approver.';
+        if ($order->isRfqApproved()) {
+            $message = 'RFQ approved. Record supplier quotations, then generate LPOs.';
+        } elseif ($order->isPendingApproval()) {
+            $message = 'Approval recorded. Awaiting next approver.';
+        } else {
+            $message = 'Approval recorded.';
+        }
 
         return redirect()
             ->route('inventory.orders.show', $order)
@@ -237,41 +302,30 @@ class InventoryOrderController extends Controller
 
         return redirect()
             ->route('inventory.orders.show', $order)
-            ->with('success', 'Order rejected.');
+            ->with('success', 'RFQ rejected.');
     }
 
     public function receive(InventoryOrder $order, Request $request)
     {
         $this->authorizeOrder($order);
 
-        if (! $order->canReceiveGoods()) {
-            return back()->withErrors(['status' => 'Only approved orders can be received against.']);
+        $issuedPos = $order->purchaseOrders()
+            ->whereIn('status', [
+                \App\Models\InventoryPurchaseOrder::STATUS_ISSUED,
+                \App\Models\InventoryPurchaseOrder::STATUS_PARTIALLY_RECEIVED,
+            ])
+            ->with('supplier')
+            ->get();
+
+        if ($issuedPos->isEmpty()) {
+            return back()->withErrors(['status' => 'Issue an LPO from an accepted supplier quotation before receiving goods.']);
         }
 
-        $receiptOptions = $this->fulfillmentService->receiptOptionsBySupplier($order);
-
-        if ($receiptOptions === []) {
-            return back()->with('warning', 'All items on this order have been fully received.');
+        if ($issuedPos->count() === 1) {
+            return redirect()->route('inventory.purchase-orders.receive', $issuedPos->first());
         }
 
-        $supplierId = $request->query('supplier_id');
-
-        if ($supplierId === null && count($receiptOptions) > 1) {
-            return view('inventory.orders.receive-select-supplier', compact('order', 'receiptOptions'));
-        }
-
-        if ($supplierId === null && count($receiptOptions) === 1) {
-            $supplierId = $receiptOptions[0]['supplier_id'];
-        }
-
-        $supplierQuery = ($supplierId !== null && (int) $supplierId !== 0)
-            ? (int) $supplierId
-            : null;
-
-        return redirect()->route('inventory.receive.create', array_filter([
-            'inventory_order_id' => $order->id,
-            'supplier_id' => $supplierQuery,
-        ]));
+        return view('inventory.orders.receive-select-lpo', compact('order', 'issuedPos'));
     }
 
     public function regenerate(InventoryOrder $order)

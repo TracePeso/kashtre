@@ -97,6 +97,8 @@ class InventoryController extends Controller
         $validated = $request->validate([
             'approver_1' => 'required|exists:users,id',
             'approver_2' => 'nullable|exists:users,id|different:approver_1',
+            'finance_notification_emails' => 'nullable|string|max:2000',
+            'lpo_email_copy_to_approvers' => 'nullable|boolean',
         ]);
 
         $businessId = (int) Auth::user()->business_id;
@@ -130,7 +132,11 @@ class InventoryController extends Controller
                 ]);
             }
 
-            $config->update(['updated_by' => Auth::id()]);
+            $config->update([
+                'updated_by' => Auth::id(),
+                'finance_notification_emails' => $validated['finance_notification_emails'] ?? null,
+                'lpo_email_copy_to_approvers' => $request->boolean('lpo_email_copy_to_approvers'),
+            ]);
         });
 
         return redirect()->route('inventory.approvers')
