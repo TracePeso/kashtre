@@ -17,6 +17,9 @@ class InventoryStockCountLine extends Model
         'physical_quantity_suom',
         'damaged_quantity_suom',
         'expired_quantity_suom',
+        'unaccounted_quantity_suom',
+        'shrinkage_quantity_suom',
+        'shrinkage_value_ugx',
     ];
 
     protected $casts = [
@@ -24,6 +27,9 @@ class InventoryStockCountLine extends Model
         'physical_quantity_suom' => 'decimal:4',
         'damaged_quantity_suom' => 'decimal:4',
         'expired_quantity_suom' => 'decimal:4',
+        'unaccounted_quantity_suom' => 'decimal:4',
+        'shrinkage_quantity_suom' => 'decimal:4',
+        'shrinkage_value_ugx' => 'decimal:2',
     ];
 
     public function stockCount(): BelongsTo
@@ -52,7 +58,31 @@ class InventoryStockCountLine extends Model
         );
     }
 
+    public function unaccountedLossSuom(): float
+    {
+        if ($this->unaccounted_quantity_suom !== null) {
+            return (float) $this->unaccounted_quantity_suom;
+        }
+
+        return $this->computeUnaccountedLossSuom();
+    }
+
+    /** @deprecated Use unaccountedLossSuom() */
     public function unverifiedLossSuom(): float
+    {
+        return $this->unaccountedLossSuom();
+    }
+
+    public function totalShrinkageLossSuom(): float
+    {
+        if ($this->shrinkage_quantity_suom !== null) {
+            return (float) $this->shrinkage_quantity_suom;
+        }
+
+        return max(0, round($this->computeUnaccountedLossSuom() + $this->verifiedLossSuom(), 4));
+    }
+
+    private function computeUnaccountedLossSuom(): float
     {
         return max(0, round(
             (float) $this->system_quantity_suom

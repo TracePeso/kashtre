@@ -1,5 +1,5 @@
 @php
-    $config = $inventoryModuleConfig ?? null;
+    $config = $moduleConfig ?? null;
     $fixedDaily = old('fixed_daily_average_suom', $config?->fixed_daily_average_suom ?? 0);
     $safetyDays = old('safety_stock_days', $config?->safety_stock_days ?? 0);
     $bufferDays = old('buffer_stock_days', $config?->buffer_stock_days ?? 0);

@@ -5,6 +5,7 @@ namespace App\Services\Inventory;
 use App\Models\InventoryDailyConsumption;
 use App\Models\InventoryConsumptionEvent;
 use App\Models\InventoryMonthlyConsumption;
+use App\Models\Item;
 use App\Models\Sale;
 use App\Models\Store;
 use App\Support\HourlyConsumptionDistribution;
@@ -25,8 +26,14 @@ class InventoryConsumptionQueryService
      *     total_quantity_suom: float
      * }
      */
-    public function periodSummary(int $businessId, string $from, string $until, ?int $storeId = null): array
-    {
+    public function periodSummary(
+        int $businessId,
+        string $from,
+        string $until,
+        ?int $storeId = null,
+        ?int $itemId = null,
+        ?string $source = null,
+    ): array {
         $periodDays = $this->periodDays($from, $until);
 
         $row = InventoryDailyConsumption::query()
@@ -34,6 +41,8 @@ class InventoryConsumptionQueryService
             ->whereDate('consumption_date', '>=', $from)
             ->whereDate('consumption_date', '<=', $until)
             ->when($storeId, fn (Builder $q) => $q->where('store_id', $storeId))
+            ->when($itemId, fn (Builder $q) => $q->where('item_id', $itemId))
+            ->when($source, fn (Builder $q) => $q->where('source', $source))
             ->selectRaw('COUNT(DISTINCT CONCAT(item_id, "-", consumption_date)) as item_day_rows')
             ->selectRaw('COUNT(DISTINCT item_id) as distinct_items')
             ->selectRaw('COALESCE(SUM(quantity_suom), 0) as total_quantity_suom')
@@ -65,26 +74,21 @@ class InventoryConsumptionQueryService
         string $from,
         string $until,
         ?int $storeId = null,
+        ?int $itemId = null,
+        ?string $source = null,
     ): Builder {
         return InventoryDailyConsumption::query()
             ->from('inventory_daily_consumptions as idc')
             ->where('idc.business_id', $businessId)
-            ->whereDate('idc.consumption_date', '>=', $from)
-            ->whereDate('idc.consumption_date', '<=', $until)
+            ->whereBetween('idc.consumption_date', [$from, $until])
             ->when($storeId, fn (Builder $query) => $query->where('idc.store_id', $storeId))
-            ->join('items', 'items.id', '=', 'idc.item_id')
-            ->join('stores', 'stores.id', '=', 'idc.store_id')
-            ->whereNull('items.deleted_at')
-            ->groupBy(
-                'idc.store_id',
-                'idc.item_id',
-                'idc.consumption_date',
-                'items.id',
-                'items.name',
-                'items.code',
-                'stores.id',
-                'stores.name',
-            )
+            ->when($itemId, fn (Builder $query) => $query->where('idc.item_id', $itemId))
+            ->when($source, fn (Builder $query) => $query->where('idc.source', $source))
+            ->join('items', function ($join) {
+                $join->on('items.id', '=', 'idc.item_id')
+                    ->whereNull('items.deleted_at');
+            })
+            ->groupBy('idc.store_id', 'idc.item_id', 'idc.consumption_date', 'items.name', 'items.code')
             ->select([
                 'idc.store_id',
                 'idc.item_id',
@@ -92,8 +96,59 @@ class InventoryConsumptionQueryService
             ])
             ->selectRaw('items.name as item_name')
             ->selectRaw('items.code as item_code')
-            ->selectRaw('stores.name as store_name')
             ->selectRaw('SUM(idc.quantity_suom) as total_quantity_suom');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function itemOptionsForPeriod(int $businessId, int $storeId, string $from, string $until): array
+    {
+        return Item::query()
+            ->where('items.business_id', $businessId)
+            ->where('items.type', 'good')
+            ->whereNull('items.deleted_at')
+            ->whereIn('items.id', function ($query) use ($businessId, $storeId, $from, $until) {
+                $query->select('item_id')
+                    ->from('inventory_daily_consumptions')
+                    ->where('business_id', $businessId)
+                    ->where('store_id', $storeId)
+                    ->whereBetween('consumption_date', [$from, $until])
+                    ->distinct();
+            })
+            ->orderBy('items.name')
+            ->get(['items.id', 'items.name', 'items.code'])
+            ->mapWithKeys(fn (Item $item): array => [
+                $item->id => trim($item->name.($item->code ? " ({$item->code})" : '')),
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function sourceOptions(): array
+    {
+        return [
+            '' => 'All sources',
+            InventoryDailyConsumption::SOURCE_SALE => 'POS / Sale',
+            InventoryDailyConsumption::SOURCE_MANUAL => 'Manual entry',
+            InventoryDailyConsumption::SOURCE_ISSUE => 'Issue',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function periodPresetOptions(): array
+    {
+        return [
+            '7' => 'Last 7 days',
+            '10' => 'Last 10 days',
+            '30' => 'Last 30 days',
+            '90' => 'Last 90 days',
+            'custom' => 'Custom range',
+        ];
     }
 
     /**

@@ -122,7 +122,10 @@ class InventoryModuleConfigController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'email']);
 
-        return view('settings.inventory-module.edit', compact('inventoryModuleConfig', 'businessUsers'));
+        return view('settings.inventory-module.edit', [
+            'config' => $inventoryModuleConfig,
+            'businessUsers' => $businessUsers,
+        ]);
     }
 
     public function update(Request $request, InventoryModuleConfig $inventoryModuleConfig)

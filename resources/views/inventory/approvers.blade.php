@@ -28,7 +28,7 @@
                     @method('PUT')
 
                     @include('settings.inventory-module._approvers-fields', [
-                        'inventoryModuleConfig' => $config,
+                        'moduleConfig' => $config,
                         'businessUsers' => $businessUsers,
                     ])
 

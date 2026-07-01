@@ -7,11 +7,11 @@
 
         <div class="bg-white shadow sm:rounded-lg">
             <div class="px-6 py-5 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">Edit Inventory Module — {{ $inventoryModuleConfig->business->name ?? '—' }}</h3>
+                <h3 class="text-lg font-medium text-gray-900">Edit Inventory Module — {{ $config->business->name ?? '—' }}</h3>
                 <p class="mt-1 text-sm text-gray-500">Update the description and GRN approvers. Use the Activate/Deactivate toggle on the list page to change the status.</p>
             </div>
 
-            <form action="{{ route('inventory-module-configs.update', $inventoryModuleConfig) }}" method="POST" class="px-6 py-5 space-y-5">
+            <form action="{{ route('inventory-module-configs.update', $config) }}" method="POST" class="px-6 py-5 space-y-5">
                 @csrf
                 @method('PUT')
 
@@ -19,18 +19,18 @@
                     <label for="description" class="block text-sm font-medium text-gray-700">Description <span class="text-gray-400">(optional)</span></label>
                     <textarea name="description" id="description" rows="3"
                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm @error('description') border-red-300 @enderror"
-                              placeholder="Any notes about this configuration">{{ old('description', $inventoryModuleConfig->description) }}</textarea>
+                              placeholder="Any notes about this configuration">{{ old('description', $config->description) }}</textarea>
                     @error('description')
                         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                     @enderror
                 </div>
 
                 @include('settings.inventory-module._stock-settings-fields', [
-                    'inventoryModuleConfig' => $inventoryModuleConfig,
+                    'moduleConfig' => $config,
                 ])
 
                 @include('settings.inventory-module._approvers-fields', [
-                    'inventoryModuleConfig' => $inventoryModuleConfig,
+                    'moduleConfig' => $config,
                     'businessUsers' => $businessUsers,
                 ])
 

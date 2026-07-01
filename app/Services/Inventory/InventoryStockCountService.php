@@ -15,7 +15,8 @@ use Illuminate\Validation\ValidationException;
 class InventoryStockCountService
 {
     public function __construct(
-        private readonly InventoryStockAnalyticsService $analytics
+        private readonly InventoryStockAnalyticsService $analytics,
+        private readonly InventoryStockCountShrinkageService $shrinkage
     ) {}
 
     public function generateReference(int $businessId): string
@@ -247,6 +248,9 @@ class InventoryStockCountService
         $count->load('lines');
 
         foreach ($count->lines as $line) {
+            $unitCost = $this->shrinkage->unitCostForLine($count, $line);
+            $this->shrinkage->snapshotLineShrinkage($line, $unitCost);
+
             $stock = InventoryStockLevel::firstOrCreate(
                 [
                     'business_id' => $count->business_id,

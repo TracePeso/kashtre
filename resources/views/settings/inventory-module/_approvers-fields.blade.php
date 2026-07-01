@@ -1,6 +1,6 @@
 @php
-    $approver1Id = old('approver_1', $inventoryModuleConfig->approvers->firstWhere('approval_order', 1)?->user_id);
-    $approver2Id = old('approver_2', $inventoryModuleConfig->approvers->firstWhere('approval_order', 2)?->user_id);
+    $approver1Id = old('approver_1', $moduleConfig?->approvers->firstWhere('approval_order', 1)?->user_id);
+    $approver2Id = old('approver_2', $moduleConfig?->approvers->firstWhere('approval_order', 2)?->user_id);
 @endphp
 
 <div class="border border-gray-200 rounded-lg p-4 space-y-6" id="grn-approvers-fields">

@@ -11,6 +11,7 @@ use App\Models\InventoryOrder;
 use App\Models\InventoryStockLevel;
 use App\Models\InventoryStockMovement;
 use App\Models\Item;
+use App\Support\StoreItemPairQuery;
 use Carbon\Carbon;
 use DateTimeInterface;
 use Illuminate\Support\Collection;
@@ -629,17 +630,14 @@ class InventoryStockAnalyticsService
             return [];
         }
 
-        $rows = InventoryStockMovement::query()
-            ->where('business_id', $businessId)
-            ->where('occurred_at', '>=', $since)
-            ->where(function ($query) use ($pairs): void {
-                foreach ($pairs as $pair) {
-                    $query->orWhere(function ($inner) use ($pair): void {
-                        $inner->where('store_id', $pair['store_id'])
-                            ->where('item_id', $pair['item_id']);
-                    });
-                }
-            })
+        $rows = StoreItemPairQuery::whereInPairs(
+            InventoryStockMovement::query()
+                ->where('business_id', $businessId)
+                ->where('occurred_at', '>=', $since),
+            $pairs,
+            'store_id',
+            'item_id'
+        )
             ->selectRaw('store_id, item_id, SUM(quantity_delta) as total')
             ->groupBy('store_id', 'item_id')
             ->get();

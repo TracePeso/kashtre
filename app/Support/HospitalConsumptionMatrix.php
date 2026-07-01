@@ -58,6 +58,47 @@ class HospitalConsumptionMatrix
         return $start->toDateString().' → '.$end->toDateString();
     }
 
+    /**
+     * @param  array<int, array{name: string, unit: string, base_avg: float|int}>  $items
+     * @return array<int, array{item_name: string, unit: string, date: string, quantity: int}>
+     */
+    public function generateForRange(array $items, Carbon $from, Carbon $to): array
+    {
+        $from = $from->copy()->startOfDay();
+        $to = $to->copy()->startOfDay();
+
+        if ($from->gt($to)) {
+            return [];
+        }
+
+        $rows = [];
+
+        foreach ($items as $item) {
+            $baseAvg = (float) $item['base_avg'];
+            $cursor = $from->copy();
+
+            while ($cursor->lte($to)) {
+                mt_srand(self::RANDOM_SEED + (int) $cursor->format('Ymd') + crc32($item['name']));
+
+                $weekendFactor = $cursor->dayOfWeek >= Carbon::SATURDAY ? 0.8 : 1.0;
+                $quantity = $this->sampleDailyQuantity($baseAvg * $weekendFactor);
+
+                if ($quantity > 0) {
+                    $rows[] = [
+                        'item_name' => $item['name'],
+                        'unit' => $item['unit'],
+                        'date' => $cursor->toDateString(),
+                        'quantity' => $quantity,
+                    ];
+                }
+
+                $cursor->addDay();
+            }
+        }
+
+        return $rows;
+    }
+
     private function sampleDailyQuantity(float $adjustedAvg): int
     {
         if ($adjustedAvg <= 2) {

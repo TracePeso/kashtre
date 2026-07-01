@@ -9,6 +9,10 @@
     $initialOrderApproach = old('ordering_approach', $initialBudgetMode ? 'budget' : 'period');
     $oldItemIds = collect(old('item_ids', []))->map(fn ($id) => (int) $id)->values();
     $defaultImportance = old('importance_filter', '');
+    $initialEditOrderSettings = $errors->hasAny(['safety_stock_days', 'buffer_stock_days', 'notification_to_order_days']);
+    $safetyDays = (int) old('safety_stock_days', $defaultSafetyDays);
+    $bufferDays = (int) old('buffer_stock_days', $defaultBufferDays);
+    $notificationDays = (int) old('notification_to_order_days', $defaultNotificationDays);
 @endphp
 <div class="min-h-screen bg-gray-50 py-6" x-data="{
     orderApproach: '{{ $initialOrderApproach }}',
@@ -73,6 +77,19 @@
 
             return true;
         });
+    },
+    editOrderSettings: @js($initialEditOrderSettings),
+    defaultSafetyDays: {{ $defaultSafetyDays }},
+    defaultBufferDays: {{ $defaultBufferDays }},
+    defaultNotificationDays: {{ $defaultNotificationDays }},
+    safetyDays: {{ $safetyDays }},
+    bufferDays: {{ $bufferDays }},
+    notificationDays: {{ $notificationDays }},
+    resetOrderSettings() {
+        this.safetyDays = this.defaultSafetyDays;
+        this.bufferDays = this.defaultBufferDays;
+        this.notificationDays = this.defaultNotificationDays;
+        this.editOrderSettings = false;
     },
 }">
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -299,18 +316,58 @@
             </div>
 
             <div class="border border-gray-200 rounded-lg p-4 space-y-4">
-                <div>
-                    <p class="text-sm font-medium text-gray-900">Order settings</p>
-                    <p class="text-xs text-gray-500 mt-0.5">
-                        Pre-filled from your inventory module defaults. Safety and buffer days affect suggested quantities; notification days affect when to place the order.
-                    </p>
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <p class="text-sm font-medium text-gray-900">Order settings</p>
+                        <p class="text-xs text-gray-500 mt-0.5">
+                            From your inventory module defaults. Safety and buffer days affect suggested quantities; notification days affect when to place the order.
+                        </p>
+                    </div>
+                    <button type="button"
+                            x-show="!editOrderSettings"
+                            @click="editOrderSettings = true"
+                            class="shrink-0 text-sm font-medium text-blue-600 hover:text-blue-800">
+                        Edit
+                    </button>
+                    <button type="button"
+                            x-show="editOrderSettings"
+                            @click="resetOrderSettings()"
+                            class="shrink-0 text-sm font-medium text-gray-600 hover:text-gray-800">
+                        Use defaults
+                    </button>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <template x-if="!editOrderSettings">
+                    <div>
+                        <input type="hidden" name="safety_stock_days" :value="safetyDays">
+                        <input type="hidden" name="buffer_stock_days" :value="bufferDays">
+                        <input type="hidden" name="notification_to_order_days" :value="notificationDays">
+                    </div>
+                </template>
+
+                <div x-show="!editOrderSettings" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div class="rounded-md bg-slate-50 border border-slate-200 px-3 py-2.5">
+                        <p class="text-xs font-medium text-gray-500">Safety stock (days)</p>
+                        <p class="mt-0.5 text-lg font-semibold text-gray-900 tabular-nums" x-text="safetyDays"></p>
+                        <p class="mt-1 text-xs text-gray-500">Minimum days of stock to retain before reordering.</p>
+                    </div>
+                    <div class="rounded-md bg-slate-50 border border-slate-200 px-3 py-2.5">
+                        <p class="text-xs font-medium text-gray-500">Buffer stock (days)</p>
+                        <p class="mt-0.5 text-lg font-semibold text-gray-900 tabular-nums" x-text="bufferDays"></p>
+                        <p class="mt-1 text-xs text-gray-500">Extra days of cover beyond safety stock.</p>
+                    </div>
+                    <div class="rounded-md bg-slate-50 border border-slate-200 px-3 py-2.5">
+                        <p class="text-xs font-medium text-gray-500">Notification to order (days)</p>
+                        <p class="mt-0.5 text-lg font-semibold text-gray-900 tabular-nums" x-text="notificationDays"></p>
+                        <p class="mt-1 text-xs text-gray-500">Lead time from stockout warning to placing the order.</p>
+                    </div>
+                </div>
+
+                <div x-show="editOrderSettings" x-cloak class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                         <label for="safety_stock_days" class="block text-sm font-medium text-gray-700">Safety stock (days)</label>
                         <input type="number" step="1" min="0" name="safety_stock_days" id="safety_stock_days"
-                               value="{{ $defaultSafetyDays }}"
+                               x-model.number="safetyDays"
                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                         <p class="mt-1 text-xs text-gray-500">Minimum days of stock to retain before reordering.</p>
                         @error('safety_stock_days')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
@@ -318,7 +375,7 @@
                     <div>
                         <label for="buffer_stock_days" class="block text-sm font-medium text-gray-700">Buffer stock (days)</label>
                         <input type="number" step="1" min="0" name="buffer_stock_days" id="buffer_stock_days"
-                               value="{{ $defaultBufferDays }}"
+                               x-model.number="bufferDays"
                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                         <p class="mt-1 text-xs text-gray-500">Extra days of cover beyond safety stock.</p>
                         @error('buffer_stock_days')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
@@ -326,7 +383,7 @@
                     <div>
                         <label for="notification_to_order_days" class="block text-sm font-medium text-gray-700">Notification to order (days)</label>
                         <input type="number" step="1" min="0" name="notification_to_order_days" id="notification_to_order_days"
-                               value="{{ $defaultNotificationDays }}"
+                               x-model.number="notificationDays"
                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                         <p class="mt-1 text-xs text-gray-500">Lead time from stockout warning to placing the order.</p>
                         @error('notification_to_order_days')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror

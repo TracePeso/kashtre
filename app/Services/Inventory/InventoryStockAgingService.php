@@ -6,7 +6,9 @@ use App\Models\GoodsReceivedNote;
 use App\Models\GoodsReceivedNoteLine;
 use App\Models\InventoryStockLevel;
 use App\Models\Store;
+use App\Support\StoreItemPairQuery;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 
 class InventoryStockAgingService
 {
@@ -39,19 +41,16 @@ class InventoryStockAgingService
             ->unique(fn (array $pair): string => "{$pair['store_id']}-{$pair['item_id']}")
             ->values();
 
-        $rows = GoodsReceivedNoteLine::query()
-            ->from('goods_received_note_lines as lines')
-            ->join('goods_received_notes as grn', 'grn.id', '=', 'lines.goods_received_note_id')
-            ->where('grn.business_id', $businessId)
-            ->where('grn.status', GoodsReceivedNote::STATUS_APPROVED)
-            ->where(function ($query) use ($pairs): void {
-                foreach ($pairs as $pair) {
-                    $query->orWhere(function ($inner) use ($pair): void {
-                        $inner->where('grn.store_id', $pair['store_id'])
-                            ->where('lines.item_id', $pair['item_id']);
-                    });
-                }
-            })
+        $rows = StoreItemPairQuery::whereInPairs(
+            GoodsReceivedNoteLine::query()
+                ->from('goods_received_note_lines as lines')
+                ->join('goods_received_notes as grn', 'grn.id', '=', 'lines.goods_received_note_id')
+                ->where('grn.business_id', $businessId)
+                ->where('grn.status', GoodsReceivedNote::STATUS_APPROVED),
+            $pairs,
+            'grn.store_id',
+            'lines.item_id'
+        )
             ->selectRaw('grn.store_id, lines.item_id, MAX(grn.date_of_delivery) as last_delivery')
             ->groupBy('grn.store_id', 'lines.item_id')
             ->get();

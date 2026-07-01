@@ -1,7 +1,7 @@
 <div>
     @if(! $embedded)
         <div class="mb-4 max-w-md">
-            <label for="network-store" class="block text-sm font-medium text-gray-700">Roll up from store</label>
+            <label for="network-store" class="block text-sm font-medium text-gray-700">Store</label>
             <select id="network-store" wire:model.live="storeId" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
                 <option value="">Select Main or Branch store…</option>
                 @foreach(\App\Models\Store::optionsForSelect((int) auth()->user()->business_id) as $id => $label)

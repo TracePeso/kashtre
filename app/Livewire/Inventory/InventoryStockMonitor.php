@@ -2,14 +2,34 @@
 
 namespace App\Livewire\Inventory;
 
+use App\Livewire\Inventory\Concerns\InteractsWithInventoryMetrics;
+use App\Livewire\Inventory\Concerns\WarmsInventoryFilamentTable;
+use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
+use App\Models\Item;
 use App\Models\Store;
+use App\Services\Inventory\InventoryStockAgingService;
+use App\Services\Inventory\InventoryStockCountShrinkageService;
+use Filament\Forms\Concerns\InteractsWithForms;
+use Filament\Forms\Contracts\HasForms;
+use Filament\Tables\Actions\Action;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Table;
+use Illuminate\Contracts\Pagination\Paginator;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 
-class InventoryStockMonitor extends Component
+class InventoryStockMonitor extends Component implements HasForms, HasTable
 {
+    use InteractsWithForms;
+    use InteractsWithInventoryMetrics;
+    use WarmsInventoryFilamentTable {
+        paginateTableQuery as warmPaginateTableQuery;
+    }
+
     public const VIEW_LOCAL = 'local';
 
     public const VIEW_NETWORK = 'network';
@@ -17,6 +37,8 @@ class InventoryStockMonitor extends Component
     public string $stockView = self::VIEW_LOCAL;
 
     public ?int $storeId = null;
+
+    public ?InventoryModuleConfig $moduleConfig = null;
 
     /** @var array<int, string> */
     public array $storeOptions = [];
@@ -29,36 +51,372 @@ class InventoryStockMonitor extends Component
             $this->stockView = self::VIEW_NETWORK;
         }
 
-        $this->storeOptions = Store::optionsForSelect((int) Auth::user()->business_id);
+        $businessId = (int) Auth::user()->business_id;
+        $this->moduleConfig = $this->moduleConfigFor($businessId);
+        $this->storeOptions = Store::optionsForSelect($businessId);
         $this->storeId = $this->resolveDefaultStoreId();
     }
 
-    public function updatedStockView(): void
+    public function setStockView(string $view): void
     {
-        if ($this->storeId === null) {
-            $this->storeId = $this->resolveDefaultStoreId();
+        if (! in_array($view, [self::VIEW_LOCAL, self::VIEW_NETWORK], true) || $this->stockView === $view) {
+            return;
         }
+
+        $this->stockView = $view;
+        $this->resetTable();
     }
 
-    public function selectedStoreLabel(): ?string
+    public function updatedStoreId(): void
     {
-        if (! $this->storeId) {
-            return null;
+        $this->resetTable();
+    }
+
+    public function table(Table $table): Table
+    {
+        return $this->stockView === self::VIEW_NETWORK
+            ? $this->networkTable($table)
+            : $this->localTable($table);
+    }
+
+    protected function paginateTableQuery(Builder $query): Paginator
+    {
+        $paginator = $this->stockView === self::VIEW_LOCAL
+            ? $this->warmPaginateTableQuery($query)
+            : $this->filamentPaginateTableQuery($query);
+
+        $this->warmCumulativeShrinkageForPage($paginator);
+
+        return $paginator;
+    }
+
+    protected function stockLevelsFromPaginator(Paginator $paginator): \Illuminate\Support\Collection
+    {
+        if ($this->stockView !== self::VIEW_LOCAL) {
+            return $paginator->getCollection();
         }
 
-        return $this->storeOptions[(string) $this->storeId] ?? null;
+        return $paginator->getCollection()->map(fn (Item $item): InventoryStockLevel => $this->stockLevel($item));
+    }
+
+    protected function warmAgingMetricsForStocks(iterable $stockLevels): void
+    {
+        app(InventoryStockAgingService::class)->warmPageAging(
+            (int) Auth::user()->business_id,
+            $stockLevels
+        );
     }
 
     public function render(): View
     {
-        $businessId = (int) Auth::user()->business_id;
-        $store = $this->storeId ? Store::query()->with('parent')->find($this->storeId) : null;
-
         return view('livewire.inventory.inventory-stock-monitor', [
             'stores' => $this->storeOptions,
-            'store' => $store,
-            'networkScope' => $store?->networkScopeDescription(),
         ]);
+    }
+
+    private function localTable(Table $table): Table
+    {
+        $config = $this->moduleConfig;
+
+        return $table
+            ->query($this->localBaseQuery())
+            ->columns([
+                TextColumn::make('name')
+                    ->label('Item')
+                    ->searchable()
+                    ->sortable()
+                    ->weight('medium')
+                    ->url(fn (Item $record): string => route('inventory.monitor.history', $record))
+                    ->color('primary'),
+
+                TextColumn::make('code')
+                    ->label('Code')
+                    ->searchable()
+                    ->sortable(),
+
+                TextColumn::make('itemUnit.name')
+                    ->label('SUOM')
+                    ->placeholder('—')
+                    ->sortable(),
+
+                TextColumn::make('system_stock_ar')
+                    ->label('System stock (AR)')
+                    ->tooltip('Ledger stock since financial year start')
+                    ->alignEnd()
+                    ->state(fn (Item $record): float => (float) $this->mForItem($record, 'system_ar'))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+
+                TextColumn::make('physical_stock')
+                    ->label('Physical stock')
+                    ->alignEnd()
+                    ->state(fn (Item $record): float => (float) ($record->stock_quantity_suom ?? 0))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+
+                TextColumn::make('cumulative_shrinkage_suom')
+                    ->label('Cumulative shrinkage')
+                    ->tooltip('Total shrinkage recorded across approved stock counts')
+                    ->alignEnd()
+                    ->state(fn (Item $record): float => $this->cumulativeShrinkageForItem($record)['qty'])
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0))
+                    ->color(fn (Item $record): ?string => $this->cumulativeShrinkageForItem($record)['qty'] > 0 ? 'danger' : null),
+
+                TextColumn::make('cumulative_shrinkage_ugx')
+                    ->label('Cumulative shrinkage (UGX)')
+                    ->alignEnd()
+                    ->state(fn (Item $record): float => $this->cumulativeShrinkageForItem($record)['ugx'])
+                    ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2))
+                    ->color(fn (Item $record): ?string => $this->cumulativeShrinkageForItem($record)['ugx'] > 0 ? 'danger' : null),
+
+                TextColumn::make('stock_days_n')
+                    ->label('Stock days (N)')
+                    ->alignEnd()
+                    ->state(fn (Item $record): ?float => $this->mForItem($record, 'stock_days'))
+                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 1) : '—'),
+
+                TextColumn::make('days_left_am')
+                    ->label('Days left (AM)')
+                    ->alignEnd()
+                    ->state(fn (Item $record): ?float => $this->mForItem($record, 'days_left'))
+                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 1) : '—')
+                    ->color(fn ($state) => $state !== null && (float) $state <= 0 ? 'danger' : null),
+
+                TextColumn::make('order_notify_ay')
+                    ->label('Order notify (AY)')
+                    ->state(fn (Item $record): ?string => $this->mForItem($record, 'notify_date'))
+                    ->placeholder('—'),
+
+                TextColumn::make('safety_stock_suom')
+                    ->label('Safety stock (AC)')
+                    ->alignEnd()
+                    ->visible($config !== null)
+                    ->state(fn (Item $record): float => (float) $this->mForItem($record, 'safety_stock_suom'))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+
+                TextColumn::make('buffer_stock_suom')
+                    ->label('Buffer stock (AE)')
+                    ->alignEnd()
+                    ->visible($config !== null)
+                    ->state(fn (Item $record): float => (float) $this->mForItem($record, 'buffer_stock_suom'))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+
+                TextColumn::make('stock_aging_days')
+                    ->label('Stock aging (U)')
+                    ->alignEnd()
+                    ->state(fn (Item $record): ?int => app(InventoryStockAgingService::class)->pageAgingDays(
+                        (int) Auth::user()->business_id,
+                        (int) $record->stock_store_id,
+                        (int) $record->id
+                    ))
+                    ->formatStateUsing(fn ($state): string => $state !== null ? number_format((int) $state) : '—'),
+
+                TextColumn::make('valuation_o')
+                    ->label('Valuation (O)')
+                    ->alignEnd()
+                    ->state(fn (Item $record): float => (float) $this->mForItem($record, 'valuation'))
+                    ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2)),
+            ])
+            ->actions([
+                Action::make('history')
+                    ->label('History')
+                    ->icon('heroicon-o-clock')
+                    ->url(fn (Item $record): string => route('inventory.monitor.history', $record)),
+            ])
+            ->defaultSort('name')
+            ->striped()
+            ->defaultPaginationPageOption(10)
+            ->paginated([10, 25, 50, 100])
+            ->emptyStateHeading('No inventory activity')
+            ->emptyStateDescription('No stock or consumption recorded at this store yet.');
+    }
+
+    private function networkTable(Table $table): Table
+    {
+        return $table
+            ->query($this->networkBaseQuery())
+            ->columns([
+                TextColumn::make('name')
+                    ->label('Item')
+                    ->searchable()
+                    ->sortable()
+                    ->weight('medium')
+                    ->url(fn (Item $record): string => route('inventory.monitor.history', $record))
+                    ->color('primary'),
+
+                TextColumn::make('code')
+                    ->label('Code')
+                    ->searchable()
+                    ->sortable(),
+
+                TextColumn::make('itemUnit.name')
+                    ->label('SUOM')
+                    ->placeholder('—')
+                    ->sortable(),
+
+                TextColumn::make('rollup_store_count')
+                    ->label('Stores')
+                    ->alignEnd()
+                    ->sortable(),
+
+                TextColumn::make('rollup_physical_quantity_suom')
+                    ->label('Physical stock')
+                    ->alignEnd()
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+
+                TextColumn::make('rollup_damaged_quantity_suom')
+                    ->label('Damaged')
+                    ->alignEnd()
+                    ->color('warning')
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+
+                TextColumn::make('rollup_expired_quantity_suom')
+                    ->label('Expired')
+                    ->alignEnd()
+                    ->color('warning')
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+
+                TextColumn::make('cumulative_shrinkage_suom')
+                    ->label('Cumulative shrinkage')
+                    ->tooltip('Total shrinkage recorded across approved stock counts in this network')
+                    ->alignEnd()
+                    ->state(fn (Item $record): float => $this->cumulativeShrinkageForItem($record)['qty'])
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0))
+                    ->color(fn (Item $record): ?string => $this->cumulativeShrinkageForItem($record)['qty'] > 0 ? 'danger' : null),
+
+                TextColumn::make('cumulative_shrinkage_ugx')
+                    ->label('Cumulative shrinkage (UGX)')
+                    ->alignEnd()
+                    ->state(fn (Item $record): float => $this->cumulativeShrinkageForItem($record)['ugx'])
+                    ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2))
+                    ->color(fn (Item $record): ?string => $this->cumulativeShrinkageForItem($record)['ugx'] > 0 ? 'danger' : null),
+            ])
+            ->actions([
+                Action::make('history')
+                    ->label('History')
+                    ->icon('heroicon-o-clock')
+                    ->url(fn (Item $record): string => route('inventory.monitor.history', $record)),
+            ])
+            ->defaultSort('name')
+            ->striped()
+            ->defaultPaginationPageOption(10)
+            ->paginated([10, 25, 50, 100])
+            ->emptyStateHeading('No inventory activity')
+            ->emptyStateDescription('No stock or consumption recorded in this store network yet.');
+    }
+
+    protected function mForItem(Item $item, string $field): mixed
+    {
+        return $this->m($this->stockLevel($item), $field);
+    }
+
+    private function localBaseQuery(): Builder
+    {
+        if (! $this->storeId) {
+            return Item::query()->whereRaw('0 = 1');
+        }
+
+        $businessId = (int) Auth::user()->business_id;
+
+        return Item::query()
+            ->where('items.business_id', $businessId)
+            ->where('items.type', 'good')
+            ->join('inventory_stock_levels as stock', function ($join) use ($businessId) {
+                $join->on('stock.item_id', '=', 'items.id')
+                    ->where('stock.business_id', '=', $businessId)
+                    ->where('stock.store_id', '=', $this->storeId);
+            })
+            ->where(function (Builder $query) {
+                $query->where('stock.quantity_suom', '>', 0)
+                    ->orWhere('stock.ma_15_days', '>', 0)
+                    ->orWhere('stock.ma_30_days', '>', 0);
+            })
+            ->select([
+                'items.*',
+                'stock.store_id as stock_store_id',
+                'stock.quantity_suom as stock_quantity_suom',
+                'stock.physical_quantity_suom as stock_physical_quantity_suom',
+                'stock.physical_counted_at as stock_physical_counted_at',
+                'stock.opening_quantity_suom as stock_opening_quantity_suom',
+                'stock.damaged_quantity_suom as stock_damaged_quantity_suom',
+                'stock.expired_quantity_suom as stock_expired_quantity_suom',
+                'stock.daily_usage_suom as stock_daily_usage_suom',
+                'stock.safety_stock_days as stock_safety_stock_days',
+                'stock.buffer_stock_days as stock_buffer_stock_days',
+                'stock.ma_15_days as stock_ma_15_days',
+                'stock.ma_30_days as stock_ma_30_days',
+                'stock.ma_90_days as stock_ma_90_days',
+                'stock.ma_180_days as stock_ma_180_days',
+                'stock.ma_360_days as stock_ma_360_days',
+                'stock.last_purchase_price as stock_last_purchase_price',
+                'stock.weighted_avg_cost as stock_weighted_avg_cost',
+            ])
+            ->with('itemUnit');
+    }
+
+    private function networkBaseQuery(): Builder
+    {
+        if (! $this->storeId) {
+            return Item::query()->whereRaw('0 = 1');
+        }
+
+        $businessId = (int) Auth::user()->business_id;
+        $storeIds = Store::descendantIds($this->storeId);
+
+        $rollupSub = InventoryStockLevel::query()
+            ->where('business_id', $businessId)
+            ->whereIn('store_id', $storeIds)
+            ->where(function (Builder $query) {
+                $query->where('quantity_suom', '>', 0)
+                    ->orWhere('ma_15_days', '>', 0)
+                    ->orWhere('ma_30_days', '>', 0);
+            })
+            ->groupBy('item_id')
+            ->selectRaw('item_id,
+                SUM(quantity_suom) as rollup_physical_quantity_suom,
+                SUM(COALESCE(damaged_quantity_suom, 0)) as rollup_damaged_quantity_suom,
+                SUM(COALESCE(expired_quantity_suom, 0)) as rollup_expired_quantity_suom,
+                COUNT(DISTINCT store_id) as rollup_store_count');
+
+        return Item::query()
+            ->where('items.business_id', $businessId)
+            ->where('items.type', 'good')
+            ->joinSub($rollupSub, 'rollup', fn ($join) => $join->on('rollup.item_id', '=', 'items.id'))
+            ->select([
+                'items.*',
+                'rollup.rollup_physical_quantity_suom',
+                'rollup.rollup_damaged_quantity_suom',
+                'rollup.rollup_expired_quantity_suom',
+                'rollup.rollup_store_count',
+            ])
+            ->with('itemUnit');
+    }
+
+    private function stockLevel(Item $item): InventoryStockLevel
+    {
+        $level = new InventoryStockLevel([
+            'business_id' => Auth::user()->business_id,
+            'store_id' => $item->stock_store_id,
+            'item_id' => $item->id,
+            'quantity_suom' => $item->stock_quantity_suom,
+            'physical_quantity_suom' => $item->stock_physical_quantity_suom,
+            'physical_counted_at' => $item->stock_physical_counted_at,
+            'opening_quantity_suom' => $item->stock_opening_quantity_suom,
+            'damaged_quantity_suom' => $item->stock_damaged_quantity_suom,
+            'expired_quantity_suom' => $item->stock_expired_quantity_suom,
+            'daily_usage_suom' => $item->stock_daily_usage_suom,
+            'safety_stock_days' => $item->stock_safety_stock_days,
+            'buffer_stock_days' => $item->stock_buffer_stock_days,
+            'ma_15_days' => $item->stock_ma_15_days,
+            'ma_30_days' => $item->stock_ma_30_days,
+            'ma_90_days' => $item->stock_ma_90_days,
+            'ma_180_days' => $item->stock_ma_180_days,
+            'ma_360_days' => $item->stock_ma_360_days,
+            'last_purchase_price' => $item->stock_last_purchase_price,
+            'weighted_avg_cost' => $item->stock_weighted_avg_cost,
+        ]);
+        $level->exists = true;
+        $level->setRelation('item', $item);
+
+        return $level;
     }
 
     private function resolveDefaultStoreId(): ?int
@@ -67,10 +425,7 @@ class InventoryStockMonitor extends Component
         $user = Auth::user();
 
         if ($user->default_store_id) {
-            $exists = Store::query()
-                ->forBusiness($businessId)
-                ->whereKey($user->default_store_id)
-                ->exists();
+            $exists = isset($this->storeOptions[(string) $user->default_store_id]);
 
             if ($exists) {
                 return (int) $user->default_store_id;
@@ -85,27 +440,51 @@ class InventoryStockMonitor extends Component
                 ->orderBy('name')
                 ->value('id');
 
-            if ($branchStoreId) {
+            if ($branchStoreId && isset($this->storeOptions[(string) $branchStoreId])) {
                 return (int) $branchStoreId;
             }
-        }
-
-        $stockStoreId = InventoryStockLevel::query()
-            ->where('business_id', $businessId)
-            ->where(function ($query) {
-                $query->where('quantity_suom', '>', 0)
-                    ->orWhere('ma_15_days', '>', 0)
-                    ->orWhere('ma_30_days', '>', 0);
-            })
-            ->orderByDesc('quantity_suom')
-            ->value('store_id');
-
-        if ($stockStoreId) {
-            return (int) $stockStoreId;
         }
 
         $first = array_key_first($this->storeOptions);
 
         return $first ? (int) $first : null;
+    }
+
+    private function warmCumulativeShrinkageForPage(Paginator $paginator): void
+    {
+        if (! $this->storeId) {
+            return;
+        }
+
+        $businessId = (int) Auth::user()->business_id;
+        $storeIds = $this->stockView === self::VIEW_NETWORK
+            ? Store::descendantIds($this->storeId)
+            : [(int) $this->storeId];
+
+        $itemIds = $paginator->getCollection()
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+
+        app(InventoryStockCountShrinkageService::class)
+            ->warmPageCumulativeShrinkage($businessId, $storeIds, $itemIds);
+    }
+
+    /**
+     * @return array{qty: float, ugx: float}
+     */
+    private function cumulativeShrinkageForItem(Item $item): array
+    {
+        if (! $this->storeId) {
+            return ['qty' => 0.0, 'ugx' => 0.0];
+        }
+
+        $businessId = (int) Auth::user()->business_id;
+        $storeIds = $this->stockView === self::VIEW_NETWORK
+            ? Store::descendantIds($this->storeId)
+            : [(int) $this->storeId];
+
+        return app(InventoryStockCountShrinkageService::class)
+            ->cumulativeForItem($businessId, $storeIds, (int) $item->id);
     }
 }

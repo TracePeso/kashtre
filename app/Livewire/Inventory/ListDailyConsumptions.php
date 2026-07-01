@@ -2,19 +2,17 @@
 
 namespace App\Livewire\Inventory;
 
-use App\Models\InventoryStockLevel;
+use App\Models\InventoryDailyConsumption;
 use App\Models\Store;
 use App\Services\Inventory\InventoryConsumptionQueryService;
+use App\Services\Inventory\InventoryConsumptionSampleDataService;
 use Carbon\Carbon;
-use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
-use Filament\Tables\Enums\FiltersLayout;
-use Filament\Tables\Filters\Filter;
 use Filament\Tables\Table;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -27,46 +25,125 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
     use InteractsWithForms;
     use InteractsWithTable;
 
-    public const RECENT_DAYS = 10;
+    public const DEFAULT_PERIOD_DAYS = 10;
+
+    public ?int $storeId = null;
+
+    public ?int $itemId = null;
+
+    public string $periodPreset = '10';
+
+    public ?string $dateFrom = null;
+
+    public ?string $dateUntil = null;
 
     /** @var array<string, mixed> */
     public array $summary = [
         'from' => '',
         'until' => '',
-        'period_days' => self::RECENT_DAYS,
+        'period_days' => self::DEFAULT_PERIOD_DAYS,
         'item_day_rows' => 0,
         'distinct_items' => 0,
         'total_quantity_suom' => 0,
     ];
 
-    /** @var array<string, string> */
+    /** @var array<int, string> */
     public array $storeOptions = [];
+
+    /** @var array<int, string> */
+    public array $itemOptions = [];
+
+    public ?string $generateMessage = null;
+
+    public string $generateMessageType = 'success';
 
     public function mount(): void
     {
         $this->storeOptions = Store::optionsForSelect((int) Auth::user()->business_id);
-
-        $defaultStoreId = $this->resolveDefaultStoreId();
-
-        $this->tableFilters = [
-            'scope' => [
-                'store_id' => $defaultStoreId ? (string) $defaultStoreId : null,
-            ],
-        ];
-
+        $this->storeId = $this->resolveDefaultStoreId();
+        $this->syncPeriodDates();
+        $this->refreshItemOptions();
         $this->loadSummary();
+    }
+
+    public function updatedStoreId(): void
+    {
+        $this->itemId = null;
+        $this->refreshItemOptions();
+        $this->loadSummary();
+        $this->resetTable();
+    }
+
+    public function updatedItemId(): void
+    {
+        $this->loadSummary();
+        $this->resetTable();
+    }
+
+    public function updatedPeriodPreset(): void
+    {
+        $this->syncPeriodDates();
+        $this->refreshItemOptions();
+        $this->loadSummary();
+        $this->resetTable();
+    }
+
+    public function updatedDateFrom(): void
+    {
+        if ($this->periodPreset !== 'custom') {
+            return;
+        }
+
+        $this->refreshItemOptions();
+        $this->loadSummary();
+        $this->resetTable();
+    }
+
+    public function updatedDateUntil(): void
+    {
+        if ($this->periodPreset !== 'custom') {
+            return;
+        }
+
+        $this->refreshItemOptions();
+        $this->loadSummary();
+        $this->resetTable();
+    }
+
+    public function generateTestData(): void
+    {
+        if (! $this->storeId) {
+            $this->generateMessage = 'Select a store first.';
+            $this->generateMessageType = 'error';
+
+            return;
+        }
+
+        $result = app(InventoryConsumptionSampleDataService::class)->backfillToToday(
+            (int) Auth::user()->business_id,
+            $this->storeId,
+            (int) Auth::id(),
+        );
+
+        $this->generateMessage = $result['message'];
+        $this->generateMessageType = $result['success'] ? 'success' : 'warning';
+
+        if ($result['success']) {
+            $this->refreshItemOptions();
+            $this->loadSummary();
+            $this->resetTable();
+        }
     }
 
     public function loadSummary(): void
     {
-        $storeId = $this->selectedStoreId();
         [$from, $until] = $this->periodBounds();
 
-        if (! $storeId) {
+        if (! $this->storeId) {
             $this->summary = [
                 'from' => $from,
                 'until' => $until,
-                'period_days' => self::RECENT_DAYS,
+                'period_days' => app(InventoryConsumptionQueryService::class)->periodDays($from, $until),
                 'item_day_rows' => 0,
                 'distinct_items' => 0,
                 'total_quantity_suom' => 0,
@@ -79,18 +156,30 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
             (int) Auth::user()->business_id,
             $from,
             $until,
-            $storeId,
+            $this->storeId,
+            $this->itemId,
         );
     }
 
     public function table(Table $table): Table
     {
         $businessId = (int) Auth::user()->business_id;
-        $queries = app(InventoryConsumptionQueryService::class);
         [$from, $until] = $this->periodBounds();
 
         return $table
-            ->query(fn (): Builder => $queries->itemStoreDailySummariesQuery($businessId, $from, $until))
+            ->query(function () use ($businessId, $from, $until): Builder {
+                if (! $this->storeId) {
+                    return InventoryDailyConsumption::query()->whereRaw('0 = 1');
+                }
+
+                return app(InventoryConsumptionQueryService::class)->itemStoreDailySummariesQuery(
+                    $businessId,
+                    $from,
+                    $until,
+                    $this->storeId,
+                    $this->itemId,
+                );
+            })
             ->columns([
                 TextColumn::make('consumption_date')
                     ->label('Date')
@@ -105,39 +194,10 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
 
                 TextColumn::make('total_quantity_suom')
                     ->label('Consumed (SUOM)')
-                    ->tooltip('Quantity used on this day')
                     ->alignEnd()
                     ->sortable()
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
             ])
-            ->filters([
-                Filter::make('scope')
-                    ->form([
-                        Select::make('store_id')
-                            ->label('Store')
-                            ->options($this->storeOptions)
-                            ->required()
-                            ->native(false)
-                            ->live(),
-                    ])
-                    ->baseQuery(function (Builder $query, array $data): Builder {
-                        $storeId = filled($data['store_id'] ?? null) ? (int) $data['store_id'] : null;
-
-                        if (! $storeId) {
-                            return $query->whereRaw('0 = 1');
-                        }
-
-                        return $query->where('idc.store_id', $storeId);
-                    })
-                    ->indicateUsing(function (array $data): array {
-                        if ($data['store_id'] ?? null) {
-                            return [$this->storeOptions[(string) $data['store_id']] ?? 'Store'];
-                        }
-
-                        return [];
-                    }),
-            ], layout: FiltersLayout::AboveContent)
-            ->filtersFormColumns(1)
             ->actions([
                 Action::make('view_day')
                     ->label('Hourly breakdown')
@@ -150,39 +210,24 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
             ])
             ->defaultSort('consumption_date', 'desc')
             ->striped()
-            ->paginated([25, 50, 100])
-            ->defaultPaginationPageOption(25)
-            ->emptyStateHeading($this->selectedStoreId() ? 'No consumption in the last '.self::RECENT_DAYS.' days' : 'Select a store')
-            ->emptyStateDescription($this->selectedStoreId()
-                ? 'Daily usage per item will appear here once goods are consumed at this store.'
-                : 'Choose a store in the filter above to view recent consumption.');
-    }
-
-    public function updatedTableFilters(): void
-    {
-        $this->loadSummary();
-        $this->handleTableFilterUpdates();
+            ->paginated([10, 25, 50])
+            ->defaultPaginationPageOption(10)
+            ->emptyStateHeading($this->storeId ? 'No consumption in this period' : 'Select a store')
+            ->emptyStateDescription($this->storeId
+                ? 'Try a wider date range or clear the item filter.'
+                : 'Choose a store to view consumption.');
     }
 
     public function render(): View
     {
-        return view('livewire.inventory.list-daily-consumptions');
+        return view('livewire.inventory.list-daily-consumptions', [
+            'periodPresets' => InventoryConsumptionQueryService::periodPresetOptions(),
+        ]);
     }
 
     public function getTableRecordKey(Model $record): string
     {
         return $record->store_id.'-'.$record->item_id.'-'.Carbon::parse($record->consumption_date)->toDateString();
-    }
-
-    public function selectedStoreLabel(): ?string
-    {
-        $storeId = $this->selectedStoreId();
-
-        if (! $storeId) {
-            return null;
-        }
-
-        return $this->storeOptions[(string) $storeId] ?? null;
     }
 
     public function periodLabel(): string
@@ -192,27 +237,87 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
         return Carbon::parse($from)->format('M j').' – '.Carbon::parse($until)->format('M j, Y');
     }
 
+    public function periodPresetLabel(): string
+    {
+        return InventoryConsumptionQueryService::periodPresetOptions()[$this->periodPreset] ?? 'Custom';
+    }
+
+    public function showTestDataButton(): bool
+    {
+        return app()->environment('local') || (bool) config('app.debug');
+    }
+
+    public function backfillRangeLabel(): ?string
+    {
+        if (! $this->storeId) {
+            return null;
+        }
+
+        $range = app(InventoryConsumptionSampleDataService::class)->pendingBackfillRange(
+            (int) Auth::user()->business_id,
+            $this->storeId,
+        );
+
+        if ($range['already_current']) {
+            return 'Up to date through today';
+        }
+
+        return Carbon::parse($range['from'])->format('M j').' → '.Carbon::parse($range['until'])->format('M j, Y');
+    }
+
     /**
      * @return array{0: string, 1: string}
      */
-    private function periodBounds(): array
+    public function periodBounds(): array
     {
-        return app(InventoryConsumptionQueryService::class)->recentDaysBounds(self::RECENT_DAYS);
+        if ($this->periodPreset === 'custom') {
+            $until = $this->dateUntil ?: now()->toDateString();
+            $from = $this->dateFrom ?: $until;
+
+            if (Carbon::parse($from)->gt(Carbon::parse($until))) {
+                [$from, $until] = [$until, $from];
+            }
+
+            return [$from, $until];
+        }
+
+        return app(InventoryConsumptionQueryService::class)->recentDaysBounds((int) $this->periodPreset);
     }
 
-    private function selectedStoreId(): ?int
+    private function syncPeriodDates(): void
     {
-        $storeId = $this->scopeFilterData()['store_id'] ?? null;
+        if ($this->periodPreset === 'custom') {
+            $this->dateUntil ??= now()->toDateString();
+            $this->dateFrom ??= now()->subDays(self::DEFAULT_PERIOD_DAYS - 1)->toDateString();
 
-        return filled($storeId) ? (int) $storeId : null;
+            return;
+        }
+
+        [$from, $until] = app(InventoryConsumptionQueryService::class)->recentDaysBounds((int) $this->periodPreset);
+        $this->dateFrom = $from;
+        $this->dateUntil = $until;
     }
 
-    /**
-     * @return array<string, mixed>
-     */
-    private function scopeFilterData(): array
+    private function refreshItemOptions(): void
     {
-        return $this->tableFilters['scope'] ?? [];
+        if (! $this->storeId) {
+            $this->itemOptions = [];
+
+            return;
+        }
+
+        [$from, $until] = $this->periodBounds();
+
+        $this->itemOptions = app(InventoryConsumptionQueryService::class)->itemOptionsForPeriod(
+            (int) Auth::user()->business_id,
+            $this->storeId,
+            $from,
+            $until,
+        );
+
+        if ($this->itemId && ! array_key_exists($this->itemId, $this->itemOptions)) {
+            $this->itemId = null;
+        }
     }
 
     private function resolveDefaultStoreId(): ?int
@@ -220,15 +325,8 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
         $businessId = (int) Auth::user()->business_id;
         $user = Auth::user();
 
-        if ($user->default_store_id) {
-            $exists = Store::query()
-                ->forBusiness($businessId)
-                ->whereKey($user->default_store_id)
-                ->exists();
-
-            if ($exists) {
-                return (int) $user->default_store_id;
-            }
+        if ($user->default_store_id && isset($this->storeOptions[(string) $user->default_store_id])) {
+            return (int) $user->default_store_id;
         }
 
         if ($user->branch_id) {
@@ -239,23 +337,9 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
                 ->orderBy('name')
                 ->value('id');
 
-            if ($branchStoreId) {
+            if ($branchStoreId && isset($this->storeOptions[(string) $branchStoreId])) {
                 return (int) $branchStoreId;
             }
-        }
-
-        $stockStoreId = InventoryStockLevel::query()
-            ->where('business_id', $businessId)
-            ->where(function ($query) {
-                $query->where('quantity_suom', '>', 0)
-                    ->orWhere('ma_15_days', '>', 0)
-                    ->orWhere('ma_30_days', '>', 0);
-            })
-            ->orderByDesc('quantity_suom')
-            ->value('store_id');
-
-        if ($stockStoreId) {
-            return (int) $stockStoreId;
         }
 
         $first = array_key_first($this->storeOptions);
