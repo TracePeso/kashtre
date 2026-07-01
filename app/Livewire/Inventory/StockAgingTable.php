@@ -24,7 +24,7 @@ class StockAgingTable extends Component implements HasForms, HasTable
 
     public function table(Table $table): Table
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
         $agingService = app(InventoryStockAgingService::class);
 
         return $table
@@ -83,7 +83,7 @@ class StockAgingTable extends Component implements HasForms, HasTable
     protected function warmTablePageMetrics(iterable $stockLevels): void
     {
         app(InventoryStockAgingService::class)->warmPageAging(
-            (int) Auth::user()->business_id,
+            (int) \App\Support\InventoryBusinessContext::effectiveBusinessId(),
             $stockLevels
         );
     }

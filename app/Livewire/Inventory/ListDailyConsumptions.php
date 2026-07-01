@@ -59,7 +59,7 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
 
     public function mount(): void
     {
-        $this->storeOptions = Store::optionsForSelect((int) Auth::user()->business_id);
+        $this->storeOptions = Store::optionsForSelect((int) \App\Support\InventoryBusinessContext::effectiveBusinessId());
         $this->storeId = $this->resolveDefaultStoreId();
         $this->syncPeriodDates();
         $this->refreshItemOptions();
@@ -112,6 +112,8 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
 
     public function generateTestData(): void
     {
+        \App\Support\InventoryBusinessContext::assertWritable();
+
         if (! $this->storeId) {
             $this->generateMessage = 'Select a store first.';
             $this->generateMessageType = 'error';
@@ -120,7 +122,7 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
         }
 
         $result = app(InventoryConsumptionSampleDataService::class)->backfillToToday(
-            (int) Auth::user()->business_id,
+            (int) \App\Support\InventoryBusinessContext::effectiveBusinessId(),
             $this->storeId,
             (int) Auth::id(),
         );
@@ -153,7 +155,7 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
         }
 
         $this->summary = app(InventoryConsumptionQueryService::class)->periodSummary(
-            (int) Auth::user()->business_id,
+            (int) \App\Support\InventoryBusinessContext::effectiveBusinessId(),
             $from,
             $until,
             $this->storeId,
@@ -163,7 +165,7 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
 
     public function table(Table $table): Table
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
         [$from, $until] = $this->periodBounds();
 
         return $table
@@ -244,7 +246,8 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
 
     public function showTestDataButton(): bool
     {
-        return app()->environment('local') || (bool) config('app.debug');
+        return ! \App\Support\InventoryBusinessContext::isAdminBrowsing()
+            && (app()->environment('local') || (bool) config('app.debug'));
     }
 
     public function backfillRangeLabel(): ?string
@@ -254,7 +257,7 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
         }
 
         $range = app(InventoryConsumptionSampleDataService::class)->pendingBackfillRange(
-            (int) Auth::user()->business_id,
+            (int) \App\Support\InventoryBusinessContext::effectiveBusinessId(),
             $this->storeId,
         );
 
@@ -309,7 +312,7 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
         [$from, $until] = $this->periodBounds();
 
         $this->itemOptions = app(InventoryConsumptionQueryService::class)->itemOptionsForPeriod(
-            (int) Auth::user()->business_id,
+            (int) \App\Support\InventoryBusinessContext::effectiveBusinessId(),
             $this->storeId,
             $from,
             $until,
@@ -322,7 +325,7 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
 
     private function resolveDefaultStoreId(): ?int
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
         $user = Auth::user();
 
         if ($user->default_store_id && isset($this->storeOptions[(string) $user->default_store_id])) {

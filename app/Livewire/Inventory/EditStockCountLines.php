@@ -25,7 +25,7 @@ class EditStockCountLines extends Component implements HasForms, HasTable
 
     public function mount(InventoryStockCount $stockCount): void
     {
-        if ((int) $stockCount->business_id !== (int) Auth::user()->business_id) {
+        if ((int) $stockCount->business_id !== (int) \App\Support\InventoryBusinessContext::effectiveBusinessId()) {
             abort(403);
         }
 
@@ -35,6 +35,7 @@ class EditStockCountLines extends Component implements HasForms, HasTable
     public function table(Table $table): Table
     {
         $isDraft = $this->stockCount->isDraft();
+        $writable = $isDraft && ! \App\Support\InventoryBusinessContext::isAdminBrowsing();
         $service = app(InventoryStockCountService::class);
 
         return $table
@@ -62,11 +63,13 @@ class EditStockCountLines extends Component implements HasForms, HasTable
                     ->type('number')
                     ->alignEnd()
                     ->step('1')
-                    ->disabled(! $isDraft)
-                    ->updateStateUsing(function (InventoryStockCountLine $record, $state) use ($service, $isDraft) {
-                        if (! $isDraft) {
+                    ->disabled(! $writable)
+                    ->updateStateUsing(function (InventoryStockCountLine $record, $state) use ($service, $writable) {
+                        if (! $writable) {
                             return $state;
                         }
+
+                        \App\Support\InventoryBusinessContext::assertWritable();
 
                         $service->updateLine(
                             $record,
@@ -83,11 +86,13 @@ class EditStockCountLines extends Component implements HasForms, HasTable
                     ->type('number')
                     ->alignEnd()
                     ->step('1')
-                    ->disabled(! $isDraft)
-                    ->updateStateUsing(function (InventoryStockCountLine $record, $state) use ($service, $isDraft) {
-                        if (! $isDraft) {
+                    ->disabled(! $writable)
+                    ->updateStateUsing(function (InventoryStockCountLine $record, $state) use ($service, $writable) {
+                        if (! $writable) {
                             return $state;
                         }
+
+                        \App\Support\InventoryBusinessContext::assertWritable();
 
                         $service->updateLine(
                             $record,
@@ -104,11 +109,13 @@ class EditStockCountLines extends Component implements HasForms, HasTable
                     ->type('number')
                     ->alignEnd()
                     ->step('1')
-                    ->disabled(! $isDraft)
-                    ->updateStateUsing(function (InventoryStockCountLine $record, $state) use ($service, $isDraft) {
-                        if (! $isDraft) {
+                    ->disabled(! $writable)
+                    ->updateStateUsing(function (InventoryStockCountLine $record, $state) use ($service, $writable) {
+                        if (! $writable) {
                             return $state;
                         }
+
+                        \App\Support\InventoryBusinessContext::assertWritable();
 
                         $service->updateLine(
                             $record,

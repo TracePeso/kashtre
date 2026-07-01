@@ -51,7 +51,7 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
             $this->stockView = self::VIEW_NETWORK;
         }
 
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
         $this->moduleConfig = $this->moduleConfigFor($businessId);
         $this->storeOptions = Store::optionsForSelect($businessId);
         $this->storeId = $this->resolveDefaultStoreId();
@@ -102,7 +102,7 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
     protected function warmAgingMetricsForStocks(iterable $stockLevels): void
     {
         app(InventoryStockAgingService::class)->warmPageAging(
-            (int) Auth::user()->business_id,
+            (int) \App\Support\InventoryBusinessContext::effectiveBusinessId(),
             $stockLevels
         );
     }
@@ -201,7 +201,7 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
                     ->label('Stock aging')
                     ->alignEnd()
                     ->state(fn (Item $record): ?int => app(InventoryStockAgingService::class)->pageAgingDays(
-                        (int) Auth::user()->business_id,
+                        (int) \App\Support\InventoryBusinessContext::effectiveBusinessId(),
                         (int) $record->stock_store_id,
                         (int) $record->id
                     ))
@@ -311,7 +311,7 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
             return Item::query()->whereRaw('0 = 1');
         }
 
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
 
         return Item::query()
             ->where('items.business_id', $businessId)
@@ -355,7 +355,7 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
             return Item::query()->whereRaw('0 = 1');
         }
 
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
         $storeIds = Store::descendantIds($this->storeId);
 
         $rollupSub = InventoryStockLevel::query()
@@ -390,7 +390,7 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
     private function stockLevel(Item $item): InventoryStockLevel
     {
         $level = new InventoryStockLevel([
-            'business_id' => Auth::user()->business_id,
+            'business_id' => \App\Support\InventoryBusinessContext::effectiveBusinessId(),
             'store_id' => $item->stock_store_id,
             'item_id' => $item->id,
             'quantity_suom' => $item->stock_quantity_suom,
@@ -418,7 +418,7 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
 
     private function resolveDefaultStoreId(): ?int
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
         $user = Auth::user();
 
         if ($user->default_store_id) {
@@ -453,7 +453,7 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
             return;
         }
 
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
         $storeIds = $this->stockView === self::VIEW_NETWORK
             ? Store::descendantIds($this->storeId)
             : [(int) $this->storeId];
@@ -476,7 +476,7 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
             return ['qty' => 0.0, 'ugx' => 0.0];
         }
 
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
         $storeIds = $this->stockView === self::VIEW_NETWORK
             ? Store::descendantIds($this->storeId)
             : [(int) $this->storeId];

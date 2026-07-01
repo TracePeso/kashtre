@@ -52,7 +52,7 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
 
     public function mount(InventoryOrder $order): void
     {
-        if ((int) $order->business_id !== (int) Auth::user()->business_id) {
+        if ((int) $order->business_id !== (int) \App\Support\InventoryBusinessContext::effectiveBusinessId()) {
             abort(403);
         }
 
@@ -73,6 +73,7 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
     public function table(Table $table): Table
     {
         $isDraft = $this->order->isDraft();
+        $writable = $isDraft && ! \App\Support\InventoryBusinessContext::isAdminBrowsing();
         $hasPeak = (float) ($this->order->peak_period_percent ?? 0) > 0;
         $showReceipt = ! $isDraft;
         $service = app(InventoryOrderService::class);
@@ -125,11 +126,13 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
                 ->type('number')
                 ->alignEnd()
                 ->step('1')
-                ->disabled(! $isDraft)
-                ->updateStateUsing(function (InventoryOrderLine $record, $state) use ($service, $isDraft) {
-                    if (! $isDraft) {
+                ->disabled(! $writable)
+                ->updateStateUsing(function (InventoryOrderLine $record, $state) use ($service, $writable) {
+                    if (! $writable) {
                         return $state;
                     }
+
+                    \App\Support\InventoryBusinessContext::assertWritable();
 
                     $requestedQty = (float) ($state ?? 0);
                     $updated = $service->updateLine($record, $requestedQty);
@@ -151,11 +154,13 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
                 ->type('number')
                 ->alignEnd()
                 ->step('0.01')
-                ->disabled(! $isDraft)
-                ->updateStateUsing(function (InventoryOrderLine $record, $state) use ($service, $isDraft) {
-                    if (! $isDraft) {
+                ->disabled(! $writable)
+                ->updateStateUsing(function (InventoryOrderLine $record, $state) use ($service, $writable) {
+                    if (! $writable) {
                         return $state;
                     }
+
+                    \App\Support\InventoryBusinessContext::assertWritable();
 
                     $requestedIncrease = (float) ($state ?? 0);
                     $beforeQty = (float) $record->order_quantity_suom;
@@ -265,9 +270,11 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
 
     public function updatedSupplierId($value): void
     {
-        if (! $this->order->isDraft() || ! filled($value)) {
+        if (! $this->order->isDraft() || ! filled($value) || \App\Support\InventoryBusinessContext::isAdminBrowsing()) {
             return;
         }
+
+        \App\Support\InventoryBusinessContext::assertWritable();
 
         try {
             $this->order = app(InventoryOrderService::class)->setOrderSupplier(
@@ -283,9 +290,11 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
 
     public function toggleBudgetCapEnforced(): void
     {
-        if (! $this->order->isDraft()) {
+        if (! $this->order->isDraft() || \App\Support\InventoryBusinessContext::isAdminBrowsing()) {
             return;
         }
+
+        \App\Support\InventoryBusinessContext::assertWritable();
 
         if ($this->order->effectiveAmountCap() === null) {
             return;

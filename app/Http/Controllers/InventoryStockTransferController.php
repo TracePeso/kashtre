@@ -8,6 +8,7 @@ use App\Models\Item;
 use App\Models\StockTransfer;
 use App\Models\Store;
 use App\Services\Inventory\InventoryStockTransferService;
+use App\Support\InventoryBusinessContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -28,7 +29,7 @@ class InventoryStockTransferController extends Controller
 
     public function create()
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
 
         $items = Item::query()
             ->where('business_id', $businessId)
@@ -70,7 +71,7 @@ class InventoryStockTransferController extends Controller
             'lines.*.quantity_suom' => 'required|numeric|min:0.0001',
         ]);
 
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
         $this->assertStore($businessId, (int) $validated['from_store_id']);
         $this->assertStore($businessId, (int) $validated['to_store_id']);
 
@@ -144,7 +145,7 @@ class InventoryStockTransferController extends Controller
 
     private function authorizeTransfer(StockTransfer $transfer): void
     {
-        if ((int) $transfer->business_id !== (int) Auth::user()->business_id) {
+        if ((int) $transfer->business_id !== (int) InventoryBusinessContext::effectiveBusinessId()) {
             abort(403);
         }
     }

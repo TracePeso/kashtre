@@ -40,7 +40,7 @@ trait WarmsInventoryTableMetrics
             return $this->inventoryModuleConfig;
         }
 
-        return $this->moduleConfigFor((int) Auth::user()->business_id);
+        return $this->moduleConfigFor((int) \App\Support\InventoryBusinessContext::effectiveBusinessId());
     }
 
     protected function m(InventoryStockLevel $stock, string $field): mixed

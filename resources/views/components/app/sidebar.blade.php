@@ -123,7 +123,7 @@
                     </li>
                     @endif
 
-                    @if(Auth::user()->business_id != 1 && isset($inventoryModuleEnabled) && $inventoryModuleEnabled)
+                    @if($inventoryModuleEnabled)
                     <li>
                         <button @click="openGroup === 'inventory' ? openGroup = '' : openGroup = 'inventory'"
                                 :class="openGroup === 'inventory' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'"

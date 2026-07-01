@@ -25,7 +25,7 @@ class ValuationReportTable extends Component implements HasForms, HasTable
 
     public function table(Table $table): Table
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
 
         return $table
             ->query($this->inventoryReportQuery($businessId))

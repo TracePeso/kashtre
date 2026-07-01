@@ -24,7 +24,7 @@ class ListStockTransfers extends Component implements HasForms, HasTable
         return $table
             ->query(
                 StockTransfer::query()
-                    ->where('business_id', Auth::user()->business_id)
+                    ->where('business_id', \App\Support\InventoryBusinessContext::effectiveBusinessId())
                     ->with(['fromStore', 'toStore', 'requestedBy'])
                     ->latest()
             )

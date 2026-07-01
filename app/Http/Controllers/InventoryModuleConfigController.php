@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\InventoryModuleApprover;
 use App\Models\InventoryModuleConfig;
 use App\Models\User;
+use App\Support\InventoryBusinessContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -87,7 +88,7 @@ class InventoryModuleConfigController extends Controller
             [(int) $validated['approver_1'], isset($validated['approver_2']) ? (int) $validated['approver_2'] : null]
         );
 
-        DB::transaction(function () use ($request, $validated) {
+        $config = DB::transaction(function () use ($request, $validated) {
             $config = InventoryModuleConfig::create([
                 'business_id' => $validated['business_id'],
                 'description' => $validated['description'] ?? null,
@@ -101,9 +102,11 @@ class InventoryModuleConfigController extends Controller
             ]);
 
             $this->syncApprovers($config, $validated['approver_1'], $validated['approver_2'] ?? null);
+
+            return $config;
         });
 
-        return redirect()->route('inventory-module-configs.index')
+        return redirect()->route('inventory-module-configs.show', $config)
             ->with('success', 'Inventory module enabled for the selected business.');
     }
 
@@ -125,6 +128,33 @@ class InventoryModuleConfigController extends Controller
             'config' => $inventoryModuleConfig,
             'businessUsers' => $businessUsers,
         ]);
+    }
+
+    public function show(InventoryModuleConfig $inventoryModuleConfig)
+    {
+        $inventoryModuleConfig->load([
+            'business',
+            'createdBy',
+            'updatedBy',
+            'approvers.user',
+        ]);
+
+        return view('settings.inventory-module.show', [
+            'config' => $inventoryModuleConfig,
+        ]);
+    }
+
+    public function enterInventory(InventoryModuleConfig $inventoryModuleConfig)
+    {
+        if (! $inventoryModuleConfig->is_active) {
+            return redirect()->route('inventory-module-configs.show', $inventoryModuleConfig)
+                ->with('error', 'Activate the inventory module before browsing this organisation.');
+        }
+
+        InventoryBusinessContext::setContext((int) $inventoryModuleConfig->business_id);
+
+        return redirect()->route('inventory.receive')
+            ->with('success', 'Browsing inventory for '.$inventoryModuleConfig->business->name.'.');
     }
 
     public function update(Request $request, InventoryModuleConfig $inventoryModuleConfig)
@@ -158,7 +188,7 @@ class InventoryModuleConfigController extends Controller
             $this->syncApprovers($inventoryModuleConfig, $validated['approver_1'], $validated['approver_2'] ?? null);
         });
 
-        return redirect()->route('inventory-module-configs.index')
+        return redirect()->route('inventory-module-configs.show', $inventoryModuleConfig)
             ->with('success', 'Inventory module configuration updated successfully.');
     }
 
@@ -187,7 +217,7 @@ class InventoryModuleConfigController extends Controller
 
         $status = $inventoryModuleConfig->is_active ? 'activated' : 'deactivated';
 
-        return redirect()->route('inventory-module-configs.index')
+        return redirect()->route('inventory-module-configs.show', $inventoryModuleConfig)
             ->with('success', "Inventory module {$status} successfully.");
     }
 

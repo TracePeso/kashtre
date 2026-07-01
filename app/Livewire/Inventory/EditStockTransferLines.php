@@ -25,7 +25,7 @@ class EditStockTransferLines extends Component implements HasForms, HasTable
 
     public function mount(StockTransfer $transfer): void
     {
-        if ((int) $transfer->business_id !== (int) Auth::user()->business_id) {
+        if ((int) $transfer->business_id !== (int) \App\Support\InventoryBusinessContext::effectiveBusinessId()) {
             abort(403);
         }
 
@@ -34,7 +34,8 @@ class EditStockTransferLines extends Component implements HasForms, HasTable
 
     public function table(Table $table): Table
     {
-        $editable = $this->transfer->isDraft() || $this->transfer->isPending();
+        $editable = ($this->transfer->isDraft() || $this->transfer->isPending())
+            && ! \App\Support\InventoryBusinessContext::isAdminBrowsing();
         $service = app(InventoryStockTransferService::class);
 
         return $table
@@ -61,6 +62,8 @@ class EditStockTransferLines extends Component implements HasForms, HasTable
                             return $state;
                         }
 
+                        \App\Support\InventoryBusinessContext::assertWritable();
+
                         $service->updateLine($record, (float) ($state ?? 0), (float) $record->received_quantity_suom);
 
                         return $state;
@@ -75,6 +78,8 @@ class EditStockTransferLines extends Component implements HasForms, HasTable
                         if (! $editable) {
                             return $state;
                         }
+
+                        \App\Support\InventoryBusinessContext::assertWritable();
 
                         $service->updateLine($record, (float) $record->approved_quantity_suom, (float) ($state ?? 0));
 

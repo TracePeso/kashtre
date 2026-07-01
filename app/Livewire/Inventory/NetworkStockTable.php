@@ -99,7 +99,7 @@ class NetworkStockTable extends Component implements HasForms, HasTable
 
     private function baseQuery(): Builder
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
 
         if (! $this->storeId) {
             return Item::query()->whereRaw('0 = 1');

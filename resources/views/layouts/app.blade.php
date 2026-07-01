@@ -101,6 +101,7 @@
             <x-app.header :variant="$attributes['headerVariant']" />
 
             <main class="grow">
+                @include('partials.inventory-admin-context-banner')
                 {{ $slot }}
             </main>
             <!-- Footer -->

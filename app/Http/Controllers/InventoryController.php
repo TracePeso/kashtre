@@ -6,6 +6,7 @@ use App\Models\InventoryModuleApprover;
 use App\Models\InventoryModuleConfig;
 use App\Models\Item;
 use App\Models\User;
+use App\Support\InventoryBusinessContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -18,17 +19,16 @@ class InventoryController extends Controller
         $this->middleware(function ($request, $next) {
             $user = auth()->user();
 
-            if ($user->business_id === 1) {
-                abort(403, 'Use Inventory Module Configuration to manage which businesses have inventory enabled.');
+            if ((int) $user->business_id === 1 && ! InventoryBusinessContext::hasContext()) {
+                abort(403, 'Select an organisation from Inventory Module Configuration and choose Browse inventory.');
             }
 
-            $enabled = InventoryModuleConfig::query()
-                ->where('business_id', $user->business_id)
-                ->where('is_active', true)
-                ->exists();
+            if (! InventoryBusinessContext::moduleEnabled()) {
+                abort(403, 'The inventory module is not enabled for this organisation.');
+            }
 
-            if (! $enabled) {
-                abort(403, 'The inventory module is not enabled for your organisation.');
+            if (InventoryBusinessContext::isAdminBrowsing() && ! in_array($request->method(), ['GET', 'HEAD'], true)) {
+                abort(403, 'Read-only while browsing another organisation\'s inventory.');
             }
 
             return $next($request);
@@ -57,7 +57,7 @@ class InventoryController extends Controller
 
     public function stockHistory(Item $item)
     {
-        if ((int) $item->business_id !== (int) Auth::user()->business_id) {
+        if ((int) $item->business_id !== InventoryBusinessContext::effectiveBusinessId()) {
             abort(403);
         }
 
@@ -76,18 +76,21 @@ class InventoryController extends Controller
         $config->load(['approvers.user']);
 
         $businessUsers = User::query()
-            ->where('business_id', Auth::user()->business_id)
+            ->where('business_id', InventoryBusinessContext::effectiveBusinessId())
             ->where('status', 'active')
             ->orderBy('name')
             ->get(['id', 'name', 'email']);
 
-        $canManageApprovers = in_array('Edit Business Settings', Auth::user()->permissions ?? []);
+        $canManageApprovers = ! InventoryBusinessContext::isAdminBrowsing()
+            && in_array('Edit Business Settings', Auth::user()->permissions ?? []);
 
         return view('inventory.approvers', compact('config', 'businessUsers', 'canManageApprovers'));
     }
 
     public function updateApprovers(Request $request)
     {
+        InventoryBusinessContext::assertWritable();
+
         if (! in_array('Edit Business Settings', Auth::user()->permissions ?? [])) {
             abort(403, 'You do not have permission to update GRN approvers.');
         }
@@ -101,7 +104,7 @@ class InventoryController extends Controller
             'lpo_email_copy_to_approvers' => 'nullable|boolean',
         ]);
 
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = InventoryBusinessContext::effectiveBusinessId();
         $ids = array_filter([(int) $validated['approver_1'], isset($validated['approver_2']) ? (int) $validated['approver_2'] : null]);
 
         $validCount = User::query()
@@ -146,7 +149,7 @@ class InventoryController extends Controller
     private function businessConfig(): InventoryModuleConfig
     {
         return InventoryModuleConfig::query()
-            ->where('business_id', Auth::user()->business_id)
+            ->where('business_id', InventoryBusinessContext::effectiveBusinessId())
             ->where('is_active', true)
             ->firstOrFail();
     }

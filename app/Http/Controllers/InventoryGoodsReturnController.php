@@ -8,6 +8,7 @@ use App\Models\Item;
 use App\Models\Store;
 use App\Models\Supplier;
 use App\Services\Inventory\InventoryGoodsReturnService;
+use App\Support\InventoryBusinessContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -28,7 +29,7 @@ class InventoryGoodsReturnController extends Controller
 
     public function create()
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
 
         return view('inventory.returns.create', [
             'stores' => Store::optionsForSelect($businessId),
@@ -58,7 +59,7 @@ class InventoryGoodsReturnController extends Controller
             'lines.*.unit_price' => 'nullable|numeric|min:0',
         ]);
 
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
 
         Store::query()->where('business_id', $businessId)->where('id', $validated['store_id'])->firstOrFail();
 
@@ -100,7 +101,7 @@ class InventoryGoodsReturnController extends Controller
 
     private function authorizeReturn(GoodsReturnNote $returnNote): void
     {
-        if ((int) $returnNote->business_id !== (int) Auth::user()->business_id) {
+        if ((int) $returnNote->business_id !== (int) InventoryBusinessContext::effectiveBusinessId()) {
             abort(403);
         }
     }

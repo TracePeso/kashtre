@@ -28,7 +28,7 @@ class ItemConsumptionDailyTable extends Component implements HasForms, HasTable
 
     public function table(Table $table): Table
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
         $queries = app(InventoryConsumptionQueryService::class);
         [$from, $until] = $queries->monthBounds($this->month);
 

@@ -37,7 +37,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
 
     public function mount(?int $storeId = null): void
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
         $this->moduleConfig = $this->moduleConfigFor($businessId);
         $this->storeId = $storeId;
 
@@ -140,7 +140,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->alignEnd()
                     ->state(function (Item $record): ?int {
                         return app(InventoryStockAgingService::class)->pageAgingDays(
-                            (int) Auth::user()->business_id,
+                            (int) \App\Support\InventoryBusinessContext::effectiveBusinessId(),
                             (int) $record->stock_store_id,
                             (int) $record->id
                         );
@@ -188,7 +188,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
     protected function warmAgingMetricsForStocks(iterable $stockLevels): void
     {
         app(InventoryStockAgingService::class)->warmPageAging(
-            (int) Auth::user()->business_id,
+            (int) \App\Support\InventoryBusinessContext::effectiveBusinessId(),
             $stockLevels
         );
     }
@@ -205,7 +205,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
 
     private function baseQuery(): Builder
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
 
         return Item::query()
             ->where('items.business_id', $businessId)
@@ -248,7 +248,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
     private function stockLevel(Item $item): InventoryStockLevel
     {
         $level = new InventoryStockLevel([
-            'business_id' => Auth::user()->business_id,
+            'business_id' => \App\Support\InventoryBusinessContext::effectiveBusinessId(),
             'store_id' => $item->stock_store_id,
             'item_id' => $item->id,
             'quantity_suom' => $item->stock_quantity_suom,

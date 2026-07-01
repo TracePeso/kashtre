@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\RequiresInventoryModule;
 use App\Models\GoodsReceivedNote;
 use App\Models\GoodsReceivedNoteLine;
 use App\Models\InventoryModuleConfig;
@@ -12,6 +13,7 @@ use App\Models\Store;
 use App\Models\Supplier;
 use App\Services\GoodsReceivedNoteService;
 use App\Services\GrnBulkImportService;
+use App\Support\InventoryBusinessContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -21,33 +23,18 @@ use Illuminate\Validation\ValidationException;
 
 class GoodsReceivedNoteController extends Controller
 {
+    use RequiresInventoryModule;
+
     public function __construct(
         private GoodsReceivedNoteService $service,
         private GrnBulkImportService $bulkImport,
     ) {
-        $this->middleware(function ($request, $next) {
-            $user = auth()->user();
-
-            if ($user->business_id === 1) {
-                abort(403, 'Inventory receive is only available to business users.');
-            }
-
-            $enabled = InventoryModuleConfig::query()
-                ->where('business_id', $user->business_id)
-                ->where('is_active', true)
-                ->exists();
-
-            if (! $enabled) {
-                abort(403, 'The inventory module is not enabled for your organisation.');
-            }
-
-            return $next($request);
-        });
+        $this->middleware($this->inventoryMiddleware(...));
     }
 
     public function create(Request $request)
     {
-        $businessId = Auth::user()->business_id;
+        $businessId = \App\Support\InventoryBusinessContext::effectiveBusinessId();
 
         $inventoryOrder = null;
         $purchaseOrder = null;
@@ -140,7 +127,7 @@ class GoodsReceivedNoteController extends Controller
 
     public function bulkUpload()
     {
-        return view('inventory.receive.bulk-upload', $this->grnFormOptions((int) Auth::user()->business_id));
+        return view('inventory.receive.bulk-upload', $this->grnFormOptions((int) \App\Support\InventoryBusinessContext::effectiveBusinessId()));
     }
 
     public function store(Request $request)
@@ -290,7 +277,7 @@ class GoodsReceivedNoteController extends Controller
 
     public function downloadBulkTemplate(Request $request)
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
         $supplierId = $request->filled('supplier_id') ? (int) $request->query('supplier_id') : null;
         $itemIds = $this->resolveTemplateItemIds($request, $businessId);
 
@@ -319,7 +306,7 @@ class GoodsReceivedNoteController extends Controller
 
     public function downloadItemsReference(Request $request)
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
         $supplierId = $request->filled('supplier_id') ? (int) $request->query('supplier_id') : null;
 
         $items = $this->bulkImport->itemsForBusiness($businessId, $supplierId);
@@ -346,7 +333,7 @@ class GoodsReceivedNoteController extends Controller
 
     public function bulkImport(Request $request)
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
 
         $validated = $request->validate([
             'file' => 'required|file|mimes:csv,txt|max:2048',
@@ -386,7 +373,7 @@ class GoodsReceivedNoteController extends Controller
 
     public function catalogueLines(Request $request)
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
 
         $validated = $request->validate([
             'supplier_id' => 'nullable|exists:suppliers,id',
@@ -408,7 +395,7 @@ class GoodsReceivedNoteController extends Controller
 
     private function validateGrn(Request $request): array
     {
-        $businessId = Auth::user()->business_id;
+        $businessId = \App\Support\InventoryBusinessContext::effectiveBusinessId();
         $itemUnitNames = ItemUnit::query()
             ->where('business_id', $businessId)
             ->pluck('name')
@@ -516,7 +503,7 @@ class GoodsReceivedNoteController extends Controller
 
     private function authorizeBusiness(GoodsReceivedNote $grn): void
     {
-        if ((int) $grn->business_id !== (int) Auth::user()->business_id) {
+        if ((int) $grn->business_id !== (int) \App\Support\InventoryBusinessContext::effectiveBusinessId()) {
             abort(403);
         }
     }

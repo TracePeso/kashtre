@@ -2,7 +2,7 @@
 <div class="min-h-screen bg-gray-50 py-6">
     <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="mb-6">
-            <a href="{{ route('inventory-module-configs.index') }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to Inventory Module Configurations</a>
+            <a href="{{ route('inventory-module-configs.show', $config) }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to configuration</a>
         </div>
 
         <div class="bg-white shadow sm:rounded-lg">
@@ -35,7 +35,7 @@
                 ])
 
                 <div class="flex justify-end space-x-3 pt-2">
-                    <a href="{{ route('inventory-module-configs.index') }}"
+                    <a href="{{ route('inventory-module-configs.show', $config) }}"
                        class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                         Cancel
                     </a>

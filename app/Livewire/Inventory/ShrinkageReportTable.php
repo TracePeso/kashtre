@@ -28,12 +28,12 @@ class ShrinkageReportTable extends Component implements HasForms, HasTable
 
     public function mount(): void
     {
-        $this->inventoryModuleConfig = $this->moduleConfigFor((int) Auth::user()->business_id);
+        $this->inventoryModuleConfig = $this->moduleConfigFor((int) \App\Support\InventoryBusinessContext::effectiveBusinessId());
     }
 
     public function table(Table $table): Table
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
 
         return $table
             ->query($this->inventoryReportQuery($businessId))

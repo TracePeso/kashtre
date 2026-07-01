@@ -23,7 +23,7 @@ class ShowGoodsReceivedNoteLines extends Component implements HasForms, HasTable
 
     public function mount(GoodsReceivedNote $goodsReceivedNote): void
     {
-        if ((int) $goodsReceivedNote->business_id !== (int) Auth::user()->business_id) {
+        if ((int) $goodsReceivedNote->business_id !== (int) \App\Support\InventoryBusinessContext::effectiveBusinessId()) {
             abort(403);
         }
 

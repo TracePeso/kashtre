@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\RequiresInventoryModule;
+use App\Support\InventoryBusinessContext;
 use App\Models\InventoryStockCount;
 use App\Models\Store;
 use App\Services\Inventory\InventoryStockCountService;
@@ -10,12 +12,12 @@ use Illuminate\Support\Facades\Auth;
 
 class InventoryStockCountController extends Controller
 {
+    use RequiresInventoryModule;
+
     public function __construct(
         private readonly InventoryStockCountService $service
     ) {
-        $this->middleware(function ($request, $next) {
-            return $this->inventoryMiddleware($request, $next);
-        });
+        $this->middleware($this->inventoryMiddleware(...));
     }
 
     public function index()
@@ -25,7 +27,7 @@ class InventoryStockCountController extends Controller
 
     public function create()
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
 
         return view('inventory.stock-counts.create', [
             'stores' => Store::optionsForSelect($businessId),
@@ -39,7 +41,7 @@ class InventoryStockCountController extends Controller
             'notes' => 'nullable|string|max:2000',
         ]);
 
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
         $storeId = (int) $validated['store_id'];
 
         $store = Store::query()
@@ -124,28 +126,8 @@ class InventoryStockCountController extends Controller
 
     private function authorizeStockCount(InventoryStockCount $stockCount): void
     {
-        if ((int) $stockCount->business_id !== (int) Auth::user()->business_id) {
+        if ((int) $stockCount->business_id !== InventoryBusinessContext::effectiveBusinessId()) {
             abort(403);
         }
-    }
-
-    private function inventoryMiddleware($request, $next)
-    {
-        $user = auth()->user();
-
-        if ($user->business_id === 1) {
-            abort(403, 'Inventory is only available to business users.');
-        }
-
-        $enabled = \App\Models\InventoryModuleConfig::query()
-            ->where('business_id', $user->business_id)
-            ->where('is_active', true)
-            ->exists();
-
-        if (! $enabled) {
-            abort(403, 'The inventory module is not enabled for your organisation.');
-        }
-
-        return $next($request);
     }
 }

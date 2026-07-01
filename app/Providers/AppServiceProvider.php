@@ -6,6 +6,7 @@ namespace App\Providers;
 use App\Models\Business;
 use App\Models\CallingModuleConfig;
 use App\Models\InventoryModuleConfig;
+use App\Support\InventoryBusinessContext;
 use App\Models\Caller;
 use App\Models\Transaction;
 use App\Services\EmergencyAlertService;
@@ -69,14 +70,24 @@ class AppServiceProvider extends ServiceProvider
 
             $inventoryModuleEnabled = false;
             $inventoryModuleConfig = null;
+            $inventoryAdminContextBusiness = null;
             if ($user) {
-                $inventoryModuleConfig = InventoryModuleConfig::where('business_id', $user->business_id)
+                $inventoryBusinessId = InventoryBusinessContext::isKashtreAdmin() && InventoryBusinessContext::hasContext()
+                    ? InventoryBusinessContext::effectiveBusinessId()
+                    : (int) $user->business_id;
+
+                $inventoryModuleConfig = InventoryModuleConfig::where('business_id', $inventoryBusinessId)
                     ->where('is_active', true)
                     ->first();
                 $inventoryModuleEnabled = (bool) $inventoryModuleConfig;
+
+                if (InventoryBusinessContext::isAdminBrowsing()) {
+                    $inventoryAdminContextBusiness = InventoryBusinessContext::contextBusiness();
+                }
             }
             $view->with('inventoryModuleEnabled', $inventoryModuleEnabled);
             $view->with('inventoryModuleConfig', $inventoryModuleConfig);
+            $view->with('inventoryAdminContextBusiness', $inventoryAdminContextBusiness);
 
             $activeEmergencyAlert = ($user && $callingModuleEnabled)
                 ? app(EmergencyAlertService::class)->resolveActiveAlertForBusiness($user->business_id)

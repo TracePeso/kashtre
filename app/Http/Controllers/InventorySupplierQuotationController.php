@@ -2,14 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\RequiresInventoryModule;
 use App\Models\InventoryOrder;
 use App\Models\InventorySupplierQuotation;
 use App\Services\Inventory\InventorySupplierQuotationService;
+use App\Support\InventoryBusinessContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class InventorySupplierQuotationController extends Controller
 {
+    use RequiresInventoryModule;
+
     public function __construct(
         private readonly InventorySupplierQuotationService $service,
     ) {
@@ -80,35 +84,15 @@ class InventorySupplierQuotationController extends Controller
 
     private function authorizeOrder(InventoryOrder $order): void
     {
-        if ((int) $order->business_id !== (int) Auth::user()->business_id) {
+        if ((int) $order->business_id !== (int) InventoryBusinessContext::effectiveBusinessId()) {
             abort(403);
         }
     }
 
     private function authorizeQuotation(InventorySupplierQuotation $quotation): void
     {
-        if ((int) $quotation->business_id !== (int) Auth::user()->business_id) {
+        if ((int) $quotation->business_id !== (int) InventoryBusinessContext::effectiveBusinessId()) {
             abort(403);
         }
-    }
-
-    private function inventoryMiddleware($request, $next)
-    {
-        $user = auth()->user();
-
-        if ($user->business_id === 1) {
-            abort(403, 'Inventory is only available to business users.');
-        }
-
-        $enabled = \App\Models\InventoryModuleConfig::query()
-            ->where('business_id', $user->business_id)
-            ->where('is_active', true)
-            ->exists();
-
-        if (! $enabled) {
-            abort(403, 'The inventory module is not enabled for your organisation.');
-        }
-
-        return $next($request);
     }
 }

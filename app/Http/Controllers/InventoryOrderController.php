@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\RequiresInventoryModule;
 use App\Models\Group;
 use App\Models\ItemImportanceCategory;
 use App\Models\InventoryModuleConfig;
@@ -14,6 +15,7 @@ use App\Services\Inventory\InventoryOrderApprovalService;
 use App\Services\Inventory\InventoryOrderFulfillmentService;
 use App\Services\Inventory\InventoryOrderService;
 use App\Services\Inventory\InventoryProcurementPdfService;
+use App\Support\InventoryBusinessContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
@@ -21,15 +23,15 @@ use Illuminate\Validation\Rule;
 
 class InventoryOrderController extends Controller
 {
+    use RequiresInventoryModule;
+
     public function __construct(
         private readonly InventoryOrderService $service,
         private readonly InventoryOrderApprovalService $approvalService,
         private readonly InventoryOrderFulfillmentService $fulfillmentService,
         private readonly InventoryProcurementPdfService $pdfService,
     ) {
-        $this->middleware(function ($request, $next) {
-            return $this->inventoryMiddleware($request, $next);
-        });
+        $this->middleware($this->inventoryMiddleware(...));
     }
 
     public function index()
@@ -39,7 +41,7 @@ class InventoryOrderController extends Controller
 
     public function create()
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
         ItemImportanceCategory::ensureDefaultsForBusiness($businessId);
         $moduleConfig = InventoryModuleConfig::query()
             ->forBusiness($businessId)
@@ -72,7 +74,7 @@ class InventoryOrderController extends Controller
 
     public function store(Request $request)
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
         ItemImportanceCategory::ensureDefaultsForBusiness($businessId);
 
         $importanceSlugs = array_keys(Item::importanceOptions($businessId));
@@ -351,7 +353,7 @@ class InventoryOrderController extends Controller
 
     private function authorizeOrder(InventoryOrder $order): void
     {
-        if ((int) $order->business_id !== (int) Auth::user()->business_id) {
+        if ((int) $order->business_id !== (int) InventoryBusinessContext::effectiveBusinessId()) {
             abort(403);
         }
     }
@@ -389,25 +391,5 @@ class InventoryOrderController extends Controller
                 'budget_value.integer' => 'Stock-days budget must be a whole number of days.',
             ]
         )->validate();
-    }
-
-    private function inventoryMiddleware($request, $next)
-    {
-        $user = auth()->user();
-
-        if ($user->business_id === 1) {
-            abort(403, 'Inventory is only available to business users.');
-        }
-
-        $enabled = \App\Models\InventoryModuleConfig::query()
-            ->where('business_id', $user->business_id)
-            ->where('is_active', true)
-            ->exists();
-
-        if (! $enabled) {
-            abort(403, 'The inventory module is not enabled for your organisation.');
-        }
-
-        return $next($request);
     }
 }

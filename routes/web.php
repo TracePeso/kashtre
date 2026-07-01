@@ -60,6 +60,7 @@ use App\Http\Controllers\ServiceChargeMaturationPeriodController;
 use App\Http\Controllers\PaymentMethodAccountController;
 use App\Http\Controllers\CallingModuleConfigController;
 use App\Http\Controllers\InventoryModuleConfigController;
+use App\Http\Controllers\InventoryContextController;
 use App\Http\Controllers\GoodsReceivedNoteController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\InventoryDailyConsumptionController;
@@ -283,8 +284,10 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     Route::post("calling-module-configs/{callingModuleConfig}/toggle-video", [CallingModuleConfigController::class, 'toggleVideo'])->name('calling-module-configs.toggle-video');
 
     // Inventory Module Config (Kashtre admin only)
-    Route::resource("inventory-module-configs", InventoryModuleConfigController::class)->except(['show']);
+    Route::resource("inventory-module-configs", InventoryModuleConfigController::class);
     Route::post("inventory-module-configs/{inventoryModuleConfig}/toggle-status", [InventoryModuleConfigController::class, 'toggleStatus'])->name('inventory-module-configs.toggle-status');
+    Route::post("inventory-module-configs/{inventoryModuleConfig}/enter-inventory", [InventoryModuleConfigController::class, 'enterInventory'])->name('inventory-module-configs.enter-inventory');
+    Route::post('inventory-context/exit', [InventoryContextController::class, 'exit'])->name('inventory.context.exit');
 
     Route::prefix('inventory')->name('inventory.')->group(function () {
         Route::get('/', [InventoryController::class, 'index'])->name('index');

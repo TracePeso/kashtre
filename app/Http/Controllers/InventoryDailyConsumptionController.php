@@ -2,21 +2,22 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\InventoryModuleConfig;
+use App\Http\Controllers\Concerns\RequiresInventoryModule;
 use App\Models\InventoryStockLevel;
 use App\Models\Item;
 use App\Models\Store;
 use App\Services\Inventory\InventoryConsumptionQueryService;
+use App\Support\InventoryBusinessContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class InventoryDailyConsumptionController extends Controller
 {
+    use RequiresInventoryModule;
+
     public function __construct()
     {
-        $this->middleware(function ($request, $next) {
-            return $this->inventoryMiddleware($request, $next);
-        });
+        $this->middleware($this->inventoryMiddleware(...));
     }
 
     public function index()
@@ -26,7 +27,7 @@ class InventoryDailyConsumptionController extends Controller
 
     public function showMonth(Request $request, Item $item, string $month, InventoryConsumptionQueryService $queries)
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
 
         if ((int) $item->business_id !== $businessId) {
             abort(403);
@@ -75,7 +76,7 @@ class InventoryDailyConsumptionController extends Controller
 
     public function showDay(Request $request, Item $item, string $date, InventoryConsumptionQueryService $queries)
     {
-        $businessId = (int) Auth::user()->business_id;
+        $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
 
         if ((int) $item->business_id !== $businessId) {
             abort(403);
@@ -124,25 +125,5 @@ class InventoryDailyConsumptionController extends Controller
             'totalQuantity' => $totalQuantity,
             'salesSummary' => $salesSummary,
         ]);
-    }
-
-    private function inventoryMiddleware($request, $next)
-    {
-        $user = auth()->user();
-
-        if ($user->business_id === 1) {
-            abort(403, 'Inventory is only available to business users.');
-        }
-
-        $enabled = InventoryModuleConfig::query()
-            ->where('business_id', $user->business_id)
-            ->where('is_active', true)
-            ->exists();
-
-        if (! $enabled) {
-            abort(403, 'The inventory module is not enabled for your organisation.');
-        }
-
-        return $next($request);
     }
 }
