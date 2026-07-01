@@ -44,7 +44,8 @@ class BusinessController extends Controller
             'address' => 'required|string|max:255',
             'logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
             'country_id' => 'required|exists:countries,id',
-
+            'financial_year_start_month' => 'required|integer|min:1|max:12',
+            'financial_year_start_day' => 'required|integer|min:1|max:31',
         ]);
 
         try {

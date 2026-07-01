@@ -95,6 +95,15 @@
                         </p>
                     </div>
                 </div>
+
+                <!-- Financial year -->
+                <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Financial Year</h3>
+                    @include('partials.financial-year-fields', [
+                        'business' => $business,
+                        'showCurrentPeriod' => true,
+                    ])
+                </div>
                 
                 <!-- Credit Limits -->
                 <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">

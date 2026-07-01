@@ -34,6 +34,8 @@ class Business extends Model
         'admit_button_label',
         'discharge_button_label',
         'default_payment_terms_days',
+        'financial_year_start_month',
+        'financial_year_start_day',
         'admit_enable_credit',
         'admit_enable_long_stay',
         'discharge_remove_credit',
@@ -54,6 +56,8 @@ class Business extends Model
         'discharge_remove_long_stay' => 'boolean',
         'credit_excluded_items' => 'array',
         'third_party_excluded_items' => 'array',
+        'financial_year_start_month' => 'integer',
+        'financial_year_start_day' => 'integer',
     ];
 
     // a businness has many users

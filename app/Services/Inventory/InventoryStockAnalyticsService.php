@@ -11,6 +11,7 @@ use App\Models\InventoryOrder;
 use App\Models\InventoryStockLevel;
 use App\Models\InventoryStockMovement;
 use App\Models\Item;
+use App\Services\FinancialYearService;
 use App\Support\StoreItemPairQuery;
 use Carbon\Carbon;
 use DateTimeInterface;
@@ -90,17 +91,9 @@ class InventoryStockAnalyticsService
         return (float) ($config?->fixed_daily_average_suom ?? 0);
     }
 
-    public function financialYearStart(?InventoryModuleConfig $config, ?Carbon $asOf = null): Carbon
+    public function financialYearStart(int $businessId, ?Carbon $asOf = null): Carbon
     {
-        $asOf = ($asOf ?? Carbon::today())->copy()->startOfDay();
-        $month = max(1, min(12, (int) ($config?->financial_year_start_month ?? 1)));
-        $start = Carbon::create($asOf->year, $month, 1)->startOfDay();
-
-        if ($asOf->lt($start)) {
-            $start->subYear();
-        }
-
-        return $start;
+        return app(FinancialYearService::class)->periodStart($businessId, $asOf);
     }
 
     public function movementSumSince(InventoryStockLevel $stock, ?Carbon $since): float
@@ -122,7 +115,7 @@ class InventoryStockAnalyticsService
      */
     public function systemStockArSuom(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null): float
     {
-        $fyStart = $this->financialYearStart($config);
+        $fyStart = $this->financialYearStart((int) $stock->business_id);
         $opening = $this->openingQuantityAtFinancialYear($stock, $fyStart);
 
         return max(0, round($opening + $this->movementSumSince($stock, $fyStart), 4));
@@ -498,7 +491,7 @@ class InventoryStockAnalyticsService
         }
 
         $businessId = (int) $stocks->first()->business_id;
-        $fyStart = $this->financialYearStart($config);
+        $fyStart = $this->financialYearStart($businessId);
 
         $pairs = $stocks
             ->map(fn (InventoryStockLevel $stock): array => [

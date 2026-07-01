@@ -128,6 +128,11 @@
                         </div>
                     </div>
 
+                    <div class="mt-4 border-t border-gray-200 dark:border-gray-600 pt-4">
+                        <p class="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3">Financial year</p>
+                        @include('partials.financial-year-fields', ['idPrefix' => 'create-'])
+                    </div>
+
 
                     <div class="mt-6 flex justify-end">
                         <button type="button" @click="showModal = false"
