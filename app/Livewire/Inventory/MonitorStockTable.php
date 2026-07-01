@@ -80,68 +80,63 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->sortable(),
 
                 TextColumn::make('system_stock_ar')
-                    ->label('System stock (AR)')
-                    ->tooltip('Ledger stock since financial year start (opening + all recorded movements)')
+                    ->label('System stock')
                     ->alignEnd()
                     ->state(fn (Item $record): float => (float) $this->mForItem($record, 'system_ar'))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('physical_stock')
                     ->label('Physical stock')
-                    ->tooltip('Sale units at this store (updated by receipts, consumption, transfers, and stock counts)')
                     ->alignEnd()
                     ->state(fn (Item $record): float => (float) ($record->stock_quantity_suom ?? 0))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('shrinkage_excel_pct')
-                    ->label('Shrinkage % (AV)')
+                    ->label('Shrinkage %')
                     ->alignEnd()
-                    ->tooltip('100 × (AR − physical stock) ÷ AR')
                     ->state(fn (Item $record): ?float => $this->mForItem($record, 'shrinkage_pct'))
                     ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 4).'%' : '—'),
 
                 TextColumn::make('shrinkage_excel_ugx')
-                    ->label('Shrinkage UGX (AW)')
+                    ->label('Shrinkage UGX')
                     ->alignEnd()
                     ->state(fn (Item $record): ?float => $this->mForItem($record, 'shrinkage_ugx'))
                     ->formatStateUsing(fn ($state): string => $state !== null ? 'UGX '.number_format((float) $state, 2) : '—'),
 
                 TextColumn::make('stock_days_n')
-                    ->label('Stock days (N)')
+                    ->label('Stock days')
                     ->alignEnd()
-                    ->tooltip('Estimated days until stock runs out at current usage')
                     ->state(fn (Item $record): ?float => $this->mForItem($record, 'stock_days'))
                     ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 1) : '—'),
 
                 TextColumn::make('days_left_am')
-                    ->label('Days left (AM)')
+                    ->label('Days left')
                     ->alignEnd()
-                    ->tooltip('N − (safety days + buffer days)')
                     ->state(fn (Item $record): ?float => $this->mForItem($record, 'days_left'))
                     ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 1) : '—')
                     ->color(fn ($state) => $state !== null && (float) $state <= 0 ? 'danger' : null),
 
                 TextColumn::make('order_notify_ay')
-                    ->label('Order notify (AY)')
+                    ->label('Order notify')
                     ->state(fn (Item $record): ?string => $this->mForItem($record, 'notify_date'))
                     ->placeholder('—'),
 
                 TextColumn::make('safety_stock_suom')
-                    ->label('Safety stock (AC)')
+                    ->label('Safety stock')
                     ->alignEnd()
                     ->visible($config !== null)
                     ->state(fn (Item $record): float => (float) $this->mForItem($record, 'safety_stock_suom'))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('buffer_stock_suom')
-                    ->label('Buffer stock (AE)')
+                    ->label('Buffer stock')
                     ->alignEnd()
                     ->visible($config !== null)
                     ->state(fn (Item $record): float => (float) $this->mForItem($record, 'buffer_stock_suom'))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('stock_aging_days')
-                    ->label('Stock aging (U)')
+                    ->label('Stock aging')
                     ->alignEnd()
                     ->state(function (Item $record): ?int {
                         return app(InventoryStockAgingService::class)->pageAgingDays(
@@ -153,7 +148,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->formatStateUsing(fn ($state): string => $state !== null ? number_format((int) $state) : '—'),
 
                 TextColumn::make('valuation_o')
-                    ->label('Valuation (O)')
+                    ->label('Valuation')
                     ->alignEnd()
                     ->state(fn (Item $record): float => (float) $this->mForItem($record, 'valuation'))
                     ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2)),

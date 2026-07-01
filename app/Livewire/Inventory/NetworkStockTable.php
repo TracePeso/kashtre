@@ -57,13 +57,11 @@ class NetworkStockTable extends Component implements HasForms, HasTable
 
                 TextColumn::make('rollup_store_count')
                     ->label('Stores')
-                    ->tooltip('Stores in this network that hold the item')
                     ->alignEnd()
                     ->sortable(),
 
                 TextColumn::make('rollup_physical_quantity_suom')
                     ->label('Physical stock')
-                    ->tooltip('Sum of physical stock across stores in this network')
                     ->alignEnd()
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 

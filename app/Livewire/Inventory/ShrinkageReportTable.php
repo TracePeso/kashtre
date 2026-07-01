@@ -42,7 +42,7 @@ class ShrinkageReportTable extends Component implements HasForms, HasTable
                 TextColumn::make('item_code')->label('Code')->searchable(),
                 TextColumn::make('store_name')->label('Store')->sortable(),
                 TextColumn::make('system_ar')
-                    ->label('System stock (AR)')
+                    ->label('System stock')
                     ->alignEnd()
                     ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'system_ar'))
                     ->formatStateUsing(fn ($state) => number_format((float) $state, 0)),
@@ -52,18 +52,18 @@ class ShrinkageReportTable extends Component implements HasForms, HasTable
                     ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'current_m'))
                     ->formatStateUsing(fn ($state) => number_format((float) $state, 0)),
                 TextColumn::make('shrinkage_qty')
-                    ->label('Shrinkage (SUOM)')
+                    ->label('Shrinkage')
                     ->alignEnd()
                     ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'shrinkage_qty'))
                     ->formatStateUsing(fn ($state) => number_format((float) $state, 0)),
                 TextColumn::make('shrinkage_pct')
-                    ->label('Shrinkage % (AV)')
+                    ->label('Shrinkage %')
                     ->alignEnd()
                     ->state(fn (InventoryStockLevel $record): ?float => $this->m($record, 'shrinkage_pct'))
                     ->formatStateUsing(fn ($state) => $state !== null ? number_format((float) $state, 4).'%' : '—')
                     ->color(fn ($state) => $state !== null && (float) $state > 0 ? 'danger' : null),
                 TextColumn::make('shrinkage_ugx')
-                    ->label('Shrinkage UGX (AW)')
+                    ->label('Shrinkage UGX')
                     ->alignEnd()
                     ->state(fn (InventoryStockLevel $record): ?float => $this->m($record, 'shrinkage_ugx'))
                     ->formatStateUsing(fn ($state) => $state !== null ? 'UGX '.number_format((float) $state, 2) : '—'),

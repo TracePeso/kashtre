@@ -43,7 +43,7 @@ class ItemConsumptionDailyTable extends Component implements HasForms, HasTable
                     ->sortable(),
 
                 TextColumn::make('quantity_suom')
-                    ->label('Consumed (SUOM)')
+                    ->label('Consumed')
                     ->alignEnd()
                     ->sortable()
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),

@@ -42,22 +42,22 @@ class DemandForecastReportTable extends Component implements HasForms, HasTable
                 TextColumn::make('item_code')->label('Code')->searchable(),
                 TextColumn::make('store_name')->label('Store')->sortable(),
                 TextColumn::make('daily_avg')
-                    ->label('Daily avg (V/AA)')
+                    ->label('Daily avg')
                     ->alignEnd()
                     ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'excel_daily_usage'))
                     ->formatStateUsing(fn ($state) => number_format((float) $state, 4)),
                 TextColumn::make('order_qty')
-                    ->label('Order qty (AF)')
+                    ->label('Order qty')
                     ->alignEnd()
                     ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'suggested_order_qty'))
                     ->formatStateUsing(fn ($state) => number_format((float) $state, 0)),
                 TextColumn::make('forecast_amount')
-                    ->label('Forecast UGX (AG)')
+                    ->label('Forecast UGX')
                     ->alignEnd()
                     ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'demand_forecast_amount'))
                     ->formatStateUsing(fn ($state) => 'UGX '.number_format((float) $state, 2)),
                 TextColumn::make('test_amount')
-                    ->label('15-day test (AH)')
+                    ->label('15-day test')
                     ->alignEnd()
                     ->toggleable()
                     ->state(fn (InventoryStockLevel $record): float => (float) $this->m($record, 'budget_test_amount'))

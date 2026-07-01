@@ -8,7 +8,6 @@
                     <option value="{{ $id }}">{{ $label }}</option>
                 @endforeach
             </select>
-            <p class="mt-1 text-xs text-gray-500">Totals include the selected store and all stores beneath it (Excel columns P–T).</p>
         </div>
     @endif
 

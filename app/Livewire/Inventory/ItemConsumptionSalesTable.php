@@ -52,7 +52,7 @@ class ItemConsumptionSalesTable extends Component implements HasForms, HasTable
                     ->placeholder('—'),
 
                 TextColumn::make('quantity')
-                    ->label('Qty (SUOM)')
+                    ->label('Qty')
                     ->alignEnd()
                     ->sortable()
                     ->formatStateUsing(fn ($state): string => number_format((int) $state, 0)),

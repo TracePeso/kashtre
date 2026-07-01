@@ -121,7 +121,7 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
                 ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
             TextInputColumn::make('order_quantity_suom')
-                ->label('Order (SUOM)')
+                ->label('Order qty')
                 ->type('number')
                 ->alignEnd()
                 ->step('1')
@@ -208,7 +208,7 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
                 ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 1) : '—'),
 
             TextColumn::make('system_quantity_suom')
-                ->label('System (AR)')
+                ->label('System stock')
                 ->alignEnd()
                 ->toggleable(isToggledHiddenByDefault: true)
                 ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
