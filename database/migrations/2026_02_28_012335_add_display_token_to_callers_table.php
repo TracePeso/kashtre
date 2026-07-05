@@ -13,7 +13,12 @@ return new class extends Migration
     {
         if (Schema::hasTable('callers')) {
             Schema::table('callers', function (Blueprint $table) {
-                $table->string('display_token', 64)->nullable()->unique()->after('status');
+                if (Schema::hasColumn('callers', 'display_token')) {
+                    $table->dropIndex(['display_token']);
+                    $table->string('display_token', 64)->nullable()->unique()->change();
+                } else {
+                    $table->string('display_token', 64)->nullable()->unique()->after('status');
+                }
             });
         }
     }
@@ -25,7 +30,10 @@ return new class extends Migration
     {
         if (Schema::hasTable('callers')) {
             Schema::table('callers', function (Blueprint $table) {
-                $table->dropColumn('display_token');
+                if (Schema::hasColumn('callers', 'display_token')) {
+                    $table->dropUnique(['display_token']);
+                    $table->string('display_token', 10)->nullable()->index()->change();
+                }
             });
         }
     }
