@@ -24,7 +24,7 @@
 
         <div class="md:flex md:items-center md:justify-between mb-6">
             <div>
-                <h2 class="text-2xl font-bold text-gray-900">Bulk GRN upload</h2>
+                <h2 class="text-2xl font-bold text-gray-900">Bulk goods receive note upload</h2>
                 <p class="mt-1 text-sm text-gray-500">Download the template, fill in quantities, upload, then review and submit.</p>
             </div>
             <a href="{{ route('inventory.receive.create') }}" class="mt-4 md:mt-0 text-sm text-blue-600 hover:text-blue-800">
@@ -36,7 +36,7 @@
 
         @if ($itemUnits->isEmpty())
             <div class="mt-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded text-sm">
-                Add item units before uploading a GRN.
+                Add item units before uploading a goods receive note.
                 <a href="{{ route('item-units.index') }}" class="font-medium underline">Item Units</a>
             </div>
         @endif
@@ -51,16 +51,19 @@
             </div>
         @endif
 
+        <div class="mt-4 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
+            <p>Complete all fields on this form. Compulsory fields are marked with <span class="text-red-500 font-medium">*</span>.</p>
+        </div>
+
         <form method="POST" action="{{ route('inventory.receive.store') }}" enctype="multipart/form-data" class="mt-6 space-y-6" novalidate @submit="handleSubmit($event)">
             @csrf
             <input type="hidden" name="action" value="submit">
 
             <div class="bg-white shadow sm:rounded-lg p-6">
-                <h3 class="text-lg font-medium text-gray-900 border-b border-gray-200 pb-3 mb-4">Header</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div>
-                        <label for="supplier_id" class="block text-sm font-medium text-gray-700">Supplier</label>
-                        <select name="supplier_id" id="supplier_id" x-model="supplierId" @change="onSupplierChange()"
+                        <label for="supplier_id" class="block text-sm font-medium text-gray-700">Supplier <span class="text-red-500">*</span></label>
+                        <select name="supplier_id" id="supplier_id" required x-model="supplierId" @change="onSupplierChange()"
                                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
                             <option value="">— Select —</option>
                             @foreach($suppliers as $supplier)
@@ -91,6 +94,18 @@
                         <label class="block text-sm font-medium text-gray-700">Delivery note</label>
                         <input type="file" name="delivery_note" accept=".pdf,.jpg,.jpeg,.png"
                                class="mt-1 block w-full text-sm text-gray-600">
+                    </div>
+                    <div>
+                        <label for="technical_representative_name" class="block text-sm font-medium text-gray-700">Technical representative</label>
+                        <input type="text" name="technical_representative_name" id="technical_representative_name"
+                               placeholder="Optional supplier technical representative"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Technical representative signature</label>
+                        <input type="file" name="technical_representative_signature" accept=".pdf,.jpg,.jpeg,.png,.gif,.svg"
+                               class="mt-1 block w-full text-sm text-gray-600">
+                        <p class="mt-1 text-xs text-gray-500">Optional. PDF or image, max 5 MB.</p>
                     </div>
                 </div>
             </div>
@@ -441,9 +456,16 @@ function grnBulkUploadForm(itemUnits, items, supplierItemIds, urls) {
             }
 
             const form = event.target;
+            const supplierId = form.elements.namedItem('supplier_id')?.value;
             const storeId = form.elements.namedItem('store_id')?.value;
             const orderDate = form.elements.namedItem('date_of_order')?.value;
             const deliveryDate = form.elements.namedItem('date_of_delivery')?.value;
+
+            if (! supplierId) {
+                event.preventDefault();
+                this.submitError = 'Select a supplier.';
+                return;
+            }
 
             if (! storeId) {
                 event.preventDefault();

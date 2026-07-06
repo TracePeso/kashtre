@@ -15,12 +15,20 @@
     </style>
 </head>
 <body>
-    <h1>Local Purchase Order</h1>
-    <p class="muted">{{ $po->po_number }} · {{ $po->statusLabel() }}</p>
+    @php($branding = \App\Support\BusinessBranding::for($po->business))
+    @if($branding)
+        <x-business.document-header
+            :branding="$branding"
+            document-title="Local Purchase Order"
+            :document-subtitle="$po->po_number.' · '.$po->statusLabel()"
+        />
+    @else
+        <h1>Local Purchase Order</h1>
+        <p class="muted">{{ $po->po_number }} · {{ $po->statusLabel() }}</p>
+    @endif
     <p><strong>Supplier:</strong> {{ $po->supplier?->name }}<br>
        <strong>Store:</strong> {{ $po->store?->name }}<br>
        <strong>RFQ:</strong> {{ $po->inventoryOrder?->order_number }}<br>
-       <strong>Business:</strong> {{ $po->business?->name }}<br>
        @if($po->issued_at)
            <strong>Issued:</strong> {{ $po->issued_at->format('d M Y H:i') }} by {{ $po->issuedBy?->name ?? '—' }}<br>
        @endif

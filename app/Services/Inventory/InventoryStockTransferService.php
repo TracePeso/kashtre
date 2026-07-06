@@ -2,9 +2,11 @@
 
 namespace App\Services\Inventory;
 
+use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
 use App\Models\InventoryStockMovement;
 use App\Models\StockTransfer;
+use App\Models\StockTransferApproval;
 use App\Models\StockTransferLine;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -37,6 +39,25 @@ class InventoryStockTransferService
         if ($fromStoreId === $toStoreId) {
             throw ValidationException::withMessages([
                 'to_store_id' => 'Dispatch and receiving stores must be different.',
+            ]);
+        }
+
+        $fromStore = \App\Models\Store::query()
+            ->where('business_id', $businessId)
+            ->find($fromStoreId);
+        $toStore = \App\Models\Store::query()
+            ->where('business_id', $businessId)
+            ->find($toStoreId);
+
+        if (! $fromStore || ! $toStore) {
+            throw ValidationException::withMessages([
+                'from_store_id' => 'The selected stores are invalid for this organisation.',
+            ]);
+        }
+
+        if (! $fromStore->canTransferStockTo($toStore)) {
+            throw ValidationException::withMessages([
+                'to_store_id' => 'Child stores cannot transfer stock directly to other child stores. Move stock through the parent distribution store first.',
             ]);
         }
 
@@ -83,50 +104,90 @@ class InventoryStockTransferService
             throw ValidationException::withMessages(['status' => 'Only draft transfers can be submitted.']);
         }
 
-        $transfer->update([
-            'status' => StockTransfer::STATUS_PENDING,
-            'requested_at' => now(),
-            'requested_by_user_id' => $user->id,
-        ]);
-
-        return $transfer->fresh(['lines.item', 'fromStore', 'toStore']);
-    }
-
-    public function approve(StockTransfer $transfer, User $user): StockTransfer
-    {
-        if (! $transfer->isPending()) {
-            throw ValidationException::withMessages(['status' => 'This transfer is not awaiting dispatch approval.']);
+        if ($transfer->lines()->count() < 1) {
+            throw ValidationException::withMessages([
+                'lines' => 'Add at least one item with quantity greater than zero.',
+            ]);
         }
 
-        return DB::transaction(function () use ($transfer, $user) {
-            $transfer->load('lines.item');
+        $this->assertTransferRouteAllowed($transfer);
 
-            foreach ($transfer->lines as $line) {
-                $qty = (float) $line->approved_quantity_suom;
+        $approvers = $this->configuredApprovers((int) $transfer->business_id);
 
-                if ($qty <= 0) {
-                    continue;
-                }
+        if ($approvers->isEmpty()) {
+            throw ValidationException::withMessages([
+                'approvers' => 'No goods receive note approvers are configured. Set them under Inventory → Goods receive note approvers.',
+            ]);
+        }
 
-                $this->adjustStock(
-                    (int) $transfer->business_id,
-                    (int) $transfer->from_store_id,
-                    (int) $line->item_id,
-                    -$qty,
-                    InventoryStockMovement::TYPE_TRANSFER_OUT,
-                    $transfer,
-                    $user->id,
-                    'Transfer out '.$transfer->reference
-                );
-            }
+        $firstApprovalOrder = (int) $approvers->min('approval_order');
 
+        return DB::transaction(function () use ($transfer, $user, $approvers, $firstApprovalOrder) {
             $transfer->update([
-                'status' => StockTransfer::STATUS_APPROVED,
-                'approved_at' => now(),
-                'approved_by_user_id' => $user->id,
+                'status' => StockTransfer::STATUS_PENDING,
+                'current_approval_order' => $firstApprovalOrder,
+                'requested_at' => now(),
+                'requested_by_user_id' => $user->id,
             ]);
 
-            return $transfer->fresh(['lines.item', 'fromStore', 'toStore']);
+            foreach ($approvers as $approver) {
+                StockTransferApproval::create([
+                    'stock_transfer_id' => $transfer->id,
+                    'approver_user_id' => $approver->user_id,
+                    'approval_order' => $approver->approval_order,
+                    'status' => StockTransferApproval::STATUS_PENDING,
+                ]);
+            }
+
+            return $transfer->fresh(['lines.item', 'fromStore', 'toStore', 'approvals.approver']);
+        });
+    }
+
+    public function approve(StockTransfer $transfer, User $user, ?string $comment = null): StockTransfer
+    {
+        if (! $transfer->isPending()) {
+            throw ValidationException::withMessages(['status' => 'This transfer is not awaiting approval.']);
+        }
+
+        $this->assertTransferRouteAllowed($transfer);
+
+        $pending = $this->currentPendingApproval($transfer);
+
+        if (! $pending) {
+            throw ValidationException::withMessages([
+                'status' => 'No pending approval step found.',
+            ]);
+        }
+
+        if ((int) $pending->approver_user_id !== (int) $user->id) {
+            throw ValidationException::withMessages([
+                'approver' => 'You are not the approver for the current step.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($transfer, $user, $pending, $comment) {
+            $pending->update([
+                'status' => StockTransferApproval::STATUS_APPROVED,
+                'comment' => $comment,
+                'acted_at' => now(),
+            ]);
+
+            $nextPending = $transfer->approvals()
+                ->where('status', StockTransferApproval::STATUS_PENDING)
+                ->orderBy('approval_order')
+                ->first();
+
+            if ($nextPending) {
+                $transfer->update([
+                    'current_approval_order' => $nextPending->approval_order,
+                ]);
+
+                return $transfer->fresh(['lines.item', 'fromStore', 'toStore', 'approvals.approver']);
+            }
+
+            $this->finalizeApproval($transfer, $user);
+
+            return $transfer->fresh(['lines.item', 'fromStore', 'toStore', 'approvals.approver']);
         });
     }
 
@@ -174,13 +235,41 @@ class InventoryStockTransferService
             throw ValidationException::withMessages(['status' => 'Only pending transfers can be rejected.']);
         }
 
-        $transfer->update([
-            'status' => StockTransfer::STATUS_REJECTED,
-            'rejection_reason' => $reason,
-            'approved_by_user_id' => $user->id,
-        ]);
+        $pending = $this->currentPendingApproval($transfer);
 
-        return $transfer->fresh(['lines.item', 'fromStore', 'toStore']);
+        if (! $pending || (int) $pending->approver_user_id !== (int) $user->id) {
+            throw ValidationException::withMessages([
+                'approver' => 'You are not the approver for the current step.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($transfer, $user, $pending, $reason) {
+            $pending->update([
+                'status' => StockTransferApproval::STATUS_REJECTED,
+                'comment' => $reason,
+                'acted_at' => now(),
+            ]);
+
+            $transfer->update([
+                'status' => StockTransfer::STATUS_REJECTED,
+                'rejection_reason' => $reason,
+                'current_approval_order' => null,
+                'approved_by_user_id' => $user->id,
+            ]);
+
+            return $transfer->fresh(['lines.item', 'fromStore', 'toStore', 'approvals.approver']);
+        });
+    }
+
+    public function userCanApprove(StockTransfer $transfer, User $user): bool
+    {
+        if (! $transfer->isPending()) {
+            return false;
+        }
+
+        $pending = $this->currentPendingApproval($transfer);
+
+        return $pending && (int) $pending->approver_user_id === (int) $user->id;
     }
 
     public function updateLine(StockTransferLine $line, float $approvedQty, float $receivedQty): StockTransferLine
@@ -240,5 +329,75 @@ class InventoryStockTransferService
             'recorded_by_user_id' => $userId,
             'occurred_at' => now(),
         ]);
+    }
+
+    private function assertTransferRouteAllowed(StockTransfer $transfer): void
+    {
+        $transfer->loadMissing(['fromStore', 'toStore']);
+
+        if (! $transfer->fromStore || ! $transfer->toStore) {
+            throw ValidationException::withMessages([
+                'status' => 'This transfer references stores that are no longer valid.',
+            ]);
+        }
+
+        if (! $transfer->fromStore->canTransferStockTo($transfer->toStore)) {
+            throw ValidationException::withMessages([
+                'to_store_id' => 'Child stores cannot transfer stock directly to other child stores. Move stock through the parent distribution store first.',
+            ]);
+        }
+    }
+
+    private function finalizeApproval(StockTransfer $transfer, User $user): void
+    {
+        $transfer->load('lines.item');
+
+        foreach ($transfer->lines as $line) {
+            $qty = (float) $line->approved_quantity_suom;
+
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $this->adjustStock(
+                (int) $transfer->business_id,
+                (int) $transfer->from_store_id,
+                (int) $line->item_id,
+                -$qty,
+                InventoryStockMovement::TYPE_TRANSFER_OUT,
+                $transfer,
+                $user->id,
+                'Transfer out '.$transfer->reference
+            );
+        }
+
+        $transfer->update([
+            'status' => StockTransfer::STATUS_APPROVED,
+            'approved_at' => now(),
+            'approved_by_user_id' => $user->id,
+            'current_approval_order' => null,
+        ]);
+    }
+
+    private function currentPendingApproval(StockTransfer $transfer): ?StockTransferApproval
+    {
+        return $transfer->approvals()
+            ->where('status', StockTransferApproval::STATUS_PENDING)
+            ->orderBy('approval_order')
+            ->first();
+    }
+
+    private function configuredApprovers(int $businessId)
+    {
+        $config = InventoryModuleConfig::query()
+            ->where('business_id', $businessId)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $config) {
+            return collect();
+        }
+
+        return $config->approvers()->orderBy('approval_order')->get();
     }
 }

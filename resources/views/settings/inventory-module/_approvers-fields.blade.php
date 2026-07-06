@@ -5,8 +5,8 @@
 
 <div class="border border-gray-200 rounded-lg p-4 space-y-6" id="grn-approvers-fields">
     <div>
-        <p class="text-sm font-medium text-gray-700">GRN Approvers</p>
-        <p class="text-xs text-gray-500 mt-0.5">Assign 1–2 staff from this business who will approve Goods Received Notes before stock is updated.</p>
+        <p class="text-sm font-medium text-gray-700">Goods receive note approvers</p>
+        <p class="text-xs text-gray-500 mt-0.5">Assign 1–2 staff from this business who will approve goods receive notes before stock is updated.</p>
     </div>
 
     <div>

@@ -96,7 +96,7 @@ class ShowGoodsReceivedNoteLines extends Component implements HasForms, HasTable
             ->defaultPaginationPageOption(25)
             ->striped()
             ->emptyStateHeading('No items')
-            ->emptyStateDescription('This GRN has no items recorded.');
+            ->emptyStateDescription('This goods receive note has no items recorded.');
     }
 
     public function render(): View

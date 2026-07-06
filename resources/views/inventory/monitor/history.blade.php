@@ -39,7 +39,7 @@
             <div class="rounded-lg bg-white border border-gray-200 px-4 py-3">
                 <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Last purchase price</p>
                 <p class="mt-1 text-xl font-bold text-gray-900 tabular-nums">UGX {{ number_format($lastPrice, 2) }}</p>
-                <p class="text-xs text-gray-500 mt-0.5">Most recent GRN line price</p>
+                <p class="text-xs text-gray-500 mt-0.5">Most recent goods receive note line price</p>
             </div>
             <div class="rounded-lg bg-white border border-emerald-200 bg-emerald-50/50 px-4 py-3">
                 <p class="text-xs font-medium uppercase tracking-wide text-emerald-800">Current valuation</p>
@@ -85,7 +85,7 @@
 
         <p class="mt-4 text-sm text-gray-600">
             Each row below is one stock movement. <strong>Purchase price</strong> is the unit cost for that receipt;
-            <strong>Receipt valuation</strong> is change × price for that GRN;
+            <strong>Receipt valuation</strong> is change × price for that goods receive note;
             <strong>Stock value after</strong> is total inventory value on hand (weighted average when prices differ).
         </p>
 

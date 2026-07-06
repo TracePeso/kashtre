@@ -42,6 +42,13 @@ class Store extends Model
 
         static::saving(function (Store $store) {
             $store->applyParentHierarchy();
+            $store->enforceDistributionTypeRules();
+        });
+
+        static::saved(function (Store $store) {
+            if ($store->parent_id) {
+                static::promoteToDistributionStore((int) $store->parent_id);
+            }
         });
     }
 
@@ -70,9 +77,87 @@ class Store extends Model
         return $this->parent_id !== null;
     }
 
-    public function isParent(): bool
+    public function isRoot(): bool
     {
         return $this->parent_id === null;
+    }
+
+    /** @deprecated Use isRoot() */
+    public function isParent(): bool
+    {
+        return $this->isRoot();
+    }
+
+    public function hasChildren(): bool
+    {
+        if ($this->relationLoaded('children')) {
+            return $this->children->isNotEmpty();
+        }
+
+        return $this->children()->exists();
+    }
+
+    public function canAcceptChildStores(): bool
+    {
+        return $this->depth() < 2;
+    }
+
+    public function canTransferStockTo(self $to): bool
+    {
+        if ((int) $this->id === (int) $to->id) {
+            return false;
+        }
+
+        if ((int) $this->business_id !== (int) $to->business_id) {
+            return false;
+        }
+
+        if ((int) $this->parent_id === (int) $to->id) {
+            return true;
+        }
+
+        if ((int) $to->parent_id === (int) $this->id) {
+            return true;
+        }
+
+        if ($this->isRoot() && $to->isRoot()) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    public static function transferDestinationIdsFor(int $fromStoreId, int $businessId): array
+    {
+        $from = static::query()->forBusiness($businessId)->find($fromStoreId);
+
+        if (! $from) {
+            return [];
+        }
+
+        return static::query()
+            ->forBusiness($businessId)
+            ->orderBy('name')
+            ->get()
+            ->filter(fn (self $to) => $from->canTransferStockTo($to))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    public static function promoteToDistributionStore(int $storeId): void
+    {
+        $store = static::query()->find($storeId);
+
+        if (! $store || $store->distribution_type === self::DISTRIBUTION_INTERIM) {
+            return;
+        }
+
+        $store->updateQuietly(['distribution_type' => self::DISTRIBUTION_INTERIM]);
     }
 
     public function depth(): int
@@ -247,6 +332,13 @@ class Store extends Model
                 ]);
             }
             $ancestorId = static::query()->whereKey($ancestorId)->value('parent_id');
+        }
+    }
+
+    protected function enforceDistributionTypeRules(): void
+    {
+        if ($this->hasChildren()) {
+            $this->distribution_type = self::DISTRIBUTION_INTERIM;
         }
     }
 }

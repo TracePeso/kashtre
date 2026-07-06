@@ -12,7 +12,6 @@ use App\Models\ItemImportanceCategory;
 use App\Models\SubGroup;
 use App\Models\Supplier;
 use App\Services\Inventory\InventoryOrderService;
-use App\Services\Inventory\InventoryStockAnalyticsService;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Tables\Columns\TextColumn;
@@ -77,10 +76,7 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
         $hasPeak = (float) ($this->order->peak_period_percent ?? 0) > 0;
         $showReceipt = ! $isDraft;
         $service = app(InventoryOrderService::class);
-        $analytics = app(InventoryStockAnalyticsService::class);
-        $config = $this->orderModuleConfig;
         $businessId = (int) $this->order->business_id;
-        $stockByItem = $this->stockByItemId();
 
         $columns = [
             TextColumn::make('item.name')
@@ -113,13 +109,6 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
                 ->badge()
                 ->color('primary')
                 ->toggleable(isToggledHiddenByDefault: true),
-
-            TextColumn::make('suggested_quantity_suom')
-                ->label('Suggested')
-                ->alignEnd()
-                ->sortable()
-                ->color('gray')
-                ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
             TextInputColumn::make('order_quantity_suom')
                 ->label('Order qty')
@@ -201,23 +190,32 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
                 ->weight('medium')
                 ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) ($state ?? 0), 2)),
 
-            TextColumn::make('days_left_am')
-                ->label('Days left')
+            TextColumn::make('current_stock_suom')
+                ->label('Current stock')
                 ->alignEnd()
-                ->toggleable(isToggledHiddenByDefault: true)
-                ->state(function (InventoryOrderLine $record) use ($analytics, $config, $stockByItem): ?float {
-                    $stock = $stockByItem->get($record->item_id);
-
-                    return $stock ? $analytics->daysLeftToOrder($stock, $config, $this->order) : null;
-                })
-                ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 1) : '—'),
+                ->formatStateUsing(fn ($state): string => number_format((float) $state, 0))
+                ->description(fn (InventoryOrderLine $record): ?string => $record->stock_days_at_order !== null
+                    ? number_format((float) $record->stock_days_at_order, 1).' stock days'
+                    : null),
 
             TextColumn::make('system_quantity_suom')
-                ->label('System stock')
+                ->label('System stock (AR)')
                 ->alignEnd()
                 ->toggleable(isToggledHiddenByDefault: true)
                 ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
         ]);
+
+        if ($this->order->budget_mode) {
+            $columns[] = TextColumn::make('days_left_at_order')
+                ->label('Days left to order')
+                ->alignEnd()
+                ->placeholder('—')
+                ->formatStateUsing(fn ($state): string => $state !== null ? number_format((float) $state, 1) : '—')
+                ->color(fn ($state): ?string => $state !== null && (float) $state <= 0 ? 'danger' : null)
+                ->description(fn (InventoryOrderLine $record): ?string => $record->order_days !== null
+                    ? number_format((float) $record->order_days, 1).' order days allocated'
+                    : null);
+        }
 
         return $table
             ->query(
@@ -270,7 +268,7 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
 
     public function updatedSupplierId($value): void
     {
-        if (! $this->order->isDraft() || ! filled($value) || \App\Support\InventoryBusinessContext::isAdminBrowsing()) {
+        if ($this->order->isInternal() || ! $this->order->isDraft() || ! filled($value) || \App\Support\InventoryBusinessContext::isAdminBrowsing()) {
             return;
         }
 

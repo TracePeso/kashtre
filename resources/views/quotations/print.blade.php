@@ -149,10 +149,17 @@
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <h1>QUOTATION</h1>
-            <p>{{ $quotation->business->name ?? 'Business Name' }}</p>
-            <p>{{ $quotation->business->address ?? 'Business Address' }}</p>
-            <p>Phone: {{ $quotation->business->phone ?? 'Business Phone' }}</p>
+            @php($branding = \App\Support\BusinessBranding::for($quotation->business))
+            @if($branding)
+                <x-business.document-header
+                    :branding="$branding"
+                    document-title="QUOTATION"
+                    layout="centered"
+                />
+            @else
+                <h1>QUOTATION</h1>
+                <p>Business Name</p>
+            @endif
         </div>
 
         <!-- Quotation and Client Information -->

@@ -18,7 +18,10 @@
                 <a href="{{ route('inventory.orders.index') }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to order goods</a>
                 <div class="mt-2 flex flex-wrap items-center gap-3">
                     <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">{{ $order->order_number }}</h2>
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">RFQ</span>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">{{ $order->documentLabel() }}</span>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $order->isInternal() ? 'bg-cyan-100 text-cyan-800' : 'bg-gray-100 text-gray-800' }}">
+                        {{ $order->orderTypeLabel() }}
+                    </span>
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $statusColors }}">
                         {{ $order->statusLabel() }}
                     </span>
@@ -32,19 +35,32 @@
                     </span>
                 </div>
                 <p class="mt-1 text-sm text-gray-500">
-                    {{ $order->store->selectLabel() }}
-                    @if($order->supplier)
-                        · {{ $order->supplier->name }}
+                    @if($order->isInternal())
+                        {{ $order->sourceStore?->selectLabel() ?? '—' }} → {{ $order->store?->selectLabel() ?? '—' }}
+                    @else
+                        {{ $order->store->selectLabel() }}
+                        @if($order->supplier)
+                            · {{ $order->supplier->name }}
+                        @endif
                     @endif
                     · {{ $order->orderingTypeValueLabel() }}
                 </p>
             </div>
             @if($order->isDraft())
                 <div class="mt-4 md:mt-0 flex flex-wrap gap-2">
-                    <a href="{{ route('inventory.orders.pdf', $order) }}"
-                       class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                        Export RFQ PDF
-                    </a>
+                    @if($order->isExternal())
+                        @if($order->hasRfqDocument())
+                            <a href="{{ $order->rfqDocumentUrl() }}"
+                               target="_blank"
+                               class="inline-flex items-center px-4 py-2 border border-blue-300 rounded-md shadow-sm text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100">
+                                Download draft RFQ
+                            </a>
+                        @endif
+                        <a href="{{ route('inventory.orders.pdf', $order) }}"
+                           class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                            Export RFQ PDF
+                        </a>
+                    @endif
                     <form action="{{ route('inventory.orders.regenerate', $order) }}" method="POST">
                         @csrf
                         <button type="submit" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
@@ -56,16 +72,25 @@
                         <button type="button"
                                 onclick="confirmSubmitInventoryOrder()"
                                 class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                            Submit RFQ for approval
+                            {{ $order->isInternal() ? 'Submit for approval' : 'Submit RFQ for approval' }}
                         </button>
                     </form>
                 </div>
             @else
                 <div class="mt-4 md:mt-0 flex flex-wrap gap-2">
-                    <a href="{{ route('inventory.orders.pdf', $order) }}"
-                       class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                        Export RFQ PDF
-                    </a>
+                    @if($order->isExternal())
+                        @if($order->hasRfqDocument())
+                            <a href="{{ $order->rfqDocumentUrl() }}"
+                               target="_blank"
+                               class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                                Download RFQ document
+                            </a>
+                        @endif
+                        <a href="{{ route('inventory.orders.pdf', $order) }}"
+                           class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                            Export RFQ PDF
+                        </a>
+                    @endif
                     @if($order->canReceiveGoods())
                         <a href="{{ route('inventory.orders.receive', $order) }}"
                            class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
@@ -98,17 +123,35 @@
 
         @if($order->isDraft())
             <div class="mt-4 bg-slate-50 border border-slate-200 text-slate-800 px-4 py-3 rounded text-sm">
-                <strong>Draft RFQ.</strong> Choose the <strong>supplier</strong> for this order (above the line items), review quantities, then <strong>Submit RFQ for approval</strong>.
+                @if($order->isInternal())
+                    <strong>Draft internal order.</strong> Review quantities for stock needed at <strong>{{ $order->store?->name }}</strong> from <strong>{{ $order->sourceStore?->name }}</strong>, then <strong>Submit for approval</strong>. After approval, fulfill via a stock transfer — no supplier quotation is required.
+                @else
+                    <strong>Draft RFQ.</strong>
+                    @if($order->hasRfqDocument())
+                        A draft RFQ document has been generated automatically.
+                    @endif
+                    Choose the <strong>supplier</strong> for this order (above the line items), review quantities, then <strong>Submit RFQ for approval</strong>.
+                @endif
             </div>
         @endif
 
         @if($order->isPendingApproval())
             <div class="mt-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded text-sm">
-                <strong>Awaiting RFQ approval.</strong> After approvers sign off, record supplier quotations and generate LPOs.
+                @if($order->isInternal())
+                    <strong>Awaiting approval.</strong> After approvers sign off, create a stock transfer from {{ $order->sourceStore?->name }} to {{ $order->store?->name }}.
+                @else
+                    <strong>Awaiting RFQ approval.</strong> After approvers sign off, record supplier quotations and generate LPOs.
+                @endif
             </div>
         @endif
 
-        @if($order->isRfqApproved())
+        @if($order->isInternal() && $order->isFulfilled())
+            <div class="mt-4 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm">
+                <strong>Internal order approved.</strong>
+                <a href="{{ route('inventory.transfers.create') }}" class="underline font-medium">Make a transfer request</a>
+                from {{ $order->sourceStore?->name }} to {{ $order->store?->name }} to move stock.
+            </div>
+        @elseif($order->isRfqApproved())
             <div class="mt-4 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm">
                 <strong>RFQ approved.</strong> Record supplier quotations below, accept a quote, then generate and issue an LPO. Goods are received only against issued LPOs.
             </div>
@@ -116,7 +159,7 @@
 
         @if($order->isPoIssued() && ! $order->isFulfilled())
             <div class="mt-4 bg-indigo-50 border border-indigo-200 text-indigo-900 px-4 py-3 rounded text-sm">
-                <strong>LPO issued.</strong> Receive goods against the LPO — stock updates when each GRN is approved.
+                <strong>LPO issued.</strong> Receive goods against the LPO — stock updates when each goods receive note is approved.
             </div>
         @endif
 
@@ -184,19 +227,13 @@
                     <p class="mt-1 text-sm font-semibold text-gray-900">{{ $order->orderingTypeLabel() }}</p>
                     <p class="text-xs text-gray-500 mt-0.5">{{ $order->orderingTypeValueLabel() }}</p>
                 </div>
+                @if(! $order->budget_mode)
                 <div class="px-4 py-3 sm:px-5">
                     <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Order period</p>
                     <p class="mt-1 text-sm font-semibold text-gray-900 tabular-nums">{{ number_format((float) ($order->period_of_order_days ?? 0), 0) }} days</p>
-                    <p class="text-xs text-gray-500 mt-0.5">
-                        @if($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT)
-                            Before amount cap
-                        @elseif($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_DAYS)
-                            Reference period
-                        @else
-                            Drives suggested qty
-                        @endif
-                    </p>
+                    <p class="text-xs text-gray-500 mt-0.5">Drives suggested qty</p>
                 </div>
+                @endif
                 <div class="px-4 py-3 sm:px-5">
                     <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Budget</p>
                     <p class="mt-1 text-sm font-semibold text-gray-900 tabular-nums">
@@ -275,6 +312,20 @@
             @endif
         </div>
 
+        @if($order->isExternal() && $order->hasRfqDocument() && $order->isDraft())
+            <div class="mt-4 bg-white shadow sm:rounded-lg p-4 sm:p-6">
+                <h3 class="text-sm font-semibold text-gray-900">Draft RFQ document</h3>
+                <p class="text-xs text-gray-500 mt-0.5">Generated automatically when this order was created. Refreshed when you use Refresh items or submit for approval.</p>
+                <div class="mt-3">
+                    <a href="{{ $order->rfqDocumentUrl() }}"
+                       target="_blank"
+                       class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800">
+                        {{ $order->rfq_document_original_name ?? ($order->order_number.'.pdf') }}
+                    </a>
+                </div>
+            </div>
+        @endif
+
         @if($order->canManageSupplierQuotations() && $order->supplier_id)
             <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6">
                 <h3 class="text-sm font-semibold text-gray-900">Supplier quotation</h3>
@@ -304,12 +355,12 @@
 
         <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6 w-full min-w-0">
             <div class="mb-4">
-                <h3 class="text-sm font-semibold text-gray-900">RFQ line items</h3>
+                <h3 class="text-sm font-semibold text-gray-900">{{ $order->isInternal() ? 'Order line items' : 'RFQ line items' }}</h3>
                 <p class="text-xs text-gray-500 mt-0.5">
                     @if($order->isDraft())
                         Use search and filters to find items. Paginated for large orders.
                     @else
-                        Ordered vs received (SUOM). Received totals update when linked GRNs are approved.
+                        Ordered vs received (SUOM). Received totals update when linked goods receive notes are approved.
                     @endif
                 </p>
             </div>
@@ -372,7 +423,7 @@
 
                 @if($order->goodsReceivedNotes->isNotEmpty())
                     <div class="bg-white shadow sm:rounded-lg p-6">
-                        <h3 class="text-sm font-semibold text-gray-900 mb-3">Goods received notes</h3>
+                        <h3 class="text-sm font-semibold text-gray-900 mb-3">Goods receive notes</h3>
                         <ul class="space-y-2 text-sm">
                             @foreach($order->goodsReceivedNotes as $grn)
                                 <li>
@@ -385,9 +436,18 @@
                 @endif
 
                 @if($order->isFulfilled())
-                    <div class="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-800">
-                        All order items have been fully received and posted to stock.
-                        <a href="{{ route('inventory.monitor') }}" class="underline font-medium block mt-1">View Monitor Stock</a>
+                    <div @class([
+                        'border rounded-lg p-4 text-sm',
+                        'bg-green-50 border-green-200 text-green-800' => ! $order->isInternal(),
+                        'bg-blue-50 border-blue-200 text-blue-900' => $order->isInternal(),
+                    ])>
+                        @if($order->isInternal())
+                            Internal order approved. Create a stock transfer to move stock.
+                            <a href="{{ route('inventory.transfers.create') }}" class="underline font-medium block mt-1">Make a transfer request</a>
+                        @else
+                            All order items have been fully received and posted to stock.
+                            <a href="{{ route('inventory.monitor') }}" class="underline font-medium block mt-1">View Monitor Stock</a>
+                        @endif
                     </div>
                 @endif
             </div>
@@ -398,8 +458,8 @@
         <script>
             function confirmSubmitInventoryOrder() {
                 Swal.fire({
-                    title: 'Submit RFQ for approval?',
-                    html: 'RFQ <strong>{{ $order->order_number }}</strong> will be sent to your configured approvers. After approval, record supplier quotations before generating an LPO.',
+                    title: '{{ $order->isInternal() ? 'Submit for approval?' : 'Submit RFQ for approval?' }}',
+                    html: `@if($order->isInternal())Internal order <strong>{{ $order->order_number }}</strong> will be sent to your configured approvers. After approval, create a stock transfer to fulfill — no supplier quotation is required.@else RFQ <strong>{{ $order->order_number }}</strong> will be sent to your configured approvers. After approval, record supplier quotations before generating an LPO.@endif`,
                     icon: 'question',
                     showCancelButton: true,
                     confirmButtonText: 'Yes, submit',

@@ -6,6 +6,7 @@ namespace App\Providers;
 use App\Models\Business;
 use App\Models\CallingModuleConfig;
 use App\Models\InventoryModuleConfig;
+use App\Support\BusinessBranding;
 use App\Support\InventoryBusinessContext;
 use App\Models\Caller;
 use App\Models\Transaction;
@@ -42,6 +43,7 @@ class AppServiceProvider extends ServiceProvider
             $user = Auth::user();
 
             $view->with('business', $user?->business);
+            $view->with('businessBranding', BusinessBranding::for($user?->business));
             $view->with('permissions', (array) ($user?->permissions ?? []));
 
             // Calling module flags

@@ -240,15 +240,17 @@
             <div class="invoice-number">{{ $invoice->invoice_number }}</div>
             
             <div class="company-info">
-                <div class="company-details">
-                    <h3>{{ $invoice->business->name ?? 'Business Name' }}</h3>
-                    @if($invoice->branch)
-                        <p><strong>Branch:</strong> {{ $invoice->branch->name }}</p>
-                    @endif
-                    <p>{{ $invoice->business->address ?? '' }}</p>
-                    <p>{{ $invoice->business->phone ?? '' }}</p>
-                    <p>{{ $invoice->business->email ?? '' }}</p>
-                </div>
+                @php($branding = \App\Support\BusinessBranding::for($invoice->business))
+                @if($branding)
+                    <x-business.document-header
+                        :branding="$branding"
+                        :branch-name="$invoice->branch?->name"
+                    />
+                @else
+                    <div class="company-details">
+                        <h3>Business Name</h3>
+                    </div>
+                @endif
                 
                 <div class="invoice-details">
                     <h4>Invoice Details</h4>

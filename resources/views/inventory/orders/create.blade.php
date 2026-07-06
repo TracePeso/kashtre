@@ -1,7 +1,7 @@
 <x-app-layout>
 @php
     $config = $moduleConfig ?? null;
-    $defaultPeriodDays = (int) old('period_of_order_days', $config?->period_of_order_days ?? 30);
+    $periodOfOrderDaysValue = old('period_of_order_days');
     $defaultSafetyDays = (int) old('safety_stock_days', $config?->safety_stock_days ?? 0);
     $defaultBufferDays = (int) old('buffer_stock_days', $config?->buffer_stock_days ?? 0);
     $defaultNotificationDays = (int) old('notification_to_order_days', $config?->notification_to_order_days ?? 0);
@@ -9,6 +9,9 @@
     $initialOrderApproach = old('ordering_approach', $initialBudgetMode ? 'budget' : 'period');
     $oldItemIds = collect(old('item_ids', []))->map(fn ($id) => (int) $id)->values();
     $defaultImportance = old('importance_filter', '');
+    $initialOrderType = old('order_type', 'external');
+    $initialSourceStoreId = old('source_store_id', '');
+    $initialReceivingStoreId = old('store_id', '');
     $initialEditOrderSettings = $errors->hasAny(['safety_stock_days', 'buffer_stock_days', 'notification_to_order_days']);
     $safetyDays = (int) old('safety_stock_days', $defaultSafetyDays);
     $bufferDays = (int) old('buffer_stock_days', $defaultBufferDays);
@@ -16,6 +19,10 @@
 @endphp
 <div class="min-h-screen bg-gray-50 py-6" x-data="{
     orderApproach: '{{ $initialOrderApproach }}',
+    orderType: '{{ $initialOrderType }}',
+    storesList: @js($storesList),
+    sourceStoreId: '{{ $initialSourceStoreId }}',
+    receivingStoreId: '{{ $initialReceivingStoreId }}',
     items: @js($items->map(fn ($item) => [
         'id' => $item->id,
         'name' => $item->name,
@@ -91,10 +98,41 @@
         this.notificationDays = this.defaultNotificationDays;
         this.editOrderSettings = false;
     },
+    storeById(id) {
+        if (! id) return null;
+        return this.storesList.find(store => String(store.id) === String(id)) || null;
+    },
+    canOrderBetween(fromId, toId) {
+        const from = this.storeById(fromId);
+        const to = this.storeById(toId);
+        if (! from || ! to) return false;
+        if (String(from.id) === String(to.id)) return false;
+        if (from.parent_id !== null && Number(from.parent_id) === Number(to.id)) return true;
+        if (to.parent_id !== null && Number(to.parent_id) === Number(from.id)) return true;
+        if ((from.parent_id === null || from.parent_id === '') && (to.parent_id === null || to.parent_id === '')) return true;
+        return false;
+    },
+    availableReceivingStores() {
+        if (! this.sourceStoreId) return [];
+        return this.storesList.filter(store => this.canOrderBetween(this.sourceStoreId, store.id));
+    },
+    internalOrderIsValid() {
+        return this.sourceStoreId && this.receivingStoreId && this.canOrderBetween(this.sourceStoreId, this.receivingStoreId);
+    },
+    onOrderTypeChange() {
+        if (this.orderType === 'external') {
+            this.sourceStoreId = '';
+        }
+    },
+    onSourceStoreChange() {
+        if (this.receivingStoreId && ! this.canOrderBetween(this.sourceStoreId, this.receivingStoreId)) {
+            this.receivingStoreId = '';
+        }
+    },
 }">
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex-1 min-w-0">
-            <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">New order</h2>
+            <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">Make an order</h2>
             <p class="mt-1 text-sm text-gray-500">
                 Suggested quantities use your stock position and <strong>auto-calculated consumption rates</strong> (15-day usage).
                 Filter by category or group to focus on essential items.
@@ -118,30 +156,93 @@
                 </div>
             @endif
 
-            <div>
-                <label for="store_id" class="block text-sm font-medium text-gray-700">Store</label>
-                <select name="store_id" id="store_id" required
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                    <option value="">Select store</option>
-                    @foreach($stores as $id => $label)
-                        <option value="{{ $id }}" @selected(old('store_id') == $id)>{{ $label }}</option>
-                    @endforeach
-                </select>
-                @error('store_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+            <div class="border border-gray-200 rounded-lg p-4 space-y-4">
+                <div>
+                    <p class="text-sm font-medium text-gray-900">Order type</p>
+                    <p class="text-xs text-gray-500 mt-0.5">External orders use a supplier. Internal orders request stock from another store in your network.</p>
+                </div>
+                <div class="flex flex-wrap gap-4">
+                    <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input type="radio" name="order_type" value="external" x-model="orderType" @change="onOrderTypeChange()"
+                               class="text-blue-600 border-gray-300 focus:ring-blue-500">
+                        <span>External <span class="text-gray-500">(from supplier)</span></span>
+                    </label>
+                    <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input type="radio" name="order_type" value="internal" x-model="orderType" @change="onOrderTypeChange()"
+                               class="text-blue-600 border-gray-300 focus:ring-blue-500">
+                        <span>Internal <span class="text-gray-500">(store to store)</span></span>
+                    </label>
+                </div>
+                @error('order_type')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
             </div>
 
-            <div>
-                <label for="supplier_id" class="block text-sm font-medium text-gray-700">Supplier</label>
-                <select name="supplier_id" id="supplier_id" required
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                    <option value="">— Select supplier —</option>
-                    @foreach($suppliers as $supplier)
-                        <option value="{{ $supplier->id }}" @selected(old('supplier_id') == $supplier->id)>{{ $supplier->name }}</option>
-                    @endforeach
-                </select>
-                <p class="mt-1 text-xs text-gray-500">One supplier for the entire order, like a GRN. Only items linked to this supplier are included.</p>
-                @error('supplier_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-            </div>
+            <template x-if="orderType === 'external'">
+                <div class="space-y-4">
+                    <div>
+                        <label for="store_id" class="block text-sm font-medium text-gray-700">Receiving store <span class="text-red-500">*</span></label>
+                        <select name="store_id" id="store_id" required x-model="receivingStoreId"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <option value="">Select store</option>
+                            @foreach($stores as $id => $label)
+                                <option value="{{ $id }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">Store that will receive goods from the supplier.</p>
+                        @error('store_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                    </div>
+
+                    <div>
+                        <label for="supplier_id" class="block text-sm font-medium text-gray-700">Supplier <span class="text-red-500">*</span></label>
+                        <select name="supplier_id" id="supplier_id" required
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <option value="">— Select supplier —</option>
+                            @foreach($suppliers as $supplier)
+                                <option value="{{ $supplier->id }}" @selected(old('supplier_id') == $supplier->id)>{{ $supplier->name }}</option>
+                            @endforeach
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">One supplier for the entire order. Only items linked to this supplier are included.</p>
+                        @error('supplier_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                    </div>
+                </div>
+            </template>
+
+            <template x-if="orderType === 'internal'">
+                <div class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="source_store_id" class="block text-sm font-medium text-gray-700">Supplying store (from) <span class="text-red-500">*</span></label>
+                            <select name="source_store_id" id="source_store_id" x-model="sourceStoreId" @change="onSourceStoreChange()" required
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                <option value="">Select supplying store</option>
+                                @foreach($stores as $id => $label)
+                                    <option value="{{ $id }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            @error('source_store_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                        </div>
+                        <div>
+                            <label for="internal_store_id" class="block text-sm font-medium text-gray-700">Receiving store (to) <span class="text-red-500">*</span></label>
+                            <select name="store_id" id="internal_store_id" x-model="receivingStoreId" required
+                                    :disabled="!sourceStoreId"
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm disabled:bg-gray-50">
+                                <option value="">Select receiving store</option>
+                                <template x-for="store in availableReceivingStores()" :key="'recv-' + store.id">
+                                    <option :value="String(store.id)" x-text="store.label"></option>
+                                </template>
+                            </select>
+                            <p class="mt-1 text-xs text-gray-500" x-show="sourceStoreId && availableReceivingStores().length === 0" x-cloak>
+                                No valid receiving stores for the selected supplying store.
+                            </p>
+                            @error('store_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                        </div>
+                    </div>
+                    <div x-show="sourceStoreId && receivingStoreId && !internalOrderIsValid()" x-cloak
+                         class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                        Child stores cannot order directly from other child stores. Request stock through the parent distribution store first.
+                    </div>
+                    <p class="text-xs text-gray-500">Internal orders follow the same parent/child store rules as stock transfers. No supplier is required.</p>
+                </div>
+            </template>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
@@ -231,7 +332,6 @@
             <div class="border border-gray-200 rounded-lg p-4 space-y-4">
                 <div>
                     <p class="text-sm font-medium text-gray-900">How to order</p>
-                    <p class="text-xs text-gray-500 mt-0.5">Choose whether quantities are driven by a stock period or a budget target.</p>
                 </div>
 
                 <div class="inline-flex rounded-lg border border-gray-200 p-1 bg-gray-50" role="group" aria-label="Ordering method">
@@ -254,34 +354,25 @@
                 </div>
 
                 <template x-if="orderApproach === 'budget'">
-                    <div class="space-y-4">
-                        <input type="hidden" name="budget_mode" value="amount">
-
+                    <div class="space-y-3">
+                        <input type="hidden" name="budget_mode" value="days">
                         <div>
-                            <label for="budget_value" class="block text-sm font-medium text-gray-700">Budget cap (UGX)</label>
-                            <input type="number" step="0.01" min="0" name="budget_value" id="budget_value"
+                            <label for="budget_value_days" class="block text-sm font-medium text-gray-700">Stock-days budget</label>
+                            <input type="number" step="1" min="1" max="366" name="budget_value" id="budget_value_days"
                                    value="{{ old('budget_value') }}"
                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                            <p class="mt-1 text-xs text-gray-500">
-                                Suggested quantities are calculated from consumption, then scaled down proportionally to fit this budget.
-                            </p>
-                            @error('budget_value')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-                            @error('budget_mode')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                         </div>
+                        @error('budget_value')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                     </div>
                 </template>
 
                 <template x-if="orderApproach === 'period'">
                     <div class="space-y-3">
-                        <div class="rounded-md bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-800">
-                            Suggested quantities cover the <strong>period of order</strong> plus safety and buffer stock, based on current consumption.
-                        </div>
                         <div>
                             <label for="period_of_order_days" class="block text-sm font-medium text-gray-700">Period of order (days)</label>
                             <input type="number" step="1" min="1" name="period_of_order_days" id="period_of_order_days"
-                                   value="{{ $defaultPeriodDays }}"
+                                   value="{{ $periodOfOrderDaysValue }}"
                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                            <p class="mt-1 text-xs text-gray-500">Comfort stock period covered by this order.</p>
                         </div>
                     </div>
                 </template>
@@ -292,7 +383,6 @@
             <div class="border border-gray-200 rounded-lg p-4 space-y-4">
                 <div>
                     <p class="text-sm font-medium text-gray-900">Peak period</p>
-                    <p class="text-xs text-gray-500 mt-0.5">Optional uplift applied to suggested quantities when demand is expected to spike.</p>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -301,7 +391,6 @@
                         <input type="number" step="0.01" min="0" max="100" name="peak_period_percent" id="peak_period_percent"
                                value="{{ old('peak_period_percent', 0) }}"
                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                        <p class="mt-1 text-xs text-gray-500">Share of the order period expected to be peak demand.</p>
                         @error('peak_period_percent')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                     </div>
                     <div>
@@ -309,7 +398,6 @@
                         <input type="number" step="0.01" min="0" max="1000" name="peak_consumption_increase_percent" id="peak_consumption_increase_percent"
                                value="{{ old('peak_consumption_increase_percent', 0) }}"
                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                        <p class="mt-1 text-xs text-gray-500">Applied to all items. Peak impact = peak period × this increase ÷ 100.</p>
                         @error('peak_consumption_increase_percent')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                     </div>
                 </div>

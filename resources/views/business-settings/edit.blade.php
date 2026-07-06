@@ -15,9 +15,19 @@
                 </div>
             @endif
 
-            <form action="{{ route('business-settings.update') }}" method="POST" class="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6">
+            <form action="{{ route('business-settings.update') }}" method="POST" enctype="multipart/form-data" class="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6">
                 @csrf
                 @method('PUT')
+
+                <!-- Branding & Contact -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Branding & Contact</h3>
+                    @include('partials.business-branding-fields', [
+                        'business' => $business,
+                        'logoRequired' => false,
+                        'showLogoPreview' => true,
+                    ])
+                </div>
 
                 <!-- Location & Currency -->
                 <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">

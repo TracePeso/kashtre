@@ -149,7 +149,7 @@ class ListSuppliers extends Component implements HasForms, HasTable
                 ->nullable(),
             Forms\Components\Select::make('item_ids')
                 ->label('Items supplied')
-                ->helperText('Leave empty to allow any item on GRNs.')
+                ->helperText('Leave empty to allow any item on goods receive notes.')
                 ->options(fn (Get $get): array => Item::query()
                     ->where('business_id', $get('business_id') ?? $businessId ?? Auth::user()->business_id)
                     ->where('type', 'good')

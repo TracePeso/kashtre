@@ -7,6 +7,7 @@
         'suom' => $i->itemUnit?->name,
     ])->values()),
     @js($stockByStore),
+    @js($storesList),
     @js(old('from_store_id')),
     @js(old('to_store_id')),
     @js(collect(old('lines', []))->map(fn ($line) => [
@@ -16,8 +17,18 @@
 )">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <a href="{{ route('inventory.transfers.index') }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to transfers</a>
-        <h2 class="mt-4 text-2xl font-bold text-gray-900">New stock transfer request</h2>
-        <p class="mt-1 text-sm text-gray-500">Receiving store requests stock from a dispatch store (Excel: request → approve → physical move → confirm receive).</p>
+        <h2 class="mt-4 text-2xl font-bold text-gray-900">Make a transfer request</h2>
+        <p class="mt-1 text-sm text-gray-500">Request stock between a store and its parent distribution store. Each transfer is submitted for approval before stock moves.</p>
+
+        <div class="mt-4 rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">
+            <p class="font-medium text-gray-900">How transfers work</p>
+            <ol class="mt-2 list-decimal list-inside space-y-1">
+                <li>Create and submit a transfer request with the items and quantities needed.</li>
+                <li>The dispatch store approves — stock is deducted from that store.</li>
+                <li>Goods are physically moved to the receiving store.</li>
+                <li>The receiving store confirms receipt — stock is added there.</li>
+            </ol>
+        </div>
 
         @include('inventory.partials.subnav')
 
@@ -43,12 +54,21 @@
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Receiving store (to) <span class="text-red-500">*</span></label>
                     <select name="to_store_id" required x-model="toStoreId" @change="onToStoreChange()"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500"
+                            :disabled="!fromStoreId">
                         <option value="">Select receiving store</option>
-                        @foreach($stores as $id => $label)
-                            <option value="{{ $id }}">{{ $label }}</option>
-                        @endforeach
+                        <template x-for="store in availableToStores()" :key="'to-' + store.id">
+                            <option :value="String(store.id)" x-text="store.label"></option>
+                        </template>
                     </select>
+                    <p class="mt-1 text-xs text-gray-500" x-show="fromStoreId && availableToStores().length === 0" x-cloak>
+                        No valid receiving stores for the selected dispatch store.
+                    </p>
+                </div>
+                <div class="md:col-span-2" x-show="fromStoreId && toStoreId && !storesAreSame() && !transferIsAllowed()" x-cloak>
+                    <p class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-4 py-3">
+                        Child stores cannot transfer stock directly to other child stores. Move stock through the parent distribution store first.
+                    </p>
                 </div>
                 <div class="md:col-span-2" x-show="storesAreSame()" x-cloak>
                     <p class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-4 py-3">
@@ -66,28 +86,28 @@
                     <h3 class="text-lg font-medium text-gray-900">Items to transfer</h3>
                     <div class="flex flex-wrap gap-2">
                         <button type="button" @click="loadStockedItems()"
-                                :disabled="!fromStoreId || storesAreSame()"
+                                :disabled="!fromStoreId || !toStoreId || storesAreSame() || !transferIsAllowed()"
                                 class="inline-flex items-center px-3 py-1.5 border border-blue-200 rounded-md text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed">
                             Load stocked items
                         </button>
                         <button type="button" @click="addLine()"
-                                :disabled="!fromStoreId || storesAreSame()"
+                                :disabled="!fromStoreId || !toStoreId || storesAreSame() || !transferIsAllowed()"
                                 class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
                             + Add line
                         </button>
                     </div>
                 </div>
 
-                <p class="text-xs text-gray-500 mb-4" x-show="fromStoreId && !storesAreSame()">
+                <p class="text-xs text-gray-500 mb-4" x-show="fromStoreId && toStoreId && transferIsAllowed() && !storesAreSame()">
                     <span x-text="stockedCount()"></span> item(s) with system stock at the dispatch store.
                     Select items from the dropdown — only goods stocked at the dispatch store are listed.
                 </p>
 
-                <template x-if="!fromStoreId || storesAreSame()">
-                    <p class="text-sm text-gray-500 py-8 text-center">Select different dispatch and receiving stores, then add transfer lines.</p>
+                <template x-if="!fromStoreId || !toStoreId || storesAreSame() || !transferIsAllowed()">
+                    <p class="text-sm text-gray-500 py-8 text-center">Select valid dispatch and receiving stores, then add transfer lines.</p>
                 </template>
 
-                <div class="overflow-x-auto" x-show="fromStoreId && !storesAreSame() && lines.length > 0">
+                <div class="overflow-x-auto" x-show="fromStoreId && toStoreId && !storesAreSame() && transferIsAllowed() && lines.length > 0">
                     <table class="min-w-full divide-y divide-gray-200 text-sm">
                         <thead class="bg-gray-50">
                             <tr>
@@ -145,7 +165,7 @@
 </div>
 
 <script>
-function transferCreateForm(items, stockByStore, initialFrom, initialTo, initialLines) {
+function transferCreateForm(items, stockByStore, storesList, initialFrom, initialTo, initialLines) {
     const blankLine = () => ({ item_id: '', quantity_suom: '' });
 
     const normalizeLines = (rows) => {
@@ -162,20 +182,61 @@ function transferCreateForm(items, stockByStore, initialFrom, initialTo, initial
     return {
         items,
         stockByStore,
+        storesList,
         fromStoreId: initialFrom ? String(initialFrom) : '',
         toStoreId: initialTo ? String(initialTo) : '',
         lines: normalizeLines(initialLines),
+        storeById(id) {
+            const key = String(id);
+            return this.storesList.find(store => String(store.id) === key) || null;
+        },
+        canTransferTo(fromId, toId) {
+            if (!fromId || !toId || String(fromId) === String(toId)) {
+                return false;
+            }
+
+            const from = this.storeById(fromId);
+            const to = this.storeById(toId);
+
+            if (!from || !to) {
+                return false;
+            }
+
+            if (from.parent_id !== null && Number(from.parent_id) === Number(to.id)) {
+                return true;
+            }
+
+            if (to.parent_id !== null && Number(to.parent_id) === Number(from.id)) {
+                return true;
+            }
+
+            if ((from.parent_id === null || from.parent_id === '') && (to.parent_id === null || to.parent_id === '')) {
+                return true;
+            }
+
+            return false;
+        },
+        availableToStores() {
+            if (!this.fromStoreId) {
+                return [];
+            }
+
+            return this.storesList.filter(store => this.canTransferTo(this.fromStoreId, store.id));
+        },
+        transferIsAllowed() {
+            return this.canTransferTo(this.fromStoreId, this.toStoreId);
+        },
         storesAreSame() {
             return this.fromStoreId && this.toStoreId && String(this.fromStoreId) === String(this.toStoreId);
         },
         onFromStoreChange() {
-            if (this.storesAreSame()) {
+            if (this.storesAreSame() || (this.toStoreId && !this.transferIsAllowed())) {
                 this.toStoreId = '';
             }
             this.pruneInvalidLines();
         },
         onToStoreChange() {
-            if (this.storesAreSame()) {
+            if (this.storesAreSame() || !this.transferIsAllowed()) {
                 this.toStoreId = '';
             }
         },
@@ -260,13 +321,18 @@ function transferCreateForm(items, stockByStore, initialFrom, initialTo, initial
             return row ? row.system_qty : undefined;
         },
         canSubmit() {
-            if (!this.fromStoreId || !this.toStoreId || this.storesAreSame()) return false;
+            if (!this.fromStoreId || !this.toStoreId || this.storesAreSame() || !this.transferIsAllowed()) return false;
             return this.lines.some(line => line.item_id && parseFloat(line.quantity_suom) > 0);
         },
         onSubmit(event) {
             if (this.storesAreSame()) {
                 event.preventDefault();
                 alert('Dispatch and receiving stores must be different.');
+                return;
+            }
+            if (!this.transferIsAllowed()) {
+                event.preventDefault();
+                alert('Child stores cannot transfer stock directly to other child stores. Move stock through the parent distribution store first.');
                 return;
             }
             if (!this.canSubmit()) {

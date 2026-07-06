@@ -34,7 +34,7 @@ class ListStockTransfers extends Component implements HasForms, HasTable
                 TextColumn::make('toStore.name')->label('To')->sortable(),
                 TextColumn::make('status')
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => str_replace('_', ' ', ucfirst($state)))
+                    ->formatStateUsing(fn (string $state, StockTransfer $record): string => $record->statusLabel())
                     ->color(fn (string $state): string => match ($state) {
                         StockTransfer::STATUS_DRAFT => 'gray',
                         StockTransfer::STATUS_PENDING => 'warning',

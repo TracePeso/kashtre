@@ -4,7 +4,7 @@
         <div class="md:flex md:items-center md:justify-between">
             <div class="flex-1 min-w-0">
                 <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">Receive Goods</h2>
-                <p class="mt-1 text-sm text-gray-500">Create goods received notes (GRN). Stock updates only after approval.</p>
+                <p class="mt-1 text-sm text-gray-500">Create goods receive notes. Stock updates only after approval.</p>
             </div>
             <div class="mt-4 md:mt-0 flex flex-wrap gap-2">
                 <a href="{{ route('inventory.receive.bulk-upload') }}"
@@ -13,7 +13,7 @@
                 </a>
                 <a href="{{ route('inventory.receive.create') }}"
                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                    New GRN
+                    Goods receive note
                 </a>
             </div>
         </div>

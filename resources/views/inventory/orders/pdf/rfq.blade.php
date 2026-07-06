@@ -15,10 +15,21 @@
     </style>
 </head>
 <body>
-    <h1>Request for Quotation</h1>
-    <p class="muted">{{ $order->order_number }} · {{ $order->statusLabel() }}</p>
+    @php($branding = \App\Support\BusinessBranding::for($order->business))
+    @if($branding)
+        <x-business.document-header
+            :branding="$branding"
+            document-title="Request for Quotation"
+            :document-subtitle="$order->order_number.' · '.$order->statusLabel()"
+        />
+    @else
+        <h1>Request for Quotation</h1>
+        <p class="muted">{{ $order->order_number }} · {{ $order->statusLabel() }}</p>
+    @endif
     <p><strong>Store:</strong> {{ $order->store?->name }}<br>
-       <strong>Business:</strong> {{ $order->business?->name }}<br>
+       @if($order->supplier)
+       <strong>Supplier:</strong> {{ $order->supplier->name }}<br>
+       @endif
        <strong>Prepared by:</strong> {{ $order->createdBy?->name ?? '—' }}<br>
        <strong>Date:</strong> {{ $order->created_at?->format('d M Y') }}</p>
 

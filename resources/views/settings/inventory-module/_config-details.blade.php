@@ -100,8 +100,8 @@
 
   <section class="border border-gray-200 rounded-lg overflow-hidden">
     <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
-      <h4 class="text-sm font-semibold text-gray-900">GRN &amp; RFQ approvers</h4>
-      <p class="text-xs text-gray-500 mt-0.5">Same approval matrix the organisation sees under Inventory → GRN Approvers.</p>
+      <h4 class="text-sm font-semibold text-gray-900">Goods receive note &amp; RFQ approvers</h4>
+      <p class="text-xs text-gray-500 mt-0.5">Same approval matrix the organisation sees under Inventory → Goods receive note approvers.</p>
     </div>
     <div class="px-4 py-4">
       @if($config->approvers->count() > 0)
@@ -119,7 +119,7 @@
         </ul>
       @else
         <p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-4 py-3">
-          No GRN approvers assigned yet.
+          No goods receive note approvers assigned yet.
         </p>
       @endif
     </div>
@@ -128,7 +128,7 @@
   <section class="border border-gray-200 rounded-lg overflow-hidden">
     <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
       <h4 class="text-sm font-semibold text-gray-900">LPO email notifications</h4>
-      <p class="text-xs text-gray-500 mt-0.5">Managed by the organisation on their GRN Approvers page.</p>
+      <p class="text-xs text-gray-500 mt-0.5">Managed by the organisation on their Goods receive note approvers page.</p>
     </div>
     <dl class="px-4 py-4 space-y-4 text-sm">
       <div>

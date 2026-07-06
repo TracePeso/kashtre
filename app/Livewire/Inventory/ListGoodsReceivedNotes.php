@@ -31,7 +31,7 @@ class ListGoodsReceivedNotes extends Component implements HasForms, HasTable
             )
             ->columns([
                 TextColumn::make('grn_number')
-                    ->label('GRN #')
+                    ->label('Note #')
                     ->searchable()
                     ->sortable(),
 
@@ -91,15 +91,15 @@ class ListGoodsReceivedNotes extends Component implements HasForms, HasTable
             ])
             ->headerActions([
                 Action::make('create')
-                    ->label('New GRN')
+                    ->label('Goods receive note')
                     ->url(route('inventory.receive.create'))
                     ->icon('heroicon-o-plus'),
             ])
             ->defaultSort('created_at', 'desc')
             ->striped()
             ->paginated([10, 25, 50])
-            ->emptyStateHeading('No goods received notes yet')
-            ->emptyStateDescription('Create a GRN to record incoming stock from a supplier.');
+            ->emptyStateHeading('No goods receive notes yet')
+            ->emptyStateDescription('Create a goods receive note to record incoming stock from a supplier.');
     }
 
     public function render(): View

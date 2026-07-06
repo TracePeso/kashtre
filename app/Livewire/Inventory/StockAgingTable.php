@@ -77,7 +77,7 @@ class StockAgingTable extends Component implements HasForms, HasTable
             ->striped()
             ->paginated([25, 50, 100])
             ->emptyStateHeading('No stocked items')
-            ->emptyStateDescription('Items appear here after goods are received and approved via GRN.');
+            ->emptyStateDescription('Items appear here after goods are received and approved via a goods receive note.');
     }
 
     protected function warmTablePageMetrics(iterable $stockLevels): void

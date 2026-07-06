@@ -98,7 +98,7 @@ class ListItemStockHistory extends Component implements HasForms, HasTable
             ->striped()
             ->paginated([10, 25, 50])
             ->emptyStateHeading('No stock movements yet')
-            ->emptyStateDescription('Each approved GRN records purchase price and valuation for that receipt.');
+            ->emptyStateDescription('Each approved goods receive note records purchase price and valuation for that receipt.');
     }
 
     public function render(): View

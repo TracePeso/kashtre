@@ -25,9 +25,14 @@ class InventoryOrder extends Model
     public const BUDGET_MODE_DAYS = 'days';
     public const BUDGET_MODE_AMOUNT = 'amount';
 
+    public const TYPE_EXTERNAL = 'external';
+    public const TYPE_INTERNAL = 'internal';
+
     protected $fillable = [
         'business_id',
         'store_id',
+        'order_type',
+        'source_store_id',
         'supplier_id',
         'order_number',
         'status',
@@ -47,6 +52,8 @@ class InventoryOrder extends Model
         'peak_period_percent',
         'peak_consumption_increase_percent',
         'notes',
+        'rfq_document_path',
+        'rfq_document_original_name',
         'created_by_user_id',
         'submitted_by_user_id',
         'current_approval_order',
@@ -80,6 +87,11 @@ class InventoryOrder extends Model
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
+    }
+
+    public function sourceStore(): BelongsTo
+    {
+        return $this->belongsTo(Store::class, 'source_store_id');
     }
 
     public function supplier(): BelongsTo
@@ -143,6 +155,26 @@ class InventoryOrder extends Model
             || ! str_starts_with((string) $this->order_number, 'ORD-');
     }
 
+    public function isInternal(): bool
+    {
+        return $this->order_type === self::TYPE_INTERNAL;
+    }
+
+    public function isExternal(): bool
+    {
+        return $this->order_type !== self::TYPE_INTERNAL;
+    }
+
+    public function orderTypeLabel(): string
+    {
+        return $this->isInternal() ? 'Internal' : 'External';
+    }
+
+    public function documentLabel(): string
+    {
+        return $this->isInternal() ? 'Internal order' : 'RFQ';
+    }
+
     public function rfqLabel(): string
     {
         return $this->isRfq() ? 'RFQ' : 'Order';
@@ -199,6 +231,10 @@ class InventoryOrder extends Model
 
     public function canReceiveGoods(): bool
     {
+        if ($this->isInternal()) {
+            return false;
+        }
+
         return $this->purchaseOrders()
             ->whereIn('status', [
                 InventoryPurchaseOrder::STATUS_ISSUED,
@@ -209,11 +245,35 @@ class InventoryOrder extends Model
 
     public function canManageSupplierQuotations(): bool
     {
-        return $this->isRfqApproved();
+        return $this->isRfqApproved() && $this->isExternal();
+    }
+
+    public function hasRfqDocument(): bool
+    {
+        return $this->isExternal() && filled($this->rfq_document_path);
+    }
+
+    public function rfqDocumentUrl(): ?string
+    {
+        if (! $this->rfq_document_path) {
+            return null;
+        }
+
+        return \Illuminate\Support\Facades\Storage::disk('public')->url($this->rfq_document_path);
     }
 
     public function statusLabel(): string
     {
+        if ($this->isInternal()) {
+            return match ($this->status) {
+                self::STATUS_DRAFT => 'Draft internal order',
+                self::STATUS_PENDING_APPROVAL => 'Pending approval',
+                self::STATUS_APPROVED, self::STATUS_FULFILLED => 'Approved',
+                self::STATUS_REJECTED => 'Rejected',
+                default => ucfirst(str_replace('_', ' ', (string) $this->status)),
+            };
+        }
+
         return match ($this->status) {
             self::STATUS_DRAFT => 'Draft RFQ',
             self::STATUS_PENDING_APPROVAL => 'Pending RFQ approval',

@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Models\Business;
+use App\Support\BusinessBranding;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Tables;
@@ -94,21 +95,22 @@ class ListBusiness extends Component implements HasForms, HasTable
                     ->label('Update Logo')
                     ->modalHeading('Update Business Logo')
                     ->modalSubmitActionLabel('Save')
-                    ->form([
+                    ->form(fn (Business $record) => [
                         FileUpload::make('logo')
                             ->label('Upload Logo')
                             ->image()
                             ->preserveFilenames()
-                            ->directory('business-logos')
-                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
-                            ->maxSize(1024) // 1MB in KB
-                            ->required()
-
+                            ->directory(BusinessBranding::logoDirectoryFor($record))
+                            ->disk('public')
+                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'])
+                            ->maxSize(2048)
+                            ->required(),
                     ])
                     ->action(function (Business $record, array $data): void {
                         if (Auth::user()->business_id === 1 || $record->id === Auth::user()->business_id) {
                             if (!empty($data['logo'])) {
-                                Log::info('Uploaded file data:', ['logo' => $data['logo']]);
+                                $branding = $record->branding();
+                                $branding->deleteStoredLogo();
                                 $record->update(['logo' => $data['logo']]);
                                 Notification::make()
                                     ->title('Logo Updated')

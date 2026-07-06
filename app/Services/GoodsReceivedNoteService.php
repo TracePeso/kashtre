@@ -19,7 +19,7 @@ class GoodsReceivedNoteService
     {
         if (! $grn->isDraft()) {
             throw ValidationException::withMessages([
-                'status' => 'Only draft GRNs can be submitted.',
+                'status' => 'Only draft goods receive notes can be submitted.',
             ]);
         }
 
@@ -29,9 +29,27 @@ class GoodsReceivedNoteService
             ]);
         }
 
+        if (! $grn->supplier_id) {
+            throw ValidationException::withMessages([
+                'supplier_id' => 'Select the supplier before submitting this goods receive note.',
+            ]);
+        }
+
         if (! $grn->store_id) {
             throw ValidationException::withMessages([
-                'store_id' => 'Select the receiving store before submitting this GRN.',
+                'store_id' => 'Select the receiving store before submitting this goods receive note.',
+            ]);
+        }
+
+        if (! $grn->date_of_order) {
+            throw ValidationException::withMessages([
+                'date_of_order' => 'Enter the order date before submitting this goods receive note.',
+            ]);
+        }
+
+        if (! $grn->date_of_delivery) {
+            throw ValidationException::withMessages([
+                'date_of_delivery' => 'Enter the delivery date before submitting this goods receive note.',
             ]);
         }
 
@@ -39,7 +57,7 @@ class GoodsReceivedNoteService
 
         if ($approvers->isEmpty()) {
             throw ValidationException::withMessages([
-                'approvers' => 'No GRN approvers are configured. Set them under Inventory → GRN Approvers.',
+                'approvers' => 'No goods receive note approvers are configured. Set them under Inventory → Goods receive note approvers.',
             ]);
         }
 
@@ -72,7 +90,7 @@ class GoodsReceivedNoteService
     {
         if (! $grn->isPending()) {
             throw ValidationException::withMessages([
-                'status' => 'This GRN is not awaiting approval.',
+                'status' => 'This goods receive note is not awaiting approval.',
             ]);
         }
 
@@ -121,7 +139,7 @@ class GoodsReceivedNoteService
     {
         if (! $grn->isPending()) {
             throw ValidationException::withMessages([
-                'status' => 'This GRN is not awaiting approval.',
+                'status' => 'This goods receive note is not awaiting approval.',
             ]);
         }
 

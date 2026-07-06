@@ -3,8 +3,8 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="md:flex md:items-center md:justify-between">
             <div class="flex-1 min-w-0">
-                <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">GRN Approvers</h2>
-                <p class="mt-1 text-sm text-gray-500">Staff who approve RFQs and GRNs. LPO PDF copies can be emailed to finance and approvers.</p>
+                <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">Goods receive note approvers</h2>
+                <p class="mt-1 text-sm text-gray-500">Staff who approve RFQs and goods receive notes. LPO PDF copies can be emailed to finance and approvers.</p>
             </div>
         </div>
 
@@ -18,7 +18,7 @@
             <div class="px-6 py-5 border-b border-gray-200">
                 <h3 class="text-lg font-medium text-gray-900">Approval matrix</h3>
                 <p class="mt-1 text-sm text-gray-500">
-                    Each GRN must be approved by the assigned approvers below before stock levels change. RFQs use the same approver matrix.
+                    Each goods receive note and stock transfer must be approved by the assigned approvers below before stock levels change. RFQs use the same approver matrix.
                 </p>
             </div>
 
@@ -44,7 +44,7 @@
                             <input type="checkbox" name="lpo_email_copy_to_approvers" value="1"
                                    @checked(old('lpo_email_copy_to_approvers', $config->lpo_email_copy_to_approvers ?? true))
                                    class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                            Also email LPO copies to RFQ/GRN approvers
+                            Also email LPO copies to RFQ and goods receive note approvers
                         </label>
                     </div>
 
@@ -72,7 +72,7 @@
                         </ul>
                     @else
                         <p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-4 py-3">
-                            No GRN approvers have been assigned yet. Ask a user with Business Settings access to configure them.
+                            No goods receive note approvers have been assigned yet. Ask a user with Business Settings access to configure them.
                         </p>
                     @endif
                     <p class="mt-4 text-xs text-gray-500">

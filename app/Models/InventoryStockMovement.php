@@ -101,7 +101,7 @@ class InventoryStockMovement extends Model
     public function movementTypeLabel(): string
     {
         return match ($this->movement_type) {
-            self::TYPE_GRN_RECEIPT => 'GRN receipt',
+            self::TYPE_GRN_RECEIPT => 'Goods receive note',
             self::TYPE_STOCK_COUNT => 'Stock count adjustment',
             self::TYPE_CONSUMPTION => 'Consumption',
             self::TYPE_TRANSFER_OUT => 'Transfer out',

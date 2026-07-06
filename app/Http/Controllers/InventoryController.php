@@ -92,7 +92,7 @@ class InventoryController extends Controller
         InventoryBusinessContext::assertWritable();
 
         if (! in_array('Edit Business Settings', Auth::user()->permissions ?? [])) {
-            abort(403, 'You do not have permission to update GRN approvers.');
+            abort(403, 'You do not have permission to update goods receive note approvers.');
         }
 
         $config = $this->businessConfig();
@@ -143,7 +143,7 @@ class InventoryController extends Controller
         });
 
         return redirect()->route('inventory.approvers')
-            ->with('success', 'GRN approvers updated successfully.');
+            ->with('success', 'Goods receive note approvers updated successfully.');
     }
 
     private function businessConfig(): InventoryModuleConfig

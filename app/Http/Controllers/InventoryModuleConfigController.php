@@ -263,7 +263,7 @@ class InventoryModuleConfigController extends Controller
 
         if (count($ids) < 1) {
             throw ValidationException::withMessages([
-                'approver_1' => 'At least one GRN approver is required.',
+                'approver_1' => 'At least one goods receive note approver is required.',
             ]);
         }
 

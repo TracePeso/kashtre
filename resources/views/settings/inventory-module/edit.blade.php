@@ -8,7 +8,7 @@
         <div class="bg-white shadow sm:rounded-lg">
             <div class="px-6 py-5 border-b border-gray-200">
                 <h3 class="text-lg font-medium text-gray-900">Edit Inventory Module — {{ $config->business->name ?? '—' }}</h3>
-                <p class="mt-1 text-sm text-gray-500">Update the description and GRN approvers. Use the Activate/Deactivate toggle on the list page to change the status.</p>
+                <p class="mt-1 text-sm text-gray-500">Update the description and goods receive note approvers. Use the Activate/Deactivate toggle on the list page to change the status.</p>
             </div>
 
             <form action="{{ route('inventory-module-configs.update', $config) }}" method="POST" class="px-6 py-5 space-y-5">

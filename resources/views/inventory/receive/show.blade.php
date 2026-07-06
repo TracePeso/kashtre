@@ -37,7 +37,7 @@
 
         @if($goodsReceivedNote->isDraft())
             <div class="mt-4 bg-slate-50 border border-slate-200 text-slate-800 px-4 py-3 rounded text-sm">
-                <strong>Draft GRN.</strong> Submit for approval when ready. Store stock is <strong>not</strong> updated until every approver has signed off.
+                <strong>Draft goods receive note.</strong> Submit for approval when ready. Store stock is <strong>not</strong> updated until every approver has signed off.
             </div>
         @endif
 
@@ -140,6 +140,27 @@
                     <img src="{{ $deliveryNoteUrl }}" alt="Delivery note" class="max-h-40 rounded border border-gray-200">
                 </div>
             @endif
+
+            @if($goodsReceivedNote->technical_representative_name || $goodsReceivedNote->technical_representative_signature_path)
+                <div class="px-4 py-3 sm:px-6 border-t border-gray-100 bg-gray-50/50">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Technical representative</p>
+                    <p class="mt-1 text-sm font-semibold text-gray-900">{{ $goodsReceivedNote->technical_representative_name ?? '—' }}</p>
+                    @if($goodsReceivedNote->technical_representative_signature_path)
+                        @php
+                            $signatureUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($goodsReceivedNote->technical_representative_signature_path);
+                            $signatureIsImage = preg_match('/\.(jpe?g|png|gif|webp|svg)$/i', $goodsReceivedNote->technical_representative_signature_path);
+                        @endphp
+                        <div class="mt-3">
+                            @if($signatureIsImage)
+                                <img src="{{ $signatureUrl }}" alt="Technical representative signature" class="max-h-24 rounded border border-gray-200 bg-white p-2">
+                            @endif
+                            <a href="{{ $signatureUrl }}" target="_blank" class="mt-2 inline-block text-sm font-medium text-blue-600 hover:text-blue-800">
+                                {{ $goodsReceivedNote->technical_representative_signature_original_name ?? 'View signature' }}
+                            </a>
+                        </div>
+                    @endif
+                </div>
+            @endif
         </div>
 
         <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6 w-full min-w-0">
@@ -166,7 +187,7 @@
                                     Submit for approval
                                 </button>
                             </form>
-                            <p class="text-xs text-gray-500 mt-2">Approvers are set under Inventory → GRN Approvers.</p>
+                            <p class="text-xs text-gray-500 mt-2">Approvers are set under Inventory → Goods receive note approvers.</p>
                         @endif
                     @else
                         <ul class="space-y-3">

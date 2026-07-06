@@ -145,10 +145,17 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
                     ->state(fn (Item $record): float => (float) $this->mForItem($record, 'system_ar'))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
-                TextColumn::make('physical_stock')
-                    ->label('Physical stock')
+                TextColumn::make('current_stock_m')
+                    ->label('Current stock')
                     ->alignEnd()
-                    ->state(fn (Item $record): float => (float) ($record->stock_quantity_suom ?? 0))
+                    ->state(fn (Item $record): float => (float) $this->mForItem($record, 'current_m'))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+
+                TextColumn::make('physical_stock_as')
+                    ->label('Physical count (AS)')
+                    ->alignEnd()
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->state(fn (Item $record): float => (float) ($record->stock_physical_quantity_suom ?? $record->stock_quantity_suom ?? 0))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
                 TextColumn::make('cumulative_shrinkage_suom')

@@ -136,7 +136,7 @@ class GoodsReceivedNoteController extends Controller
 
         $user = Auth::user();
         $businessId = $user->business_id;
-        $action = $request->input('action', 'draft');
+        $action = $request->input('action', 'submit');
 
         if (! empty($validated['inventory_purchase_order_id'])) {
             $linkedPo = InventoryPurchaseOrder::query()
@@ -161,14 +161,8 @@ class GoodsReceivedNoteController extends Controller
         }
 
         $grn = DB::transaction(function () use ($validated, $request, $user, $businessId, $action) {
-            $deliveryPath = null;
-            $deliveryOriginal = null;
-
-            if ($request->hasFile('delivery_note')) {
-                $file = $request->file('delivery_note');
-                $deliveryOriginal = $file->getClientOriginalName();
-                $deliveryPath = $file->store('inventory/delivery-notes', 'public');
-            }
+            [$deliveryPath, $deliveryOriginal] = $this->storeUploadedFile($request, 'delivery_note', 'inventory/delivery-notes');
+            [$signaturePath, $signatureOriginal] = $this->storeUploadedFile($request, 'technical_representative_signature', 'inventory/grn-signatures');
 
             $leadTime = $this->service->calculateLeadTimeDays(
                 $validated['date_of_order'],
@@ -178,8 +172,8 @@ class GoodsReceivedNoteController extends Controller
             $grn = GoodsReceivedNote::create([
                 'grn_number' => GoodsReceivedNote::generateNumber($businessId),
                 'business_id' => $businessId,
-                'supplier_id' => $validated['supplier_id'] ?? null,
-                'store_id' => $validated['store_id'] ?? null,
+                'supplier_id' => $validated['supplier_id'],
+                'store_id' => $validated['store_id'],
                 'inventory_order_id' => $validated['inventory_order_id'] ?? null,
                 'inventory_purchase_order_id' => $validated['inventory_purchase_order_id'] ?? null,
                 'date_of_order' => $validated['date_of_order'],
@@ -187,6 +181,9 @@ class GoodsReceivedNoteController extends Controller
                 'lead_time_days' => $leadTime,
                 'delivery_note_path' => $deliveryPath,
                 'delivery_note_original_name' => $deliveryOriginal,
+                'technical_representative_name' => $validated['technical_representative_name'] ?? null,
+                'technical_representative_signature_path' => $signaturePath,
+                'technical_representative_signature_original_name' => $signatureOriginal,
                 'status' => GoodsReceivedNote::STATUS_DRAFT,
                 'entry_by_user_id' => $user->id,
                 'created_by' => $user->id,
@@ -202,11 +199,11 @@ class GoodsReceivedNoteController extends Controller
             $this->service->submit($grn, $user);
 
             return redirect()->route('inventory.receive.show', $grn)
-                ->with('success', 'GRN submitted for approval.');
+                ->with('success', 'Goods receive note submitted for approval.');
         }
 
         return redirect()->route('inventory.receive.show', $grn)
-            ->with('success', 'GRN saved as draft.');
+            ->with('success', 'Goods receive note saved as draft.');
     }
 
     public function show(GoodsReceivedNote $goodsReceivedNote)
@@ -240,7 +237,7 @@ class GoodsReceivedNoteController extends Controller
         $this->service->submit($goodsReceivedNote, Auth::user());
 
         return redirect()->route('inventory.receive.show', $goodsReceivedNote)
-            ->with('success', 'GRN submitted for approval.');
+            ->with('success', 'Goods receive note submitted for approval.');
     }
 
     public function approve(Request $request, GoodsReceivedNote $goodsReceivedNote)
@@ -272,7 +269,7 @@ class GoodsReceivedNoteController extends Controller
         $this->service->reject($goodsReceivedNote, Auth::user(), $validated['reason']);
 
         return redirect()->route('inventory.receive.show', $goodsReceivedNote)
-            ->with('success', 'GRN rejected.');
+            ->with('success', 'Goods receive note rejected.');
     }
 
     public function downloadBulkTemplate(Request $request)
@@ -404,11 +401,13 @@ class GoodsReceivedNoteController extends Controller
         return $request->validate([
             'inventory_order_id' => 'nullable|exists:inventory_orders,id',
             'inventory_purchase_order_id' => 'nullable|exists:inventory_purchase_orders,id',
-            'supplier_id' => 'nullable|exists:suppliers,id',
+            'supplier_id' => 'required|exists:suppliers,id',
             'store_id' => 'required|exists:stores,id',
             'date_of_order' => 'required|date',
             'date_of_delivery' => 'required|date|after_or_equal:date_of_order',
             'delivery_note' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'technical_representative_name' => 'nullable|string|max:255',
+            'technical_representative_signature' => 'nullable|file|mimes:jpg,jpeg,png,gif,svg,pdf|max:5120',
             'lines' => 'required|array|min:1',
             'lines.*.item_id' => 'required|exists:items,id',
             'lines.*.inventory_order_line_id' => 'nullable|exists:inventory_order_lines,id',
@@ -546,5 +545,22 @@ class GoodsReceivedNoteController extends Controller
         }
 
         return $validIds;
+    }
+
+    /**
+     * @return array{0: ?string, 1: ?string}
+     */
+    private function storeUploadedFile(Request $request, string $field, string $directory): array
+    {
+        if (! $request->hasFile($field)) {
+            return [null, null];
+        }
+
+        $file = $request->file($field);
+
+        return [
+            $file->store($directory, 'public'),
+            $file->getClientOriginalName(),
+        ];
     }
 }

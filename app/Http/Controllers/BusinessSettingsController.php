@@ -2,17 +2,21 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\HandlesBusinessBranding;
 use App\Models\Business;
 use App\Models\User;
 use App\Models\CreditLimitApprovalApprover;
 use App\Models\Item;
 use App\Models\Country;
+use App\Support\BusinessBranding;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class BusinessSettingsController extends Controller
 {
+    use HandlesBusinessBranding;
+
     /**
      * Show the form for editing business settings.
      */
@@ -57,8 +61,10 @@ class BusinessSettingsController extends Controller
             $request->merge(['exchange_rate_to_usd' => null]);
         }
 
-        $validated = $request->validate([
-            'max_third_party_credit_limit' => 'nullable|numeric|min:0',
+        $validated = $request->validate(array_merge(
+            BusinessBranding::validationRules($business->id),
+            [
+                'max_third_party_credit_limit' => 'nullable|numeric|min:0',
             'max_first_party_credit_limit' => 'nullable|numeric|min:0',
             'country_id' => 'nullable|exists:countries,id',
             'currency_code' => 'nullable|string|max:10',
@@ -82,7 +88,10 @@ class BusinessSettingsController extends Controller
             'credit_excluded_items.*' => 'integer|exists:items,id',
             'third_party_excluded_items' => 'nullable|array',
             'third_party_excluded_items.*' => 'integer|exists:items,id',
-        ]);
+            ]
+        ));
+
+        $validated = $this->applyBrandingFromRequest($request, $business, $validated);
 
         $countryId = $validated['country_id'] ?? null;
         $currencyCode = strtoupper((string) ($validated['currency_code'] ?? ''));
@@ -98,6 +107,11 @@ class BusinessSettingsController extends Controller
             : null;
 
         $business->update([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'phone' => $validated['phone'],
+            'address' => $validated['address'],
+            'logo' => $validated['logo'] ?? $business->logo,
             'max_third_party_credit_limit' => $validated['max_third_party_credit_limit'] ?? null,
             'max_first_party_credit_limit' => $validated['max_first_party_credit_limit'] ?? null,
             'country_id' => $countryId,

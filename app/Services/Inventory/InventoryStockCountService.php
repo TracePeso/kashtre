@@ -103,7 +103,7 @@ class InventoryStockCountService
 
         if ($approvers->isEmpty()) {
             throw ValidationException::withMessages([
-                'approvers' => 'No GRN approvers are configured. Set them under Inventory → GRN Approvers.',
+                'approvers' => 'No goods receive note approvers are configured. Set them under Inventory → Goods receive note approvers.',
             ]);
         }
 
@@ -264,8 +264,7 @@ class InventoryStockCountService
             $physical = (float) $line->physical_quantity_suom;
             $variance = round($physical - $balanceBefore, 4);
 
-            $stock->applyOnHandBalance($physical);
-            $stock->physical_counted_at = $count->counted_at ?? now();
+            $stock->snapshotPhysicalCount($physical, $count->counted_at ?? now());
             $stock->damaged_quantity_suom = (float) $line->damaged_quantity_suom;
             $stock->expired_quantity_suom = (float) $line->expired_quantity_suom;
             $stock->save();

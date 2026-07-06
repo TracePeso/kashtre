@@ -53,17 +53,19 @@ class InventoryOrderService
         ?float $bufferStockDays = null,
         ?float $notificationToOrderDays = null,
         ?array $itemIds = null,
-        ?int $supplierId = null
+        ?int $supplierId = null,
+        string $orderType = InventoryOrder::TYPE_EXTERNAL,
+        ?int $sourceStoreId = null,
     ): InventoryOrder {
         $normalizedItemIds = $this->normalizeItemIds($itemIds);
 
-        return DB::transaction(function () use ($businessId, $storeId, $user, $importanceFilter, $budgetMode, $budgetValue, $periodOfOrderDays, $notes, $groupId, $subgroupId, $peakPeriodPercent, $peakConsumptionIncreasePercent, $safetyStockDays, $bufferStockDays, $notificationToOrderDays, $normalizedItemIds, $supplierId) {
+        return DB::transaction(function () use ($businessId, $storeId, $user, $importanceFilter, $budgetMode, $budgetValue, $periodOfOrderDays, $notes, $groupId, $subgroupId, $peakPeriodPercent, $peakConsumptionIncreasePercent, $safetyStockDays, $bufferStockDays, $notificationToOrderDays, $normalizedItemIds, $supplierId, $orderType, $sourceStoreId) {
             $config = InventoryModuleConfig::query()
                 ->forBusiness($businessId)
                 ->active()
                 ->first();
 
-            if ($supplierId) {
+            if ($orderType === InventoryOrder::TYPE_EXTERNAL && $supplierId) {
                 Supplier::query()
                     ->where('business_id', $businessId)
                     ->whereKey($supplierId)
@@ -73,7 +75,9 @@ class InventoryOrderService
             $order = InventoryOrder::create([
                 'business_id' => $businessId,
                 'store_id' => $storeId,
-                'supplier_id' => $supplierId,
+                'order_type' => $orderType,
+                'source_store_id' => $orderType === InventoryOrder::TYPE_INTERNAL ? $sourceStoreId : null,
+                'supplier_id' => $orderType === InventoryOrder::TYPE_INTERNAL ? null : $supplierId,
                 'order_number' => $this->generateOrderNumber($businessId),
                 'status' => InventoryOrder::STATUS_DRAFT,
                 'importance_filter' => $importanceFilter,
@@ -83,7 +87,7 @@ class InventoryOrderService
                 'budget_mode' => $budgetMode,
                 'budget_value' => $budgetValue,
                 'moving_average_days' => self::AUTO_CONSUMPTION_RATE_DAYS,
-                'period_of_order_days' => $periodOfOrderDays ?? (float) ($config?->period_of_order_days ?? 30),
+                'period_of_order_days' => $this->storedPeriodOfOrderDays($budgetMode, $periodOfOrderDays, $config),
                 'safety_stock_days' => $safetyStockDays ?? (float) ($config?->safety_stock_days ?? 0),
                 'buffer_stock_days' => $bufferStockDays ?? (float) ($config?->buffer_stock_days ?? 0),
                 'notification_to_order_days' => $notificationToOrderDays ?? (float) ($config?->notification_to_order_days ?? 0),
@@ -95,8 +99,29 @@ class InventoryOrderService
 
             $this->populateLines($order);
 
-            return $order->fresh(['lines.item.itemUnit', 'lines.item.orderUnit', 'lines.item.suppliers', 'lines.supplier', 'store', 'supplier']);
+            $order = $order->fresh(['lines.item.itemUnit', 'lines.item.orderUnit', 'lines.item.suppliers', 'lines.supplier', 'store', 'sourceStore', 'supplier']);
+
+            $this->refreshRfqDocument($order);
+
+            return $order->fresh(['lines.item.itemUnit', 'lines.item.orderUnit', 'lines.item.suppliers', 'lines.supplier', 'store', 'sourceStore', 'supplier']);
         });
+    }
+
+    public function refreshRfqDocument(InventoryOrder $order): void
+    {
+        if (! $order->isExternal() || ! $order->isDraft() || $order->lines()->count() < 1) {
+            return;
+        }
+
+        app(InventoryProcurementPdfService::class)->storeRfqDocument($order->fresh([
+            'lines.item.itemUnit',
+            'store',
+            'supplier',
+            'business',
+            'createdBy',
+            'group',
+            'subgroup',
+        ]));
     }
 
     public function populateLines(InventoryOrder $order): void
@@ -117,7 +142,7 @@ class InventoryOrderService
             return;
         }
 
-        $periodDays = (float) ($order->period_of_order_days ?? $config?->period_of_order_days ?? 30);
+        $periodDays = $this->periodDaysForCalculation($order, $config);
         $peakIncrease = max(0, (float) ($order->peak_consumption_increase_percent ?? 0));
 
         foreach ($stockLevels as $stock) {
@@ -128,8 +153,21 @@ class InventoryOrderService
             }
 
             $dailyAvg = $this->analytics->excelDailyUsageSuom($stock, $config);
+
+            if ($dailyAvg <= 0 && ! $this->shouldKeepSelectedItem($order, $item)) {
+                continue;
+            }
+
             $baseSuggested = $this->analytics->suggestedOrderQtyPeriod($stock, $config, $periodDays, $order);
+
+            if ($baseSuggested <= 0 && ! $this->shouldKeepSelectedItem($order, $item)) {
+                continue;
+            }
+
             $arStock = $this->analytics->systemStockArSuom($stock, $config);
+            $currentStock = $this->analytics->currentStockLevelSuom($stock);
+            $stockDays = $this->analytics->stockDaysReport($stock, $config);
+            $daysLeft = $this->analytics->daysLeftToOrder($stock, $config, $order);
             $unitPrice = $this->analytics->purchasePricePerSuom($stock, $item);
 
             $this->createOrderLine(
@@ -138,6 +176,10 @@ class InventoryOrderService
                 $baseSuggested,
                 $dailyAvg,
                 $arStock,
+                $currentStock,
+                $stockDays,
+                $daysLeft,
+                null,
                 $unitPrice,
                 $peakIncrease
             );
@@ -157,16 +199,20 @@ class InventoryOrderService
     }
 
     /**
-     * Excel budget path AH–AL: proportional order days from a target stock-days budget.
+     * Excel budget path AH–AL: proportional order days from a stock-days budget (BA7),
+     * weighted by days left to order (AM) per item.
      *
      * @param  Collection<int, InventoryStockLevel>  $stockLevels
      */
     private function populateBudgetDaysLines(
         InventoryOrder $order,
         Collection $stockLevels,
-        ?InventoryModuleConfig $config
+        ?InventoryModuleConfig $config,
+        ?float $budgetDaysOverride = null
     ): void {
-        $budgetDays = min(366, max(1, (int) round((float) $order->budget_value)));
+        $budgetDays = $budgetDaysOverride !== null
+            ? min(366, max(1, (int) round($budgetDaysOverride)))
+            : min(366, max(1, (int) round((float) $order->budget_value)));
         $peakIncrease = max(0, (float) ($order->peak_consumption_increase_percent ?? 0));
         $rows = [];
 
@@ -177,14 +223,34 @@ class InventoryOrderService
                 continue;
             }
 
+            $dailyAvg = $this->analytics->excelDailyUsageSuom($stock, $config);
+
+            if ($dailyAvg <= 0 && ! $this->shouldKeepSelectedItem($order, $item)) {
+                continue;
+            }
+
+            $daysLeft = $this->analytics->daysLeftToOrder($stock, $config, $order);
+
+            if ($daysLeft === null && ! $this->shouldKeepSelectedItem($order, $item)) {
+                continue;
+            }
+
+            $testAmount = $this->analytics->budgetTestAmountUgx($stock, $config, $item);
+
+            if ($testAmount <= 0 && ! $this->shouldKeepSelectedItem($order, $item)) {
+                continue;
+            }
+
             $rows[] = [
                 'stock' => $stock,
                 'item' => $item,
-                'days_left' => $this->analytics->daysLeftToOrder($stock, $config, $order) ?? 0,
-                'daily_avg' => $this->analytics->excelDailyUsageSuom($stock, $config),
-                'test_amount' => $this->analytics->budgetTestAmountUgx($stock, $config, $item),
+                'days_left' => $daysLeft ?? 0,
+                'daily_avg' => $dailyAvg,
+                'test_amount' => $testAmount,
                 'unit_price' => $this->analytics->purchasePricePerSuom($stock, $item),
                 'ar_stock' => $this->analytics->systemStockArSuom($stock, $config),
+                'current_stock' => $this->analytics->currentStockLevelSuom($stock),
+                'stock_days' => $this->analytics->stockDaysReport($stock, $config),
             ];
         }
 
@@ -196,11 +262,23 @@ class InventoryOrderService
         $sumTestAmount = collect($rows)->sum('test_amount');
 
         foreach ($rows as $row) {
-            $gap = $row['days_left'] - $avgDaysLeft;
-            $orderDays = $sumTestAmount > 0
-                ? max(0, (15 * $budgetDays / $sumTestAmount) - $gap)
-                : 0;
-            $baseSuggested = max(0, round($orderDays * $row['daily_avg'], 4));
+            $orderDays = $this->analytics->orderDaysBudgetAllocation(
+                (float) $budgetDays,
+                $row['days_left'],
+                (float) $avgDaysLeft,
+                (float) $sumTestAmount
+            );
+            $baseSuggested = $this->analytics->suggestedOrderQtyBudgetDays(
+                (float) $budgetDays,
+                $row['days_left'],
+                (float) $avgDaysLeft,
+                (float) $sumTestAmount,
+                $row['daily_avg']
+            );
+
+            if ($baseSuggested <= 0 && ! $this->shouldKeepSelectedItem($order, $row['item'])) {
+                continue;
+            }
 
             $this->createOrderLine(
                 $order,
@@ -208,6 +286,10 @@ class InventoryOrderService
                 $baseSuggested,
                 $row['daily_avg'],
                 $row['ar_stock'],
+                $row['current_stock'],
+                $row['stock_days'],
+                $row['days_left'],
+                $orderDays,
                 $row['unit_price'],
                 $peakIncrease
             );
@@ -261,6 +343,10 @@ class InventoryOrderService
         float $baseSuggested,
         float $dailyAvg,
         float $arStock,
+        float $currentStock,
+        ?float $stockDays,
+        ?float $daysLeft,
+        ?float $orderDays,
         float $unitPrice,
         float $consumptionIncreasePercent
     ): void {
@@ -274,6 +360,10 @@ class InventoryOrderService
             'daily_average_suom' => $dailyAvg,
             'lead_time_days' => $this->averageLeadTimeDays((int) $order->business_id, (int) $item->id),
             'system_quantity_suom' => $arStock,
+            'current_stock_suom' => $currentStock,
+            'stock_days_at_order' => $stockDays,
+            'days_left_at_order' => $daysLeft,
+            'order_days' => $orderDays,
             'base_suggested_quantity_suom' => $baseSuggested,
             'peak_consumption_increase_percent' => max(0, $consumptionIncreasePercent),
             'peak_impact_percent' => $peakImpact,
@@ -304,7 +394,7 @@ class InventoryOrderService
             ->count();
 
         if ($stockCount === 0) {
-            return 'No items have stock or consumption history at this store. Receive goods via a GRN or wait for sale consumption, then refresh items.';
+            return 'No items have stock or consumption history at this store. Receive goods via a goods receive note or wait for sale consumption, then refresh items.';
         }
 
         if ($order->importance_filter) {
@@ -329,7 +419,7 @@ class InventoryOrderService
                     ->count();
 
                 if ($uncategorizedStock > 0) {
-                    return "This order filters to {$label} items only, but {$uncategorizedStock} stocked item(s) have no importance category. Create a new order with \"All items\", or set categories on your goods under Items.";
+                    return "This order filters to {$label} items only, but {$uncategorizedStock} stocked item(s) have no importance category. Make an order with \"All items\", or set categories on your goods under Items.";
                 }
 
                 return "No stocked items at this store match the {$label} filter.";
@@ -439,6 +529,9 @@ class InventoryOrderService
             $this->populateLines($order->fresh());
         }
 
+        $order = $order->fresh(['supplier', 'lines.item']);
+        $this->refreshRfqDocument($order);
+
         return $order->fresh(['supplier', 'lines.item']);
     }
 
@@ -517,6 +610,42 @@ class InventoryOrderService
         }
 
         return true;
+    }
+
+    private function shouldKeepSelectedItem(InventoryOrder $order, Item $item): bool
+    {
+        if (empty($order->item_ids)) {
+            return false;
+        }
+
+        return in_array((int) $item->id, array_map('intval', $order->item_ids), true);
+    }
+
+    private function storedPeriodOfOrderDays(
+        ?string $budgetMode,
+        ?float $periodOfOrderDays,
+        ?InventoryModuleConfig $config
+    ): ?float {
+        if (in_array($budgetMode, [InventoryOrder::BUDGET_MODE_DAYS, InventoryOrder::BUDGET_MODE_AMOUNT], true)) {
+            return null;
+        }
+
+        if ($periodOfOrderDays !== null) {
+            return (float) $periodOfOrderDays;
+        }
+
+        return $config?->period_of_order_days !== null
+            ? (float) $config->period_of_order_days
+            : null;
+    }
+
+    private function periodDaysForCalculation(InventoryOrder $order, ?InventoryModuleConfig $config): float
+    {
+        if ($order->period_of_order_days !== null && (float) $order->period_of_order_days > 0) {
+            return (float) $order->period_of_order_days;
+        }
+
+        return max(0, (float) ($config?->period_of_order_days ?? 0));
     }
 
     /**

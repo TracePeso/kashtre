@@ -122,11 +122,28 @@ class InventoryStockAnalyticsService
     }
 
     /**
-     * Excel column M: physical stock (quantity_suom; synced on every stock update).
+     * Excel column M: physical count (AS) + purchases − sales + transfers since last count.
+     * Falls back to on-hand ledger when no stock count snapshot exists.
      */
-    public function currentStockLevelSuom(InventoryStockLevel $stock): float
+    public function currentStockLevelSuom(InventoryStockLevel $stock, ?float $movementSinceCount = null): float
     {
-        return $stock->physicalStockSuom();
+        $ledger = max(0, round((float) $stock->quantity_suom, 4));
+
+        if ($stock->physical_counted_at === null) {
+            return $ledger;
+        }
+
+        $as = (float) ($stock->physical_quantity_suom ?? 0);
+        $since = Carbon::parse($stock->physical_counted_at)->startOfDay();
+        $delta = $movementSinceCount ?? $this->movementSumSince($stock, $since);
+        $fromCount = max(0, round($as + $delta, 4));
+
+        // Legacy rows kept AS synced with the ledger on every movement.
+        if (abs($as - $ledger) < 0.0001) {
+            return $ledger;
+        }
+
+        return $fromCount;
     }
 
     /**
@@ -285,6 +302,46 @@ class InventoryStockAnalyticsService
     }
 
     /**
+     * Excel columns AI / AJ / AK: budget-days ordering from a stock-days cap (BA7).
+     *
+     * Uses days left to order (AM) vs the portfolio average to prioritise urgent lines:
+     * - AI = days_left − AVERAGE(days_left)
+     * - AJ = (15 × budget_days ÷ SUM(test_amount)) − AI
+     * - AK = AJ × daily usage
+     */
+    public function suggestedOrderQtyBudgetDays(
+        float $budgetDays,
+        float $daysLeft,
+        float $averageDaysLeft,
+        float $sumTestAmount,
+        float $dailyUsageSuom
+    ): float {
+        if ($sumTestAmount <= 0 || $dailyUsageSuom <= 0 || $budgetDays <= 0) {
+            return 0.0;
+        }
+
+        $gap = $daysLeft - $averageDaysLeft;
+        $orderDays = max(0, (15 * $budgetDays / $sumTestAmount) - $gap);
+
+        return max(0, round($orderDays * $dailyUsageSuom, 4));
+    }
+
+    public function orderDaysBudgetAllocation(
+        float $budgetDays,
+        float $daysLeft,
+        float $averageDaysLeft,
+        float $sumTestAmount
+    ): float {
+        if ($sumTestAmount <= 0 || $budgetDays <= 0) {
+            return 0.0;
+        }
+
+        $gap = $daysLeft - $averageDaysLeft;
+
+        return max(0, round((15 * $budgetDays / $sumTestAmount) - $gap, 4));
+    }
+
+    /**
      * Excel column AF (period ordering): max(0, (period + safety + buffer − N) × graduated MA).
      */
     public function suggestedOrderQtyPeriod(
@@ -417,7 +474,7 @@ class InventoryStockAnalyticsService
     {
         $ar = $this->systemStockArSuom($stock, $config);
 
-        return max(0, round($ar - $stock->physicalStockSuom(), 4));
+        return max(0, round($ar - $this->currentStockLevelSuom($stock), 4));
     }
 
     public function unverifiedShrinkageSuom(InventoryStockLevel $stock, ?InventoryModuleConfig $config = null): float
@@ -504,6 +561,7 @@ class InventoryStockAnalyticsService
         $fyMovementSums = $this->batchMovementSums($businessId, $pairs, $fyStart);
         $openings = $this->batchOpeningQuantities($stocks, $fyStart);
         $purchasePrices = $this->batchPurchasePrices($businessId, $stocks);
+        $movementSinceCount = $this->batchPhysicalMovementSums($businessId, $stocks);
 
         $this->pageMetricsCache = [];
 
@@ -512,7 +570,7 @@ class InventoryStockAnalyticsService
 
             $opening = $openings[$key] ?? 0.0;
             $ar = max(0, round($opening + ($fyMovementSums[$key] ?? 0.0), 4));
-            $currentM = $stock->physicalStockSuom();
+            $currentM = $this->currentStockLevelSuom($stock, $movementSinceCount[$key] ?? null);
 
             $purchasePrice = $purchasePrices[$key] ?? 0.0;
             $excelUsage = $this->excelDailyUsageFromStock($stock, $config);
@@ -561,6 +619,7 @@ class InventoryStockAnalyticsService
             $this->pageMetricsCache[$key] = [
                 'system_ar' => $ar,
                 'current_m' => $currentM,
+                'current_stock' => $currentM,
                 'shrinkage_qty' => max(0, $shrinkageDelta),
                 'shrinkage_pct' => $shrinkagePct,
                 'shrinkage_ugx' => $shrinkageUgx,

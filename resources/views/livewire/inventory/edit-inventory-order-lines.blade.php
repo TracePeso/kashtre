@@ -3,10 +3,10 @@
         $amountCap = $order->effectiveAmountCap();
         $isAmountBudgetCap = $order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT && (float) ($order->budget_value ?? 0) > 0;
     @endphp
-    @if($order->isDraft())
+    @if($order->isDraft() && $order->isExternal())
         <div class="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
             <label for="rfq-supplier-id" class="block text-sm font-medium text-gray-900">Supplier</label>
-            <p class="text-xs text-gray-500 mt-0.5">One supplier for the entire RFQ, same as when receiving goods on a GRN.</p>
+            <p class="text-xs text-gray-500 mt-0.5">One supplier for the entire RFQ, same as when receiving goods on a goods receive note.</p>
             <select id="rfq-supplier-id"
                     wire:model.live="supplierId"
                     class="mt-2 block w-full max-w-md rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
@@ -21,6 +21,14 @@
             @elseif($order->lines()->count() === 0)
                 <p class="mt-2 text-xs text-amber-700">No items for this supplier at the selected store. Try another supplier or refresh after linking items.</p>
             @endif
+        </div>
+    @elseif($order->isInternal())
+        <div class="mb-4 rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-950">
+            <span class="font-medium">Internal order:</span>
+            {{ $order->sourceStore?->selectLabel() ?? '—' }}
+            →
+            {{ $order->store?->selectLabel() ?? '—' }}
+            <span class="block text-xs text-cyan-800 mt-1">No supplier — stock is requested from another store in your network.</span>
         </div>
     @elseif($order->supplier)
         <div class="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm">

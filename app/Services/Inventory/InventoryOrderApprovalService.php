@@ -17,35 +17,58 @@ class InventoryOrderApprovalService
     {
         if (! $order->isDraft()) {
             throw ValidationException::withMessages([
-                'status' => 'Only draft RFQs can be submitted for approval.',
+                'status' => $order->isInternal()
+                    ? 'Only draft internal orders can be submitted for approval.'
+                    : 'Only draft RFQs can be submitted for approval.',
             ]);
         }
 
         if ($order->lines()->count() < 1) {
             throw ValidationException::withMessages([
-                'lines' => 'Add at least one RFQ line before submitting.',
+                'lines' => $order->isInternal()
+                    ? 'Add at least one line item before submitting.'
+                    : 'Add at least one RFQ line before submitting.',
             ]);
         }
 
-        $missingSuppliers = $order->supplier_id ? 0 : 1;
-
-        if ($missingSuppliers > 0) {
+        if ($order->isExternal() && ! $order->supplier_id) {
             throw ValidationException::withMessages([
                 'supplier' => 'Select a supplier for this RFQ before submitting.',
             ]);
+        }
+
+        if ($order->isInternal()) {
+            if (! $order->source_store_id) {
+                throw ValidationException::withMessages([
+                    'source_store_id' => 'Select the supplying store for this internal order.',
+                ]);
+            }
+
+            $sourceStore = $order->sourceStore;
+            $receivingStore = $order->store;
+
+            if (! $sourceStore || ! $receivingStore || ! $sourceStore->canTransferStockTo($receivingStore)) {
+                throw ValidationException::withMessages([
+                    'source_store_id' => 'The supplying and receiving stores are not a valid internal order pair.',
+                ]);
+            }
         }
 
         $approvers = $this->configuredApprovers((int) $order->business_id);
 
         if ($approvers->isEmpty()) {
             throw ValidationException::withMessages([
-                'approvers' => 'No GRN approvers are configured. Set them under Inventory → GRN Approvers.',
+                'approvers' => 'No goods receive note approvers are configured. Set them under Inventory → Goods receive note approvers.',
             ]);
         }
 
         $firstApprovalOrder = (int) $approvers->min('approval_order');
 
         return DB::transaction(function () use ($order, $user, $approvers, $firstApprovalOrder) {
+            if ($order->isExternal()) {
+                app(InventoryOrderService::class)->refreshRfqDocument($order);
+            }
+
             $order->update([
                 'status' => InventoryOrder::STATUS_PENDING_APPROVAL,
                 'current_approval_order' => $firstApprovalOrder,
@@ -104,8 +127,12 @@ class InventoryOrderApprovalService
                 return $order->fresh(['lines.item', 'approvals.approver', 'store']);
             }
 
+            $finalStatus = $order->isInternal()
+                ? InventoryOrder::STATUS_FULFILLED
+                : InventoryOrder::STATUS_APPROVED;
+
             $order->update([
-                'status' => InventoryOrder::STATUS_APPROVED,
+                'status' => $finalStatus,
                 'approved_at' => now(),
                 'current_approval_order' => null,
             ]);

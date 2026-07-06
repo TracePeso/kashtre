@@ -18,12 +18,9 @@
             <!-- Logo and Business Info -->
             <div class="flex flex-col items-center w-full">
                 <h1 class="text-[#011478] font-extrabold text-xl mb-1">{{ env('APP_NAME') }}</h1>
-                @php
-                $logoPath = $business->logo ?? null;
-                @endphp
                 <div class="w-16 h-16 rounded-lg overflow-hidden">
-                    @if ($logoPath && file_exists(public_path('storage/' . $logoPath)))
-                    <img src="{{ asset('storage/' . $logoPath) }}" alt="Business Logo" class="w-full h-full object-contain">
+                    @if ($business?->logo_url)
+                    <img src="{{ $business->logo_url }}" alt="{{ $business->name }} logo" class="w-full h-full object-contain">
                     @else
                     <img src="{{ asset('images/kashtre_logo.svg') }}" alt="Default Logo" class="w-full h-full object-contain">
                     @endif
@@ -161,7 +158,7 @@
                             </li>
                             <li>
                                 <a href="{{ route('inventory.orders.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.orders*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
-                                    Make an Order
+                                    Make an order
                                 </a>
                             </li>
                             <li>
@@ -181,7 +178,7 @@
                             </li>
                             <li>
                                 <a href="{{ route('inventory.approvers') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.approvers') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
-                                    GRN Approvers
+                                    Goods receive note approvers
                                 </a>
                             </li>
                         </ul>

@@ -50,6 +50,17 @@ class InventoryOrderController extends Controller
 
         return view('inventory.orders.create', [
             'stores' => Store::optionsForSelect($businessId),
+            'storesList' => Store::query()
+                ->forBusiness($businessId)
+                ->orderByRaw('CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (Store $store) => [
+                    'id' => $store->id,
+                    'label' => $store->selectLabel(),
+                    'parent_id' => $store->parent_id,
+                ])
+                ->values(),
             'suppliers' => Supplier::query()
                 ->where('business_id', $businessId)
                 ->orderBy('name')
@@ -80,8 +91,10 @@ class InventoryOrderController extends Controller
         $importanceSlugs = array_keys(Item::importanceOptions($businessId));
 
         $validated = $request->validate([
+            'order_type' => 'required|in:external,internal',
             'store_id' => 'required|exists:stores,id',
-            'supplier_id' => 'required|exists:suppliers,id',
+            'source_store_id' => 'nullable|required_if:order_type,internal|exists:stores,id|different:store_id',
+            'supplier_id' => 'nullable|required_if:order_type,external|exists:suppliers,id',
             'ordering_approach' => 'nullable|in:period,budget',
             'importance_filter' => array_merge(
                 ['nullable', 'string', 'max:64'],
@@ -107,22 +120,33 @@ class InventoryOrderController extends Controller
 
         if ($orderingApproach === 'budget') {
             Validator::make(
-                $request->only(['budget_mode', 'budget_value']),
+                $request->only(['budget_value']),
                 [
-                    'budget_mode' => 'required|in:days,amount',
-                    'budget_value' => 'required|numeric|min:1',
+                    'budget_value' => 'required|numeric|min:1|max:366',
                 ],
                 [
-                    'budget_value.required' => 'Enter a budget cap or stock-days target when ordering by budget.',
-                    'budget_value.min' => 'Budget must be at least 1.',
+                    'budget_value.required' => 'Enter the stock-days budget when ordering by budget.',
+                    'budget_value.min' => 'Stock-days budget must be at least 1.',
+                    'budget_value.max' => 'Stock-days budget cannot exceed 366 days.',
                 ]
             )->validate();
 
-            $validated['budget_mode'] = $request->input('budget_mode');
+            $validated['budget_mode'] = InventoryOrder::BUDGET_MODE_DAYS;
             $validated['budget_value'] = (float) $request->input('budget_value');
         } else {
             $validated['budget_mode'] = null;
             $validated['budget_value'] = null;
+
+            Validator::make(
+                $request->only(['period_of_order_days']),
+                [
+                    'period_of_order_days' => 'required|numeric|min:1',
+                ],
+                [
+                    'period_of_order_days.required' => 'Enter the period of order (days) when ordering by period.',
+                    'period_of_order_days.min' => 'Period of order must be at least 1 day.',
+                ]
+            )->validate();
         }
 
         $this->validateOrderBudget($request, $validated);
@@ -132,10 +156,30 @@ class InventoryOrderController extends Controller
             ->where('id', $validated['store_id'])
             ->firstOrFail();
 
-        Supplier::query()
+        $receivingStore = Store::query()
             ->where('business_id', $businessId)
-            ->whereKey($validated['supplier_id'])
+            ->whereKey($validated['store_id'])
             ->firstOrFail();
+
+        if ($validated['order_type'] === InventoryOrder::TYPE_INTERNAL) {
+            $sourceStore = Store::query()
+                ->where('business_id', $businessId)
+                ->whereKey($validated['source_store_id'])
+                ->firstOrFail();
+
+            if (! $sourceStore->canTransferStockTo($receivingStore)) {
+                return back()
+                    ->withInput()
+                    ->withErrors([
+                        'source_store_id' => 'Internal orders can only be placed between a store and its parent distribution store (or between two root stores). Child stores cannot order directly from sibling stores.',
+                    ]);
+            }
+        } else {
+            Supplier::query()
+                ->where('business_id', $businessId)
+                ->whereKey($validated['supplier_id'])
+                ->firstOrFail();
+        }
 
         if (! empty($validated['group_id'])) {
             Group::query()
@@ -184,7 +228,9 @@ class InventoryOrderController extends Controller
             isset($validated['buffer_stock_days']) ? (int) $validated['buffer_stock_days'] : null,
             isset($validated['notification_to_order_days']) ? (int) $validated['notification_to_order_days'] : null,
             $itemIds,
-            (int) $validated['supplier_id'],
+            $validated['order_type'] === InventoryOrder::TYPE_EXTERNAL ? (int) $validated['supplier_id'] : null,
+            $validated['order_type'],
+            $validated['order_type'] === InventoryOrder::TYPE_INTERNAL ? (int) $validated['source_store_id'] : null,
         );
 
         $redirect = redirect()->route('inventory.orders.show', $order);
@@ -193,13 +239,22 @@ class InventoryOrderController extends Controller
             return $redirect->with('warning', $this->service->explainEmptyOrder($order));
         }
 
-        return $redirect
-            ->with('success', 'Order generated. Review and edit quantities before submitting.');
+        $message = $order->isInternal()
+            ? 'Internal order generated. Review quantities before submitting for approval.'
+            : ($order->hasRfqDocument()
+                ? 'Order generated and draft RFQ document saved. Review quantities before submitting.'
+                : 'Order generated. Review and edit quantities before submitting.');
+
+        return $redirect->with('success', $message);
     }
 
     public function pdf(InventoryOrder $order)
     {
         $this->authorizeOrder($order);
+
+        if ($order->isInternal()) {
+            abort(404);
+        }
 
         return $this->pdfService->rfqPdf($order)->download($order->order_number.'.pdf');
     }
@@ -213,6 +268,7 @@ class InventoryOrderController extends Controller
             'lines.item.orderUnit',
             'lines.supplier',
             'store',
+            'sourceStore',
             'supplier',
             'createdBy',
             'submittedBy',
@@ -258,7 +314,9 @@ class InventoryOrderController extends Controller
 
         return redirect()
             ->route('inventory.orders.show', $order)
-            ->with('success', 'RFQ submitted for approval.');
+            ->with('success', $order->isInternal()
+                ? 'Internal order submitted for approval.'
+                : 'RFQ submitted for approval.');
     }
 
     public function approve(Request $request, InventoryOrder $order)
@@ -275,7 +333,9 @@ class InventoryOrderController extends Controller
 
         $order->refresh();
 
-        if ($order->isRfqApproved()) {
+        if ($order->isInternal() && $order->isFulfilled()) {
+            $message = 'Internal order approved. Create a stock transfer to fulfill.';
+        } elseif ($order->isRfqApproved()) {
             $message = 'RFQ approved. Record supplier quotations, then generate LPOs.';
         } elseif ($order->isPendingApproval()) {
             $message = 'Approval recorded. Awaiting next approver.';
@@ -340,7 +400,12 @@ class InventoryOrderController extends Controller
 
         $this->service->populateLines($order);
 
-        $order = $order->fresh(['lines.item.itemUnit', 'lines.item.orderUnit', 'store', 'group', 'subgroup']);
+        $order = $order->fresh(['lines.item.itemUnit', 'lines.item.orderUnit', 'store', 'group', 'subgroup', 'supplier']);
+
+        if ($order->isExternal()) {
+            $this->service->refreshRfqDocument($order);
+            $order = $order->fresh();
+        }
 
         $redirect = redirect()->route('inventory.orders.show', $order);
 
@@ -348,7 +413,11 @@ class InventoryOrderController extends Controller
             return $redirect->with('warning', $this->service->explainEmptyOrder($order));
         }
 
-        return $redirect->with('success', 'Order items refreshed from current stock and consumption.');
+        $message = $order->isExternal() && $order->hasRfqDocument()
+            ? 'Order items refreshed and draft RFQ document updated.'
+            : 'Order items refreshed from current stock and consumption.';
+
+        return $redirect->with('success', $message);
     }
 
     private function authorizeOrder(InventoryOrder $order): void

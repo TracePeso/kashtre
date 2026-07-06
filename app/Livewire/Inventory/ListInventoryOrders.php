@@ -26,7 +26,7 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
             ->query(
                 InventoryOrder::query()
                     ->where('business_id', \App\Support\InventoryBusinessContext::effectiveBusinessId())
-                    ->with(['store', 'createdBy', 'group'])
+                    ->with(['store', 'sourceStore', 'supplier', 'createdBy', 'group'])
                     ->latest()
             )
             ->columns([
@@ -35,8 +35,17 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
                     ->searchable()
                     ->sortable(),
 
+                TextColumn::make('order_type')
+                    ->label('Type')
+                    ->formatStateUsing(fn (InventoryOrder $record): string => $record->orderTypeLabel())
+                    ->badge()
+                    ->color(fn (InventoryOrder $record): string => $record->isInternal() ? 'info' : 'gray'),
+
                 TextColumn::make('store.name')
-                    ->label('Store')
+                    ->label('Receiving store')
+                    ->description(fn (InventoryOrder $record): ?string => $record->isInternal()
+                        ? 'From '.$record->sourceStore?->name
+                        : $record->supplier?->name)
                     ->sortable(),
 
                 TextColumn::make('status')

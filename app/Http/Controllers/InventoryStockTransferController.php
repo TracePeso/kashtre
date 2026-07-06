@@ -55,6 +55,17 @@ class InventoryStockTransferController extends Controller
 
         return view('inventory.transfers.create', [
             'stores' => Store::optionsForSelect($businessId),
+            'storesList' => Store::query()
+                ->forBusiness($businessId)
+                ->orderByRaw('CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (Store $store) => [
+                    'id' => $store->id,
+                    'label' => $store->selectLabel(),
+                    'parent_id' => $store->parent_id,
+                ])
+                ->values(),
             'items' => $items,
             'stockByStore' => $stockByStore,
         ]);
@@ -75,6 +86,17 @@ class InventoryStockTransferController extends Controller
         $this->assertStore($businessId, (int) $validated['from_store_id']);
         $this->assertStore($businessId, (int) $validated['to_store_id']);
 
+        $fromStore = Store::query()->findOrFail((int) $validated['from_store_id']);
+        $toStore = Store::query()->findOrFail((int) $validated['to_store_id']);
+
+        if (! $fromStore->canTransferStockTo($toStore)) {
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'to_store_id' => 'Child stores cannot transfer stock directly to other child stores. Move stock through the parent distribution store first.',
+                ]);
+        }
+
         $transfer = $this->service->createDraft(
             $businessId,
             (int) $validated['from_store_id'],
@@ -84,18 +106,30 @@ class InventoryStockTransferController extends Controller
             $validated['notes'] ?? null
         );
 
+        $transfer = $this->service->submit($transfer, Auth::user());
+
         return redirect()
             ->route('inventory.transfers.show', $transfer)
-            ->with('success', 'Transfer request created. Submit when ready.');
+            ->with('success', 'Transfer request submitted. Awaiting dispatch store approval.');
     }
 
     public function show(StockTransfer $transfer)
     {
         $this->authorizeTransfer($transfer);
 
-        $transfer->load(['lines.item.itemUnit', 'fromStore', 'toStore', 'requestedBy', 'approvedBy', 'receivedBy']);
+        $transfer->load([
+            'lines.item.itemUnit',
+            'fromStore',
+            'toStore',
+            'requestedBy',
+            'approvedBy',
+            'receivedBy',
+            'approvals.approver',
+        ]);
 
-        return view('inventory.transfers.show', compact('transfer'));
+        $canApprove = $this->service->userCanApprove($transfer, Auth::user());
+
+        return view('inventory.transfers.show', compact('transfer', 'canApprove'));
     }
 
     public function submit(StockTransfer $transfer)
@@ -108,14 +142,23 @@ class InventoryStockTransferController extends Controller
             ->with('success', 'Transfer submitted to dispatch store for approval.');
     }
 
-    public function approve(StockTransfer $transfer)
+    public function approve(Request $request, StockTransfer $transfer)
     {
         $this->authorizeTransfer($transfer);
-        $this->service->approve($transfer, Auth::user());
+
+        $request->validate(['comment' => 'nullable|string|max:1000']);
+
+        $this->service->approve($transfer, Auth::user(), $request->input('comment'));
+
+        $transfer->refresh();
+
+        $message = $transfer->isApproved()
+            ? 'All approvers have signed off. Stock has been deducted from '.$transfer->fromStore->selectLabel().'.'
+            : 'Your approval was recorded. Waiting for the next approver — stock is not deducted yet.';
 
         return redirect()
             ->route('inventory.transfers.show', $transfer)
-            ->with('success', 'Transfer approved. Stock deducted from dispatch store.');
+            ->with('success', $message);
     }
 
     public function receive(StockTransfer $transfer)

@@ -67,13 +67,21 @@ class InventoryStockLevel extends Model
         return $this->physicalStockSuom();
     }
 
+    /** Updates on-hand ledger (Excel M after movements). AS snapshot is set only on stock count. */
     public function applyOnHandBalance(float $balance): float
     {
         $qty = max(0, round($balance, 4));
         $this->quantity_suom = $qty;
-        $this->physical_quantity_suom = $qty;
 
         return $qty;
+    }
+
+    public function snapshotPhysicalCount(float $physicalQuantity, ?\DateTimeInterface $countedAt = null): void
+    {
+        $qty = max(0, round($physicalQuantity, 4));
+        $this->quantity_suom = $qty;
+        $this->physical_quantity_suom = $qty;
+        $this->physical_counted_at = $countedAt ?? now();
     }
 
     public function verifiableLossSuom(): float

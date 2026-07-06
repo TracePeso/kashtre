@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Support\BusinessBranding;
 
 class Business extends Model
 {
@@ -179,6 +180,16 @@ class Business extends Model
     public function creditLimitApprovers()
     {
         return $this->hasMany(CreditLimitApprovalApprover::class);
+    }
+
+    public function branding(): BusinessBranding
+    {
+        return new BusinessBranding($this);
+    }
+
+    public function getLogoUrlAttribute(): ?string
+    {
+        return $this->branding()->logoUrl();
     }
 
 }

@@ -21,6 +21,7 @@ class StockTransfer extends Model
         'business_id',
         'reference',
         'status',
+        'current_approval_order',
         'from_store_id',
         'to_store_id',
         'requested_by_user_id',
@@ -34,6 +35,7 @@ class StockTransfer extends Model
     ];
 
     protected $casts = [
+        'current_approval_order' => 'integer',
         'requested_at' => 'datetime',
         'approved_at' => 'datetime',
         'received_at' => 'datetime',
@@ -57,6 +59,11 @@ class StockTransfer extends Model
     public function lines(): HasMany
     {
         return $this->hasMany(StockTransferLine::class);
+    }
+
+    public function approvals(): HasMany
+    {
+        return $this->hasMany(StockTransferApproval::class)->orderBy('approval_order');
     }
 
     public function requestedBy(): BelongsTo
@@ -92,5 +99,22 @@ class StockTransfer extends Model
     public function isReceived(): bool
     {
         return $this->status === self::STATUS_RECEIVED;
+    }
+
+    public function isRejected(): bool
+    {
+        return $this->status === self::STATUS_REJECTED;
+    }
+
+    public function statusLabel(): string
+    {
+        return match ($this->status) {
+            self::STATUS_DRAFT => 'Draft',
+            self::STATUS_PENDING => 'Pending approval',
+            self::STATUS_APPROVED => 'Approved — awaiting receipt',
+            self::STATUS_RECEIVED => 'Received',
+            self::STATUS_REJECTED => 'Rejected',
+            default => ucfirst(str_replace('_', ' ', (string) $this->status)),
+        };
     }
 }

@@ -19,7 +19,7 @@
                                 {{ $option['lines_count'] }} item(s) · {{ number_format($option['remaining_suom'], 0) }} SUOM remaining
                             </p>
                         </div>
-                        <span class="text-sm text-blue-600 font-medium">Create GRN →</span>
+                        <span class="text-sm text-blue-600 font-medium">Create goods receive note →</span>
                     </div>
                 </a>
             @endforeach
