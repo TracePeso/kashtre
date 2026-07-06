@@ -6,12 +6,8 @@
     $defaultBufferDays = (int) old('buffer_stock_days', $config?->buffer_stock_days ?? 0);
     $defaultNotificationDays = (int) old('notification_to_order_days', $config?->notification_to_order_days ?? 0);
     $initialBudgetMode = old('budget_mode');
-    $initialOrderApproach = old('ordering_approach', match (old('budget_mode')) {
-        'amount' => 'amount',
-        'days' => 'budget',
-        default => 'period',
-    });
-    $amountBudgetValue = old('budget_mode') === 'amount' ? old('budget_value') : '';
+    $initialOrderApproach = old('ordering_approach', in_array(old('budget_mode'), ['amount', 'days'], true) ? 'budget' : 'period');
+    $budgetAmountValue = in_array(old('budget_mode'), ['amount', 'days'], true) ? old('budget_value') : '';
     $oldItemIds = collect(old('item_ids', []))->map(fn ($id) => (int) $id)->values();
     $defaultImportance = old('importance_filter', '');
     $initialOrderType = old('order_type', 'external');
@@ -356,42 +352,15 @@
                             class="px-4 py-2 text-sm font-medium rounded-md transition">
                         By budget
                     </button>
-                    <button type="button"
-                            @click="orderApproach = 'amount'"
-                            :class="orderApproach === 'amount'
-                                ? 'bg-white text-blue-700 shadow-sm ring-1 ring-gray-200'
-                                : 'text-gray-600 hover:text-gray-900'"
-                            class="px-4 py-2 text-sm font-medium rounded-md transition">
-                        By amount (UGX)
-                    </button>
                 </div>
 
                 <template x-if="orderApproach === 'budget'">
                     <div class="space-y-3">
-                        <input type="hidden" name="budget_mode" value="days">
-                        <div>
-                            <label for="budget_value_days" class="block text-sm font-medium text-gray-700">Stock-days budget</label>
-                            <input type="number" step="1" min="1" max="366" name="budget_value" id="budget_value_days"
-                                   value="{{ old('budget_value') }}"
-                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                        </div>
-                        @error('budget_value')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-                    </div>
-                </template>
-
-                <template x-if="orderApproach === 'amount'">
-                    <div class="space-y-3">
                         <input type="hidden" name="budget_mode" value="amount">
                         <div>
-                            <label for="period_of_order_days_amount" class="block text-sm font-medium text-gray-700">Period of order (days)</label>
-                            <input type="number" step="1" min="1" name="period_of_order_days" id="period_of_order_days_amount"
-                                   value="{{ $periodOfOrderDaysValue }}"
-                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                        </div>
-                        <div>
-                            <label for="budget_value_amount" class="block text-sm font-medium text-gray-700">Order amount (UGX)</label>
+                            <label for="budget_value_amount" class="block text-sm font-medium text-gray-700">Budget (UGX)</label>
                             <input type="number" step="0.01" min="1" name="budget_value" id="budget_value_amount"
-                                   value="{{ $amountBudgetValue }}"
+                                   value="{{ $budgetAmountValue }}"
                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                         </div>
                         @error('budget_value')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror

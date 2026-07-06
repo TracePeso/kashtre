@@ -74,96 +74,28 @@ If the item already has enough stock-days (N ≥ period + safety + buffer), **or
 
 ---
 
-## Method 3 — By amount (UGX)
+## Method 2 — By budget (UGX)
 
-**UI:** “By amount (UGX)”
+**UI:** “By budget”
 
-Use this when you already ran a **period order**, copied the **order total**, and want the **same line quantities** under a money cap.
+Use when you already ran a **period order**, copied the **order total**, and want the **same line quantities** under that money cap.
 
 ### What you enter
 
-1. **Period of order (days)** — must be the **same** as the period order.
-2. **Order amount (UGX)** — the period order total (or less to scale down).
+**Budget (UGX)** — the order total from your period order (e.g. **44,675**).
 
-### How it works
-
-1. Calculates each line with the **same period formula (AF)** as Method 1.
-2. If the total exceeds your UGX amount, scales every line **proportionally**.
-
-When the amount equals the period order total (and store, items, safety/buffer, and peak settings match), **quantities match exactly**.
-
----
-
-## Method 2 — By budget
-
-**UI:** “By budget”  
-**Excel:** Ordering by budget (columns AH–AK, BA7)
-
-Budget ordering does **not** ignore days left. It **allocates** a stock-days budget across items using **days left to order (AM)** so urgent lines get more and over-stocked lines get less.
-
-### Step 1 — Build inputs for each item
-
-| Excel | Meaning |
-|-------|---------|
-| **AM** | Days left to order |
-| **AH** | Test amount = 15 × daily usage × unit price |
-| **Average AM** | Mean of days left across all eligible items |
-
-Only items with daily usage &gt; 0, valid days left, and test amount &gt; 0 are included.
-
-### Step 2 — Allocate order days (the professional part)
-
-For each item:
-
-```
-AI = days_left − average(days_left)          ← gap vs other items
-AJ = (15 × stock_days_budget ÷ Σ test amounts) − AI
-AK = AJ × daily usage                         ← order qty
-```
-
-**How days left changes the result:**
-
-| Item situation | AI | Effect on AJ / qty |
-|----------------|-----|-------------------|
-| Fewer days left than average (urgent) | Negative | **More** order days |
-| More days left than average | Positive | **Fewer** order days |
-| At the average | Zero | Baseline share |
-
-So the budget is spread **professionally**: items running out sooner get a larger slice.
-
-### Step 3 — Set the stock-days pool
-
-**UI:** **By budget** → enter **Stock-days budget** (Excel **BA7**).
-
-Quantities come directly from the AK formula above. There is no money cap on this path.
-
-### Plain-language example (stock-days budget = 60)
-
-Three items, average days left = **10**:
-
-| Item | Days left (AM) | AI (gap) | Tends to get… |
-|------|----------------|----------|----------------|
-| A | 2 | −8 | **Most** order days (urgent) |
-| B | 10 | 0 | Average share |
-| C | 18 | +8 | **Least** order days (well stocked) |
-
-### When to use
-
-- You have a **fixed stock-days pool** or **fixed money** and want it **fairly split** using **days left to order**.
-- Different items are at different risk of stock-out and should not all get the same period cover.
+The system finds the period (days) that best fits that budget, calculates quantities with the same period formula (AF) as Method 1, then scales so the **full budget is used**.
 
 ---
 
 ## Method comparison
 
-| | **By period (days)** | **By budget** | **By amount (UGX)** |
-|--|----------------------|---------------|---------------------|
-| **Question it answers** | “Cover the next X days for each item.” | “Split my stock-days pool by urgency.” | “Same as period, capped at UGX X.” |
-| **Uses days left (AM)?** | Indirectly (via stock days N) | **Yes — core to allocation** | No (uses period AF, then scale) |
-| **Excel columns** | AF, BA6 | AH, AI, AJ, AK, BA7 | AF + money cap |
-| **Money cap** | No | No | Yes |
-| **Qty matches period order?** | — | No | **Yes**, when amount = period total and settings match |
-| **Best when** | Simple period replenishment | Portfolio balancing | Re-ordering from a period total |
+| | **By period (days)** | **By budget (UGX)** |
+|--|----------------------|---------------------|
+| **Question it answers** | “Cover the next X days for each item.” | “Same as period, capped at UGX X.” |
+| **You enter** | Period (days) | Budget (UGX) |
+| **Qty matches period order?** | — | **Yes**, when budget = period total and settings match |
+| **Best when** | First pass — see what you need | Re-order from a period total |
 
 ---
 

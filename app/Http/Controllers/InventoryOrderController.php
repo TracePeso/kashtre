@@ -95,7 +95,7 @@ class InventoryOrderController extends Controller
             'store_id' => 'required|exists:stores,id',
             'source_store_id' => 'nullable|required_if:order_type,internal|exists:stores,id|different:store_id',
             'supplier_id' => 'nullable|required_if:order_type,external|exists:suppliers,id',
-            'ordering_approach' => 'nullable|in:period,budget,amount',
+            'ordering_approach' => 'nullable|in:period,budget',
             'importance_filter' => array_merge(
                 ['nullable', 'string', 'max:64'],
                 $request->filled('importance_filter') ? [Rule::in($importanceSlugs)] : []
@@ -116,42 +116,22 @@ class InventoryOrderController extends Controller
         ]);
 
         $orderingApproach = $validated['ordering_approach']
-            ?? match ($validated['budget_mode'] ?? null) {
-                'amount' => 'amount',
-                'days' => 'budget',
-                default => 'period',
-            };
+            ?? (in_array($validated['budget_mode'] ?? null, ['amount', 'days'], true) ? 'budget' : 'period');
 
-        if ($orderingApproach === 'amount') {
+        if ($orderingApproach === 'budget') {
             Validator::make(
-                $request->only(['period_of_order_days', 'budget_value']),
+                $request->only(['budget_value']),
                 [
-                    'period_of_order_days' => 'required|numeric|min:1',
                     'budget_value' => 'required|numeric|min:1',
                 ],
                 [
-                    'period_of_order_days.required' => 'Enter the same period of order (days) used for the period order.',
-                    'budget_value.required' => 'Enter the order amount (UGX) from your period order.',
+                    'budget_value.required' => 'Enter the budget amount (UGX).',
                 ]
             )->validate();
 
             $validated['budget_mode'] = InventoryOrder::BUDGET_MODE_AMOUNT;
             $validated['budget_value'] = (float) $request->input('budget_value');
-        } elseif ($orderingApproach === 'budget') {
-            Validator::make(
-                $request->only(['budget_value']),
-                [
-                    'budget_value' => 'required|numeric|min:1|max:366',
-                ],
-                [
-                    'budget_value.required' => 'Enter the stock-days budget when ordering by budget.',
-                    'budget_value.min' => 'Stock-days budget must be at least 1.',
-                    'budget_value.max' => 'Stock-days budget cannot exceed 366 days.',
-                ]
-            )->validate();
-
-            $validated['budget_mode'] = InventoryOrder::BUDGET_MODE_DAYS;
-            $validated['budget_value'] = (float) $request->input('budget_value');
+            $validated['period_of_order_days'] = null;
         } else {
             $validated['budget_mode'] = null;
             $validated['budget_value'] = null;

@@ -142,7 +142,14 @@ class InventoryOrderService
             return;
         }
 
-        $periodDays = $this->periodDaysForCalculation($order, $config);
+        $periodDays = $order->budget_mode === InventoryOrder::BUDGET_MODE_AMOUNT && $order->budget_value > 0
+            ? $this->periodDaysForAmountBudget($order, $stockLevels, $config, (float) $order->budget_value)
+            : $this->periodDaysForCalculation($order, $config);
+
+        if ($order->budget_mode === InventoryOrder::BUDGET_MODE_AMOUNT) {
+            $order->update(['period_of_order_days' => $periodDays]);
+        }
+
         $peakIncrease = max(0, (float) ($order->peak_consumption_increase_percent ?? 0));
 
         foreach ($stockLevels as $stock) {
@@ -191,6 +198,12 @@ class InventoryOrderService
 
     public function snapshotInitialOrderTotal(InventoryOrder $order): void
     {
+        if ($order->budget_mode === InventoryOrder::BUDGET_MODE_AMOUNT && (float) ($order->budget_value ?? 0) > 0) {
+            $order->update(['initial_order_total' => (float) $order->budget_value]);
+
+            return;
+        }
+
         $total = $order->orderTotal();
 
         if ($total > 0) {
@@ -460,7 +473,11 @@ class InventoryOrderService
         $order->load('lines');
         $total = $order->orderTotal();
 
-        if ($total <= $cap) {
+        if ($total <= 0 || $cap <= 0) {
+            return;
+        }
+
+        if (abs($total - $cap) < 0.01) {
             return;
         }
 
@@ -477,6 +494,71 @@ class InventoryOrderService
                 'line_total' => round(max(0, $qty) * $unitPrice, 2),
             ]);
         }
+    }
+
+    /**
+     * For amount-budget orders, find the period (days) whose period-formula total
+     * is closest to but not above the budget cap before proportional scaling.
+     */
+    private function periodDaysForAmountBudget(
+        InventoryOrder $order,
+        Collection $stockLevels,
+        ?InventoryModuleConfig $config,
+        float $budgetCap
+    ): float {
+        $bestPeriod = 1.0;
+
+        for ($period = 1; $period <= 366; $period++) {
+            $total = $this->estimatePeriodOrderTotal($order, $stockLevels, $config, (float) $period);
+
+            if ($total <= $budgetCap + 0.01) {
+                $bestPeriod = (float) $period;
+            } else {
+                break;
+            }
+        }
+
+        return $bestPeriod;
+    }
+
+    /**
+     * @param  Collection<int, InventoryStockLevel>  $stockLevels
+     */
+    private function estimatePeriodOrderTotal(
+        InventoryOrder $order,
+        Collection $stockLevels,
+        ?InventoryModuleConfig $config,
+        float $periodDays
+    ): float {
+        $peakIncrease = max(0, (float) ($order->peak_consumption_increase_percent ?? 0));
+        $peakImpact = self::computePeakImpactPercent($order->peak_period_percent, $peakIncrease);
+        $total = 0.0;
+
+        foreach ($stockLevels as $stock) {
+            $item = $stock->item;
+
+            if (! $this->itemPassesOrderFilters($item, $order)) {
+                continue;
+            }
+
+            $dailyAvg = $this->analytics->excelDailyUsageSuom($stock, $config);
+
+            if ($dailyAvg <= 0 && ! $this->shouldKeepSelectedItem($order, $item)) {
+                continue;
+            }
+
+            $baseSuggested = $this->analytics->suggestedOrderQtyPeriod($stock, $config, $periodDays, $order);
+
+            if ($baseSuggested <= 0 && ! $this->shouldKeepSelectedItem($order, $item)) {
+                continue;
+            }
+
+            $qty = $this->applyPeakToSuggestedQuantity($baseSuggested, $peakImpact);
+            $unitPrice = $this->analytics->purchasePricePerSuom($stock, $item);
+            $total += $qty * $unitPrice;
+        }
+
+        return round($total, 2);
     }
 
     public function averageLeadTimeDays(int $businessId, int $itemId): int

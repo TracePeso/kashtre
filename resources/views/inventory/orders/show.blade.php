@@ -227,7 +227,7 @@
                     <p class="mt-1 text-sm font-semibold text-gray-900">{{ $order->orderingTypeLabel() }}</p>
                     <p class="text-xs text-gray-500 mt-0.5">{{ $order->orderingTypeValueLabel() }}</p>
                 </div>
-                @if(! $order->budget_mode || $order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT)
+                @if(! $order->budget_mode)
                 <div class="px-4 py-3 sm:px-5">
                     <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Order period</p>
                     <p class="mt-1 text-sm font-semibold text-gray-900 tabular-nums">{{ number_format((float) ($order->period_of_order_days ?? 0), 0) }} days</p>

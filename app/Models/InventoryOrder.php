@@ -331,7 +331,7 @@ class InventoryOrder extends Model
         }
 
         if ($this->budget_mode === self::BUDGET_MODE_AMOUNT) {
-            return 'By budget · Amount (UGX)';
+            return 'By budget';
         }
 
         return 'By period (days)';
