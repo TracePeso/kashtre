@@ -74,6 +74,26 @@ If the item already has enough stock-days (N ≥ period + safety + buffer), **or
 
 ---
 
+## Method 3 — By amount (UGX)
+
+**UI:** “By amount (UGX)”
+
+Use this when you already ran a **period order**, copied the **order total**, and want the **same line quantities** under a money cap.
+
+### What you enter
+
+1. **Period of order (days)** — must be the **same** as the period order.
+2. **Order amount (UGX)** — the period order total (or less to scale down).
+
+### How it works
+
+1. Calculates each line with the **same period formula (AF)** as Method 1.
+2. If the total exceeds your UGX amount, scales every line **proportionally**.
+
+When the amount equals the period order total (and store, items, safety/buffer, and peak settings match), **quantities match exactly**.
+
+---
+
 ## Method 2 — By budget
 
 **UI:** “By budget”  
@@ -136,13 +156,14 @@ Three items, average days left = **10**:
 
 ## Method comparison
 
-| | **By period (days)** | **By budget** |
-|--|----------------------|---------------|
-| **Question it answers** | “Cover the next X days for each item.” | “Split my budget by urgency (days left).” |
-| **Uses days left (AM)?** | Indirectly (via stock days N) | **Yes — core to allocation** |
-| **Excel columns** | AF, BA6 | AH, AI, AJ, AK, BA7 |
-| **Money cap** | No | No |
-| **Best when** | Simple period-based replenishment | Portfolio balancing across many items |
+| | **By period (days)** | **By budget** | **By amount (UGX)** |
+|--|----------------------|---------------|---------------------|
+| **Question it answers** | “Cover the next X days for each item.” | “Split my stock-days pool by urgency.” | “Same as period, capped at UGX X.” |
+| **Uses days left (AM)?** | Indirectly (via stock days N) | **Yes — core to allocation** | No (uses period AF, then scale) |
+| **Excel columns** | AF, BA6 | AH, AI, AJ, AK, BA7 | AF + money cap |
+| **Money cap** | No | No | Yes |
+| **Qty matches period order?** | — | No | **Yes**, when amount = period total and settings match |
+| **Best when** | Simple period replenishment | Portfolio balancing | Re-ordering from a period total |
 
 ---
 

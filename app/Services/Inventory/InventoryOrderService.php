@@ -626,12 +626,16 @@ class InventoryOrderService
         ?float $periodOfOrderDays,
         ?InventoryModuleConfig $config
     ): ?float {
-        if (in_array($budgetMode, [InventoryOrder::BUDGET_MODE_DAYS, InventoryOrder::BUDGET_MODE_AMOUNT], true)) {
+        if ($budgetMode === InventoryOrder::BUDGET_MODE_DAYS) {
             return null;
         }
 
         if ($periodOfOrderDays !== null) {
             return (float) $periodOfOrderDays;
+        }
+
+        if ($budgetMode === InventoryOrder::BUDGET_MODE_AMOUNT) {
+            return null;
         }
 
         return $config?->period_of_order_days !== null
