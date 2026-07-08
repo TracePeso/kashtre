@@ -8,23 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('client_spaces', function (Blueprint $table) {
-            $table->id();
-            $table->uuid('uuid')->unique();
-            $table->foreignId('business_id')->constrained()->cascadeOnDelete();
-            $table->string('name');
-            $table->text('description')->nullable();
-            $table->foreignId('branch_id')->nullable()->constrained()->nullOnDelete();
-            $table->timestamps();
-            $table->softDeletes();
-
-            $table->index(['business_id']);
-            $table->index(['branch_id']);
-        });
+        // No-op: client_spaces is already created by the earlier migration.
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('client_spaces');
+        // No-op: nothing was created here.
     }
 };
