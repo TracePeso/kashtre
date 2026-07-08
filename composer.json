@@ -66,6 +66,9 @@
         }
     },
     "config": {
+        "platform": {
+            "php": "8.4.0"
+        },
         "optimize-autoloader": false,
         "preferred-install": "dist",
         "sort-packages": true,
