@@ -130,6 +130,7 @@ class ItemController extends Controller
             'order_unit_id' => 'nullable|exists:item_units,id',
             'suom_per_ouom' => 'nullable|numeric|min:0.0001',
             'default_price' => 'required|numeric|min:0',
+            'purchase_price' => 'nullable|numeric|min:0',
             'vat_rate' => 'nullable|numeric|min:0|max:100',
             'hospital_share' => 'required_if:type,service,good|integer|between:0,100',
             'contractor_account_id' => 'nullable|exists:contractor_profiles,id',
@@ -182,6 +183,7 @@ class ItemController extends Controller
             $validated['importance_category'] = null;
             $validated['order_unit_id'] = null;
             $validated['suom_per_ouom'] = null;
+            $validated['purchase_price'] = null;
         }
 
         $this->applyImportanceCategoryToItem($validated);
@@ -378,6 +380,7 @@ class ItemController extends Controller
             'order_unit_id' => 'nullable|exists:item_units,id',
             'suom_per_ouom' => 'nullable|numeric|min:0.0001',
             'default_price' => 'required|numeric|min:0',
+            'purchase_price' => 'nullable|numeric|min:0',
             'vat_rate' => 'nullable|numeric|min:0|max:100',
             'hospital_share' => 'required_if:type,service,good|integer|between:0,100',
             'contractor_account_id' => 'nullable|exists:contractor_profiles,id',
@@ -430,6 +433,7 @@ class ItemController extends Controller
             $validated['importance_category'] = null;
             $validated['order_unit_id'] = null;
             $validated['suom_per_ouom'] = null;
+            $validated['purchase_price'] = null;
         }
 
         $this->applyImportanceCategoryToItem($validated);

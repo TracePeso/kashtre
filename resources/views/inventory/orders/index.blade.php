@@ -5,6 +5,9 @@
             <div class="flex-1 min-w-0">
                 <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">Make an order</h2>
                 <p class="mt-1 text-sm text-gray-500">Suggested quantities use consumption averages plus safety, buffer, lead time, notification, and order period days.</p>
+                <p class="mt-2">
+                    <a href="{{ route('inventory.orders.how-it-works') }}" class="text-sm font-medium text-blue-600 hover:text-blue-800">How ordering works &rarr;</a>
+                </p>
             </div>
             <div class="mt-4 md:mt-0">
                 <a href="{{ route('inventory.orders.create') }}"

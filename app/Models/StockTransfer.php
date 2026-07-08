@@ -19,6 +19,7 @@ class StockTransfer extends Model
 
     protected $fillable = [
         'business_id',
+        'inventory_order_id',
         'reference',
         'status',
         'current_approval_order',
@@ -44,6 +45,11 @@ class StockTransfer extends Model
     public function business(): BelongsTo
     {
         return $this->belongsTo(Business::class);
+    }
+
+    public function inventoryOrder(): BelongsTo
+    {
+        return $this->belongsTo(InventoryOrder::class);
     }
 
     public function fromStore(): BelongsTo

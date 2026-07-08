@@ -378,6 +378,14 @@
                         <input type="number" name="default_price" id="default_price" step="0.01" min="0" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required placeholder="0.00" value="{{ old('default_price', $item->default_price) }}">
                     </div>
 
+                    <div class="mt-6 good-only inventory-good-fields">
+                        <label for="purchase_price" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Purchase price (per SUOM)</label>
+                        <input type="number" name="purchase_price" id="purchase_price" step="0.01" min="0"
+                               value="{{ old('purchase_price', $item->purchase_price) }}"
+                               placeholder="Uses default price if empty"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    </div>
+
                     <!-- VAT Rate -->
                     <div class="mt-6">
                         <label for="vat_rate" class="block text-sm font-medium text-gray-700 dark:text-gray-300">VAT Rate (%)</label>

@@ -320,12 +320,14 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
             ->name('consumption.day')
             ->where('date', '[0-9]{4}-[0-9]{2}-[0-9]{2}');
         Route::get('/orders', [InventoryOrderController::class, 'index'])->name('orders.index');
+        Route::get('/orders/how-it-works', [InventoryOrderController::class, 'howItWorks'])->name('orders.how-it-works');
         Route::get('/orders/create', [InventoryOrderController::class, 'create'])->name('orders.create');
         Route::post('/orders', [InventoryOrderController::class, 'store'])->name('orders.store');
         Route::get('/orders/{order}', [InventoryOrderController::class, 'show'])->name('orders.show');
         Route::post('/orders/{order}/submit', [InventoryOrderController::class, 'submit'])->name('orders.submit');
         Route::post('/orders/{order}/approve', [InventoryOrderController::class, 'approve'])->name('orders.approve');
         Route::post('/orders/{order}/reject', [InventoryOrderController::class, 'reject'])->name('orders.reject');
+        Route::post('/orders/{order}/create-transfer', [InventoryOrderController::class, 'createTransfer'])->name('orders.create-transfer');
         Route::get('/orders/{order}/receive', [InventoryOrderController::class, 'receive'])->name('orders.receive');
         Route::get('/orders/{order}/pdf', [InventoryOrderController::class, 'pdf'])->name('orders.pdf');
         Route::post('/orders/{order}/regenerate', [InventoryOrderController::class, 'regenerate'])->name('orders.regenerate');

@@ -15,6 +15,7 @@ use App\Services\Inventory\InventoryOrderApprovalService;
 use App\Services\Inventory\InventoryOrderFulfillmentService;
 use App\Services\Inventory\InventoryOrderService;
 use App\Services\Inventory\InventoryProcurementPdfService;
+use App\Services\Inventory\InventoryStockTransferService;
 use App\Support\InventoryBusinessContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -30,6 +31,7 @@ class InventoryOrderController extends Controller
         private readonly InventoryOrderApprovalService $approvalService,
         private readonly InventoryOrderFulfillmentService $fulfillmentService,
         private readonly InventoryProcurementPdfService $pdfService,
+        private readonly InventoryStockTransferService $transferService,
     ) {
         $this->middleware($this->inventoryMiddleware(...));
     }
@@ -37,6 +39,11 @@ class InventoryOrderController extends Controller
     public function index()
     {
         return view('inventory.orders.index');
+    }
+
+    public function howItWorks()
+    {
+        return view('inventory.orders.how-it-works');
     }
 
     public function create()
@@ -280,6 +287,7 @@ class InventoryOrderController extends Controller
             'supplierQuotations.purchaseOrder',
             'purchaseOrders.supplier',
             'purchaseOrders.lines',
+            'stockTransfers',
         ]);
 
         $emptyOrderReason = $order->lines->isEmpty()
@@ -332,8 +340,8 @@ class InventoryOrderController extends Controller
 
         $order->refresh();
 
-        if ($order->isInternal() && $order->isFulfilled()) {
-            $message = 'Internal order approved. Create a stock transfer to fulfill.';
+        if ($order->isInternal() && $order->isAwaitingInternalFulfillment()) {
+            $message = 'Internal order approved. Create a stock transfer to issue stock.';
         } elseif ($order->isRfqApproved()) {
             $message = 'RFQ approved. Record supplier quotations, then generate LPOs.';
         } elseif ($order->isPendingApproval()) {
@@ -364,6 +372,21 @@ class InventoryOrderController extends Controller
         return redirect()
             ->route('inventory.orders.show', $order)
             ->with('success', 'RFQ rejected.');
+    }
+
+    public function createTransfer(InventoryOrder $order)
+    {
+        $this->authorizeOrder($order);
+
+        try {
+            $transfer = $this->transferService->createFromInternalOrder($order, Auth::user());
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withErrors($e->errors());
+        }
+
+        return redirect()
+            ->route('inventory.transfers.show', $transfer)
+            ->with('success', 'Stock transfer draft created from internal order. The supplying store can review quantities before submission.');
     }
 
     public function receive(InventoryOrder $order, Request $request)

@@ -239,7 +239,7 @@ class InventoryStockAnalyticsService
         return (float) (
             $stock->weighted_avg_cost
             ?? $stock->last_purchase_price
-            ?? $item?->default_price
+            ?? $item?->purchasePricePerSuom()
             ?? 0
         );
     }
@@ -891,7 +891,7 @@ class InventoryStockAnalyticsService
         foreach ($needGrn as $stock) {
             $key = $this->pageMetricKey($stock);
             $prices[$key] = $prices[$key]
-                ?? (float) ($stock->item?->default_price ?? 0);
+                ?? (float) ($stock->item?->purchasePricePerSuom() ?? 0);
         }
 
         return $prices;

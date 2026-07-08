@@ -228,7 +228,6 @@ class GrnBulkImportService
 
         $suom = $item->itemUnit?->name ?? '';
         $duom = $item->orderUnit?->name ?? $suom;
-        $pricePerSuom = (float) ($item->default_price ?? 0);
 
         return [
             'item_id' => (string) $item->id,
@@ -239,7 +238,7 @@ class GrnBulkImportService
             'quantity' => 1,
             'batch_number' => '',
             'expiry_date' => '',
-            'purchase_price' => round($pricePerSuom * $conversion, 2),
+            'purchase_price' => $item->purchasePricePerOuom(),
             'conversion' => $conversion,
         ];
     }

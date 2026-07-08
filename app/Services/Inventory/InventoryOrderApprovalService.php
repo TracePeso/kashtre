@@ -127,9 +127,7 @@ class InventoryOrderApprovalService
                 return $order->fresh(['lines.item', 'approvals.approver', 'store']);
             }
 
-            $finalStatus = $order->isInternal()
-                ? InventoryOrder::STATUS_FULFILLED
-                : InventoryOrder::STATUS_APPROVED;
+            $finalStatus = InventoryOrder::STATUS_APPROVED;
 
             $order->update([
                 'status' => $finalStatus,

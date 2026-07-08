@@ -138,6 +138,13 @@
                 Suggested quantities use your stock position and <strong>auto-calculated consumption rates</strong> (15-day usage).
                 Filter by category or group to focus on essential items.
             </p>
+            <p class="mt-2">
+                <a href="{{ route('inventory.orders.how-it-works') }}"
+                   class="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800">
+                    How ordering works
+                    <span aria-hidden="true">&rarr;</span>
+                </a>
+            </p>
         </div>
 
         @include('inventory.partials.subnav')
@@ -331,8 +338,14 @@
             </div>
 
             <div class="border border-gray-200 rounded-lg p-4 space-y-4">
-                <div>
-                    <p class="text-sm font-medium text-gray-900">How to order</p>
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-sm font-medium text-gray-900">How to order</p>
+                    </div>
+                    <a href="{{ route('inventory.orders.how-it-works') }}"
+                       class="shrink-0 text-sm font-medium text-blue-600 hover:text-blue-800">
+                        How it works
+                    </a>
                 </div>
 
                 <div class="inline-flex flex-wrap gap-1 rounded-lg border border-gray-200 p-1 bg-gray-50" role="group" aria-label="Ordering method">

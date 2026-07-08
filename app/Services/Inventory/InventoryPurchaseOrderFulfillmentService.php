@@ -81,7 +81,7 @@ class InventoryPurchaseOrderFulfillmentService
                 : 1.0;
 
             $duomQty = max(0.0001, round($remaining / $conversion, 4));
-            $unitPriceSuom = (float) ($line->unit_price ?? $item->default_price ?? 0);
+            $unitPriceSuom = (float) ($line->unit_price ?? $item->purchasePricePerSuom());
 
             $lines[] = [
                 'inventory_order_line_id' => $line->inventory_order_line_id,

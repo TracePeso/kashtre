@@ -30,6 +30,7 @@ class Item extends Model
         'order_unit_id',
         'suom_per_ouom',
         'default_price',
+        'purchase_price',
         'vat_rate',
         'validity_days',
         'max_qty',
@@ -42,6 +43,7 @@ class Item extends Model
     protected $casts = [
         'max_qty' => 'integer',
         'suom_per_ouom' => 'decimal:4',
+        'purchase_price' => 'decimal:2',
     ];
     
     protected static function booted()
@@ -240,5 +242,29 @@ class Item extends Model
 
         $prefix = ucfirst($type) . ': ';
         return $prefix . implode(', ', $itemNames);
+    }
+
+    /**
+     * Purchase cost per sale unit (SUOM). Falls back to default sale price when unset.
+     */
+    public function purchasePricePerSuom(): float
+    {
+        if ($this->purchase_price !== null) {
+            return max(0, (float) $this->purchase_price);
+        }
+
+        return max(0, (float) ($this->default_price ?? 0));
+    }
+
+    /**
+     * Purchase cost per order unit (OUOM / GRN delivery unit).
+     */
+    public function purchasePricePerOuom(): float
+    {
+        $conversion = (float) ($this->suom_per_ouom ?? 0) > 0
+            ? (float) $this->suom_per_ouom
+            : 1.0;
+
+        return round($this->purchasePricePerSuom() * $conversion, 2);
     }
 }

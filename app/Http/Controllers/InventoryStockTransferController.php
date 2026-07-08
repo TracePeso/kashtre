@@ -121,6 +121,7 @@ class InventoryStockTransferController extends Controller
             'lines.item.itemUnit',
             'fromStore',
             'toStore',
+            'inventoryOrder',
             'requestedBy',
             'approvedBy',
             'receivedBy',

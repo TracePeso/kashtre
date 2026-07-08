@@ -144,6 +144,11 @@ class InventoryOrder extends Model
         return $this->hasMany(InventoryPurchaseOrder::class);
     }
 
+    public function stockTransfers(): HasMany
+    {
+        return $this->hasMany(StockTransfer::class);
+    }
+
     public function documentNumber(): string
     {
         return (string) $this->order_number;
@@ -227,6 +232,26 @@ class InventoryOrder extends Model
     public function isFulfilled(): bool
     {
         return $this->status === self::STATUS_FULFILLED;
+    }
+
+    public function isAwaitingInternalFulfillment(): bool
+    {
+        return $this->isInternal()
+            && $this->status === self::STATUS_APPROVED;
+    }
+
+    public function activeStockTransfer(): ?StockTransfer
+    {
+        return $this->stockTransfers()
+            ->whereNotIn('status', [StockTransfer::STATUS_RECEIVED, StockTransfer::STATUS_REJECTED])
+            ->latest('id')
+            ->first();
+    }
+
+    public function canCreateStockTransfer(): bool
+    {
+        return $this->isAwaitingInternalFulfillment()
+            && $this->activeStockTransfer() === null;
     }
 
     public function canReceiveGoods(): bool

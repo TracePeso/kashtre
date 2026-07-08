@@ -12,6 +12,9 @@
                 <h2 class="text-2xl font-bold text-gray-900">{{ $transfer->reference }}</h2>
                 <p class="mt-1 text-sm text-gray-500">
                     {{ $transfer->fromStore->selectLabel() }} → {{ $transfer->toStore->selectLabel() }}
+                    @if($transfer->inventoryOrder)
+                        · <a href="{{ route('inventory.orders.show', $transfer->inventoryOrder) }}" class="text-blue-600 hover:text-blue-800">Internal order {{ $transfer->inventoryOrder->order_number }}</a>
+                    @endif
                 </p>
                 <span class="mt-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
                     @if($transfer->isDraft()) bg-gray-100 text-gray-800

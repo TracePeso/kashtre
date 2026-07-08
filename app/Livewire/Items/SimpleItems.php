@@ -15,6 +15,7 @@ use Filament\Tables\Actions\DeleteAction;
 use Filament\Tables\Actions\DeleteBulkAction;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\TextInputColumn;
 use Livewire\Component;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -81,6 +82,28 @@ class SimpleItems extends Component implements HasForms, HasTable
                     ->label('Default Price')
                     ->money('UGX')
                     ->sortable(),
+                TextInputColumn::make('purchase_price')
+                    ->label('Purchase price')
+                    ->type('number')
+                    ->inputMode('decimal')
+                    ->step(0.01)
+                    ->prefix('UGX')
+                    ->sortable()
+                    ->placeholder('—')
+                    ->disabled(fn (Item $record): bool => $record->type !== 'good')
+                    ->updateStateUsing(function (Item $record, $state): ?float {
+                        if ($record->type !== 'good') {
+                            return $record->purchase_price;
+                        }
+
+                        $price = $state === null || $state === ''
+                            ? null
+                            : max(0, round((float) $state, 2));
+
+                        $record->update(['purchase_price' => $price]);
+
+                        return $price;
+                    }),
                 TextColumn::make('hospital_share')
                     ->label('Company/Entity')
                     ->formatStateUsing(fn (string $state): string => $state . '%')

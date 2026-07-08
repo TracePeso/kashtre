@@ -9,6 +9,8 @@
         'order_unit' => $i->orderUnit?->name,
         'suom_per_ouom' => (float) ($i->suom_per_ouom ?? 0),
         'default_price' => (float) ($i->default_price ?? 0),
+        'purchase_price_per_suom' => $i->purchasePricePerSuom(),
+        'purchase_price_per_ouom' => $i->purchasePricePerOuom(),
     ])->values()),
     @js($supplierItemIds),
     @js($prefillLines ?? []),
@@ -649,7 +651,7 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
                 line.duom = duom;
             }
             line.conversion = conversion;
-            line.purchase_price = Math.round((parseFloat(item.default_price) || 0) * conversion * 100) / 100;
+            line.purchase_price = Math.round((parseFloat(item.purchase_price_per_ouom) || 0) * 100) / 100;
             this.draftError = '';
         },
         validateDraft() {

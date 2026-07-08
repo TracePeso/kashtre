@@ -3,6 +3,8 @@
 namespace App\Services\Inventory;
 
 use App\Models\InventoryModuleConfig;
+use App\Models\InventoryOrder;
+use App\Models\InventoryOrderLine;
 use App\Models\InventoryStockLevel;
 use App\Models\InventoryStockMovement;
 use App\Models\StockTransfer;
@@ -95,6 +97,63 @@ class InventoryStockTransferService
             }
 
             return $transfer->fresh(['lines.item', 'fromStore', 'toStore']);
+        });
+    }
+
+    public function createFromInternalOrder(InventoryOrder $order, User $user): StockTransfer
+    {
+        $order->loadMissing(['lines.item', 'sourceStore', 'store']);
+
+        if (! $order->canCreateStockTransfer()) {
+            throw ValidationException::withMessages([
+                'status' => 'This internal order cannot start a stock transfer in its current state.',
+            ]);
+        }
+
+        if (! $order->source_store_id || ! $order->store_id) {
+            throw ValidationException::withMessages([
+                'stores' => 'Internal order is missing supplying or receiving store.',
+            ]);
+        }
+
+        $lines = $order->lines
+            ->map(fn ($line) => [
+                'item_id' => (int) $line->item_id,
+                'quantity_suom' => (float) ($line->order_quantity_suom ?? $line->suggested_quantity_suom ?? 0),
+            ])
+            ->filter(fn (array $line) => $line['quantity_suom'] > 0)
+            ->values()
+            ->all();
+
+        if ($lines === []) {
+            throw ValidationException::withMessages([
+                'lines' => 'Internal order has no quantities to transfer.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($order, $user, $lines) {
+            $transfer = StockTransfer::create([
+                'business_id' => $order->business_id,
+                'inventory_order_id' => $order->id,
+                'reference' => $this->generateReference((int) $order->business_id),
+                'status' => StockTransfer::STATUS_DRAFT,
+                'from_store_id' => $order->source_store_id,
+                'to_store_id' => $order->store_id,
+                'notes' => 'From internal order '.$order->order_number,
+                'requested_by_user_id' => $user->id,
+            ]);
+
+            foreach ($lines as $line) {
+                StockTransferLine::create([
+                    'stock_transfer_id' => $transfer->id,
+                    'item_id' => $line['item_id'],
+                    'requested_quantity_suom' => $line['quantity_suom'],
+                    'approved_quantity_suom' => $line['quantity_suom'],
+                    'received_quantity_suom' => $line['quantity_suom'],
+                ]);
+            }
+
+            return $transfer->fresh(['lines.item', 'fromStore', 'toStore', 'inventoryOrder']);
         });
     }
 
@@ -225,8 +284,57 @@ class InventoryStockTransferService
                 'received_by_user_id' => $user->id,
             ]);
 
-            return $transfer->fresh(['lines.item', 'fromStore', 'toStore']);
+            $this->finalizeLinkedInternalOrder($transfer);
+
+            return $transfer->fresh(['lines.item', 'fromStore', 'toStore', 'inventoryOrder']);
         });
+    }
+
+    private function finalizeLinkedInternalOrder(StockTransfer $transfer): void
+    {
+        if (! $transfer->inventory_order_id) {
+            return;
+        }
+
+        $order = InventoryOrder::query()
+            ->with('lines')
+            ->find($transfer->inventory_order_id);
+
+        if (! $order || ! $order->isInternal()) {
+            return;
+        }
+
+        $receivedByItem = $transfer->lines
+            ->groupBy('item_id')
+            ->map(fn ($lines) => $lines->sum(fn ($line) => (float) $line->received_quantity_suom));
+
+        foreach ($order->lines as $orderLine) {
+            $received = (float) ($receivedByItem[$orderLine->item_id] ?? 0);
+
+            if ($received <= 0) {
+                continue;
+            }
+
+            $orderLine->update([
+                'received_quantity_suom' => $received,
+            ]);
+        }
+
+        $allReceived = $order->lines->every(function (InventoryOrderLine $line) {
+            $ordered = (float) ($line->order_quantity_suom ?? 0);
+
+            if ($ordered <= 0) {
+                return true;
+            }
+
+            return (float) ($line->received_quantity_suom ?? 0) >= $ordered - 0.0001;
+        });
+
+        $order->update([
+            'status' => $allReceived
+                ? InventoryOrder::STATUS_FULFILLED
+                : InventoryOrder::STATUS_PARTIALLY_RECEIVED,
+        ]);
     }
 
     public function reject(StockTransfer $transfer, User $user, string $reason): StockTransfer

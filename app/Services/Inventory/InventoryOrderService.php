@@ -25,9 +25,10 @@ class InventoryOrderService
         private readonly InventoryStockAnalyticsService $analytics
     ) {}
 
-    public function generateOrderNumber(int $businessId): string
+    public function generateOrderNumber(int $businessId, string $orderType = InventoryOrder::TYPE_EXTERNAL): string
     {
-        $prefix = 'RFQ-'.now()->format('Ymd');
+        $docPrefix = $orderType === InventoryOrder::TYPE_INTERNAL ? 'INT' : 'RFQ';
+        $prefix = $docPrefix.'-'.now()->format('Ymd');
         $count = InventoryOrder::query()
             ->where('business_id', $businessId)
             ->where('order_number', 'like', $prefix.'%')
@@ -78,7 +79,7 @@ class InventoryOrderService
                 'order_type' => $orderType,
                 'source_store_id' => $orderType === InventoryOrder::TYPE_INTERNAL ? $sourceStoreId : null,
                 'supplier_id' => $orderType === InventoryOrder::TYPE_INTERNAL ? null : $supplierId,
-                'order_number' => $this->generateOrderNumber($businessId),
+                'order_number' => $this->generateOrderNumber($businessId, $orderType),
                 'status' => InventoryOrder::STATUS_DRAFT,
                 'importance_filter' => $importanceFilter,
                 'group_id' => $groupId,

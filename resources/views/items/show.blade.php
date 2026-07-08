@@ -70,6 +70,20 @@
                             <p class="mt-1 text-sm text-gray-900 dark:text-white">UGX {{ number_format($item->default_price, 2) }}</p>
                         </div>
 
+                        @if($item->type === 'good')
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">Purchase price (per SUOM)</label>
+                            <p class="mt-1 text-sm text-gray-900 dark:text-white">
+                                @if($item->purchase_price !== null)
+                                    UGX {{ number_format((float) $item->purchase_price, 2) }}
+                                @else
+                                    UGX {{ number_format($item->purchasePricePerSuom(), 2) }}
+                                    <span class="text-gray-500">(default price)</span>
+                                @endif
+                            </p>
+                        </div>
+                        @endif
+
                         <div>
                             <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">VAT Rate</label>
                             <p class="mt-1 text-sm text-gray-900 dark:text-white">{{ $item->vat_rate ?? 0 }}%</p>

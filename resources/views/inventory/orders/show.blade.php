@@ -138,18 +138,38 @@
         @if($order->isPendingApproval())
             <div class="mt-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded text-sm">
                 @if($order->isInternal())
-                    <strong>Awaiting approval.</strong> After approvers sign off, create a stock transfer from {{ $order->sourceStore?->name }} to {{ $order->store?->name }}.
+                    <strong>Awaiting approval.</strong> After approvers sign off at the requesting store, a stock transfer will be created for the supplying store to review and issue.
                 @else
                     <strong>Awaiting RFQ approval.</strong> After approvers sign off, record supplier quotations and generate LPOs.
                 @endif
             </div>
         @endif
 
-        @if($order->isInternal() && $order->isFulfilled())
-            <div class="mt-4 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm">
-                <strong>Internal order approved.</strong>
-                <a href="{{ route('inventory.transfers.create') }}" class="underline font-medium">Make a transfer request</a>
-                from {{ $order->sourceStore?->name }} to {{ $order->store?->name }} to move stock.
+        @if($order->isInternal() && $order->isAwaitingInternalFulfillment())
+            <div class="mt-4 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <strong>Internal order approved.</strong>
+                    Step 3–5: create a stock transfer for {{ $order->sourceStore?->name }} to review, issue, and confirm receipt at {{ $order->store?->name }}.
+                </div>
+                @if(empty($inventoryAdminContextBusiness))
+                    <form action="{{ route('inventory.orders.create-transfer', $order) }}" method="POST">
+                        @csrf
+                        <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">
+                            Create stock transfer
+                        </button>
+                    </form>
+                @endif
+            </div>
+        @elseif($order->isInternal() && $order->activeStockTransfer())
+            @php $activeTransfer = $order->activeStockTransfer(); @endphp
+            <div class="mt-4 bg-indigo-50 border border-indigo-200 text-indigo-900 px-4 py-3 rounded text-sm">
+                <strong>Stock transfer in progress.</strong>
+                <a href="{{ route('inventory.transfers.show', $activeTransfer) }}" class="underline font-medium">{{ $activeTransfer->reference }}</a>
+                — {{ $activeTransfer->statusLabel() }}.
+            </div>
+        @elseif($order->isInternal() && $order->isFulfilled())
+            <div class="mt-4 bg-green-50 border border-green-200 text-green-900 px-4 py-3 rounded text-sm">
+                <strong>Internal order fulfilled.</strong> Stock has been received at {{ $order->store?->name }}.
             </div>
         @elseif($order->isRfqApproved())
             <div class="mt-4 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm">
