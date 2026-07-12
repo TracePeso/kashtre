@@ -205,7 +205,10 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
                 ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
         ]);
 
-        if ($this->order->budget_mode === InventoryOrder::BUDGET_MODE_DAYS) {
+        if (in_array($this->order->budget_mode, [
+            InventoryOrder::BUDGET_MODE_DAYS,
+            InventoryOrder::BUDGET_MODE_AMOUNT,
+        ], true)) {
             $columns[] = TextColumn::make('days_left_at_order')
                 ->label('Days left to order')
                 ->alignEnd()

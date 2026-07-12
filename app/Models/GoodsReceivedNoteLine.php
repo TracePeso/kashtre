@@ -16,6 +16,9 @@ class GoodsReceivedNoteLine extends Model
         'category',
         'item_name',
         'quantity',
+        'ordered_quantity',
+        'variance_quantity',
+        'condition_status',
         'batch_number',
         'expiry_date',
         'duom',
@@ -27,6 +30,8 @@ class GoodsReceivedNoteLine extends Model
 
     protected $casts = [
         'quantity' => 'decimal:4',
+        'ordered_quantity' => 'decimal:4',
+        'variance_quantity' => 'decimal:4',
         'purchase_price' => 'decimal:2',
         'sale_units_per_purchase_unit' => 'decimal:4',
         'sale_units_purchased' => 'decimal:4',

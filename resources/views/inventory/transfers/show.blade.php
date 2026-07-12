@@ -65,8 +65,8 @@
 
         @if($transfer->isApproved())
             <div class="mt-4 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm">
-                <strong>Approved.</strong> Stock has been deducted from {{ $transfer->fromStore->selectLabel() }}.
-                {{ $transfer->toStore->selectLabel() }} must confirm receipt to add stock.
+                <strong>Issued — in transit.</strong> Available stock at {{ $transfer->fromStore->selectLabel() }} was moved to in-transit.
+                {{ $transfer->toStore->selectLabel() }} must confirm receipt to clear in-transit and add stock at the destination.
             </div>
         @endif
 

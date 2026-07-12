@@ -171,6 +171,88 @@
             @livewire('inventory.show-goods-received-note-lines', ['goodsReceivedNote' => $goodsReceivedNote], key('grn-items-'.$goodsReceivedNote->id))
         </div>
 
+        @if($goodsReceivedNote->isDraft() || $goodsReceivedNote->isPending())
+            <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6">
+                <h3 class="text-sm font-semibold text-gray-900">QC / inspection</h3>
+                <p class="text-xs text-gray-500 mt-0.5">
+                    Mandatory before final approval. Compare received qty to ordered qty and confirm condition.
+                    Current status:
+                    <strong>{{ $goodsReceivedNote->inspection_status ? ucfirst($goodsReceivedNote->inspection_status) : 'Not recorded' }}</strong>
+                    @if($goodsReceivedNote->inspectedBy)
+                        · by {{ $goodsReceivedNote->inspectedBy->name }}
+                        @if($goodsReceivedNote->inspected_at) on {{ $goodsReceivedNote->inspected_at->format('d M Y H:i') }}@endif
+                    @endif
+                </p>
+
+                <div class="mt-4 overflow-x-auto rounded border border-gray-200">
+                    <table class="min-w-full text-xs">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-3 py-2 text-left">Item</th>
+                                <th class="px-3 py-2 text-right">Ordered</th>
+                                <th class="px-3 py-2 text-right">Received</th>
+                                <th class="px-3 py-2 text-right">Variance</th>
+                                <th class="px-3 py-2 text-left">Condition</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            @foreach($goodsReceivedNote->lines as $line)
+                                @php
+                                    $ordered = $line->ordered_quantity !== null ? (float) $line->ordered_quantity : null;
+                                    $received = (float) $line->quantity;
+                                    $variance = $ordered !== null ? round($received - $ordered, 4) : (float) ($line->variance_quantity ?? 0);
+                                @endphp
+                                <tr @class(['bg-amber-50' => abs($variance) > 0.0001])>
+                                    <td class="px-3 py-2">{{ $line->item_name ?? $line->item?->name }}</td>
+                                    <td class="px-3 py-2 text-right tabular-nums">{{ $ordered !== null ? number_format($ordered, 2) : '—' }}</td>
+                                    <td class="px-3 py-2 text-right tabular-nums">{{ number_format($received, 2) }}</td>
+                                    <td class="px-3 py-2 text-right tabular-nums font-medium {{ abs($variance) > 0.0001 ? 'text-amber-800' : 'text-gray-600' }}">
+                                        {{ $ordered !== null ? number_format($variance, 2) : '—' }}
+                                    </td>
+                                    <td class="px-3 py-2">{{ $line->condition_status ? ucfirst($line->condition_status) : '—' }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
+                <form action="{{ route('inventory.receive.inspect', $goodsReceivedNote) }}" method="POST" class="mt-4 space-y-3">
+                    @csrf
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700">Inspection result</label>
+                            <select name="inspection_status" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                                <option value="passed" @selected($goodsReceivedNote->inspection_status === 'passed')>Passed</option>
+                                <option value="failed" @selected($goodsReceivedNote->inspection_status === 'failed')>Failed</option>
+                                <option value="pending" @selected($goodsReceivedNote->inspection_status === 'pending' || ! $goodsReceivedNote->inspection_status)>Pending</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700">Notes / why</label>
+                            <input type="text" name="inspection_notes" value="{{ $goodsReceivedNote->inspection_notes }}"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm"
+                                   placeholder="Variance explanation, damage notes…">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        @foreach($goodsReceivedNote->lines as $line)
+                            <div>
+                                <label class="block text-xs text-gray-600">{{ \Illuminate\Support\Str::limit($line->item_name ?? $line->item?->name, 40) }} condition</label>
+                                <select name="line_conditions[{{ $line->id }}]" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                                    @foreach(['good','damaged','expired','short'] as $cond)
+                                        <option value="{{ $cond }}" @selected(($line->condition_status ?? 'good') === $cond)>{{ ucfirst($cond) }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        @endforeach
+                    </div>
+                    <button type="submit" class="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-md hover:bg-slate-900">
+                        Save QC inspection
+                    </button>
+                </form>
+            </div>
+        @endif
+
         @if($hasSidebar)
             <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
                 <div class="bg-white shadow sm:rounded-lg p-6">
@@ -215,7 +297,9 @@
                     <div class="bg-white shadow sm:rounded-lg p-6 space-y-4">
                         <h3 class="text-sm font-semibold text-gray-900">Your decision</h3>
                         <p class="text-xs text-gray-500 -mt-2">
-                            @if($goodsReceivedNote->approvals->where('status', 'pending')->count() === 1)
+                            @if(! $goodsReceivedNote->inspectionPassed())
+                                <span class="text-amber-700 font-medium">QC inspection must be marked Passed before the final approver can post stock.</span>
+                            @elseif($goodsReceivedNote->approvals->where('status', 'pending')->count() === 1)
                                 You are the final approver — stock will update at {{ $goodsReceivedNote->store->name ?? 'the store' }} when you approve.
                             @else
                                 More approvers are still required after you — stock will not change yet.

@@ -284,16 +284,17 @@ class InventoryStockAnalyticsService
     }
 
     /**
-     * Graduated MA for order qty (Excel AF): pick window based on stock days N.
+     * Graduated MA for order qty (Excel AF):
+     * V if N < 15; W if N < 30; X if N < 90; Y if N < 180; Z if N < 360; else Z.
+     * Z also when V,W,X,Y are all zero (handled by caller fallback).
      */
     public function graduatedMovingAverageByStockDays(InventoryStockLevel $stock, ?float $stockDaysN): float
     {
-        if ($stockDaysN === null || $stockDaysN <= 0) {
-            return $this->movingAverageForStock($stock, 360);
-        }
+        // Excel AF: N < 15 uses V (includes N = 0 / empty stock). Null N → treat as 0.
+        $n = $stockDaysN ?? 0.0;
 
         foreach ([15, 30, 90, 180, 360] as $days) {
-            if ($stockDaysN < $days) {
+            if ($n < $days) {
                 return $this->movingAverageForStock($stock, $days);
             }
         }
@@ -302,43 +303,43 @@ class InventoryStockAnalyticsService
     }
 
     /**
-     * Excel columns AI / AJ / AK: budget-days ordering from a stock-days cap (BA7).
+     * Excel columns AI / AJ / AK: Ordering By Budget.
+     * BA7 is the budget amount (UGX) from the Inventory sheet (“Order by Budget (UGX)”).
      *
-     * Uses days left to order (AM) vs the portfolio average to prioritise urgent lines:
      * - AI = days_left − AVERAGE(days_left)
-     * - AJ = (15 × budget_days ÷ SUM(test_amount)) − AI
+     * - AJ = (15 × BA7 ÷ SUM(AH)) − AI
      * - AK = AJ × daily usage
      */
     public function suggestedOrderQtyBudgetDays(
-        float $budgetDays,
+        float $budgetUgxOrBa7,
         float $daysLeft,
         float $averageDaysLeft,
         float $sumTestAmount,
         float $dailyUsageSuom
     ): float {
-        if ($sumTestAmount <= 0 || $dailyUsageSuom <= 0 || $budgetDays <= 0) {
+        if ($sumTestAmount <= 0 || $dailyUsageSuom <= 0 || $budgetUgxOrBa7 <= 0) {
             return 0.0;
         }
 
         $gap = $daysLeft - $averageDaysLeft;
-        $orderDays = max(0, (15 * $budgetDays / $sumTestAmount) - $gap);
+        $orderDays = max(0, (15 * $budgetUgxOrBa7 / $sumTestAmount) - $gap);
 
         return max(0, round($orderDays * $dailyUsageSuom, 4));
     }
 
     public function orderDaysBudgetAllocation(
-        float $budgetDays,
+        float $budgetUgxOrBa7,
         float $daysLeft,
         float $averageDaysLeft,
         float $sumTestAmount
     ): float {
-        if ($sumTestAmount <= 0 || $budgetDays <= 0) {
+        if ($sumTestAmount <= 0 || $budgetUgxOrBa7 <= 0) {
             return 0.0;
         }
 
         $gap = $daysLeft - $averageDaysLeft;
 
-        return max(0, round((15 * $budgetDays / $sumTestAmount) - $gap, 4));
+        return max(0, round((15 * $budgetUgxOrBa7 / $sumTestAmount) - $gap, 4));
     }
 
     /**

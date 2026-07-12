@@ -99,7 +99,44 @@ class InventoryPurchaseOrderController extends Controller
 
         return redirect()
             ->route('inventory.purchase-orders.show', $po)
-            ->with('success', 'Draft LPO created. Review and issue to notify finance and approvers.');
+            ->with('success', 'Draft LPO created. Review and issue to notify finance, approvers, and the supplier.');
+    }
+
+    /**
+     * Split accepted quotations into individual LPOs (one per supplier).
+     */
+    public function generateAccepted(InventoryOrder $order)
+    {
+        if ((int) $order->business_id !== (int) InventoryBusinessContext::effectiveBusinessId()) {
+            abort(403);
+        }
+
+        $order->load('supplierQuotations.purchaseOrder');
+        $created = 0;
+        $errors = [];
+
+        foreach ($order->supplierQuotations as $quotation) {
+            if (! $quotation->isAccepted() || $quotation->purchaseOrder) {
+                continue;
+            }
+
+            try {
+                $this->service->createFromQuotation($quotation, Auth::user());
+                $created++;
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                $errors[] = ($quotation->supplier?->name ?? 'Supplier').': '.collect($e->errors())->flatten()->first();
+            }
+        }
+
+        if ($created < 1) {
+            return redirect()
+                ->route('inventory.orders.quotations.compare', $order)
+                ->withErrors(['status' => $errors[0] ?? 'No accepted quotations without an LPO were found.']);
+        }
+
+        return redirect()
+            ->route('inventory.orders.show', $order)
+            ->with('success', "Generated {$created} LPO(s) from accepted quotations.".($errors !== [] ? ' Some skipped: '.implode(' ', $errors) : ''));
     }
 
     private function authorizePo(InventoryPurchaseOrder $po): void

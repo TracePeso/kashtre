@@ -122,7 +122,10 @@ class InventoryPurchaseOrder extends Model
 
     public static function generateNumber(int $businessId): string
     {
-        $prefix = 'LPO-'.now()->format('Ymd').'-';
+        $entity = Business::query()->whereKey($businessId)->value('entity_code');
+        $entity = $entity ? strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string) $entity)) : null;
+        $prefix = ($entity ? $entity.'-' : '').'LPO-'.now()->format('Ymd').'-';
+
         $count = self::query()
             ->where('business_id', $businessId)
             ->where('po_number', 'like', $prefix.'%')

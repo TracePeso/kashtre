@@ -117,10 +117,15 @@ class StockTransfer extends Model
         return match ($this->status) {
             self::STATUS_DRAFT => 'Draft',
             self::STATUS_PENDING => 'Pending approval',
-            self::STATUS_APPROVED => 'Approved — awaiting receipt',
+            self::STATUS_APPROVED => 'Issued — in transit',
             self::STATUS_RECEIVED => 'Received',
             self::STATUS_REJECTED => 'Rejected',
             default => ucfirst(str_replace('_', ' ', (string) $this->status)),
         };
+    }
+
+    public function isInTransit(): bool
+    {
+        return $this->status === self::STATUS_APPROVED;
     }
 }

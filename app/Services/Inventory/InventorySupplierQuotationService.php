@@ -3,8 +3,10 @@
 namespace App\Services\Inventory;
 
 use App\Models\InventoryOrder;
+use App\Models\InventoryRfqSupplier;
 use App\Models\InventorySupplierQuotation;
 use App\Models\InventorySupplierQuotationLine;
+use App\Models\Supplier;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -12,29 +14,105 @@ use Illuminate\Validation\ValidationException;
 
 class InventorySupplierQuotationService
 {
-    public function supplierForRfq(InventoryOrder $order): ?array
-    {
-        $order->loadMissing('supplier');
-
-        if (! $order->supplier_id) {
-            return null;
-        }
-
-        return [
-            'supplier_id' => (int) $order->supplier_id,
-            'supplier_name' => $order->supplier?->name ?? 'Supplier',
-            'lines_count' => $order->lines()->count(),
-        ];
-    }
-
     /**
-     * @return Collection<int, array{supplier_id: ?int, supplier_name: string, lines_count: int}>
+     * Suppliers invited to quote on this RFQ (plus primary supplier if set).
+     *
+     * @return Collection<int, array{supplier_id: int, supplier_name: string, lines_count: int, email: ?string, quotation: ?InventorySupplierQuotation}>
      */
     public function suppliersForRfq(InventoryOrder $order): Collection
     {
-        $supplier = $this->supplierForRfq($order);
+        $order->loadMissing(['supplier', 'invitedSuppliers', 'supplierQuotations.lines', 'lines']);
 
-        return $supplier ? collect([$supplier]) : collect();
+        $this->ensurePrimarySupplierInvited($order);
+
+        $order->load('invitedSuppliers');
+
+        return $order->invitedSuppliers->map(function (Supplier $supplier) use ($order) {
+            $quotation = $order->supplierQuotations->firstWhere('supplier_id', $supplier->id);
+
+            return [
+                'supplier_id' => (int) $supplier->id,
+                'supplier_name' => $supplier->name,
+                'email' => $supplier->email,
+                'lines_count' => $order->lines->count(),
+                'quotation' => $quotation,
+            ];
+        })->values();
+    }
+
+    public function inviteSuppliers(InventoryOrder $order, array $supplierIds): void
+    {
+        if (! $order->isExternal()) {
+            throw ValidationException::withMessages([
+                'order_type' => 'Only external RFQs can invite suppliers.',
+            ]);
+        }
+
+        if (! $order->isDraft() && ! $order->isRfqApproved() && ! $order->isPendingApproval()) {
+            // Allow invite while draft or after approve for late adds; block once PO issued.
+            if (in_array($order->status, [
+                InventoryOrder::STATUS_PO_ISSUED,
+                InventoryOrder::STATUS_PARTIALLY_RECEIVED,
+                InventoryOrder::STATUS_FULFILLED,
+                InventoryOrder::STATUS_REJECTED,
+            ], true)) {
+                throw ValidationException::withMessages([
+                    'status' => 'Cannot invite suppliers after the RFQ is closed or LPO has been issued.',
+                ]);
+            }
+        }
+
+        $ids = array_values(array_unique(array_map('intval', $supplierIds)));
+
+        if ($order->supplier_id) {
+            $ids[] = (int) $order->supplier_id;
+            $ids = array_values(array_unique($ids));
+        }
+
+        if ($ids === []) {
+            throw ValidationException::withMessages([
+                'supplier_ids' => 'Select at least one supplier.',
+            ]);
+        }
+
+        $valid = Supplier::query()
+            ->where('business_id', $order->business_id)
+            ->whereIn('id', $ids)
+            ->pluck('id')
+            ->all();
+
+        foreach ($valid as $supplierId) {
+            InventoryRfqSupplier::query()->firstOrCreate(
+                [
+                    'inventory_order_id' => $order->id,
+                    'supplier_id' => $supplierId,
+                ],
+                ['invited_at' => now()]
+            );
+        }
+
+        InventoryProcurementAudit::log(
+            'rfq_suppliers_invited',
+            $order,
+            'Suppliers invited to RFQ '.$order->order_number,
+            why: 'Multi-supplier RFQ distribution',
+            newValues: ['supplier_ids' => $valid],
+        );
+    }
+
+    public function ensurePrimarySupplierInvited(InventoryOrder $order): void
+    {
+        if (! $order->supplier_id) {
+            return;
+        }
+
+        InventoryRfqSupplier::query()->firstOrCreate(
+            [
+                'inventory_order_id' => $order->id,
+                'supplier_id' => (int) $order->supplier_id,
+            ],
+            ['invited_at' => now()]
+        );
     }
 
     public function createOrUpdateFromRfq(
@@ -51,18 +129,29 @@ class InventorySupplierQuotationService
             ]);
         }
 
+        $this->ensurePrimarySupplierInvited($order);
+
         $supplierId = $supplierId ?? (int) $order->supplier_id;
 
         if (! $supplierId) {
             throw ValidationException::withMessages([
-                'supplier_id' => 'This RFQ has no supplier assigned.',
+                'supplier_id' => 'Select a supplier for this quotation.',
             ]);
         }
 
-        if ((int) $order->supplier_id !== (int) $supplierId) {
+        $invited = InventoryRfqSupplier::query()
+            ->where('inventory_order_id', $order->id)
+            ->where('supplier_id', $supplierId)
+            ->exists();
+
+        if (! $invited && (int) $order->supplier_id !== (int) $supplierId) {
             throw ValidationException::withMessages([
-                'supplier_id' => 'Quotations must be recorded for the RFQ supplier.',
+                'supplier_id' => 'Invite this supplier to the RFQ before recording their quotation.',
             ]);
+        }
+
+        if (! $invited) {
+            $this->ensurePrimarySupplierInvited($order);
         }
 
         return DB::transaction(function () use ($order, $supplierId, $user, $lineInputs, $referenceNumber, $notes) {
@@ -89,6 +178,7 @@ class InventorySupplierQuotationService
 
             $quotation->lines()->delete();
             $total = 0.0;
+            $order->loadMissing('lines');
 
             foreach ($lineInputs as $input) {
                 $orderLineId = (int) ($input['inventory_order_line_id'] ?? 0);
@@ -121,8 +211,86 @@ class InventorySupplierQuotationService
 
             $quotation->update(['total_amount' => round($total, 2)]);
 
+            InventoryProcurementAudit::log(
+                'quotation_recorded',
+                $quotation,
+                'Quotation recorded for '.$quotation->supplier?->name.' on '.$order->order_number,
+                why: 'Supplier quotation entered for comparative analysis',
+                newValues: ['total_amount' => $quotation->total_amount],
+            );
+
             return $quotation->fresh(['lines.item', 'supplier', 'purchaseOrder']);
         });
+    }
+
+    /**
+     * Side-by-side comparison rows for the computation sheet.
+     *
+     * @return array{lines: list<array<string, mixed>>, suppliers: list<array<string, mixed>>}
+     */
+    public function comparisonSheet(InventoryOrder $order): array
+    {
+        $order->loadMissing(['lines.item', 'supplierQuotations.lines', 'supplierQuotations.supplier']);
+
+        $quotations = $order->supplierQuotations
+            ->filter(fn (InventorySupplierQuotation $q) => in_array($q->status, [
+                InventorySupplierQuotation::STATUS_RECEIVED,
+                InventorySupplierQuotation::STATUS_ACCEPTED,
+                InventorySupplierQuotation::STATUS_REJECTED,
+            ], true))
+            ->values();
+
+        $suppliers = $quotations->map(fn (InventorySupplierQuotation $q) => [
+            'quotation_id' => $q->id,
+            'supplier_id' => $q->supplier_id,
+            'supplier_name' => $q->supplier?->name ?? '—',
+            'status' => $q->status,
+            'status_label' => $q->statusLabel(),
+            'total_amount' => (float) $q->total_amount,
+            'can_accept' => $q->canAccept(),
+            'is_accepted' => $q->isAccepted(),
+            'has_lpo' => (bool) $q->purchaseOrder,
+        ])->all();
+
+        $lines = [];
+
+        foreach ($order->lines as $orderLine) {
+            $bySupplier = [];
+            $bestPrice = null;
+            $bestSupplierId = null;
+
+            foreach ($quotations as $quotation) {
+                $qLine = $quotation->lines->firstWhere('inventory_order_line_id', $orderLine->id);
+                $unitPrice = $qLine ? (float) $qLine->unit_price : null;
+                $qty = $qLine ? (float) $qLine->quoted_quantity_suom : null;
+                $lineTotal = $qLine ? (float) $qLine->line_total : null;
+
+                $bySupplier[$quotation->supplier_id] = [
+                    'unit_price' => $unitPrice,
+                    'quoted_qty' => $qty,
+                    'line_total' => $lineTotal,
+                ];
+
+                if ($unitPrice !== null && $unitPrice > 0 && ($bestPrice === null || $unitPrice < $bestPrice)) {
+                    $bestPrice = $unitPrice;
+                    $bestSupplierId = (int) $quotation->supplier_id;
+                }
+            }
+
+            $lines[] = [
+                'item_name' => $orderLine->item?->name ?? '—',
+                'item_code' => $orderLine->item?->code,
+                'rfq_qty' => (float) $orderLine->order_quantity_suom,
+                'quotes' => $bySupplier,
+                'best_supplier_id' => $bestSupplierId,
+                'best_unit_price' => $bestPrice,
+            ];
+        }
+
+        return [
+            'suppliers' => $suppliers,
+            'lines' => $lines,
+        ];
     }
 
     public function accept(InventorySupplierQuotation $quotation): InventorySupplierQuotation
@@ -134,6 +302,18 @@ class InventorySupplierQuotationService
         }
 
         $quotation->update(['status' => InventorySupplierQuotation::STATUS_ACCEPTED]);
+
+        InventoryProcurementAudit::log(
+            'quotation_accepted',
+            $quotation,
+            'Supplier quotation accepted for '.$quotation->inventoryOrder?->order_number,
+            why: 'Admin finalized supplier selection (may accept multiple suppliers for LPO split)',
+            newValues: [
+                'status' => $quotation->status,
+                'supplier_id' => $quotation->supplier_id,
+                'total_amount' => $quotation->total_amount,
+            ],
+        );
 
         return $quotation->fresh(['lines.item', 'supplier', 'purchaseOrder']);
     }
@@ -147,6 +327,17 @@ class InventorySupplierQuotationService
         }
 
         $quotation->update(['status' => InventorySupplierQuotation::STATUS_REJECTED]);
+
+        InventoryProcurementAudit::log(
+            'quotation_rejected',
+            $quotation,
+            'Supplier quotation rejected for '.$quotation->inventoryOrder?->order_number,
+            why: 'Admin rejected this quotation',
+            newValues: [
+                'status' => $quotation->status,
+                'supplier_id' => $quotation->supplier_id,
+            ],
+        );
 
         return $quotation->fresh(['lines.item', 'supplier']);
     }

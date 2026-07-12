@@ -14,6 +14,7 @@ class InventoryStockLevel extends Model
         'store_id',
         'item_id',
         'quantity_suom',
+        'quantity_in_transit_suom',
         'physical_quantity_suom',
         'physical_counted_at',
         'damaged_quantity_suom',
@@ -33,6 +34,7 @@ class InventoryStockLevel extends Model
 
     protected $casts = [
         'quantity_suom' => 'decimal:4',
+        'quantity_in_transit_suom' => 'decimal:4',
         'physical_quantity_suom' => 'decimal:4',
         'physical_counted_at' => 'datetime',
         'damaged_quantity_suom' => 'decimal:4',

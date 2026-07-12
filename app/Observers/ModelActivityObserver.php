@@ -78,7 +78,10 @@ class ModelActivityObserver
     protected function getModelIdentifier(Model $model): ?string
     {
         // Try common identifier fields
-        $identifierFields = ['name', 'title', 'email', 'username', 'invoice_number', 'tracking_number'];
+        $identifierFields = [
+            'name', 'title', 'email', 'username', 'invoice_number', 'tracking_number',
+            'order_number', 'po_number', 'quotation_number', 'reference_number', 'grn_number', 'transfer_number',
+        ];
         
         foreach ($identifierFields as $field) {
             if (isset($model->$field) && !empty($model->$field)) {

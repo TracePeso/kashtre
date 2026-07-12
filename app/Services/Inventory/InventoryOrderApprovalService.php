@@ -2,17 +2,19 @@
 
 namespace App\Services\Inventory;
 
-use App\Models\GoodsReceivedNote;
 use App\Models\InventoryModuleConfig;
 use App\Models\InventoryOrder;
 use App\Models\InventoryOrderApproval;
-use App\Models\InventoryOrderLine;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class InventoryOrderApprovalService
 {
+    public function __construct(
+        private readonly InventoryProcurementNotificationService $notifications,
+    ) {}
+
     public function submit(InventoryOrder $order, User $user): InventoryOrder
     {
         if (! $order->isDraft()) {
@@ -58,13 +60,13 @@ class InventoryOrderApprovalService
 
         if ($approvers->isEmpty()) {
             throw ValidationException::withMessages([
-                'approvers' => 'No goods receive note approvers are configured. Set them under Inventory → Goods receive note approvers.',
+                'approvers' => 'No inventory approvers are configured. Set them under Inventory → Goods receive note approvers (the same people approve RFQs / internal orders).',
             ]);
         }
 
         $firstApprovalOrder = (int) $approvers->min('approval_order');
 
-        return DB::transaction(function () use ($order, $user, $approvers, $firstApprovalOrder) {
+        $order = DB::transaction(function () use ($order, $user, $approvers, $firstApprovalOrder) {
             if ($order->isExternal()) {
                 app(InventoryOrderService::class)->refreshRfqDocument($order);
             }
@@ -89,15 +91,30 @@ class InventoryOrderApprovalService
                 ]);
             }
 
-            return $order->fresh(['lines.item', 'approvals.approver', 'store']);
+            return $order->fresh(['lines.item', 'approvals.approver', 'store', 'supplier', 'createdBy', 'business', 'sourceStore']);
         });
+
+        InventoryProcurementAudit::log(
+            'submitted_for_approval',
+            $order,
+            ($order->isInternal() ? 'Internal order' : 'RFQ').' '.$order->order_number.' submitted for approval',
+            why: 'Submitted by '.$user->name,
+            newValues: [
+                'status' => $order->status,
+                'approver_count' => $approvers->count(),
+            ],
+        );
+
+        $this->notifications->notifySubmitted($order);
+
+        return $order;
     }
 
     public function approve(InventoryOrder $order, User $user, ?string $comment = null): InventoryOrder
     {
         if (! $order->isPendingApproval()) {
             throw ValidationException::withMessages([
-                'status' => 'This RFQ is not awaiting approval.',
+                'status' => 'This order is not awaiting approval.',
             ]);
         }
 
@@ -109,7 +126,7 @@ class InventoryOrderApprovalService
             ]);
         }
 
-        return DB::transaction(function () use ($order, $user, $pending, $comment) {
+        $result = DB::transaction(function () use ($order, $user, $pending, $comment) {
             $pending->update([
                 'status' => InventoryOrderApproval::STATUS_APPROVED,
                 'comment' => $comment,
@@ -124,26 +141,54 @@ class InventoryOrderApprovalService
             if ($nextPending) {
                 $order->update(['current_approval_order' => $nextPending->approval_order]);
 
-                return $order->fresh(['lines.item', 'approvals.approver', 'store']);
+                return [
+                    'order' => $order->fresh(['lines.item', 'approvals.approver', 'store', 'supplier', 'createdBy', 'business', 'sourceStore']),
+                    'fully_approved' => false,
+                ];
             }
 
-            $finalStatus = InventoryOrder::STATUS_APPROVED;
-
             $order->update([
-                'status' => $finalStatus,
+                'status' => InventoryOrder::STATUS_APPROVED,
                 'approved_at' => now(),
                 'current_approval_order' => null,
             ]);
 
-            return $order->fresh(['lines.item', 'approvals.approver', 'store']);
+            return [
+                'order' => $order->fresh(['lines.item', 'approvals.approver', 'store', 'supplier', 'createdBy', 'business', 'sourceStore']),
+                'fully_approved' => true,
+            ];
         });
+
+        /** @var InventoryOrder $fresh */
+        $fresh = $result['order'];
+        $fullyApproved = (bool) $result['fully_approved'];
+
+        InventoryProcurementAudit::log(
+            $fullyApproved ? 'fully_approved' : 'step_approved',
+            $fresh,
+            ($fresh->isInternal() ? 'Internal order' : 'RFQ').' '.$fresh->order_number.
+                ($fullyApproved ? ' fully approved' : ' step '.$pending->approval_order.' approved'),
+            why: $comment,
+            newValues: [
+                'status' => $fresh->status,
+                'approval_order' => $pending->approval_order,
+            ],
+        );
+
+        if ($fullyApproved) {
+            $this->notifications->notifyFullyApproved($fresh, $user);
+        } else {
+            $this->notifications->notifyNextApprover($fresh);
+        }
+
+        return $fresh;
     }
 
     public function reject(InventoryOrder $order, User $user, string $reason): InventoryOrder
     {
         if (! $order->isPendingApproval()) {
             throw ValidationException::withMessages([
-                'status' => 'This RFQ is not awaiting approval.',
+                'status' => 'This order is not awaiting approval.',
             ]);
         }
 
@@ -155,7 +200,7 @@ class InventoryOrderApprovalService
             ]);
         }
 
-        return DB::transaction(function () use ($order, $user, $pending, $reason) {
+        $order = DB::transaction(function () use ($order, $pending, $reason) {
             $pending->update([
                 'status' => InventoryOrderApproval::STATUS_REJECTED,
                 'comment' => $reason,
@@ -168,8 +213,18 @@ class InventoryOrderApprovalService
                 'current_approval_order' => null,
             ]);
 
-            return $order->fresh(['lines.item', 'approvals.approver', 'store']);
+            return $order->fresh(['lines.item', 'approvals.approver', 'store', 'supplier', 'createdBy', 'business']);
         });
+
+        InventoryProcurementAudit::log(
+            'rejected',
+            $order,
+            ($order->isInternal() ? 'Internal order' : 'RFQ').' '.$order->order_number.' rejected',
+            why: $reason,
+            newValues: ['status' => $order->status],
+        );
+
+        return $order;
     }
 
     public function userCanApprove(InventoryOrder $order, User $user): bool

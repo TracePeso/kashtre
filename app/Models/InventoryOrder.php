@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class InventoryOrder extends Model
@@ -137,6 +138,18 @@ class InventoryOrder extends Model
     public function supplierQuotations(): HasMany
     {
         return $this->hasMany(InventorySupplierQuotation::class);
+    }
+
+    public function rfqSuppliers(): HasMany
+    {
+        return $this->hasMany(InventoryRfqSupplier::class);
+    }
+
+    public function invitedSuppliers(): BelongsToMany
+    {
+        return $this->belongsToMany(Supplier::class, 'inventory_rfq_suppliers')
+            ->withPivot(['invited_at', 'rfq_sent_at'])
+            ->withTimestamps();
     }
 
     public function purchaseOrders(): HasMany
@@ -319,10 +332,6 @@ class InventoryOrder extends Model
 
     public function effectiveAmountCap(): ?float
     {
-        if ($this->budget_mode === self::BUDGET_MODE_AMOUNT && (float) ($this->budget_value ?? 0) > 0) {
-            return (float) $this->budget_value;
-        }
-
         if ((float) ($this->initial_order_total ?? 0) > 0) {
             return (float) $this->initial_order_total;
         }
@@ -338,12 +347,8 @@ class InventoryOrder extends Model
 
     public function orderingMethodLabel(): string
     {
-        if ($this->budget_mode === self::BUDGET_MODE_DAYS) {
-            return 'Budget · stock days';
-        }
-
-        if ($this->budget_mode === self::BUDGET_MODE_AMOUNT) {
-            return 'Budget · amount';
+        if (in_array($this->budget_mode, [self::BUDGET_MODE_DAYS, self::BUDGET_MODE_AMOUNT], true)) {
+            return 'Budget';
         }
 
         return 'Period (days)';
@@ -351,11 +356,7 @@ class InventoryOrder extends Model
 
     public function orderingTypeLabel(): string
     {
-        if ($this->budget_mode === self::BUDGET_MODE_DAYS) {
-            return 'By budget · Stock days';
-        }
-
-        if ($this->budget_mode === self::BUDGET_MODE_AMOUNT) {
+        if (in_array($this->budget_mode, [self::BUDGET_MODE_DAYS, self::BUDGET_MODE_AMOUNT], true)) {
             return 'By budget';
         }
 
@@ -364,12 +365,19 @@ class InventoryOrder extends Model
 
     public function orderingTypeValueLabel(): string
     {
-        if ($this->budget_mode === self::BUDGET_MODE_DAYS) {
-            return number_format((float) ($this->budget_value ?? 0), 0).' stock-days';
+        if ($this->budget_mode === self::BUDGET_MODE_AMOUNT) {
+            $ugx = number_format((float) ($this->budget_value ?? 0), 2);
+            $poolDays = (float) ($this->period_of_order_days ?? 0);
+
+            if ($poolDays > 0) {
+                return 'UGX '.$ugx.' · ~'.number_format($poolDays, 1).' day pool (15×BA7÷ΣAH)';
+            }
+
+            return 'UGX '.$ugx;
         }
 
-        if ($this->budget_mode === self::BUDGET_MODE_AMOUNT) {
-            return 'UGX '.number_format((float) ($this->budget_value ?? 0), 0).' budget cap';
+        if ($this->budget_mode === self::BUDGET_MODE_DAYS) {
+            return number_format((float) ($this->budget_value ?? 0), 0).' days budget';
         }
 
         return number_format((float) ($this->period_of_order_days ?? 0), 0).' day period';

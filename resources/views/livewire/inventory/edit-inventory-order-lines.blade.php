@@ -1,7 +1,7 @@
 <div class="w-full min-w-0">
     @php
         $amountCap = $order->effectiveAmountCap();
-        $isAmountBudgetCap = $order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT && (float) ($order->budget_value ?? 0) > 0;
+        $isAmountBudgetCap = false;
     @endphp
     @if($order->isDraft() && $order->isExternal())
         <div class="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
@@ -101,6 +101,10 @@
             @elseif($order->canReceiveGoods())
                 · Use <strong>Receive goods</strong> to record deliveries against this order
             @endif
+            ·
+            <a href="{{ route('inventory.orders.calculations', $order) }}" class="font-medium text-indigo-600 hover:text-indigo-800">
+                View calculation
+            </a>
         </p>
         <div class="text-right">
             <p class="text-sm font-semibold text-gray-900">

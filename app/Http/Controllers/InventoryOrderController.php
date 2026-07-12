@@ -68,10 +68,6 @@ class InventoryOrderController extends Controller
                     'parent_id' => $store->parent_id,
                 ])
                 ->values(),
-            'suppliers' => Supplier::query()
-                ->where('business_id', $businessId)
-                ->orderBy('name')
-                ->get(['id', 'name']),
             'items' => Item::query()
                 ->where('business_id', $businessId)
                 ->where('type', 'good')
@@ -101,7 +97,7 @@ class InventoryOrderController extends Controller
             'order_type' => 'required|in:external,internal',
             'store_id' => 'required|exists:stores,id',
             'source_store_id' => 'nullable|required_if:order_type,internal|exists:stores,id|different:store_id',
-            'supplier_id' => 'nullable|required_if:order_type,external|exists:suppliers,id',
+            'supplier_id' => 'nullable|exists:suppliers,id',
             'ordering_approach' => 'nullable|in:period,budget',
             'importance_filter' => array_merge(
                 ['nullable', 'string', 'max:64'],
@@ -132,7 +128,7 @@ class InventoryOrderController extends Controller
                     'budget_value' => 'required|numeric|min:1',
                 ],
                 [
-                    'budget_value.required' => 'Enter the budget amount (UGX).',
+                    'budget_value.required' => 'Enter the budget (UGX).',
                 ]
             )->validate();
 
@@ -180,7 +176,7 @@ class InventoryOrderController extends Controller
                         'source_store_id' => 'Internal orders can only be placed between a store and its parent distribution store (or between two root stores). Child stores cannot order directly from sibling stores.',
                     ]);
             }
-        } else {
+        } elseif (! empty($validated['supplier_id'])) {
             Supplier::query()
                 ->where('business_id', $businessId)
                 ->whereKey($validated['supplier_id'])
@@ -234,7 +230,9 @@ class InventoryOrderController extends Controller
             isset($validated['buffer_stock_days']) ? (int) $validated['buffer_stock_days'] : null,
             isset($validated['notification_to_order_days']) ? (int) $validated['notification_to_order_days'] : null,
             $itemIds,
-            $validated['order_type'] === InventoryOrder::TYPE_EXTERNAL ? (int) $validated['supplier_id'] : null,
+            $validated['order_type'] === InventoryOrder::TYPE_EXTERNAL && ! empty($validated['supplier_id'])
+                ? (int) $validated['supplier_id']
+                : null,
             $validated['order_type'],
             $validated['order_type'] === InventoryOrder::TYPE_INTERNAL ? (int) $validated['source_store_id'] : null,
         );
@@ -263,6 +261,16 @@ class InventoryOrderController extends Controller
         }
 
         return $this->pdfService->rfqPdf($order)->download($order->order_number.'.pdf');
+    }
+
+    public function calculations(InventoryOrder $order)
+    {
+        $this->authorizeOrder($order);
+
+        $order->load(['lines.item.itemUnit', 'store', 'sourceStore', 'supplier']);
+        $breakdown = $this->service->calculationBreakdown($order);
+
+        return view('inventory.orders.calculations', compact('order', 'breakdown'));
     }
 
     public function show(InventoryOrder $order)
@@ -343,7 +351,7 @@ class InventoryOrderController extends Controller
         if ($order->isInternal() && $order->isAwaitingInternalFulfillment()) {
             $message = 'Internal order approved. Create a stock transfer to issue stock.';
         } elseif ($order->isRfqApproved()) {
-            $message = 'RFQ approved. Record supplier quotations, then generate LPOs.';
+            $message = 'RFQ approved. Invite suppliers and open Quotation analysis to compare quotes, then generate LPOs.';
         } elseif ($order->isPendingApproval()) {
             $message = 'Approval recorded. Awaiting next approver.';
         } else {
@@ -478,8 +486,8 @@ class InventoryOrderController extends Controller
                 },
             ],
             [
-                'budget_value.max' => 'Stock-days budget cannot exceed 366 days. Switch to Amount (UGX) if you meant a money cap.',
-                'budget_value.integer' => 'Stock-days budget must be a whole number of days.',
+                'budget_value.max' => 'Budget days cannot exceed 366.',
+                'budget_value.integer' => 'Budget days must be a whole number.',
             ]
         )->validate();
     }

@@ -64,7 +64,12 @@ class ListBusiness extends Component implements HasForms, HasTable
 
                 Tables\Columns\TextColumn::make('account_number')
                     ->searchable(),
-                
+                Tables\Columns\TextColumn::make('entity_code')
+                    ->label('Entity code')
+                    ->placeholder('—')
+                    ->searchable()
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
@@ -90,6 +95,38 @@ class ListBusiness extends Component implements HasForms, HasTable
 
             ])
             ->actions([
+                Tables\Actions\Action::make('entity_code')
+                    ->label('Entity code')
+                    ->modalHeading('Procurement entity code')
+                    ->modalDescription('Used as the prefix on LPO numbers (e.g. KCH-LPO-20260712-001).')
+                    ->modalSubmitActionLabel('Save')
+                    ->fillForm(fn (Business $record): array => [
+                        'entity_code' => $record->entity_code,
+                    ])
+                    ->form([
+                        \Filament\Forms\Components\TextInput::make('entity_code')
+                            ->label('Entity code')
+                            ->maxLength(16)
+                            ->helperText('Letters and numbers only; stored uppercase.'),
+                    ])
+                    ->action(function (Business $record, array $data): void {
+                        if (! (Auth::user()->business_id === 1 || $record->id === Auth::user()->business_id)) {
+                            abort(403, 'Unauthorized action.');
+                        }
+
+                        $raw = preg_replace('/[^A-Za-z0-9]/', '', (string) ($data['entity_code'] ?? '')) ?? '';
+                        $code = strtoupper($raw);
+                        $record->update(['entity_code' => $code !== '' ? $code : null]);
+
+                        Notification::make()
+                            ->title('Entity code saved')
+                            ->success()
+                            ->body($code !== '' ? "LPO numbers will use prefix {$code}-" : 'Entity code cleared; LPO numbers use the default LPO- prefix.')
+                            ->send();
+                    })
+                    ->icon('heroicon-o-building-office-2')
+                    ->color('gray')
+                    ->visible(fn (Business $record): bool => Auth::user()->business_id === 1 || $record->id === Auth::user()->business_id),
 
                 Tables\Actions\Action::make('update_logo')
                     ->label('Update Logo')

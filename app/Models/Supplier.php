@@ -17,6 +17,8 @@ class Supplier extends Model
         'uuid',
         'business_id',
         'name',
+        'email',
+        'phone',
         'description',
     ];
 

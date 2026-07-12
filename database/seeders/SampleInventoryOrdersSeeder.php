@@ -102,7 +102,7 @@ class SampleInventoryOrdersSeeder extends Seeder
                 'peak_increase' => [],
             ],
             [
-                'label' => 'Essential · budget stock-days (60)',
+                'label' => 'Essential · budget days (60)',
                 'importance' => Item::IMPORTANCE_ESSENTIAL,
                 'budget_mode' => InventoryOrder::BUDGET_MODE_DAYS,
                 'budget_value' => 60,
@@ -111,10 +111,10 @@ class SampleInventoryOrdersSeeder extends Seeder
                 'peak_increase' => [],
             ],
             [
-                'label' => 'All items · budget amount (UGX 500,000)',
+                'label' => 'All items · budget days (90)',
                 'importance' => null,
-                'budget_mode' => InventoryOrder::BUDGET_MODE_AMOUNT,
-                'budget_value' => 500000,
+                'budget_mode' => InventoryOrder::BUDGET_MODE_DAYS,
+                'budget_value' => 90,
                 'period' => 30,
                 'peak' => 0,
                 'peak_increase' => [],

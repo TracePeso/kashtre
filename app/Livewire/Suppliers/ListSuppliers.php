@@ -42,6 +42,15 @@ class ListSuppliers extends Component implements HasForms, HasTable
             ->columns([
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
+                Tables\Columns\TextColumn::make('email')
+                    ->label('Email')
+                    ->placeholder('—')
+                    ->searchable()
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('phone')
+                    ->label('Phone')
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('description')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('items_count')
@@ -144,6 +153,15 @@ class ListSuppliers extends Component implements HasForms, HasTable
             Forms\Components\TextInput::make('name')
                 ->label('Supplier Name')
                 ->required(),
+            Forms\Components\TextInput::make('email')
+                ->label('Email')
+                ->email()
+                ->nullable()
+                ->helperText('Used to send RFQs and LPOs electronically.'),
+            Forms\Components\TextInput::make('phone')
+                ->label('Phone')
+                ->tel()
+                ->nullable(),
             Forms\Components\Textarea::make('description')
                 ->label('Description')
                 ->nullable(),

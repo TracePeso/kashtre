@@ -87,6 +87,9 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
                 Action::make('view')
                     ->label('Open')
                     ->url(fn (InventoryOrder $record): string => route('inventory.orders.show', $record)),
+                Action::make('calculations')
+                    ->label('View calculation')
+                    ->url(fn (InventoryOrder $record): string => route('inventory.orders.calculations', $record)),
             ])
             ->defaultSort('created_at', 'desc')
             ->striped()

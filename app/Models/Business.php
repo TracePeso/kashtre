@@ -26,6 +26,7 @@ class Business extends Model
         'minimum_amount',
         'type',
         'account_number',
+        'entity_code',
         'account_balance',
         'mode',
         'date',

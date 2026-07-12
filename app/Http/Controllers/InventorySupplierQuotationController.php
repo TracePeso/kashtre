@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\RequiresInventoryModule;
 use App\Models\InventoryOrder;
 use App\Models\InventorySupplierQuotation;
+use App\Models\Supplier;
 use App\Services\Inventory\InventorySupplierQuotationService;
 use App\Support\InventoryBusinessContext;
 use Illuminate\Http\Request;
@@ -18,6 +19,63 @@ class InventorySupplierQuotationController extends Controller
         private readonly InventorySupplierQuotationService $service,
     ) {
         $this->middleware($this->inventoryMiddleware(...));
+    }
+
+    public function invite(Request $request, InventoryOrder $order)
+    {
+        $this->authorizeOrder($order);
+
+        $validated = $request->validate([
+            'supplier_ids' => 'required|array|min:1',
+            'supplier_ids.*' => 'integer|exists:suppliers,id',
+        ]);
+
+        try {
+            $this->service->inviteSuppliers($order, $validated['supplier_ids']);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withInput()->withErrors($e->errors());
+        }
+
+        if ($order->isRfqApproved() && $order->isExternal()) {
+            app(\App\Services\Inventory\InventoryProcurementNotificationService::class)
+                ->sendRfqToAllInvitedSuppliers($order->fresh());
+        }
+
+        return redirect()
+            ->route('inventory.orders.quotations.compare', $order)
+            ->with('success', 'Suppliers invited to this RFQ.'.($order->isRfqApproved() ? ' RFQ PDF emailed where supplier emails are set.' : ''));
+    }
+
+    public function compare(InventoryOrder $order)
+    {
+        $this->authorizeOrder($order);
+
+        if (! $order->isExternal()) {
+            abort(404);
+        }
+
+        $order->load([
+            'lines.item',
+            'supplierQuotations.supplier',
+            'supplierQuotations.purchaseOrder',
+            'invitedSuppliers',
+            'supplier',
+        ]);
+
+        $this->service->ensurePrimarySupplierInvited($order);
+
+        $sheet = $this->service->comparisonSheet($order);
+        $availableSuppliers = Supplier::query()
+            ->where('business_id', $order->business_id)
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+
+        return view('inventory.orders.quotations-compare', [
+            'order' => $order,
+            'sheet' => $sheet,
+            'availableSuppliers' => $availableSuppliers,
+            'rfqSuppliers' => $this->service->suppliersForRfq($order->fresh(['invitedSuppliers', 'supplierQuotations.lines', 'lines', 'supplier'])),
+        ]);
     }
 
     public function store(Request $request, InventoryOrder $order)
@@ -48,7 +106,7 @@ class InventorySupplierQuotationController extends Controller
         }
 
         return redirect()
-            ->route('inventory.orders.show', $order)
+            ->route('inventory.orders.quotations.compare', $order)
             ->with('success', 'Supplier quotation recorded for '.$quotation->supplier?->name.'.');
     }
 
@@ -63,8 +121,8 @@ class InventorySupplierQuotationController extends Controller
         }
 
         return redirect()
-            ->route('inventory.orders.show', $quotation->inventoryOrder)
-            ->with('success', 'Supplier quotation accepted. You can now generate an LPO.');
+            ->route('inventory.orders.quotations.compare', $quotation->inventoryOrder)
+            ->with('success', 'Supplier quotation accepted. Generate an LPO when ready.');
     }
 
     public function reject(InventorySupplierQuotation $quotation)
@@ -78,7 +136,7 @@ class InventorySupplierQuotationController extends Controller
         }
 
         return redirect()
-            ->route('inventory.orders.show', $quotation->inventoryOrder)
+            ->route('inventory.orders.quotations.compare', $quotation->inventoryOrder)
             ->with('success', 'Supplier quotation rejected.');
     }
 

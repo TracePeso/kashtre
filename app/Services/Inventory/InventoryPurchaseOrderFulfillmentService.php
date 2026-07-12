@@ -87,6 +87,7 @@ class InventoryPurchaseOrderFulfillmentService
                 'inventory_order_line_id' => $line->inventory_order_line_id,
                 'item_id' => $line->item_id,
                 'quantity' => $duomQty,
+                'ordered_quantity' => $duomQty,
                 'batch_number' => '',
                 'expiry_date' => '',
                 'duom' => $item->orderUnit?->name ?? $item->itemUnit?->name ?? '',

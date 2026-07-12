@@ -28,8 +28,7 @@
                     <span @class([
                         'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
                         'bg-blue-100 text-blue-800' => ! $order->budget_mode,
-                        'bg-violet-100 text-violet-800' => $order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_DAYS,
-                        'bg-emerald-100 text-emerald-800' => $order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT,
+                        'bg-violet-100 text-violet-800' => (bool) $order->budget_mode,
                     ])>
                         {{ $order->orderingTypeLabel() }}
                     </span>
@@ -48,6 +47,10 @@
             </div>
             @if($order->isDraft())
                 <div class="mt-4 md:mt-0 flex flex-wrap gap-2">
+                    <a href="{{ route('inventory.orders.calculations', $order) }}"
+                       class="inline-flex items-center px-4 py-2 border border-indigo-300 rounded-md shadow-sm text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100">
+                        View calculation
+                    </a>
                     @if($order->isExternal())
                         @if($order->hasRfqDocument())
                             <a href="{{ $order->rfqDocumentUrl() }}"
@@ -78,6 +81,10 @@
                 </div>
             @else
                 <div class="mt-4 md:mt-0 flex flex-wrap gap-2">
+                    <a href="{{ route('inventory.orders.calculations', $order) }}"
+                       class="inline-flex items-center px-4 py-2 border border-indigo-300 rounded-md shadow-sm text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100">
+                        View calculation
+                    </a>
                     @if($order->isExternal())
                         @if($order->hasRfqDocument())
                             <a href="{{ $order->rfqDocumentUrl() }}"
@@ -102,6 +109,19 @@
         </div>
 
         @include('inventory.partials.subnav')
+
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3">
+            <div class="min-w-0">
+                <p class="text-sm font-medium text-indigo-950">Order calculation</p>
+                <p class="text-xs text-indigo-800 mt-0.5">
+                    See the full formula and how each line quantity was calculated (M, V/AA, N, AF, totals).
+                </p>
+            </div>
+            <a href="{{ route('inventory.orders.calculations', $order) }}"
+               class="shrink-0 inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
+                View calculation
+            </a>
+        </div>
 
         @if(session('success'))
             <div class="mt-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">{{ session('success') }}</div>
@@ -258,9 +278,9 @@
                     <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Budget</p>
                     <p class="mt-1 text-sm font-semibold text-gray-900 tabular-nums">
                         @if($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_DAYS)
-                            {{ number_format($budgetCap, 0) }} days
+                            {{ number_format((float) ($order->budget_value ?? 0), 0) }} days
                         @elseif($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT)
-                            UGX {{ number_format($budgetCap, 0) }}
+                            UGX {{ number_format((float) ($order->budget_value ?? 0), 2) }}
                         @elseif($amountCap !== null && $amountCap > 0)
                             UGX {{ number_format($amountCap, 0) }}
                         @else
@@ -268,13 +288,18 @@
                         @endif
                     </p>
                     <p class="text-xs text-gray-500 mt-0.5">
-                        @if($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT)
-                            UGX {{ number_format($orderTotal, 0) }} of cap
+                        @if($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_DAYS)
+                            Budget days (AH→AL)
+                        @elseif($order->budget_mode === \App\Models\InventoryOrder::BUDGET_MODE_AMOUNT)
+                            @if((float) ($order->period_of_order_days ?? 0) > 0)
+                                ~{{ number_format((float) $order->period_of_order_days, 1) }} day pool (AH→AL)
+                            @else
+                                Budget UGX (AH→AL)
+                            @endif
+                            · UGX {{ number_format($orderTotal, 0) }} ordered
                             @if($order->isDraft())
                                 · Cap {{ $budgetCapEnforced ? 'on' : 'off' }}
                             @endif
-                        @elseif($order->budget_mode)
-                            Applied at generation
                         @elseif($amountCap !== null && $amountCap > 0)
                             UGX {{ number_format($orderTotal, 0) }} of generated total
                             @if($order->isDraft())
@@ -346,10 +371,18 @@
             </div>
         @endif
 
-        @if($order->canManageSupplierQuotations() && $order->supplier_id)
+        @if($order->canManageSupplierQuotations())
             <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6">
-                <h3 class="text-sm font-semibold text-gray-900">Supplier quotation</h3>
-                <p class="text-xs text-gray-500 mt-0.5">Record the quote from {{ $order->supplier?->name }}, accept it, then generate an LPO.</p>
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-900">Quotations &amp; supplier selection</h3>
+                        <p class="text-xs text-gray-500 mt-0.5">Invite suppliers, compare quotes, accept, then split into LPOs.</p>
+                    </div>
+                    <a href="{{ route('inventory.orders.quotations.compare', $order) }}"
+                       class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium text-white bg-violet-600 hover:bg-violet-700">
+                        Open quotation analysis
+                    </a>
+                </div>
                 <div class="mt-4">
                     @include('inventory.orders.partials.supplier-quotation-card', ['order' => $order])
                 </div>

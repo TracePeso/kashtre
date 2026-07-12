@@ -15,6 +15,11 @@ use App\Services\EmergencyAlertService;
 
 // Import models and observers
 use App\Models\User;
+use App\Models\InventoryOrder;
+use App\Models\InventoryPurchaseOrder;
+use App\Models\InventorySupplierQuotation;
+use App\Models\GoodsReceivedNote;
+use App\Models\StockTransfer;
 use App\Observers\ModelActivityObserver;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\View;
@@ -103,5 +108,10 @@ class AppServiceProvider extends ServiceProvider
          User::observe(ModelActivityObserver::class);
          Business::observe(ModelActivityObserver::class);
          Transaction::observe(ModelActivityObserver::class);
+         InventoryOrder::observe(ModelActivityObserver::class);
+         InventoryPurchaseOrder::observe(ModelActivityObserver::class);
+         InventorySupplierQuotation::observe(ModelActivityObserver::class);
+         GoodsReceivedNote::observe(ModelActivityObserver::class);
+         StockTransfer::observe(ModelActivityObserver::class);
     }
 }

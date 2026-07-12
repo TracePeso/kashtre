@@ -66,7 +66,21 @@ class InventoryPurchaseOrderService
 
             $po->update(['total_amount' => round($total, 2)]);
 
-            return $po->fresh(['lines.item', 'supplier', 'store', 'inventoryOrder', 'supplierQuotation']);
+            $po = $po->fresh(['lines.item', 'supplier', 'store', 'inventoryOrder', 'supplierQuotation']);
+
+            InventoryProcurementAudit::log(
+                'lpo_created',
+                $po,
+                'LPO '.$po->po_number.' created from accepted quotation',
+                why: 'Generated from accepted supplier quotation',
+                newValues: [
+                    'status' => $po->status,
+                    'total_amount' => $po->total_amount,
+                    'rfq' => $order?->order_number,
+                ],
+            );
+
+            return $po;
         });
     }
 
@@ -93,6 +107,19 @@ class InventoryPurchaseOrderService
 
             $po = $po->fresh(['lines.item', 'supplier', 'store', 'inventoryOrder.business']);
 
+            InventoryProcurementAudit::log(
+                'lpo_issued',
+                $po,
+                'LPO '.$po->po_number.' issued',
+                why: 'Issued by '.$user->name,
+                newValues: [
+                    'status' => $po->status,
+                    'supplier_id' => $po->supplier_id,
+                    'total_amount' => $po->total_amount,
+                    'rfq' => $po->inventoryOrder?->order_number,
+                ],
+            );
+
             $this->emailIssuedLpo($po);
 
             return $po;
@@ -107,13 +134,9 @@ class InventoryPurchaseOrderService
             ->with('approvers.user')
             ->first();
 
-        if (! $config) {
-            return;
-        }
+        $recipients = $config?->financeNotificationEmailList() ?? [];
 
-        $recipients = $config->financeNotificationEmailList();
-
-        if ((bool) ($config->lpo_email_copy_to_approvers ?? true)) {
+        if ($config && (bool) ($config->lpo_email_copy_to_approvers ?? true)) {
             foreach ($config->approvers as $approver) {
                 if ($approver->user?->email) {
                     $recipients[] = $approver->user->email;
@@ -121,7 +144,14 @@ class InventoryPurchaseOrderService
             }
         }
 
-        $recipients = array_values(array_unique($recipients));
+        $supplierEmail = app(InventoryProcurementNotificationService::class)
+            ->supplierEmailForPurchaseOrder($po);
+
+        if ($supplierEmail) {
+            $recipients[] = $supplierEmail;
+        }
+
+        $recipients = array_values(array_unique(array_filter($recipients)));
 
         if ($recipients === []) {
             return;
@@ -130,7 +160,15 @@ class InventoryPurchaseOrderService
         $pdfContent = $this->pdfService->lpoPdfContent($po);
 
         foreach ($recipients as $email) {
-            Mail::to($email)->send(new InventoryLpoIssuedMail($po, $pdfContent));
+            try {
+                Mail::to($email)->send(new InventoryLpoIssuedMail($po, $pdfContent));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('LPO email failed', [
+                    'email' => $email,
+                    'po' => $po->po_number,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 }

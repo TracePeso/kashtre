@@ -266,15 +266,14 @@ class InventoryStockTransferService
                     continue;
                 }
 
-                $this->adjustStock(
+                $this->completeInTransitReceipt(
                     (int) $transfer->business_id,
+                    (int) $transfer->from_store_id,
                     (int) $transfer->to_store_id,
                     (int) $line->item_id,
                     $qty,
-                    InventoryStockMovement::TYPE_TRANSFER_IN,
                     $transfer,
-                    $user->id,
-                    'Transfer in '.$transfer->reference
+                    $user->id
                 );
             }
 
@@ -285,6 +284,13 @@ class InventoryStockTransferService
             ]);
 
             $this->finalizeLinkedInternalOrder($transfer);
+
+            InventoryProcurementAudit::log(
+                'transfer_received',
+                $transfer,
+                'Transfer '.$transfer->reference.' received — in-transit cleared, destination stock updated',
+                why: 'Requesting store confirmed receipt',
+            );
 
             return $transfer->fresh(['lines.item', 'fromStore', 'toStore', 'inventoryOrder']);
         });
@@ -467,15 +473,15 @@ class InventoryStockTransferService
                 continue;
             }
 
-            $this->adjustStock(
+            // Temporary decrement: leave available stock, hold as in-transit until receipt confirmed.
+            $this->moveToInTransit(
                 (int) $transfer->business_id,
                 (int) $transfer->from_store_id,
                 (int) $line->item_id,
-                -$qty,
-                InventoryStockMovement::TYPE_TRANSFER_OUT,
+                $qty,
                 $transfer,
                 $user->id,
-                'Transfer out '.$transfer->reference
+                'Issued in transit '.$transfer->reference
             );
         }
 
@@ -485,6 +491,89 @@ class InventoryStockTransferService
             'approved_by_user_id' => $user->id,
             'current_approval_order' => null,
         ]);
+    }
+
+    /**
+     * Source available stock ↓, in-transit ↑ (temporary issuance).
+     */
+    private function moveToInTransit(
+        int $businessId,
+        int $storeId,
+        int $itemId,
+        float $qty,
+        StockTransfer $transfer,
+        int $userId,
+        string $label
+    ): void {
+        $stock = InventoryStockLevel::firstOrCreate(
+            [
+                'business_id' => $businessId,
+                'store_id' => $storeId,
+                'item_id' => $itemId,
+            ],
+            ['quantity_suom' => 0, 'physical_quantity_suom' => 0, 'quantity_in_transit_suom' => 0]
+        );
+
+        $before = (float) $stock->quantity_suom;
+
+        if ($before + 0.0001 < $qty) {
+            throw ValidationException::withMessages([
+                'quantity' => 'Insufficient available stock at the dispatch store for this transfer.',
+            ]);
+        }
+
+        $after = $stock->applyOnHandBalance(max(0, round($before - $qty, 4)));
+        $stock->quantity_in_transit_suom = round((float) ($stock->quantity_in_transit_suom ?? 0) + $qty, 4);
+        $stock->save();
+
+        InventoryStockMovement::create([
+            'business_id' => $businessId,
+            'item_id' => $itemId,
+            'store_id' => $storeId,
+            'movement_type' => InventoryStockMovement::TYPE_TRANSFER_OUT,
+            'quantity_delta' => -$qty,
+            'balance_after' => $after,
+            'stock_transfer_id' => $transfer->id,
+            'reference_label' => $label,
+            'recorded_by_user_id' => $userId,
+            'occurred_at' => now(),
+        ]);
+    }
+
+    /**
+     * Complete source decrement (clear in-transit) and credit destination.
+     */
+    private function completeInTransitReceipt(
+        int $businessId,
+        int $fromStoreId,
+        int $toStoreId,
+        int $itemId,
+        float $qty,
+        StockTransfer $transfer,
+        int $userId
+    ): void {
+        $source = InventoryStockLevel::query()
+            ->where('business_id', $businessId)
+            ->where('store_id', $fromStoreId)
+            ->where('item_id', $itemId)
+            ->first();
+
+        if ($source) {
+            $inTransit = (float) ($source->quantity_in_transit_suom ?? 0);
+            $source->quantity_in_transit_suom = max(0, round($inTransit - $qty, 4));
+            $source->save();
+        }
+
+        $this->adjustStock(
+            $businessId,
+            $toStoreId,
+            $itemId,
+            $qty,
+            InventoryStockMovement::TYPE_TRANSFER_IN,
+            $transfer,
+            $userId,
+            'Transfer in '.$transfer->reference
+        );
     }
 
     private function currentPendingApproval(StockTransfer $transfer): ?StockTransferApproval

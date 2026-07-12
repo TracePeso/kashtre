@@ -11,7 +11,7 @@
         th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
         th { background: #f3f4f6; }
         .text-right { text-align: right; }
-        .totals { margin-top: 12px; text-align: right; font-weight: bold; }
+        .note { margin-top: 14px; padding: 10px; background: #f9fafb; border: 1px solid #e5e7eb; font-size: 11px; }
     </style>
 </head>
 <body>
@@ -42,9 +42,8 @@
             <tr>
                 <th>Item</th>
                 <th>Code</th>
-                <th class="text-right">Qty (SUOM)</th>
-                <th class="text-right">Unit price</th>
-                <th class="text-right">Line total</th>
+                <th>SUOM</th>
+                <th class="text-right">Qty requested</th>
             </tr>
         </thead>
         <tbody>
@@ -52,13 +51,15 @@
                 <tr>
                     <td>{{ $line->item?->name }}</td>
                     <td>{{ $line->item?->code }}</td>
+                    <td>{{ $line->item?->itemUnit?->name ?? '—' }}</td>
                     <td class="text-right">{{ number_format((float) $line->order_quantity_suom, 0) }}</td>
-                    <td class="text-right">{{ number_format((float) $line->unit_price, 2) }}</td>
-                    <td class="text-right">{{ number_format((float) $line->line_total, 2) }}</td>
                 </tr>
             @endforeach
         </tbody>
     </table>
-    <p class="totals">Estimated total: UGX {{ number_format($order->orderTotal(), 2) }}</p>
+
+    <p class="note">
+        Pricing is intentionally omitted on this RFQ. Please return your quotation with unit prices and totals for the quantities above.
+    </p>
 </body>
 </html>

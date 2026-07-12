@@ -9,6 +9,7 @@ use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
 use App\Models\InventoryStockMovement;
 use App\Models\User;
+use App\Services\Inventory\InventoryProcurementAudit;
 use App\Services\Inventory\InventoryPurchaseOrderFulfillmentService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -293,8 +294,79 @@ class GoodsReceivedNoteService
         return $pending && (int) $pending->approver_user_id === (int) $user->id;
     }
 
+    public function recordInspection(
+        GoodsReceivedNote $grn,
+        User $user,
+        string $status,
+        ?string $notes = null,
+        array $lineConditions = []
+    ): GoodsReceivedNote {
+        if (! in_array($status, [
+            GoodsReceivedNote::INSPECTION_PASSED,
+            GoodsReceivedNote::INSPECTION_FAILED,
+            GoodsReceivedNote::INSPECTION_PENDING,
+        ], true)) {
+            throw ValidationException::withMessages([
+                'inspection_status' => 'Invalid inspection status.',
+            ]);
+        }
+
+        if (! $grn->isDraft() && ! $grn->isPending()) {
+            throw ValidationException::withMessages([
+                'status' => 'Inspection can only be recorded on draft or pending GRNs.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($grn, $user, $status, $notes, $lineConditions) {
+            $grn->load('lines');
+
+            foreach ($grn->lines as $line) {
+                $ordered = $line->ordered_quantity !== null
+                    ? (float) $line->ordered_quantity
+                    : null;
+                $received = (float) $line->quantity;
+                $variance = $ordered !== null ? round($received - $ordered, 4) : null;
+                $condition = $lineConditions[$line->id] ?? $line->condition_status ?? 'good';
+
+                $line->update([
+                    'variance_quantity' => $variance,
+                    'condition_status' => $condition,
+                ]);
+            }
+
+            $grn->update([
+                'inspection_status' => $status,
+                'inspection_notes' => $notes,
+                'inspected_by_user_id' => $user->id,
+                'inspected_at' => now(),
+                'updated_by' => $user->id,
+            ]);
+
+            InventoryProcurementAudit::log(
+                'grn_inspection',
+                $grn,
+                'GRN '.$grn->grn_number.' inspection '.$status,
+                why: $notes,
+                newValues: [
+                    'inspection_status' => $status,
+                    'has_variance' => $grn->fresh('lines')->hasVariance(),
+                ],
+            );
+
+            return $grn->fresh(['lines', 'inspectedBy', 'approvals.approver']);
+        });
+    }
+
     private function finalizeApproval(GoodsReceivedNote $grn, User $user): void
     {
+        $grn->refresh();
+
+        if ($grn->inspection_status !== GoodsReceivedNote::INSPECTION_PASSED) {
+            throw ValidationException::withMessages([
+                'inspection_status' => 'Complete QC inspection and mark it as passed before final GRN approval (stock cannot post yet).',
+            ]);
+        }
+
         $grn->update([
             'status' => GoodsReceivedNote::STATUS_APPROVED,
             'approved_at' => now(),
@@ -307,6 +379,13 @@ class GoodsReceivedNoteService
         if ($grn->inventory_order_id || $grn->inventory_purchase_order_id) {
             app(InventoryPurchaseOrderFulfillmentService::class)->applyGrnReceipt($grn->fresh(['lines', 'inventoryOrder.lines', 'purchaseOrder.lines']));
         }
+
+        InventoryProcurementAudit::log(
+            'grn_approved',
+            $grn,
+            'GRN '.$grn->grn_number.' approved after QC — stock updated',
+            why: 'Final approval after inspection passed',
+        );
     }
 
     private function currentPendingApproval(GoodsReceivedNote $grn): ?GoodsReceivedNoteApproval

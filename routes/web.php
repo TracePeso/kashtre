@@ -301,6 +301,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::post('/receive', [GoodsReceivedNoteController::class, 'store'])->name('receive.store');
         Route::get('/receive/{goodsReceivedNote}', [GoodsReceivedNoteController::class, 'show'])->name('receive.show');
         Route::post('/receive/{goodsReceivedNote}/submit', [GoodsReceivedNoteController::class, 'submit'])->name('receive.submit');
+        Route::post('/receive/{goodsReceivedNote}/inspect', [GoodsReceivedNoteController::class, 'inspect'])->name('receive.inspect');
         Route::post('/receive/{goodsReceivedNote}/approve', [GoodsReceivedNoteController::class, 'approve'])->name('receive.approve');
         Route::post('/receive/{goodsReceivedNote}/reject', [GoodsReceivedNoteController::class, 'reject'])->name('receive.reject');
         Route::get('/monitor', [InventoryController::class, 'monitor'])->name('monitor');
@@ -324,6 +325,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/orders/create', [InventoryOrderController::class, 'create'])->name('orders.create');
         Route::post('/orders', [InventoryOrderController::class, 'store'])->name('orders.store');
         Route::get('/orders/{order}', [InventoryOrderController::class, 'show'])->name('orders.show');
+        Route::get('/orders/{order}/calculations', [InventoryOrderController::class, 'calculations'])->name('orders.calculations');
         Route::post('/orders/{order}/submit', [InventoryOrderController::class, 'submit'])->name('orders.submit');
         Route::post('/orders/{order}/approve', [InventoryOrderController::class, 'approve'])->name('orders.approve');
         Route::post('/orders/{order}/reject', [InventoryOrderController::class, 'reject'])->name('orders.reject');
@@ -332,6 +334,9 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/orders/{order}/pdf', [InventoryOrderController::class, 'pdf'])->name('orders.pdf');
         Route::post('/orders/{order}/regenerate', [InventoryOrderController::class, 'regenerate'])->name('orders.regenerate');
         Route::post('/orders/{order}/quotations', [InventorySupplierQuotationController::class, 'store'])->name('orders.quotations.store');
+        Route::post('/orders/{order}/rfq-suppliers', [InventorySupplierQuotationController::class, 'invite'])->name('orders.rfq-suppliers.invite');
+        Route::get('/orders/{order}/quotations/compare', [InventorySupplierQuotationController::class, 'compare'])->name('orders.quotations.compare');
+        Route::post('/orders/{order}/purchase-orders/generate-accepted', [InventoryPurchaseOrderController::class, 'generateAccepted'])->name('orders.purchase-orders.generate-accepted');
         Route::post('/quotations/{quotation}/accept', [InventorySupplierQuotationController::class, 'accept'])->name('quotations.accept');
         Route::post('/quotations/{quotation}/reject', [InventorySupplierQuotationController::class, 'reject'])->name('quotations.reject');
         Route::post('/quotations/{quotation}/purchase-order', [InventoryPurchaseOrderController::class, 'createFromQuotation'])->name('quotations.purchase-order');

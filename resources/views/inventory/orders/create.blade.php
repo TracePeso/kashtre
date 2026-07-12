@@ -5,9 +5,8 @@
     $defaultSafetyDays = (int) old('safety_stock_days', $config?->safety_stock_days ?? 0);
     $defaultBufferDays = (int) old('buffer_stock_days', $config?->buffer_stock_days ?? 0);
     $defaultNotificationDays = (int) old('notification_to_order_days', $config?->notification_to_order_days ?? 0);
-    $initialBudgetMode = old('budget_mode');
     $initialOrderApproach = old('ordering_approach', in_array(old('budget_mode'), ['amount', 'days'], true) ? 'budget' : 'period');
-    $budgetAmountValue = in_array(old('budget_mode'), ['amount', 'days'], true) ? old('budget_value') : '';
+    $budgetAmountValue = $initialOrderApproach === 'budget' ? old('budget_value') : '';
     $oldItemIds = collect(old('item_ids', []))->map(fn ($id) => (int) $id)->values();
     $defaultImportance = old('importance_filter', '');
     $initialOrderType = old('order_type', 'external');
@@ -167,13 +166,13 @@
             <div class="border border-gray-200 rounded-lg p-4 space-y-4">
                 <div>
                     <p class="text-sm font-medium text-gray-900">Order type</p>
-                    <p class="text-xs text-gray-500 mt-0.5">External orders use a supplier. Internal orders request stock from another store in your network.</p>
+                    <p class="text-xs text-gray-500 mt-0.5">External orders are for purchasing. Internal orders request stock from another store in your network.</p>
                 </div>
                 <div class="flex flex-wrap gap-4">
                     <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                         <input type="radio" name="order_type" value="external" x-model="orderType" @change="onOrderTypeChange()"
                                class="text-blue-600 border-gray-300 focus:ring-blue-500">
-                        <span>External <span class="text-gray-500">(from supplier)</span></span>
+                        <span>External <span class="text-gray-500">(purchase)</span></span>
                     </label>
                     <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                         <input type="radio" name="order_type" value="internal" x-model="orderType" @change="onOrderTypeChange()"
@@ -195,21 +194,8 @@
                                 <option value="{{ $id }}">{{ $label }}</option>
                             @endforeach
                         </select>
-                        <p class="mt-1 text-xs text-gray-500">Store that will receive goods from the supplier.</p>
+                        <p class="mt-1 text-xs text-gray-500">Store that will receive the goods.</p>
                         @error('store_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-                    </div>
-
-                    <div>
-                        <label for="supplier_id" class="block text-sm font-medium text-gray-700">Supplier <span class="text-red-500">*</span></label>
-                        <select name="supplier_id" id="supplier_id" required
-                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                            <option value="">— Select supplier —</option>
-                            @foreach($suppliers as $supplier)
-                                <option value="{{ $supplier->id }}" @selected(old('supplier_id') == $supplier->id)>{{ $supplier->name }}</option>
-                            @endforeach
-                        </select>
-                        <p class="mt-1 text-xs text-gray-500">One supplier for the entire order. Only items linked to this supplier are included.</p>
-                        @error('supplier_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                     </div>
                 </div>
             </template>
@@ -374,7 +360,9 @@
                             <label for="budget_value_amount" class="block text-sm font-medium text-gray-700">Budget (UGX)</label>
                             <input type="number" step="0.01" min="1" name="budget_value" id="budget_value_amount"
                                    value="{{ $budgetAmountValue }}"
-                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                   placeholder="e.g. 25415.94">
+                            <p class="mt-1 text-xs text-gray-500">Enter the UGX amount (Excel BA7). Quantities use AH → AL; days are not typed here.</p>
                         </div>
                         @error('budget_value')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                     </div>

@@ -18,6 +18,12 @@ class GoodsReceivedNote extends Model
 
     public const STATUS_REJECTED = 'rejected';
 
+    public const INSPECTION_PENDING = 'pending';
+
+    public const INSPECTION_PASSED = 'passed';
+
+    public const INSPECTION_FAILED = 'failed';
+
     protected $fillable = [
         'uuid',
         'grn_number',
@@ -35,6 +41,10 @@ class GoodsReceivedNote extends Model
         'technical_representative_signature_path',
         'technical_representative_signature_original_name',
         'status',
+        'inspection_status',
+        'inspection_notes',
+        'inspected_by_user_id',
+        'inspected_at',
         'current_approval_order',
         'entry_by_user_id',
         'submitted_by_user_id',
@@ -51,6 +61,7 @@ class GoodsReceivedNote extends Model
         'date_of_delivery' => 'date',
         'submitted_at' => 'datetime',
         'approved_at' => 'datetime',
+        'inspected_at' => 'datetime',
         'stock_applied_at' => 'datetime',
         'lead_time_days' => 'integer',
         'current_approval_order' => 'integer',
@@ -110,9 +121,26 @@ class GoodsReceivedNote extends Model
         return $this->hasMany(GoodsReceivedNoteApproval::class)->orderBy('approval_order');
     }
 
+    public function inspectedBy()
+    {
+        return $this->belongsTo(User::class, 'inspected_by_user_id');
+    }
+
     public function isDraft(): bool
     {
         return $this->status === self::STATUS_DRAFT;
+    }
+
+    public function inspectionPassed(): bool
+    {
+        return $this->inspection_status === self::INSPECTION_PASSED;
+    }
+
+    public function hasVariance(): bool
+    {
+        return $this->lines->contains(function (GoodsReceivedNoteLine $line) {
+            return abs((float) ($line->variance_quantity ?? 0)) > 0.0001;
+        });
     }
 
     public function isPending(): bool

@@ -4,6 +4,7 @@ namespace App\Services\Inventory;
 
 use App\Models\GoodsReceivedNote;
 use App\Models\GoodsReceivedNoteLine;
+use App\Models\InventoryDailyConsumption;
 use App\Models\InventoryModuleConfig;
 use App\Models\InventoryOrder;
 use App\Models\InventoryOrderLine;
@@ -12,6 +13,7 @@ use App\Models\Item;
 use App\Models\ItemImportanceCategory;
 use App\Models\Supplier;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -143,14 +145,25 @@ class InventoryOrderService
             return;
         }
 
-        $periodDays = $order->budget_mode === InventoryOrder::BUDGET_MODE_AMOUNT && $order->budget_value > 0
-            ? $this->periodDaysForAmountBudget($order, $stockLevels, $config, (float) $order->budget_value)
-            : $this->periodDaysForCalculation($order, $config);
+        if ($order->budget_mode === InventoryOrder::BUDGET_MODE_AMOUNT && $order->budget_value > 0) {
+            // Excel BA7 is UGX ("Order by Budget (UGX)"), not days.
+            $ba7Ugx = (float) $order->budget_value;
+            $rows = $this->budgetCandidateRows($order, $stockLevels, $config);
+            $sumAh = $this->budgetSumTestAmount($rows);
+            $poolDays = ($sumAh > 0 && $ba7Ugx > 0)
+                ? round(15 * $ba7Ugx / $sumAh, 4)
+                : null;
 
-        if ($order->budget_mode === InventoryOrder::BUDGET_MODE_AMOUNT) {
-            $order->update(['period_of_order_days' => $periodDays]);
+            $order->update(['period_of_order_days' => $poolDays]);
+            $this->populateBudgetDaysLines($order, $stockLevels, $config, $ba7Ugx);
+            $this->snapshotInitialOrderTotal($order->fresh(['lines']));
+            // Cap hard: AH→AL can still overshoot slightly; never exceed entered UGX.
+            $this->applyAmountCapConstraints($order->fresh(['lines']));
+
+            return;
         }
 
+        $periodDays = $this->periodDaysForCalculation($order, $config);
         $peakIncrease = max(0, (float) ($order->peak_consumption_increase_percent ?? 0));
 
         foreach ($stockLevels as $stock) {
@@ -199,6 +212,7 @@ class InventoryOrderService
 
     public function snapshotInitialOrderTotal(InventoryOrder $order): void
     {
+        // Amount budget: cap is the UGX the user entered (order total may be ≤ that).
         if ($order->budget_mode === InventoryOrder::BUDGET_MODE_AMOUNT && (float) ($order->budget_value ?? 0) > 0) {
             $order->update(['initial_order_total' => (float) $order->budget_value]);
 
@@ -213,8 +227,8 @@ class InventoryOrderService
     }
 
     /**
-     * Excel budget path AH–AL: proportional order days from a stock-days budget (BA7),
-     * weighted by days left to order (AM) per item.
+     * Excel budget path AH–AL with BA7 = budget value.
+     * For amount mode BA7 is UGX; for legacy days mode BA7 was stored as days.
      *
      * @param  Collection<int, InventoryStockLevel>  $stockLevels
      */
@@ -222,71 +236,33 @@ class InventoryOrderService
         InventoryOrder $order,
         Collection $stockLevels,
         ?InventoryModuleConfig $config,
-        ?float $budgetDaysOverride = null
+        ?float $ba7Override = null
     ): void {
-        $budgetDays = $budgetDaysOverride !== null
-            ? min(366, max(1, (int) round($budgetDaysOverride)))
-            : min(366, max(1, (int) round((float) $order->budget_value)));
+        $ba7 = $ba7Override !== null
+            ? max(0.01, (float) $ba7Override)
+            : max(0.01, (float) $order->budget_value);
         $peakIncrease = max(0, (float) ($order->peak_consumption_increase_percent ?? 0));
-        $rows = [];
-
-        foreach ($stockLevels as $stock) {
-            $item = $stock->item;
-
-            if (! $this->itemPassesOrderFilters($item, $order)) {
-                continue;
-            }
-
-            $dailyAvg = $this->analytics->excelDailyUsageSuom($stock, $config);
-
-            if ($dailyAvg <= 0 && ! $this->shouldKeepSelectedItem($order, $item)) {
-                continue;
-            }
-
-            $daysLeft = $this->analytics->daysLeftToOrder($stock, $config, $order);
-
-            if ($daysLeft === null && ! $this->shouldKeepSelectedItem($order, $item)) {
-                continue;
-            }
-
-            $testAmount = $this->analytics->budgetTestAmountUgx($stock, $config, $item);
-
-            if ($testAmount <= 0 && ! $this->shouldKeepSelectedItem($order, $item)) {
-                continue;
-            }
-
-            $rows[] = [
-                'stock' => $stock,
-                'item' => $item,
-                'days_left' => $daysLeft ?? 0,
-                'daily_avg' => $dailyAvg,
-                'test_amount' => $testAmount,
-                'unit_price' => $this->analytics->purchasePricePerSuom($stock, $item),
-                'ar_stock' => $this->analytics->systemStockArSuom($stock, $config),
-                'current_stock' => $this->analytics->currentStockLevelSuom($stock),
-                'stock_days' => $this->analytics->stockDaysReport($stock, $config),
-            ];
-        }
+        $rows = $this->budgetCandidateRows($order, $stockLevels, $config);
 
         if ($rows === []) {
             return;
         }
 
-        $avgDaysLeft = collect($rows)->avg('days_left');
-        $sumTestAmount = collect($rows)->sum('test_amount');
+        $avgDaysLeft = $this->budgetAverageDaysLeft($rows);
+        $sumTestAmount = $this->budgetSumTestAmount($rows);
 
         foreach ($rows as $row) {
             $orderDays = $this->analytics->orderDaysBudgetAllocation(
-                (float) $budgetDays,
+                $ba7,
                 $row['days_left'],
-                (float) $avgDaysLeft,
-                (float) $sumTestAmount
+                $avgDaysLeft,
+                $sumTestAmount
             );
             $baseSuggested = $this->analytics->suggestedOrderQtyBudgetDays(
-                (float) $budgetDays,
+                $ba7,
                 $row['days_left'],
-                (float) $avgDaysLeft,
-                (float) $sumTestAmount,
+                $avgDaysLeft,
+                $sumTestAmount,
                 $row['daily_avg']
             );
 
@@ -308,6 +284,588 @@ class InventoryOrderService
                 $peakIncrease
             );
         }
+    }
+
+    /**
+     * Candidate rows for AH→AL.
+     * Overstocked items (stock days > 366) are kept when explicitly selected so the
+     * line count matches the user’s selection; they get AJ = 0. AVERAGE(AM) is
+     * computed later only from items that still need stock.
+     *
+     * @param  Collection<int, InventoryStockLevel>  $stockLevels
+     * @return list<array<string, mixed>>
+     */
+    private function budgetCandidateRows(
+        InventoryOrder $order,
+        Collection $stockLevels,
+        ?InventoryModuleConfig $config
+    ): array {
+        $rows = [];
+
+        foreach ($stockLevels as $stock) {
+            $item = $stock->item;
+
+            if (! $this->itemPassesOrderFilters($item, $order)) {
+                continue;
+            }
+
+            $dailyAvg = $this->analytics->excelDailyUsageSuom($stock, $config);
+            $explicitlySelected = $this->shouldKeepSelectedItem($order, $item);
+
+            if ($dailyAvg <= 0 && ! $explicitlySelected) {
+                continue;
+            }
+
+            $stockDays = $this->analytics->stockDaysReport($stock, $config);
+
+            // Overstocked: skip unless the user picked this item (keep selection count).
+            if (! $explicitlySelected && $stockDays !== null && $stockDays > 366) {
+                continue;
+            }
+
+            $daysLeft = $this->analytics->daysLeftToOrder($stock, $config, $order);
+
+            if ($daysLeft === null && ! $explicitlySelected) {
+                continue;
+            }
+
+            $testAmount = $this->analytics->budgetTestAmountUgx($stock, $config, $item);
+
+            if ($testAmount <= 0 && ! $explicitlySelected) {
+                continue;
+            }
+
+            $rows[] = [
+                'stock' => $stock,
+                'item' => $item,
+                'days_left' => $daysLeft ?? 0,
+                'daily_avg' => $dailyAvg,
+                'test_amount' => $testAmount,
+                'unit_price' => $this->analytics->purchasePricePerSuom($stock, $item),
+                'ar_stock' => $this->analytics->systemStockArSuom($stock, $config),
+                'current_stock' => $this->analytics->currentStockLevelSuom($stock),
+                'stock_days' => $stockDays,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * AVERAGE(AM) for AI — ignore overstocked lines so they do not explode AJ for urgent items.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function budgetAverageDaysLeft(array $rows): float
+    {
+        $needy = collect($rows)->filter(function (array $row): bool {
+            $stockDays = $row['stock_days'] ?? null;
+
+            return $stockDays === null || (float) $stockDays <= 366;
+        });
+
+        if ($needy->isEmpty()) {
+            return (float) collect($rows)->avg('days_left');
+        }
+
+        return (float) $needy->avg('days_left');
+    }
+
+    /**
+     * Σ AH for AJ — same portfolio as lines, but overstocked AH is optional.
+     * Excel sums all AH; we sum only items that can receive order days (stock days ≤ 366)
+     * so the day pool is spent on items that need stock. Overstocked selected lines stay
+     * on the order with AJ = 0.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function budgetSumTestAmount(array $rows): float
+    {
+        $needy = collect($rows)->filter(function (array $row): bool {
+            $stockDays = $row['stock_days'] ?? null;
+
+            return $stockDays === null || (float) $stockDays <= 366;
+        });
+
+        if ($needy->isEmpty()) {
+            return (float) collect($rows)->sum('test_amount');
+        }
+
+        return (float) $needy->sum('test_amount');
+    }
+
+    /**
+     * Excel-aligned calculation audit for an order (from line snapshots at generation time).
+     *
+     * @return array{
+     *     method: string,
+     *     period_days: float,
+     *     safety_days: float,
+     *     buffer_days: float,
+     *     peak_period_percent: float,
+     *     peak_increase_percent: float,
+     *     peak_impact_percent: float,
+     *     budget_mode: ?string,
+     *     budget_value: ?float,
+     *     order_total: float,
+     *     scale_factor: ?float,
+     *     ah_sum_test_amount: ?float,
+     *     am_average_days_left: ?float,
+     *     ba7_budget_days: ?float,
+     *     lines: list<array<string, mixed>>
+     * }
+     */
+    public function calculationBreakdown(InventoryOrder $order): array
+    {
+        $order->loadMissing(['lines.item.itemUnit']);
+
+        if (in_array($order->budget_mode, [
+            InventoryOrder::BUDGET_MODE_DAYS,
+            InventoryOrder::BUDGET_MODE_AMOUNT,
+        ], true)) {
+            return $this->calculationBreakdownBudgetDays($order);
+        }
+
+        return $this->calculationBreakdownPeriodOrAmount($order);
+    }
+
+    /**
+     * Excel AH→AL audit: BA7 stock-days budget path (entered days, or days derived from UGX).
+     *
+     * @return array<string, mixed>
+     */
+    private function calculationBreakdownBudgetDays(InventoryOrder $order): array
+    {
+        $isAmount = $order->budget_mode === InventoryOrder::BUDGET_MODE_AMOUNT;
+        // Excel BA7: for amount mode this is UGX; legacy days mode stored days in budget_value.
+        $ba7 = (float) ($order->budget_value ?? 0);
+        $budgetUgx = $isAmount ? $ba7 : null;
+        $poolDays = $isAmount ? (float) ($order->period_of_order_days ?? 0) : $ba7;
+        $safety = (float) ($order->safety_stock_days ?? 0);
+        $buffer = (float) ($order->buffer_stock_days ?? 0);
+        $peakPeriod = (float) ($order->peak_period_percent ?? 0);
+        $peakIncrease = (float) ($order->peak_consumption_increase_percent ?? 0);
+        $peakImpact = self::computePeakImpactPercent($peakPeriod, $peakIncrease);
+        $orderTotal = $order->orderTotal();
+
+        // Match populate: AVERAGE(AM) and Σ AH use only lines that still need stock (N ≤ 366).
+        $needyLines = $order->lines->filter(function ($line) {
+            $n = $line->stock_days_at_order;
+
+            return $n === null || (float) $n <= 366;
+        });
+
+        $amForAverage = $needyLines
+            ->map(fn ($line) => $line->days_left_at_order !== null ? (float) $line->days_left_at_order : null)
+            ->filter(fn ($v) => $v !== null)
+            ->values();
+
+        if ($amForAverage->isEmpty()) {
+            $amForAverage = $order->lines
+                ->map(fn ($line) => $line->days_left_at_order !== null ? (float) $line->days_left_at_order : null)
+                ->filter(fn ($v) => $v !== null)
+                ->values();
+        }
+
+        $avgAm = $amForAverage->isNotEmpty() ? (float) $amForAverage->avg() : 0.0;
+
+        $sumAh = 0.0;
+        $ahLinesForSum = $needyLines->isNotEmpty() ? $needyLines : $order->lines;
+        foreach ($ahLinesForSum as $line) {
+            $v = (float) ($line->daily_average_suom ?? 0);
+            $price = (float) ($line->unit_price ?? 0);
+            $sumAh += round(15 * $v * $price, 2);
+        }
+
+        $ahParts = [];
+        $amParts = [];
+        $lineRows = [];
+
+        foreach ($order->lines as $line) {
+            $m = (float) ($line->current_stock_suom ?? 0);
+            $n = $line->stock_days_at_order !== null ? (float) $line->stock_days_at_order : null;
+            $am = $line->days_left_at_order !== null ? (float) $line->days_left_at_order : null;
+            $v = (float) ($line->daily_average_suom ?? 0);
+            $base = (float) ($line->base_suggested_quantity_suom ?? 0);
+            $suggested = (float) ($line->suggested_quantity_suom ?? 0);
+            $qty = (float) ($line->order_quantity_suom ?? 0);
+            $price = (float) ($line->unit_price ?? 0);
+            $lineTotal = (float) ($line->line_total ?? 0);
+            $linePeakImpact = (float) ($line->peak_impact_percent ?? $peakImpact);
+            $ajStored = $line->order_days !== null ? (float) $line->order_days : null;
+            $isNeedy = $n === null || $n <= 366;
+
+            $ah = round(15 * $v * $price, 2);
+            $ai = $am !== null ? round($am - $avgAm, 4) : null;
+            $ajExpected = ($sumAh > 0 && $ba7 > 0 && $ai !== null)
+                ? max(0, round((15 * $ba7 / $sumAh) - $ai, 4))
+                : 0.0;
+            $akExpected = $v > 0 ? max(0, round($ajExpected * $v, 4)) : 0.0;
+            $expectedAfterPeak = $this->applyPeakToSuggestedQuantity($akExpected, $linePeakImpact);
+            $alExpected = round($expectedAfterPeak * $price, 2);
+
+            $ahParts[] = [
+                'item_name' => $line->item?->name ?? '—',
+                'v' => $v,
+                'price' => $price,
+                'ah' => $ah,
+                'included_in_sum' => $isNeedy,
+                'stock_days' => $n,
+            ];
+
+            if ($am !== null) {
+                $amParts[] = [
+                    'item_name' => $line->item?->name ?? '—',
+                    'am' => $am,
+                    'included_in_average' => $isNeedy,
+                    'stock_days' => $n,
+                ];
+            }
+
+            $vBreakdown = $this->fifteenDayUsageBreakdown(
+                (int) $order->business_id,
+                (int) $order->store_id,
+                (int) $line->item_id,
+                Carbon::parse($order->created_at ?? now())
+            );
+
+            $skippedReason = null;
+            if (! $isNeedy) {
+                $skippedReason = 'Stock days > 366 — kept on order with qty 0; left out of AVERAGE(AM) and Σ AH';
+            } elseif ($sumAh <= 0) {
+                $skippedReason = 'SUM(AH) ≤ 0 — cannot allocate budget';
+            } elseif ($v <= 0) {
+                $skippedReason = 'daily usage (V/AA) is zero';
+            } elseif ($akExpected <= 0 && $qty <= 0) {
+                $skippedReason = 'AJ ≤ 0 after urgency gap (AI) — no order days for this line';
+            }
+
+            $lineRows[] = [
+                'item_id' => $line->item_id,
+                'item_name' => $line->item?->name ?? '—',
+                'item_code' => $line->item?->code,
+                'suom' => $line->item?->itemUnit?->name,
+                'm_current_stock' => $m,
+                'n_stock_days' => $n,
+                'am_days_left' => $am,
+                'v_daily_usage' => $v,
+                'v_day_values' => $vBreakdown['days'],
+                'v_day_total' => $vBreakdown['total'],
+                'v_day_average' => $vBreakdown['average'],
+                'v_window_from' => $vBreakdown['from'],
+                'v_window_to' => $vBreakdown['to'],
+                'ah_test_amount' => $ah,
+                'ai_gap_to_average' => $ai,
+                'aj_order_days_expected' => $ajExpected,
+                'aj_order_days_stored' => $ajStored,
+                'ak_base_qty_expected' => $akExpected,
+                'ak_base_qty_stored' => $base,
+                'included_in_budget_math' => $isNeedy,
+                'coverage' => null,
+                'graduated_ma_window' => 'V/AA (budget path uses excel daily usage)',
+                'ma_excel_column' => 'V',
+                'ma_window_days' => 15,
+                'ma_reason' => 'Excel AK uses V (or AA if V is 0) — same rate as AH',
+                'rate_source_note' => 'Budget path daily usage = stored V/AA ('.number_format($v, 4).')',
+                'implied_rate' => $v > 0 ? $v : null,
+                'excel_expected_rate' => $v > 0 ? $v : null,
+                'excel_expected_base_qty' => $akExpected,
+                'rate_matches_excel' => abs($base - $akExpected) < 0.02 || ($base <= 0 && $akExpected <= 0),
+                'af_base_qty' => $base,
+                'expected_base_qty' => $akExpected,
+                'peak_impact_percent' => $linePeakImpact,
+                'qty_after_peak' => $expectedAfterPeak,
+                'suggested_qty' => $suggested,
+                'order_qty' => $qty,
+                'order_days' => $ajStored,
+                'unit_price' => $price,
+                'line_total' => $lineTotal,
+                'al_expected' => $alExpected,
+                'unscaled_line_total' => $alExpected,
+                'skipped_reason' => $skippedReason,
+                'matches_af' => abs($base - $akExpected) < 0.02 || ($base <= 0 && $akExpected <= 0),
+                'matches_ah_al' => abs($base - $akExpected) < 0.02
+                    && ($ajStored === null || abs($ajStored - $ajExpected) < 0.02),
+            ];
+        }
+
+        $computedPoolDays = ($sumAh > 0 && $ba7 > 0) ? round(15 * $ba7 / $sumAh, 4) : $poolDays;
+
+        return [
+            'method' => $order->orderingTypeLabel(),
+            'period_days' => $isAmount ? (float) $computedPoolDays : 0.0,
+            'safety_days' => $safety,
+            'buffer_days' => $buffer,
+            'peak_period_percent' => $peakPeriod,
+            'peak_increase_percent' => $peakIncrease,
+            'peak_impact_percent' => $peakImpact,
+            'budget_mode' => $order->budget_mode,
+            'budget_value' => $ba7,
+            'order_total' => $orderTotal,
+            'unscaled_total' => $orderTotal,
+            'scale_factor' => null,
+            'ah_sum_test_amount' => round($sumAh, 2),
+            'am_average_days_left' => round($avgAm, 4),
+            'am_average_count' => $amForAverage->count(),
+            'ba7_budget_days' => $isAmount ? $computedPoolDays : $ba7,
+            'ba7_budget_ugx' => $budgetUgx,
+            'ba7_derived_from_amount' => $isAmount,
+            'budget_ugx' => $budgetUgx,
+            'ah_parts' => $ahParts,
+            'am_parts' => $amParts,
+            'lines' => $lineRows,
+        ];
+    }
+
+    /**
+     * Excel AF / amount-cap audit.
+     *
+     * @return array<string, mixed>
+     */
+    private function calculationBreakdownPeriodOrAmount(InventoryOrder $order): array
+    {
+        $period = (float) ($order->period_of_order_days ?? 0);
+        $safety = (float) ($order->safety_stock_days ?? 0);
+        $buffer = (float) ($order->buffer_stock_days ?? 0);
+        $peakPeriod = (float) ($order->peak_period_percent ?? 0);
+        $peakIncrease = (float) ($order->peak_consumption_increase_percent ?? 0);
+        $peakImpact = self::computePeakImpactPercent($peakPeriod, $peakIncrease);
+        $orderTotal = $order->orderTotal();
+
+        $unscaledTotal = 0.0;
+        $lineRows = [];
+
+        foreach ($order->lines as $line) {
+            $m = (float) ($line->current_stock_suom ?? 0);
+            $n = $line->stock_days_at_order !== null ? (float) $line->stock_days_at_order : null;
+            $am = $line->days_left_at_order !== null ? (float) $line->days_left_at_order : null;
+            $v = (float) ($line->daily_average_suom ?? 0);
+            $base = (float) ($line->base_suggested_quantity_suom ?? 0);
+            $suggested = (float) ($line->suggested_quantity_suom ?? 0);
+            $qty = (float) ($line->order_quantity_suom ?? 0);
+            $price = (float) ($line->unit_price ?? 0);
+            $lineTotal = (float) ($line->line_total ?? 0);
+            $linePeakImpact = (float) ($line->peak_impact_percent ?? $peakImpact);
+
+            $stockDaysForCoverage = $n ?? 0.0;
+            $coverage = round($period + $safety + $buffer - $stockDaysForCoverage, 4);
+            $maSelection = $this->graduatedMaSelection($n);
+            $graduatedWindow = $maSelection['window_label'];
+            $impliedRate = $coverage > 0 && $base > 0
+                ? round($base / $coverage, 4)
+                : null;
+
+            $excelExpectedRate = null;
+            $excelExpectedBase = null;
+            $rateMatchesExcel = true;
+            if ($coverage > 0) {
+                $nForRate = $n ?? 0.0;
+                if ($nForRate < 15 && $v > 0) {
+                    $excelExpectedRate = $v;
+                    $excelExpectedBase = round($coverage * $v, 4);
+                    if ($impliedRate !== null) {
+                        $rateMatchesExcel = abs($impliedRate - $v) < 0.01;
+                    }
+                }
+            }
+
+            $expectedBase = $coverage > 0 && $impliedRate !== null
+                ? round($coverage * $impliedRate, 4)
+                : 0.0;
+
+            $expectedAfterPeak = $this->applyPeakToSuggestedQuantity($base, $linePeakImpact);
+
+            $unscaledLineTotal = round($expectedAfterPeak * $price, 2);
+            $unscaledTotal += $unscaledLineTotal;
+
+            $skippedReason = null;
+            if ($coverage <= 0) {
+                $skippedReason = 'coverage ≤ 0 (stock days already cover period + safety + buffer)';
+            } elseif ($base <= 0 && $qty <= 0) {
+                $skippedReason = 'base qty is zero';
+            }
+
+            $rateSourceNote = null;
+            if ($impliedRate !== null && $maSelection['excel_column'] === 'V' && $v > 0) {
+                if (abs($impliedRate - $v) < 0.01) {
+                    $rateSourceNote = 'Rate matches stored V / AA ('.number_format($v, 4).')';
+                } else {
+                    $rateSourceNote = 'Excel requires V / AA ('.number_format($v, 4).'); stored AF used '.number_format($impliedRate, 4);
+                }
+            } elseif ($impliedRate !== null) {
+                $rateSourceNote = 'Rate taken from '.$maSelection['window_label'].' at order time';
+            }
+
+            $vBreakdown = $this->fifteenDayUsageBreakdown(
+                (int) $order->business_id,
+                (int) $order->store_id,
+                (int) $line->item_id,
+                Carbon::parse($order->created_at ?? now())
+            );
+
+            $lineRows[] = [
+                'item_id' => $line->item_id,
+                'item_name' => $line->item?->name ?? '—',
+                'item_code' => $line->item?->code,
+                'suom' => $line->item?->itemUnit?->name,
+                'm_current_stock' => $m,
+                'n_stock_days' => $n,
+                'am_days_left' => $am,
+                'v_daily_usage' => $v,
+                'v_day_values' => $vBreakdown['days'],
+                'v_day_total' => $vBreakdown['total'],
+                'v_day_average' => $vBreakdown['average'],
+                'v_window_from' => $vBreakdown['from'],
+                'v_window_to' => $vBreakdown['to'],
+                'coverage' => $coverage,
+                'graduated_ma_window' => $graduatedWindow,
+                'ma_excel_column' => $maSelection['excel_column'],
+                'ma_window_days' => $maSelection['window_days'],
+                'ma_reason' => $maSelection['reason'],
+                'rate_source_note' => $rateSourceNote,
+                'implied_rate' => $impliedRate,
+                'excel_expected_rate' => $excelExpectedRate,
+                'excel_expected_base_qty' => $excelExpectedBase,
+                'rate_matches_excel' => $rateMatchesExcel,
+                'af_base_qty' => $base,
+                'expected_base_qty' => $expectedBase,
+                'peak_impact_percent' => $linePeakImpact,
+                'qty_after_peak' => $expectedAfterPeak,
+                'suggested_qty' => $suggested,
+                'order_qty' => $qty,
+                'order_days' => $line->order_days !== null ? (float) $line->order_days : null,
+                'unit_price' => $price,
+                'line_total' => $lineTotal,
+                'unscaled_line_total' => $unscaledLineTotal,
+                'skipped_reason' => $skippedReason,
+                'matches_af' => abs($base - $expectedBase) < 0.01 || ($base <= 0 && $coverage <= 0),
+            ];
+        }
+
+        $scaleFactor = null;
+        if ($unscaledTotal > 0 && abs($orderTotal - $unscaledTotal) >= 0.01) {
+            $scaleFactor = round($orderTotal / $unscaledTotal, 6);
+        }
+
+        return [
+            'method' => $order->orderingTypeLabel(),
+            'period_days' => $period,
+            'safety_days' => $safety,
+            'buffer_days' => $buffer,
+            'peak_period_percent' => $peakPeriod,
+            'peak_increase_percent' => $peakIncrease,
+            'peak_impact_percent' => $peakImpact,
+            'budget_mode' => $order->budget_mode,
+            'budget_value' => $order->budget_value !== null ? (float) $order->budget_value : null,
+            'order_total' => $orderTotal,
+            'unscaled_total' => round($unscaledTotal, 2),
+            'scale_factor' => $scaleFactor,
+            'ah_sum_test_amount' => null,
+            'am_average_days_left' => null,
+            'ba7_budget_days' => null,
+            'lines' => $lineRows,
+        ];
+    }
+
+    /**
+     * Daily consumption values that make up Excel V (15-day MA).
+     *
+     * @return array{
+     *     from: string,
+     *     to: string,
+     *     total: float,
+     *     average: float,
+     *     days: list<array{date: string, quantity: float}>
+     * }
+     */
+    private function fifteenDayUsageBreakdown(int $businessId, int $storeId, int $itemId, Carbon $asOf): array
+    {
+        $to = $asOf->copy()->startOfDay();
+        $from = $to->copy()->subDays(14);
+
+        $byDate = InventoryDailyConsumption::query()
+            ->where('business_id', $businessId)
+            ->where('store_id', $storeId)
+            ->where('item_id', $itemId)
+            ->whereDate('consumption_date', '>=', $from->toDateString())
+            ->whereDate('consumption_date', '<=', $to->toDateString())
+            ->pluck('quantity_suom', 'consumption_date')
+            ->mapWithKeys(function ($qty, $date) {
+                return [Carbon::parse($date)->toDateString() => (float) $qty];
+            });
+
+        $days = [];
+        $total = 0.0;
+
+        for ($d = $from->copy(); $d->lte($to); $d->addDay()) {
+            $key = $d->toDateString();
+            $qty = (float) ($byDate[$key] ?? 0);
+            $total += $qty;
+            $days[] = [
+                'date' => $key,
+                'quantity' => $qty,
+            ];
+        }
+
+        return [
+            'from' => $from->toDateString(),
+            'to' => $to->toDateString(),
+            'total' => round($total, 4),
+            'average' => round($total / 15, 4),
+            'days' => $days,
+        ];
+    }
+
+    private function graduatedMaWindowLabel(?float $stockDaysN): string
+    {
+        return $this->graduatedMaSelection($stockDaysN)['window_label'];
+    }
+
+    /**
+     * Excel AF graduated MA picker: V if N<15; W if N<30; X if N<90; Y if N<180; Z otherwise.
+     *
+     * @return array{
+     *     excel_column: string,
+     *     window_days: int,
+     *     window_label: string,
+     *     reason: string,
+     *     n_value: float
+     * }
+     */
+    private function graduatedMaSelection(?float $stockDaysN): array
+    {
+        $n = $stockDaysN ?? 0.0;
+
+        $map = [
+            15 => ['excel_column' => 'V', 'name' => '15-day MA'],
+            30 => ['excel_column' => 'W', 'name' => '30-day MA'],
+            90 => ['excel_column' => 'X', 'name' => '90-day MA'],
+            180 => ['excel_column' => 'Y', 'name' => '180-day MA'],
+            360 => ['excel_column' => 'Z', 'name' => '360-day MA'],
+        ];
+
+        foreach ($map as $days => $meta) {
+            if ($n < $days) {
+                $nDisplay = $stockDaysN === null ? '0 (N missing → treated as 0)' : number_format($n, 1);
+
+                return [
+                    'excel_column' => $meta['excel_column'],
+                    'window_days' => $days,
+                    'window_label' => $meta['name'].' ('.$meta['excel_column'].')',
+                    'reason' => 'N = '.$nDisplay.' stock-days, and N < '.$days
+                        .' → Excel AF uses column '.$meta['excel_column'].' ('.$meta['name'].')',
+                    'n_value' => $n,
+                ];
+            }
+        }
+
+        return [
+            'excel_column' => 'Z',
+            'window_days' => 360,
+            'window_label' => '360-day MA (Z)',
+            'reason' => 'N = '.number_format($n, 1).' stock-days, and N ≥ 360 → Excel AF uses column Z (360-day MA)',
+            'n_value' => $n,
+        ];
     }
 
     /**
@@ -445,17 +1003,8 @@ class InventoryOrderService
 
     public function applyBudgetConstraints(InventoryOrder $order, ?InventoryModuleConfig $config = null): void
     {
-        if (! $order->budget_mode || ! $order->budget_value || $order->budget_value <= 0) {
-            return;
-        }
-
-        if ($order->budget_mode === InventoryOrder::BUDGET_MODE_DAYS) {
-            return;
-        }
-
-        if ($order->budget_mode === InventoryOrder::BUDGET_MODE_AMOUNT) {
-            $this->scaleLinesToAmountCap($order, (float) $order->budget_value);
-        }
+        // Excel budget path (AH–AL / BA7 days) does not scale to a UGX cap.
+        // Optional UGX cap enforcement uses initial_order_total via applyAmountCapConstraints.
     }
 
     public function applyAmountCapConstraints(InventoryOrder $order): void
@@ -495,71 +1044,6 @@ class InventoryOrderService
                 'line_total' => round(max(0, $qty) * $unitPrice, 2),
             ]);
         }
-    }
-
-    /**
-     * For amount-budget orders, find the period (days) whose period-formula total
-     * is closest to but not above the budget cap before proportional scaling.
-     */
-    private function periodDaysForAmountBudget(
-        InventoryOrder $order,
-        Collection $stockLevels,
-        ?InventoryModuleConfig $config,
-        float $budgetCap
-    ): float {
-        $bestPeriod = 1.0;
-
-        for ($period = 1; $period <= 366; $period++) {
-            $total = $this->estimatePeriodOrderTotal($order, $stockLevels, $config, (float) $period);
-
-            if ($total <= $budgetCap + 0.01) {
-                $bestPeriod = (float) $period;
-            } else {
-                break;
-            }
-        }
-
-        return $bestPeriod;
-    }
-
-    /**
-     * @param  Collection<int, InventoryStockLevel>  $stockLevels
-     */
-    private function estimatePeriodOrderTotal(
-        InventoryOrder $order,
-        Collection $stockLevels,
-        ?InventoryModuleConfig $config,
-        float $periodDays
-    ): float {
-        $peakIncrease = max(0, (float) ($order->peak_consumption_increase_percent ?? 0));
-        $peakImpact = self::computePeakImpactPercent($order->peak_period_percent, $peakIncrease);
-        $total = 0.0;
-
-        foreach ($stockLevels as $stock) {
-            $item = $stock->item;
-
-            if (! $this->itemPassesOrderFilters($item, $order)) {
-                continue;
-            }
-
-            $dailyAvg = $this->analytics->excelDailyUsageSuom($stock, $config);
-
-            if ($dailyAvg <= 0 && ! $this->shouldKeepSelectedItem($order, $item)) {
-                continue;
-            }
-
-            $baseSuggested = $this->analytics->suggestedOrderQtyPeriod($stock, $config, $periodDays, $order);
-
-            if ($baseSuggested <= 0 && ! $this->shouldKeepSelectedItem($order, $item)) {
-                continue;
-            }
-
-            $qty = $this->applyPeakToSuggestedQuantity($baseSuggested, $peakImpact);
-            $unitPrice = $this->analytics->purchasePricePerSuom($stock, $item);
-            $total += $qty * $unitPrice;
-        }
-
-        return round($total, 2);
     }
 
     public function averageLeadTimeDays(int $businessId, int $itemId): int
@@ -709,16 +1193,15 @@ class InventoryOrderService
         ?float $periodOfOrderDays,
         ?InventoryModuleConfig $config
     ): ?float {
-        if ($budgetMode === InventoryOrder::BUDGET_MODE_DAYS) {
+        if (in_array($budgetMode, [
+            InventoryOrder::BUDGET_MODE_DAYS,
+            InventoryOrder::BUDGET_MODE_AMOUNT,
+        ], true)) {
             return null;
         }
 
         if ($periodOfOrderDays !== null) {
             return (float) $periodOfOrderDays;
-        }
-
-        if ($budgetMode === InventoryOrder::BUDGET_MODE_AMOUNT) {
-            return null;
         }
 
         return $config?->period_of_order_days !== null

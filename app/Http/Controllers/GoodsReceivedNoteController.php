@@ -216,8 +216,10 @@ class GoodsReceivedNoteController extends Controller
             'store',
             'entryBy',
             'submittedBy',
+            'inspectedBy',
             'approvals.approver',
             'inventoryOrder',
+            'purchaseOrder.lines',
         ]);
 
         if ($goodsReceivedNote->isApproved()) {
@@ -228,6 +230,34 @@ class GoodsReceivedNoteController extends Controller
         $canApprove = $this->service->userCanApprove($goodsReceivedNote, Auth::user());
 
         return view('inventory.receive.show', compact('goodsReceivedNote', 'canApprove'));
+    }
+
+    public function inspect(Request $request, GoodsReceivedNote $goodsReceivedNote)
+    {
+        $this->authorizeBusiness($goodsReceivedNote);
+
+        $validated = $request->validate([
+            'inspection_status' => 'required|in:passed,failed,pending',
+            'inspection_notes' => 'nullable|string|max:2000',
+            'line_conditions' => 'nullable|array',
+            'line_conditions.*' => 'nullable|in:good,damaged,expired,short',
+        ]);
+
+        try {
+            $this->service->recordInspection(
+                $goodsReceivedNote,
+                Auth::user(),
+                $validated['inspection_status'],
+                $validated['inspection_notes'] ?? null,
+                $validated['line_conditions'] ?? [],
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withErrors($e->errors());
+        }
+
+        return redirect()
+            ->route('inventory.receive.show', $goodsReceivedNote)
+            ->with('success', 'QC inspection recorded.');
     }
 
     public function submit(GoodsReceivedNote $goodsReceivedNote)
@@ -418,6 +448,8 @@ class GoodsReceivedNoteController extends Controller
             'lines.*.suom' => ['required', 'string', 'max:50', Rule::in($itemUnitNames)],
             'lines.*.purchase_price' => 'required|numeric|min:0',
             'lines.*.sale_units_per_purchase_unit' => 'required|numeric|min:0.0001',
+            'lines.*.ordered_quantity' => 'nullable|numeric|min:0',
+            'lines.*.condition_status' => 'nullable|in:good,damaged,expired,short',
         ]);
     }
 
@@ -451,6 +483,8 @@ class GoodsReceivedNoteController extends Controller
             $quantity = (float) $line['quantity'];
             $conversion = (float) $line['sale_units_per_purchase_unit'];
             $saleUnits = GoodsReceivedNoteLine::calculateSaleUnitsPurchased($quantity, $conversion);
+            $ordered = isset($line['ordered_quantity']) ? (float) $line['ordered_quantity'] : null;
+            $variance = $ordered !== null ? round($quantity - $ordered, 4) : null;
 
             GoodsReceivedNoteLine::create([
                 'goods_received_note_id' => $grn->id,
@@ -458,6 +492,9 @@ class GoodsReceivedNoteController extends Controller
                 'inventory_order_line_id' => $line['inventory_order_line_id'] ?? null,
                 'item_name' => $item->name,
                 'quantity' => $quantity,
+                'ordered_quantity' => $ordered,
+                'variance_quantity' => $variance,
+                'condition_status' => $line['condition_status'] ?? 'good',
                 'batch_number' => $line['batch_number'] ?? null,
                 'expiry_date' => $line['expiry_date'] ?? null,
                 'duom' => $line['duom'],
