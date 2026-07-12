@@ -32,7 +32,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(\App\Services\Inventory\InventoryStockAnalyticsService::class);
+        $this->app->singleton(\App\Services\Inventory\InventoryStockAgingService::class);
+        $this->app->singleton(\App\Services\Inventory\InventoryStockCountShrinkageService::class);
+        $this->app->singleton(\App\Services\FinancialYearService::class);
     }
 
     /**
@@ -44,64 +47,21 @@ class AppServiceProvider extends ServiceProvider
         //     $view->with('business', Auth::check() ? Auth::user()->business : null);
         // });
 
+        // Filament/Livewire pages can render hundreds of nested views. Resolve
+        // shared layout data once per request so we do not re-query on every view.
         View::composer('*', function ($view) {
+            static $shared = null;
+            static $sharedKey = null;
+
             $user = Auth::user();
+            $key = ($user?->id ?? 0).'|'.(string) session(InventoryBusinessContext::SESSION_KEY, '').'|'.(string) session('caller_id', '');
 
-            $view->with('business', $user?->business);
-            $view->with('businessBranding', BusinessBranding::for($user?->business));
-            $view->with('permissions', (array) ($user?->permissions ?? []));
-
-            // Calling module flags
-            $callingModuleEnabled = false;
-            $callingModuleConfig  = null;
-            $userIsACaller = false;
-            if ($user) {
-                $callingModuleConfig  = CallingModuleConfig::where('business_id', $user->business_id)
-                    ->where('is_active', true)
-                    ->first();
-                $callingModuleEnabled = (bool) $callingModuleConfig;
-
-                if ($callingModuleEnabled) {
-                    $sessionCallerId = session('caller_id');
-
-                    // User is a caller if they have a session caller_id pointing to an active Caller
-                    $userIsACaller = $sessionCallerId && Caller::where('id', $sessionCallerId)
-                        ->where('business_id', $user->business_id)
-                        ->where('status', 'active')
-                        ->exists();
-                }
+            if ($shared === null || $sharedKey !== $key) {
+                $sharedKey = $key;
+                $shared = $this->sharedLayoutViewData($user);
             }
-            $view->with('callingModuleEnabled', $callingModuleEnabled);
-            $view->with('callingModuleConfig', $callingModuleConfig);
-            $view->with('userIsACaller', $userIsACaller);
 
-            $inventoryModuleEnabled = false;
-            $inventoryModuleConfig = null;
-            $inventoryAdminContextBusiness = null;
-            if ($user) {
-                $inventoryBusinessId = InventoryBusinessContext::isKashtreAdmin() && InventoryBusinessContext::hasContext()
-                    ? InventoryBusinessContext::effectiveBusinessId()
-                    : (int) $user->business_id;
-
-                $inventoryModuleConfig = InventoryModuleConfig::where('business_id', $inventoryBusinessId)
-                    ->where('is_active', true)
-                    ->first();
-                $inventoryModuleEnabled = (bool) $inventoryModuleConfig;
-
-                if (InventoryBusinessContext::isAdminBrowsing()) {
-                    $inventoryAdminContextBusiness = InventoryBusinessContext::contextBusiness();
-                }
-            }
-            $view->with('inventoryModuleEnabled', $inventoryModuleEnabled);
-            $view->with('inventoryModuleConfig', $inventoryModuleConfig);
-            $view->with('inventoryAdminContextBusiness', $inventoryAdminContextBusiness);
-
-            $activeEmergencyAlert = ($user && $callingModuleEnabled)
-                ? app(EmergencyAlertService::class)->resolveActiveAlertForBusiness($user->business_id)
-                : null;
-            $globalActiveEmergency = (bool) $activeEmergencyAlert;
-            $view->with('globalActiveEmergency', $globalActiveEmergency);
-            $view->with('activeEmergencyAlert', $activeEmergencyAlert);
+            $view->with($shared);
         });
 
          // Register observers
@@ -113,5 +73,69 @@ class AppServiceProvider extends ServiceProvider
          InventorySupplierQuotation::observe(ModelActivityObserver::class);
          GoodsReceivedNote::observe(ModelActivityObserver::class);
          StockTransfer::observe(ModelActivityObserver::class);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function sharedLayoutViewData(?User $user): array
+    {
+        $callingModuleEnabled = false;
+        $callingModuleConfig = null;
+        $userIsACaller = false;
+        $inventoryModuleEnabled = false;
+        $inventoryModuleConfig = null;
+        $inventoryAdminContextBusiness = null;
+        $activeEmergencyAlert = null;
+
+        if ($user) {
+            $callingModuleConfig = CallingModuleConfig::query()
+                ->where('business_id', $user->business_id)
+                ->where('is_active', true)
+                ->first();
+            $callingModuleEnabled = (bool) $callingModuleConfig;
+
+            if ($callingModuleEnabled) {
+                $sessionCallerId = session('caller_id');
+                $userIsACaller = $sessionCallerId && Caller::query()
+                    ->where('id', $sessionCallerId)
+                    ->where('business_id', $user->business_id)
+                    ->where('status', 'active')
+                    ->exists();
+            }
+
+            $inventoryBusinessId = InventoryBusinessContext::isKashtreAdmin() && InventoryBusinessContext::hasContext()
+                ? InventoryBusinessContext::effectiveBusinessId()
+                : (int) $user->business_id;
+
+            $inventoryModuleConfig = InventoryModuleConfig::query()
+                ->where('business_id', $inventoryBusinessId)
+                ->where('is_active', true)
+                ->first();
+            $inventoryModuleEnabled = (bool) $inventoryModuleConfig;
+
+            if (InventoryBusinessContext::isAdminBrowsing()) {
+                $inventoryAdminContextBusiness = InventoryBusinessContext::contextBusiness();
+            }
+
+            if ($callingModuleEnabled) {
+                $activeEmergencyAlert = app(EmergencyAlertService::class)
+                    ->resolveActiveAlertForBusiness((int) $user->business_id);
+            }
+        }
+
+        return [
+            'business' => $user?->business,
+            'businessBranding' => BusinessBranding::for($user?->business),
+            'permissions' => (array) ($user?->permissions ?? []),
+            'callingModuleEnabled' => $callingModuleEnabled,
+            'callingModuleConfig' => $callingModuleConfig,
+            'userIsACaller' => $userIsACaller,
+            'inventoryModuleEnabled' => $inventoryModuleEnabled,
+            'inventoryModuleConfig' => $inventoryModuleConfig,
+            'inventoryAdminContextBusiness' => $inventoryAdminContextBusiness,
+            'globalActiveEmergency' => (bool) $activeEmergencyAlert,
+            'activeEmergencyAlert' => $activeEmergencyAlert,
+        ];
     }
 }

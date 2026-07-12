@@ -127,12 +127,16 @@ class NetworkStockTable extends Component implements HasForms, HasTable
             ->where('items.type', 'good')
             ->joinSub($rollupSub, 'rollup', fn ($join) => $join->on('rollup.item_id', '=', 'items.id'))
             ->select([
-                'items.*',
+                'items.id',
+                'items.business_id',
+                'items.name',
+                'items.code',
+                'items.uom_id',
                 'rollup.rollup_physical_quantity_suom',
                 'rollup.rollup_damaged_quantity_suom',
                 'rollup.rollup_expired_quantity_suom',
                 'rollup.rollup_store_count',
             ])
-            ->with('itemUnit');
+            ->with('itemUnit:id,name');
     }
 }

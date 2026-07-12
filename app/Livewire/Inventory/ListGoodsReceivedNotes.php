@@ -3,6 +3,7 @@
 namespace App\Livewire\Inventory;
 
 use App\Models\GoodsReceivedNote;
+use App\Support\InventoryBusinessContext;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Tables\Actions\Action;
@@ -12,7 +13,6 @@ use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Contracts\View\View;
-use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 
 class ListGoodsReceivedNotes extends Component implements HasForms, HasTable
@@ -25,9 +25,24 @@ class ListGoodsReceivedNotes extends Component implements HasForms, HasTable
         return $table
             ->query(
                 GoodsReceivedNote::query()
-                    ->where('business_id', \App\Support\InventoryBusinessContext::effectiveBusinessId())
-                    ->with(['supplier', 'entryBy'])
-                    ->latest()
+                    ->select([
+                        'id',
+                        'business_id',
+                        'supplier_id',
+                        'entry_by_user_id',
+                        'grn_number',
+                        'date_of_delivery',
+                        'lead_time_days',
+                        'status',
+                        'created_at',
+                    ])
+                    ->where('business_id', InventoryBusinessContext::effectiveBusinessId())
+                    ->with([
+                        'supplier:id,name',
+                        'entryBy:id,name',
+                    ])
+                    ->withCount('lines')
+                    ->latest('created_at')
             )
             ->columns([
                 TextColumn::make('grn_number')
@@ -72,7 +87,6 @@ class ListGoodsReceivedNotes extends Component implements HasForms, HasTable
 
                 TextColumn::make('lines_count')
                     ->label('Lines')
-                    ->counts('lines')
                     ->alignEnd(),
             ])
             ->filters([
@@ -98,6 +112,7 @@ class ListGoodsReceivedNotes extends Component implements HasForms, HasTable
             ->defaultSort('created_at', 'desc')
             ->striped()
             ->paginated([10, 25, 50])
+            ->defaultPaginationPageOption(10)
             ->emptyStateHeading('No goods receive notes yet')
             ->emptyStateDescription('Create a goods receive note to record incoming stock from a supplier.');
     }

@@ -35,12 +35,16 @@ class StockAgingTable extends Component implements HasForms, HasTable
                     ->join('items', 'items.id', '=', 'inventory_stock_levels.item_id')
                     ->join('stores', 'stores.id', '=', 'inventory_stock_levels.store_id')
                     ->select([
-                        'inventory_stock_levels.*',
+                        'inventory_stock_levels.id',
+                        'inventory_stock_levels.business_id',
+                        'inventory_stock_levels.store_id',
+                        'inventory_stock_levels.item_id',
+                        'inventory_stock_levels.quantity_suom',
                         'items.name as item_name',
                         'items.code as item_code',
                         'stores.name as store_name',
                     ])
-                    ->with('item.itemUnit')
+                    ->with(['item:id,uom_id', 'item.itemUnit:id,name'])
             )
             ->columns([
                 TextColumn::make('item_name')->label('Item')->searchable()->sortable(),

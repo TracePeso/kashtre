@@ -7,6 +7,9 @@ use Carbon\Carbon;
 
 class FinancialYearService
 {
+    /** @var array<int, Business> */
+    private array $businessCache = [];
+
     public function periodStart(Business|int $business, ?Carbon $asOf = null): Carbon
     {
         $business = $this->resolveBusiness($business);
@@ -60,6 +63,10 @@ class FinancialYearService
             return $business;
         }
 
-        return Business::query()->findOrFail($business);
+        if (isset($this->businessCache[$business])) {
+            return $this->businessCache[$business];
+        }
+
+        return $this->businessCache[$business] = Business::query()->findOrFail($business);
     }
 }

@@ -64,11 +64,13 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
         }
 
         $this->stockView = $view;
+        $this->shrinkageStoreIds = null;
         $this->resetTable();
     }
 
     public function updatedStoreId(): void
     {
+        $this->shrinkageStoreIds = null;
         $this->resetTable();
     }
 
@@ -334,7 +336,13 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
                     ->orWhere('stock.ma_30_days', '>', 0);
             })
             ->select([
-                'items.*',
+                'items.id',
+                'items.business_id',
+                'items.name',
+                'items.code',
+                'items.uom_id',
+                'items.purchase_price',
+                'items.default_price',
                 'stock.store_id as stock_store_id',
                 'stock.quantity_suom as stock_quantity_suom',
                 'stock.physical_quantity_suom as stock_physical_quantity_suom',
@@ -353,7 +361,7 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
                 'stock.last_purchase_price as stock_last_purchase_price',
                 'stock.weighted_avg_cost as stock_weighted_avg_cost',
             ])
-            ->with('itemUnit');
+            ->with('itemUnit:id,name');
     }
 
     private function networkBaseQuery(): Builder
@@ -385,13 +393,17 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
             ->where('items.type', 'good')
             ->joinSub($rollupSub, 'rollup', fn ($join) => $join->on('rollup.item_id', '=', 'items.id'))
             ->select([
-                'items.*',
+                'items.id',
+                'items.business_id',
+                'items.name',
+                'items.code',
+                'items.uom_id',
                 'rollup.rollup_physical_quantity_suom',
                 'rollup.rollup_damaged_quantity_suom',
                 'rollup.rollup_expired_quantity_suom',
                 'rollup.rollup_store_count',
             ])
-            ->with('itemUnit');
+            ->with('itemUnit:id,name');
     }
 
     private function stockLevel(Item $item): InventoryStockLevel
@@ -454,6 +466,24 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
         return $first ? (int) $first : null;
     }
 
+    /** @var list<int>|null */
+    private ?array $shrinkageStoreIds = null;
+
+    private function shrinkageStoreIds(): array
+    {
+        if ($this->shrinkageStoreIds !== null) {
+            return $this->shrinkageStoreIds;
+        }
+
+        if (! $this->storeId) {
+            return $this->shrinkageStoreIds = [];
+        }
+
+        return $this->shrinkageStoreIds = $this->stockView === self::VIEW_NETWORK
+            ? Store::descendantIds($this->storeId)
+            : [(int) $this->storeId];
+    }
+
     private function warmCumulativeShrinkageForPage(Paginator $paginator): void
     {
         if (! $this->storeId) {
@@ -461,17 +491,13 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
         }
 
         $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
-        $storeIds = $this->stockView === self::VIEW_NETWORK
-            ? Store::descendantIds($this->storeId)
-            : [(int) $this->storeId];
-
         $itemIds = $paginator->getCollection()
             ->pluck('id')
             ->map(fn ($id): int => (int) $id)
             ->all();
 
         app(InventoryStockCountShrinkageService::class)
-            ->warmPageCumulativeShrinkage($businessId, $storeIds, $itemIds);
+            ->warmPageCumulativeShrinkage($businessId, $this->shrinkageStoreIds(), $itemIds);
     }
 
     /**
@@ -484,11 +510,8 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
         }
 
         $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
-        $storeIds = $this->stockView === self::VIEW_NETWORK
-            ? Store::descendantIds($this->storeId)
-            : [(int) $this->storeId];
 
         return app(InventoryStockCountShrinkageService::class)
-            ->cumulativeForItem($businessId, $storeIds, (int) $item->id);
+            ->cumulativeForItem($businessId, $this->shrinkageStoreIds(), (int) $item->id);
     }
 }

@@ -4,6 +4,7 @@ namespace App\Livewire\Inventory;
 
 use App\Models\InventoryOrder;
 use App\Models\ItemImportanceCategory;
+use App\Support\InventoryBusinessContext;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Tables\Actions\Action;
@@ -12,7 +13,6 @@ use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Contracts\View\View;
-use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 
 class ListInventoryOrders extends Component implements HasForms, HasTable
@@ -20,14 +20,38 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
     use InteractsWithForms;
     use InteractsWithTable;
 
+    /** @var array<string, string>|null */
+    private ?array $importanceLabels = null;
+
     public function table(Table $table): Table
     {
+        $businessId = InventoryBusinessContext::effectiveBusinessId();
+
         return $table
             ->query(
                 InventoryOrder::query()
-                    ->where('business_id', \App\Support\InventoryBusinessContext::effectiveBusinessId())
-                    ->with(['store', 'sourceStore', 'supplier', 'createdBy', 'group'])
-                    ->latest()
+                    ->select([
+                        'id',
+                        'business_id',
+                        'store_id',
+                        'source_store_id',
+                        'supplier_id',
+                        'group_id',
+                        'order_number',
+                        'order_type',
+                        'status',
+                        'importance_filter',
+                        'created_at',
+                    ])
+                    ->where('business_id', $businessId)
+                    ->with([
+                        'store:id,name',
+                        'sourceStore:id,name',
+                        'supplier:id,name',
+                        'group:id,name',
+                    ])
+                    ->withCount('lines')
+                    ->latest('created_at')
             )
             ->columns([
                 TextColumn::make('order_number')
@@ -64,8 +88,8 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
 
                 TextColumn::make('importance_filter')
                     ->label('Importance')
-                    ->formatStateUsing(fn (?string $state, InventoryOrder $record): string => $state
-                        ? (ItemImportanceCategory::labelForSlug((int) $record->business_id, $state) ?? $state)
+                    ->formatStateUsing(fn (?string $state): string => $state
+                        ? ($this->importanceLabels()[$state] ?? $state)
                         : 'All'),
 
                 TextColumn::make('group.name')
@@ -75,7 +99,6 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
 
                 TextColumn::make('lines_count')
                     ->label('Lines')
-                    ->counts('lines')
                     ->alignEnd(),
 
                 TextColumn::make('created_at')
@@ -93,7 +116,24 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
             ])
             ->defaultSort('created_at', 'desc')
             ->striped()
-            ->paginated([10, 25, 50]);
+            ->paginated([10, 25, 50])
+            ->defaultPaginationPageOption(10);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function importanceLabels(): array
+    {
+        if ($this->importanceLabels !== null) {
+            return $this->importanceLabels;
+        }
+
+        $this->importanceLabels = ItemImportanceCategory::optionsForBusiness(
+            InventoryBusinessContext::effectiveBusinessId()
+        );
+
+        return $this->importanceLabels;
     }
 
     public function render(): View

@@ -47,6 +47,9 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
     /** @var Collection<int, InventoryStockLevel>|null */
     private ?Collection $stockByItemId = null;
 
+    /** @var array<string, string>|null */
+    private ?array $importanceLabels = null;
+
     private ?InventoryModuleConfig $orderModuleConfig = null;
 
     public function mount(InventoryOrder $order): void
@@ -105,7 +108,9 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
 
             TextColumn::make('item.importance_category')
                 ->label('Importance')
-                ->formatStateUsing(fn (?string $state): string => ItemImportanceCategory::labelForSlug((int) $this->order->business_id, $state) ?? '—')
+                ->formatStateUsing(fn (?string $state): string => $state
+                    ? ($this->importanceLabels()[$state] ?? $state)
+                    : '—')
                 ->badge()
                 ->color('primary')
                 ->toggleable(isToggledHiddenByDefault: true),
@@ -224,7 +229,14 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
             ->query(
                 InventoryOrderLine::query()
                     ->where('inventory_order_id', $this->order->id)
-                    ->with(['item.itemUnit', 'item.orderUnit', 'item.suppliers', 'item.group', 'item.subgroup', 'supplier'])
+                    ->with([
+                        'item:id,name,code,uom_id,order_unit_id,group_id,subgroup_id,importance_category,purchase_price,default_price,suom_per_ouom',
+                        'item.itemUnit:id,name',
+                        'item.orderUnit:id,name',
+                        'item.group:id,name',
+                        'item.subgroup:id,name',
+                        'supplier:id,name',
+                    ])
             )
             ->columns($columns)
             ->filters([
@@ -326,5 +338,19 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
         }
 
         return $this->stockByItemId;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function importanceLabels(): array
+    {
+        if ($this->importanceLabels !== null) {
+            return $this->importanceLabels;
+        }
+
+        return $this->importanceLabels = ItemImportanceCategory::optionsForBusiness(
+            (int) $this->order->business_id
+        );
     }
 }

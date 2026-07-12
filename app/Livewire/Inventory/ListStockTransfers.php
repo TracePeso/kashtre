@@ -3,6 +3,7 @@
 namespace App\Livewire\Inventory;
 
 use App\Models\StockTransfer;
+use App\Support\InventoryBusinessContext;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Tables\Actions\Action;
@@ -11,7 +12,6 @@ use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Contracts\View\View;
-use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 
 class ListStockTransfers extends Component implements HasForms, HasTable
@@ -24,9 +24,24 @@ class ListStockTransfers extends Component implements HasForms, HasTable
         return $table
             ->query(
                 StockTransfer::query()
-                    ->where('business_id', \App\Support\InventoryBusinessContext::effectiveBusinessId())
-                    ->with(['fromStore', 'toStore', 'requestedBy'])
-                    ->latest()
+                    ->select([
+                        'id',
+                        'business_id',
+                        'from_store_id',
+                        'to_store_id',
+                        'requested_by_user_id',
+                        'reference',
+                        'status',
+                        'requested_at',
+                        'created_at',
+                    ])
+                    ->where('business_id', InventoryBusinessContext::effectiveBusinessId())
+                    ->with([
+                        'fromStore:id,name',
+                        'toStore:id,name',
+                    ])
+                    ->withCount('lines')
+                    ->latest('created_at')
             )
             ->columns([
                 TextColumn::make('reference')->searchable()->sortable(),
@@ -44,7 +59,7 @@ class ListStockTransfers extends Component implements HasForms, HasTable
                         default => 'gray',
                     }),
                 TextColumn::make('requested_at')->label('Requested')->dateTime('M d, Y H:i')->placeholder('—'),
-                TextColumn::make('lines_count')->label('Items')->counts('lines')->alignEnd(),
+                TextColumn::make('lines_count')->label('Items')->alignEnd(),
             ])
             ->actions([
                 Action::make('view')
@@ -53,7 +68,8 @@ class ListStockTransfers extends Component implements HasForms, HasTable
             ])
             ->defaultSort('created_at', 'desc')
             ->striped()
-            ->paginated([10, 25, 50]);
+            ->paginated([10, 25, 50])
+            ->defaultPaginationPageOption(10);
     }
 
     public function render(): View

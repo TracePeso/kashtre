@@ -3,6 +3,7 @@
 namespace App\Livewire\Inventory;
 
 use App\Models\InventoryStockCount;
+use App\Support\InventoryBusinessContext;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Tables\Actions\Action;
@@ -11,7 +12,6 @@ use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Contracts\View\View;
-use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 
 class ListStockCounts extends Component implements HasForms, HasTable
@@ -24,9 +24,23 @@ class ListStockCounts extends Component implements HasForms, HasTable
         return $table
             ->query(
                 InventoryStockCount::query()
-                    ->where('business_id', \App\Support\InventoryBusinessContext::effectiveBusinessId())
-                    ->with(['store', 'createdBy'])
-                    ->latest()
+                    ->select([
+                        'id',
+                        'business_id',
+                        'store_id',
+                        'created_by_user_id',
+                        'reference',
+                        'status',
+                        'counted_at',
+                        'created_at',
+                    ])
+                    ->where('business_id', InventoryBusinessContext::effectiveBusinessId())
+                    ->with([
+                        'store:id,name',
+                        'createdBy:id,name',
+                    ])
+                    ->withCount('lines')
+                    ->latest('created_at')
             )
             ->columns([
                 TextColumn::make('reference')
@@ -66,7 +80,6 @@ class ListStockCounts extends Component implements HasForms, HasTable
 
                 TextColumn::make('lines_count')
                     ->label('Items')
-                    ->counts('lines')
                     ->alignEnd(),
             ])
             ->actions([
@@ -76,7 +89,8 @@ class ListStockCounts extends Component implements HasForms, HasTable
             ])
             ->defaultSort('created_at', 'desc')
             ->striped()
-            ->paginated([10, 25, 50]);
+            ->paginated([10, 25, 50])
+            ->defaultPaginationPageOption(10);
     }
 
     public function render(): View

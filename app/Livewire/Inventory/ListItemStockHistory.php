@@ -22,7 +22,7 @@ class ListItemStockHistory extends Component implements HasForms, HasTable
 
     public function mount(Item $item): void
     {
-        $this->item = $item->load('inventoryStockLevel');
+        $this->item = $item->loadMissing('inventoryStockLevel');
     }
 
     public function table(Table $table): Table
@@ -30,9 +30,29 @@ class ListItemStockHistory extends Component implements HasForms, HasTable
         return $table
             ->query(
                 InventoryStockMovement::query()
+                    ->select([
+                        'id',
+                        'business_id',
+                        'item_id',
+                        'store_id',
+                        'goods_received_note_id',
+                        'recorded_by_user_id',
+                        'occurred_at',
+                        'movement_type',
+                        'reference_label',
+                        'quantity_delta',
+                        'balance_after',
+                        'unit_price',
+                        'line_valuation',
+                        'balance_valuation',
+                    ])
                     ->where('business_id', $this->item->business_id)
                     ->where('item_id', $this->item->id)
-                    ->with(['recordedBy', 'goodsReceivedNote', 'store'])
+                    ->with([
+                        'recordedBy:id,name',
+                        'store:id,name',
+                    ])
+                    ->latest('occurred_at')
             )
             ->columns([
                 TextColumn::make('occurred_at')
@@ -97,6 +117,7 @@ class ListItemStockHistory extends Component implements HasForms, HasTable
             ->defaultSort('occurred_at', 'desc')
             ->striped()
             ->paginated([10, 25, 50])
+            ->defaultPaginationPageOption(10)
             ->emptyStateHeading('No stock movements yet')
             ->emptyStateDescription('Each approved goods receive note records purchase price and valuation for that receipt.');
     }

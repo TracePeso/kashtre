@@ -258,9 +258,16 @@ class Store extends Model
      */
     public static function optionsForSelect(int $businessId): array
     {
-        return static::query()
+        static $cache = [];
+
+        if (isset($cache[$businessId])) {
+            return $cache[$businessId];
+        }
+
+        return $cache[$businessId] = static::query()
             ->forBusiness($businessId)
-            ->with('parent')
+            ->select(['id', 'name', 'parent_id', 'business_id'])
+            ->with('parent:id,name')
             ->orderByRaw('CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END')
             ->orderBy('name')
             ->get()

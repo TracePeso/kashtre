@@ -229,7 +229,13 @@ class MonitorStockTable extends Component implements HasForms, HasTable
             })
             ->when($this->storeId, fn (Builder $query) => $query->where('stock.store_id', $this->storeId))
             ->select([
-                'items.*',
+                'items.id',
+                'items.business_id',
+                'items.name',
+                'items.code',
+                'items.uom_id',
+                'items.purchase_price',
+                'items.default_price',
                 'stock.store_id as stock_store_id',
                 'stock.quantity_suom as stock_quantity_suom',
                 'stock.physical_quantity_suom as stock_physical_quantity_suom',
@@ -249,7 +255,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                 'stock.weighted_avg_cost as stock_weighted_avg_cost',
                 'stores.name as store_name',
             ])
-            ->with('itemUnit');
+            ->with('itemUnit:id,name');
     }
 
     private function stockLevel(Item $item): InventoryStockLevel
