@@ -27,6 +27,7 @@ use App\Http\Controllers\ContractorProfileBulkUploadController;
 use App\Http\Controllers\InsuranceCompanyController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StoreController;
+use App\Http\Controllers\GroupController;
 use App\Http\Controllers\SubGroupController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuditLogController;
