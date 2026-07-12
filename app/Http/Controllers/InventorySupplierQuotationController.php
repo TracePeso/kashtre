@@ -58,6 +58,7 @@ class InventorySupplierQuotationController extends Controller
             'lines.item',
             'supplierQuotations.supplier',
             'supplierQuotations.purchaseOrder',
+            'purchaseOrders.supplier',
             'invitedSuppliers',
             'supplier',
         ]);

@@ -162,6 +162,11 @@
                                 </a>
                             </li>
                             <li>
+                                <a href="{{ route('inventory.purchase-orders.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.purchase-orders*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    LPOs
+                                </a>
+                            </li>
+                            <li>
                                 <a href="{{ route('inventory.transfers.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.transfers*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
                                     Transfers
                                 </a>

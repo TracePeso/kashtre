@@ -33,12 +33,6 @@ class InventoryOrderApprovalService
             ]);
         }
 
-        if ($order->isExternal() && ! $order->supplier_id) {
-            throw ValidationException::withMessages([
-                'supplier' => 'Select a supplier for this RFQ before submitting.',
-            ]);
-        }
-
         if ($order->isInternal()) {
             if (! $order->source_store_id) {
                 throw ValidationException::withMessages([
@@ -177,11 +171,19 @@ class InventoryOrderApprovalService
 
         if ($fullyApproved) {
             $this->notifications->notifyFullyApproved($fresh, $user);
+
+            if ($fresh->isInternal() && $fresh->canCreateStockTransfer()) {
+                try {
+                    app(InventoryStockTransferService::class)->createFromInternalOrder($fresh, $user);
+                } catch (ValidationException) {
+                    // Order is approved; user can still create the transfer manually.
+                }
+            }
         } else {
             $this->notifications->notifyNextApprover($fresh);
         }
 
-        return $fresh;
+        return $fresh->fresh(['stockTransfers', 'lines.item', 'approvals.approver', 'store', 'sourceStore', 'createdBy', 'business']);
     }
 
     public function reject(InventoryOrder $order, User $user, string $reason): InventoryOrder

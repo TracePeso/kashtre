@@ -117,17 +117,23 @@ class InventoryStockTransferService
         }
 
         $lines = $order->lines
-            ->map(fn ($line) => [
-                'item_id' => (int) $line->item_id,
-                'quantity_suom' => (float) ($line->order_quantity_suom ?? $line->suggested_quantity_suom ?? 0),
-            ])
+            ->map(function ($line) {
+                $ordered = (float) ($line->order_quantity_suom ?? $line->suggested_quantity_suom ?? 0);
+                $alreadyReceived = (float) ($line->received_quantity_suom ?? 0);
+                $remaining = max(0, round($ordered - $alreadyReceived, 4));
+
+                return [
+                    'item_id' => (int) $line->item_id,
+                    'quantity_suom' => $remaining,
+                ];
+            })
             ->filter(fn (array $line) => $line['quantity_suom'] > 0)
             ->values()
             ->all();
 
         if ($lines === []) {
             throw ValidationException::withMessages([
-                'lines' => 'Internal order has no quantities to transfer.',
+                'lines' => 'Internal order has no remaining quantities to transfer.',
             ]);
         }
 
@@ -322,9 +328,11 @@ class InventoryStockTransferService
             }
 
             $orderLine->update([
-                'received_quantity_suom' => $received,
+                'received_quantity_suom' => round((float) ($orderLine->received_quantity_suom ?? 0) + $received, 4),
             ]);
         }
+
+        $order->load('lines');
 
         $allReceived = $order->lines->every(function (InventoryOrderLine $line) {
             $ordered = (float) ($line->order_quantity_suom ?? 0);

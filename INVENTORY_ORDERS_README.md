@@ -67,16 +67,20 @@ Help: `/inventory/orders/how-it-works`.
 
 ## Procurement workflow (external)
 
-1. Draft RFQ (period or budget) → submit → configured approvers (whoever was selected; 1–2).
-2. On full approve: price-hidden RFQ PDF emailed to invited suppliers (supplier email required).
-3. **Quotation analysis** — invite suppliers, record quotes, compare, accept one or more.
-4. **Generate LPOs** — one LPO per accepted quotation; number uses business **entity code** when set (`{CODE}-LPO-YYYYMMDD-NNN`).
-5. Issue LPO (emails finance/approvers + supplier) → GRN → **QC inspection must Pass** → final GRN approve posts stock.
+1. **Purchase request** — draft RFQ with items/budget; review quantities (**no supplier yet**).
+2. **Digital approval** — configured approvers (whoever was selected; 1–2); Finance notified.
+3. **RFQ** — price-hidden PDF; invite and email suppliers (supplier email required).
+4. **Quotation analysis** — compare quotes; accept one or more suppliers.
+5. **LPO issuance** — one LPO per accepted quotation; number uses business **entity code** when set (`{CODE}-LPO-YYYYMMDD-NNN`).
+6. **Transmit** — issue LPO (emails finance/approvers + supplier).
+7. **Delivery & QC** — GRN → **inspection must Pass** → final GRN approve posts stock.
 
 ## Procurement workflow (internal)
 
-1. Internal order → approve → stock transfer.
-2. Transfer approve = **issued in transit** (available ↓, in-transit ↑).
-3. Destination confirm receive clears in-transit and credits destination stock.
+1. Internal order (source → receiving store) → submit → approve.
+2. On full approval a **draft stock transfer** is prepared (manual create still available if needed).
+3. Transfer approve = **issued in transit** (available ↓, in-transit ↑). Shown on Monitor Stock.
+4. Destination confirm receive clears in-transit and credits destination stock.
+5. Linked order becomes **partially fulfilled** or **fulfilled**; remaining quantities can start another transfer.
 
 Set **entity code** on Businesses → Entity code action. Add supplier emails under Suppliers.

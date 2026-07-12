@@ -1168,13 +1168,8 @@ class InventoryOrderService
             return false;
         }
 
-        if ($order->supplier_id) {
-            $item->loadMissing('suppliers');
-
-            if (! $item->suppliers->contains('id', (int) $order->supplier_id)) {
-                return false;
-            }
-        }
+        // External RFQs are multi-supplier: do not filter items by a header supplier.
+        // Supplier selection happens later during quotation analysis / LPO split.
 
         return true;
     }

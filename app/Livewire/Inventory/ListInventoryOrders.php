@@ -47,7 +47,6 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
                     ->with([
                         'store:id,name',
                         'sourceStore:id,name',
-                        'supplier:id,name',
                         'group:id,name',
                     ])
                     ->withCount('lines')
@@ -69,7 +68,7 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
                     ->label('Receiving store')
                     ->description(fn (InventoryOrder $record): ?string => $record->isInternal()
                         ? 'From '.$record->sourceStore?->name
-                        : $record->supplier?->name)
+                        : 'External RFQ')
                     ->sortable(),
 
                 TextColumn::make('status')

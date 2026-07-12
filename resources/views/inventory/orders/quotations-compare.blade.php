@@ -8,6 +8,12 @@
                 <p class="mt-1 text-sm text-gray-500">Comparative computation sheet for {{ $order->order_number }}. Accept one or more suppliers, then generate LPOs.</p>
             </div>
             <div class="flex flex-wrap gap-2">
+                @if($order->purchaseOrders->isNotEmpty())
+                    <a href="{{ route('inventory.purchase-orders.index') }}"
+                       class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100">
+                        View all LPOs ({{ $order->purchaseOrders->count() }})
+                    </a>
+                @endif
                 <form action="{{ route('inventory.orders.purchase-orders.generate-accepted', $order) }}" method="POST">
                     @csrf
                     <button type="submit" class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
@@ -26,29 +32,81 @@
             </div>
         @endif
 
+        @if($order->purchaseOrders->isNotEmpty())
+            <section class="bg-white shadow sm:rounded-lg overflow-hidden border border-indigo-100">
+                <div class="px-5 py-4 border-b border-indigo-100 bg-indigo-50/60 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-900">LPOs for this RFQ</h3>
+                        <p class="text-xs text-gray-500 mt-0.5">Open an LPO to review, issue (email supplier), or receive goods.</p>
+                    </div>
+                    <a href="{{ route('inventory.purchase-orders.index') }}" class="text-sm font-medium text-indigo-700 hover:text-indigo-900">All purchase orders →</a>
+                </div>
+                <ul class="divide-y divide-gray-100">
+                    @foreach($order->purchaseOrders as $po)
+                        <li class="px-5 py-3 flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <a href="{{ route('inventory.purchase-orders.show', $po) }}" class="text-sm font-semibold text-indigo-700 hover:text-indigo-900">{{ $po->po_number }}</a>
+                                <p class="text-xs text-gray-500">{{ $po->supplier?->name }} · {{ $po->statusLabel() }}</p>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-sm font-medium text-gray-900 tabular-nums">UGX {{ number_format((float) $po->total_amount, 2) }}</span>
+                                <a href="{{ route('inventory.purchase-orders.show', $po) }}" class="text-sm font-medium text-blue-600 hover:text-blue-800">Open</a>
+                            </div>
+                        </li>
+                    @endforeach
+                </ul>
+            </section>
+        @endif
+
         <section class="bg-white shadow sm:rounded-lg overflow-hidden">
-            <div class="px-5 py-4 border-b border-gray-200">
-                <h3 class="text-sm font-semibold text-gray-900">Invite suppliers to this RFQ</h3>
-                <p class="text-xs text-gray-500 mt-0.5">Invited suppliers receive the price-hidden RFQ PDF when the order is fully approved (if they have an email).</p>
+            <div class="px-5 py-4 border-b border-gray-200 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-900">Invite suppliers to this RFQ</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">
+                        Invited suppliers with an email receive the price-hidden RFQ PDF when the order is fully approved.
+                        Use <strong>Download RFQ PDF</strong> to share manually with suppliers who have no email.
+                    </p>
+                </div>
+                <div class="flex flex-wrap gap-2 shrink-0">
+                    @if($order->hasRfqDocument())
+                        <a href="{{ $order->rfqDocumentUrl() }}"
+                           target="_blank"
+                           class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100">
+                            Download RFQ document
+                        </a>
+                    @endif
+                    <a href="{{ route('inventory.orders.pdf', $order) }}"
+                       class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium text-slate-700 bg-white border border-gray-300 hover:bg-gray-50">
+                        Download RFQ PDF
+                    </a>
+                </div>
             </div>
             <div class="px-5 py-4">
                 <form action="{{ route('inventory.orders.rfq-suppliers.invite', $order) }}" method="POST" class="space-y-3">
                     @csrf
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                         @foreach($availableSuppliers as $supplier)
-                            @php($already = $rfqSuppliers->contains(fn ($row) => (int) $row['supplier_id'] === (int) $supplier->id))
+                            @php
+                                $already = $rfqSuppliers->contains(fn ($row) => (int) $row['supplier_id'] === (int) $supplier->id);
+                            @endphp
                             <label class="flex items-start gap-2 text-sm text-gray-800">
                                 <input type="checkbox" name="supplier_ids[]" value="{{ $supplier->id }}"
                                        @checked($already)
                                        class="mt-1 rounded border-gray-300 text-blue-600">
                                 <span>
                                     {{ $supplier->name }}
-                                    <span class="block text-xs text-gray-500">{{ $supplier->email ?: 'No email' }}</span>
+                                    <span class="block text-xs text-gray-500">{{ $supplier->email ?: 'No email — download RFQ to share' }}</span>
                                 </span>
                             </label>
                         @endforeach
                     </div>
-                    <button type="submit" class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">Save invited suppliers</button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="submit" class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">Save invited suppliers</button>
+                        <a href="{{ route('inventory.orders.pdf', $order) }}"
+                           class="px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                            Download RFQ PDF
+                        </a>
+                    </div>
                 </form>
             </div>
         </section>

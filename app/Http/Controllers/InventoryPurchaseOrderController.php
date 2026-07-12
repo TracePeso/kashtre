@@ -25,6 +25,11 @@ class InventoryPurchaseOrderController extends Controller
         $this->middleware($this->inventoryMiddleware(...));
     }
 
+    public function index()
+    {
+        return view('inventory.purchase-orders.index');
+    }
+
     public function show(InventoryPurchaseOrder $purchaseOrder)
     {
         $this->authorizePo($purchaseOrder);
@@ -129,14 +134,22 @@ class InventoryPurchaseOrderController extends Controller
         }
 
         if ($created < 1) {
+            $existing = $order->purchaseOrders()->count();
+
+            if ($existing > 0) {
+                return redirect()
+                    ->route('inventory.orders.show', $order)
+                    ->with('success', "LPOs already exist for this RFQ ({$existing}). Open them below, or from Inventory → Local purchase orders.");
+            }
+
             return redirect()
                 ->route('inventory.orders.quotations.compare', $order)
-                ->withErrors(['status' => $errors[0] ?? 'No accepted quotations without an LPO were found.']);
+                ->withErrors(['status' => $errors[0] ?? 'Accept at least one quotation before generating LPOs.']);
         }
 
         return redirect()
             ->route('inventory.orders.show', $order)
-            ->with('success', "Generated {$created} LPO(s) from accepted quotations.".($errors !== [] ? ' Some skipped: '.implode(' ', $errors) : ''));
+            ->with('success', "Generated {$created} LPO(s). Open them below to review and issue.".($errors !== [] ? ' Some skipped: '.implode(' ', $errors) : ''));
     }
 
     private function authorizePo(InventoryPurchaseOrder $po): void

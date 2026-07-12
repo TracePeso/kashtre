@@ -27,11 +27,10 @@
         <p class="muted">{{ $order->order_number }} · {{ $order->statusLabel() }}</p>
     @endif
     <p><strong>Store:</strong> {{ $order->store?->name }}<br>
-       @if($order->supplier)
-       <strong>Supplier:</strong> {{ $order->supplier->name }}<br>
-       @endif
        <strong>Prepared by:</strong> {{ $order->createdBy?->name ?? '—' }}<br>
        <strong>Date:</strong> {{ $order->created_at?->format('d M Y') }}</p>
+
+    <p class="muted">Pricing is intentionally omitted. Please return your quotation for the quantities below.</p>
 
     @if($order->notes)
         <p><strong>Notes:</strong> {{ $order->notes }}</p>

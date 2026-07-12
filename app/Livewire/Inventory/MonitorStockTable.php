@@ -91,6 +91,13 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->state(fn (Item $record): float => (float) $this->mForItem($record, 'current_m'))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
+                TextColumn::make('in_transit_suom')
+                    ->label('In transit')
+                    ->alignEnd()
+                    ->state(fn (Item $record): float => (float) ($record->stock_quantity_in_transit_suom ?? 0))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0))
+                    ->color(fn ($state) => (float) $state > 0 ? 'warning' : null),
+
                 TextColumn::make('physical_stock_as')
                     ->label('Physical count (AS)')
                     ->alignEnd()
@@ -224,6 +231,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
             ->leftJoin('stores', 'stores.id', '=', 'stock.store_id')
             ->where(function (Builder $query) {
                 $query->where('stock.quantity_suom', '>', 0)
+                    ->orWhere('stock.quantity_in_transit_suom', '>', 0)
                     ->orWhere('stock.ma_15_days', '>', 0)
                     ->orWhere('stock.ma_30_days', '>', 0);
             })
@@ -238,6 +246,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                 'items.default_price',
                 'stock.store_id as stock_store_id',
                 'stock.quantity_suom as stock_quantity_suom',
+                'stock.quantity_in_transit_suom as stock_quantity_in_transit_suom',
                 'stock.physical_quantity_suom as stock_physical_quantity_suom',
                 'stock.physical_counted_at as stock_physical_counted_at',
                 'stock.opening_quantity_suom as stock_opening_quantity_suom',
@@ -265,6 +274,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
             'store_id' => $item->stock_store_id,
             'item_id' => $item->id,
             'quantity_suom' => $item->stock_quantity_suom,
+            'quantity_in_transit_suom' => $item->stock_quantity_in_transit_suom ?? 0,
             'physical_quantity_suom' => $item->stock_physical_quantity_suom,
             'physical_counted_at' => $item->stock_physical_counted_at,
             'opening_quantity_suom' => $item->stock_opening_quantity_suom,

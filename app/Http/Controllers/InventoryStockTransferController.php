@@ -154,8 +154,8 @@ class InventoryStockTransferController extends Controller
         $transfer->refresh();
 
         $message = $transfer->isApproved()
-            ? 'All approvers have signed off. Stock has been deducted from '.$transfer->fromStore->selectLabel().'.'
-            : 'Your approval was recorded. Waiting for the next approver — stock is not deducted yet.';
+            ? 'All approvers have signed off. Stock at '.$transfer->fromStore->selectLabel().' is now in transit — destination must confirm receipt.'
+            : 'Your approval was recorded. Waiting for the next approver — stock is not moved yet.';
 
         return redirect()
             ->route('inventory.transfers.show', $transfer)
@@ -169,7 +169,8 @@ class InventoryStockTransferController extends Controller
 
         return redirect()
             ->route('inventory.transfers.show', $transfer)
-            ->with('success', 'Transfer received. Stock added to receiving store.');
+            ->with('success', 'Transfer received. Stock added to receiving store'
+                .($transfer->inventory_order_id ? '; linked internal order updated.' : '.'));
     }
 
     public function reject(Request $request, StockTransfer $transfer)

@@ -10,7 +10,6 @@ use App\Models\InventoryStockLevel;
 use App\Models\Item;
 use App\Models\ItemImportanceCategory;
 use App\Models\SubGroup;
-use App\Models\Supplier;
 use App\Services\Inventory\InventoryOrderService;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -39,11 +38,6 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
 
     public bool $showBudgetCapNotice = false;
 
-    public ?int $supplierId = null;
-
-    /** @var array<int, string> */
-    public array $supplierOptions = [];
-
     /** @var Collection<int, InventoryStockLevel>|null */
     private ?Collection $stockByItemId = null;
 
@@ -60,12 +54,6 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
 
         $this->order = $order;
         $this->budgetCapEnforced = (bool) ($order->budget_cap_enforced ?? true);
-        $this->supplierId = $order->supplier_id ? (int) $order->supplier_id : null;
-        $this->supplierOptions = Supplier::query()
-            ->where('business_id', (int) $order->business_id)
-            ->orderBy('name')
-            ->pluck('name', 'id')
-            ->all();
         $this->orderModuleConfig = InventoryModuleConfig::query()
             ->forBusiness((int) $order->business_id)
             ->active()
@@ -279,26 +267,6 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
     public function getTableRecordKey(Model $record): string
     {
         return (string) $record->getKey();
-    }
-
-    public function updatedSupplierId($value): void
-    {
-        if ($this->order->isInternal() || ! $this->order->isDraft() || ! filled($value) || \App\Support\InventoryBusinessContext::isAdminBrowsing()) {
-            return;
-        }
-
-        \App\Support\InventoryBusinessContext::assertWritable();
-
-        try {
-            $this->order = app(InventoryOrderService::class)->setOrderSupplier(
-                $this->order,
-                (int) $value
-            );
-            $this->supplierId = (int) $this->order->supplier_id;
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            $this->addError('supplierId', collect($e->errors())->flatten()->first() ?? 'Invalid supplier.');
-            $this->supplierId = $this->order->supplier_id ? (int) $this->order->supplier_id : null;
-        }
     }
 
     public function toggleBudgetCapEnforced(): void

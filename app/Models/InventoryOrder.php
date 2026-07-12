@@ -250,7 +250,10 @@ class InventoryOrder extends Model
     public function isAwaitingInternalFulfillment(): bool
     {
         return $this->isInternal()
-            && $this->status === self::STATUS_APPROVED;
+            && in_array($this->status, [
+                self::STATUS_APPROVED,
+                self::STATUS_PARTIALLY_RECEIVED,
+            ], true);
     }
 
     public function activeStockTransfer(): ?StockTransfer
@@ -304,9 +307,11 @@ class InventoryOrder extends Model
     {
         if ($this->isInternal()) {
             return match ($this->status) {
-                self::STATUS_DRAFT => 'Draft internal order',
+                self::STATUS_DRAFT => 'Draft',
                 self::STATUS_PENDING_APPROVAL => 'Pending approval',
-                self::STATUS_APPROVED, self::STATUS_FULFILLED => 'Approved',
+                self::STATUS_APPROVED => 'Approved — awaiting transfer',
+                self::STATUS_PARTIALLY_RECEIVED => 'Partially fulfilled',
+                self::STATUS_FULFILLED => 'Fulfilled',
                 self::STATUS_REJECTED => 'Rejected',
                 default => ucfirst(str_replace('_', ' ', (string) $this->status)),
             };

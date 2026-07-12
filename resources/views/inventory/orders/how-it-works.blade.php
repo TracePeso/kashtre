@@ -47,11 +47,13 @@
                     <p class="text-sm text-gray-500 mt-0.5">After quantities are set on an external RFQ.</p>
                 </div>
                 <ol class="px-6 py-5 list-decimal list-inside space-y-2 text-sm text-gray-800">
-                    <li>Submit → configured approvers (1–2 as selected) approve in order.</li>
-                    <li>On full approve, invited suppliers get a price-hidden RFQ PDF (if email is set).</li>
-                    <li>Invite more suppliers and open <strong>Quotation analysis</strong> to compare quotes.</li>
-                    <li>Accept one or more suppliers → generate LPOs (entity code prefixes LPO numbers).</li>
-                    <li>Issue LPO → create GRN → record QC inspection (must Pass) → approve to post stock.</li>
+                    <li><strong>Purchase request</strong> — select items / budget, review quantities (no supplier yet).</li>
+                    <li><strong>Digital approval</strong> — configured approvers (1–2 as selected) approve; Finance is notified.</li>
+                    <li><strong>RFQ</strong> — price-hidden PDF; invite and distribute to suppliers.</li>
+                    <li><strong>Quotation analysis</strong> — computation sheet; admin accepts one or more suppliers.</li>
+                    <li><strong>LPO issuance</strong> — one LPO per accepted quote; entity code prefixes LPO numbers.</li>
+                    <li><strong>Transmit</strong> — issue LPO emails supplier (and finance/approvers).</li>
+                    <li><strong>Delivery &amp; QC</strong> — GRN with mandatory inspection (pass) before stock posts.</li>
                 </ol>
             </section>
 
@@ -60,9 +62,11 @@
                     <h3 class="text-lg font-semibold text-gray-900">Internal transfer flow</h3>
                 </div>
                 <ol class="px-6 py-5 list-decimal list-inside space-y-2 text-sm text-gray-800">
-                    <li>Internal order → approve → stock transfer.</li>
+                    <li>Internal order (source → receiving store) → submit → approve.</li>
+                    <li>On full approval, a <strong>draft stock transfer</strong> is prepared (or create one manually).</li>
                     <li>Transfer approve moves source stock to <strong>in transit</strong> (available ↓).</li>
                     <li>Destination confirms receipt → in-transit cleared, destination stock ↑.</li>
+                    <li>Linked order becomes <strong>partially fulfilled</strong> or <strong>fulfilled</strong>; remaining qty can start another transfer.</li>
                 </ol>
             </section>
         </div>

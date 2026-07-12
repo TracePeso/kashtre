@@ -38,8 +38,8 @@
                         {{ $order->sourceStore?->selectLabel() ?? '—' }} → {{ $order->store?->selectLabel() ?? '—' }}
                     @else
                         {{ $order->store->selectLabel() }}
-                        @if($order->supplier)
-                            · {{ $order->supplier->name }}
+                        @if($order->isExternal() && $order->invitedSuppliers->isNotEmpty())
+                            · {{ $order->invitedSuppliers->count() }} supplier{{ $order->invitedSuppliers->count() === 1 ? '' : 's' }} invited
                         @endif
                     @endif
                     · {{ $order->orderingTypeValueLabel() }}
@@ -150,7 +150,7 @@
                     @if($order->hasRfqDocument())
                         A draft RFQ document has been generated automatically.
                     @endif
-                    Choose the <strong>supplier</strong> for this order (above the line items), review quantities, then <strong>Submit RFQ for approval</strong>.
+                    Review quantities (purchase request), then <strong>Submit RFQ for approval</strong>. Suppliers are invited after approval.
                 @endif
             </div>
         @endif
@@ -158,34 +158,39 @@
         @if($order->isPendingApproval())
             <div class="mt-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded text-sm">
                 @if($order->isInternal())
-                    <strong>Awaiting approval.</strong> After approvers sign off at the requesting store, a stock transfer will be created for the supplying store to review and issue.
+                    <strong>Awaiting approval.</strong> After approvers sign off, a stock transfer draft is prepared for the supplying store to review and issue.
                 @else
-                    <strong>Awaiting RFQ approval.</strong> After approvers sign off, record supplier quotations and generate LPOs.
+                    <strong>Awaiting RFQ approval.</strong> After approvers sign off, the RFQ can be distributed to suppliers for quotations.
                 @endif
             </div>
         @endif
 
-        @if($order->isInternal() && $order->isAwaitingInternalFulfillment())
-            <div class="mt-4 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <strong>Internal order approved.</strong>
-                    Step 3–5: create a stock transfer for {{ $order->sourceStore?->name }} to review, issue, and confirm receipt at {{ $order->store?->name }}.
-                </div>
-                @if(empty($inventoryAdminContextBusiness))
-                    <form action="{{ route('inventory.orders.create-transfer', $order) }}" method="POST">
-                        @csrf
-                        <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">
-                            Create stock transfer
-                        </button>
-                    </form>
-                @endif
-            </div>
-        @elseif($order->isInternal() && $order->activeStockTransfer())
+        @if($order->isInternal() && $order->activeStockTransfer())
             @php $activeTransfer = $order->activeStockTransfer(); @endphp
             <div class="mt-4 bg-indigo-50 border border-indigo-200 text-indigo-900 px-4 py-3 rounded text-sm">
                 <strong>Stock transfer in progress.</strong>
                 <a href="{{ route('inventory.transfers.show', $activeTransfer) }}" class="underline font-medium">{{ $activeTransfer->reference }}</a>
                 — {{ $activeTransfer->statusLabel() }}.
+            </div>
+        @elseif($order->isInternal() && $order->canCreateStockTransfer())
+            <div class="mt-4 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    @if($order->isPartiallyReceived())
+                        <strong>Partially fulfilled.</strong>
+                        Create another stock transfer for the remaining quantities from {{ $order->sourceStore?->name }} to {{ $order->store?->name }}.
+                    @else
+                        <strong>Internal order approved.</strong>
+                        Create a stock transfer for {{ $order->sourceStore?->name }} to review, issue, and confirm receipt at {{ $order->store?->name }}.
+                    @endif
+                </div>
+                @if(empty($inventoryAdminContextBusiness))
+                    <form action="{{ route('inventory.orders.create-transfer', $order) }}" method="POST">
+                        @csrf
+                        <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">
+                            {{ $order->isPartiallyReceived() ? 'Create next transfer' : 'Create stock transfer' }}
+                        </button>
+                    </form>
+                @endif
             </div>
         @elseif($order->isInternal() && $order->isFulfilled())
             <div class="mt-4 bg-green-50 border border-green-200 text-green-900 px-4 py-3 rounded text-sm">
@@ -193,11 +198,11 @@
             </div>
         @elseif($order->isRfqApproved())
             <div class="mt-4 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm">
-                <strong>RFQ approved.</strong> Record supplier quotations below, accept a quote, then generate and issue an LPO. Goods are received only against issued LPOs.
+                <strong>RFQ approved.</strong> Next: invite suppliers, open quotation analysis, accept quote(s), then generate and issue LPOs. Goods are received only against issued LPOs.
             </div>
         @endif
 
-        @if($order->isPoIssued() && ! $order->isFulfilled())
+        @if($order->isExternal() && $order->isPoIssued() && ! $order->isFulfilled())
             <div class="mt-4 bg-indigo-50 border border-indigo-200 text-indigo-900 px-4 py-3 rounded text-sm">
                 <strong>LPO issued.</strong> Receive goods against the LPO — stock updates when each goods receive note is approved.
             </div>
@@ -375,23 +380,50 @@
             <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                        <h3 class="text-sm font-semibold text-gray-900">Quotations &amp; supplier selection</h3>
-                        <p class="text-xs text-gray-500 mt-0.5">Invite suppliers, compare quotes, accept, then split into LPOs.</p>
+                        <h3 class="text-sm font-semibold text-gray-900">Quotation analysis &amp; supplier selection</h3>
+                        <p class="text-xs text-gray-500 mt-0.5">
+                            Invite suppliers to this RFQ, record quotes on the computation sheet, accept one or more, then split into LPOs.
+                        </p>
                     </div>
                     <a href="{{ route('inventory.orders.quotations.compare', $order) }}"
                        class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium text-white bg-violet-600 hover:bg-violet-700">
                         Open quotation analysis
                     </a>
                 </div>
-                <div class="mt-4">
-                    @include('inventory.orders.partials.supplier-quotation-card', ['order' => $order])
-                </div>
+                @if($order->invitedSuppliers->isNotEmpty() || $order->supplierQuotations->isNotEmpty())
+                    <ul class="mt-4 divide-y divide-gray-100 border border-gray-200 rounded-lg text-sm">
+                        @foreach($order->invitedSuppliers as $supplier)
+                            @php
+                                $q = $order->supplierQuotations->firstWhere('supplier_id', $supplier->id);
+                            @endphp
+                            <li class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                                <span class="font-medium text-gray-900">{{ $supplier->name }}</span>
+                                <span class="text-xs text-gray-500">
+                                    @if($q)
+                                        {{ $q->statusLabel() }}
+                                        @if($q->purchaseOrder)
+                                            · {{ $q->purchaseOrder->po_number }}
+                                        @endif
+                                    @else
+                                        Invited — awaiting quotation
+                                    @endif
+                                </span>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
             </div>
         @endif
 
         @if($order->purchaseOrders->isNotEmpty())
-            <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6">
-                <h3 class="text-sm font-semibold text-gray-900">Local purchase orders</h3>
+            <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6 border border-indigo-100">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-900">Local purchase orders</h3>
+                        <p class="text-xs text-gray-500 mt-0.5">Open an LPO to issue it to the supplier, then receive goods against it.</p>
+                    </div>
+                    <a href="{{ route('inventory.purchase-orders.index') }}" class="text-sm font-medium text-indigo-700 hover:text-indigo-900">All LPOs →</a>
+                </div>
                 <ul class="mt-3 divide-y divide-gray-100 border border-gray-200 rounded-lg">
                     @foreach($order->purchaseOrders as $po)
                         <li class="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
@@ -399,7 +431,10 @@
                                 <a href="{{ route('inventory.purchase-orders.show', $po) }}" class="text-sm font-medium text-blue-600 hover:text-blue-800">{{ $po->po_number }}</a>
                                 <p class="text-xs text-gray-500">{{ $po->supplier?->name }} · {{ $po->statusLabel() }}</p>
                             </div>
-                            <p class="text-sm font-semibold text-gray-900">UGX {{ number_format((float) $po->total_amount, 2) }}</p>
+                            <div class="flex items-center gap-3">
+                                <p class="text-sm font-semibold text-gray-900">UGX {{ number_format((float) $po->total_amount, 2) }}</p>
+                                <a href="{{ route('inventory.purchase-orders.show', $po) }}" class="text-xs font-medium text-indigo-700 hover:underline">Open</a>
+                            </div>
                         </li>
                     @endforeach
                 </ul>
@@ -412,6 +447,8 @@
                 <p class="text-xs text-gray-500 mt-0.5">
                     @if($order->isDraft())
                         Use search and filters to find items. Paginated for large orders.
+                    @elseif($order->isInternal())
+                        Ordered vs received (SUOM). Received totals accumulate when linked stock transfers are confirmed at the destination.
                     @else
                         Ordered vs received (SUOM). Received totals update when linked goods receive notes are approved.
                     @endif
@@ -489,18 +526,13 @@
                 @endif
 
                 @if($order->isFulfilled())
-                    <div @class([
-                        'border rounded-lg p-4 text-sm',
-                        'bg-green-50 border-green-200 text-green-800' => ! $order->isInternal(),
-                        'bg-blue-50 border-blue-200 text-blue-900' => $order->isInternal(),
-                    ])>
+                    <div class="border rounded-lg p-4 text-sm bg-green-50 border-green-200 text-green-800">
                         @if($order->isInternal())
-                            Internal order approved. Create a stock transfer to move stock.
-                            <a href="{{ route('inventory.transfers.create') }}" class="underline font-medium block mt-1">Make a transfer request</a>
+                            Internal order fulfilled. Stock has been received at {{ $order->store?->name }}.
                         @else
                             All order items have been fully received and posted to stock.
-                            <a href="{{ route('inventory.monitor') }}" class="underline font-medium block mt-1">View Monitor Stock</a>
                         @endif
+                        <a href="{{ route('inventory.monitor') }}" class="underline font-medium block mt-1">View Monitor Stock</a>
                     </div>
                 @endif
             </div>
@@ -511,8 +543,10 @@
         <script>
             function confirmSubmitInventoryOrder() {
                 Swal.fire({
-                    title: '{{ $order->isInternal() ? 'Submit for approval?' : 'Submit RFQ for approval?' }}',
-                    html: `@if($order->isInternal())Internal order <strong>{{ $order->order_number }}</strong> will be sent to your configured approvers. After approval, create a stock transfer to fulfill — no supplier quotation is required.@else RFQ <strong>{{ $order->order_number }}</strong> will be sent to your configured approvers. After approval, record supplier quotations before generating an LPO.@endif`,
+                    title: @json($order->isInternal() ? 'Submit for approval?' : 'Submit RFQ for approval?'),
+                    html: @json($order->isInternal()
+                        ? 'Internal order <strong>'.e($order->order_number).'</strong> will be sent to your configured approvers. After approval, a stock transfer draft is prepared for the supplying store — no supplier quotation is required.'
+                        : 'RFQ <strong>'.e($order->order_number).'</strong> will be sent to your configured approvers. After approval you will invite suppliers and compare quotations before issuing LPOs.'),
                     icon: 'question',
                     showCancelButton: true,
                     confirmButtonText: 'Yes, submit',

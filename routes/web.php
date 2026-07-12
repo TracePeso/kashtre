@@ -340,6 +340,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::post('/quotations/{quotation}/accept', [InventorySupplierQuotationController::class, 'accept'])->name('quotations.accept');
         Route::post('/quotations/{quotation}/reject', [InventorySupplierQuotationController::class, 'reject'])->name('quotations.reject');
         Route::post('/quotations/{quotation}/purchase-order', [InventoryPurchaseOrderController::class, 'createFromQuotation'])->name('quotations.purchase-order');
+        Route::get('/purchase-orders', [InventoryPurchaseOrderController::class, 'index'])->name('purchase-orders.index');
         Route::get('/purchase-orders/{purchaseOrder}', [InventoryPurchaseOrderController::class, 'show'])->name('purchase-orders.show');
         Route::get('/purchase-orders/{purchaseOrder}/pdf', [InventoryPurchaseOrderController::class, 'pdf'])->name('purchase-orders.pdf');
         Route::post('/purchase-orders/{purchaseOrder}/issue', [InventoryPurchaseOrderController::class, 'issue'])->name('purchase-orders.issue');

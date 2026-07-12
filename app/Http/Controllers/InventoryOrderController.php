@@ -230,9 +230,7 @@ class InventoryOrderController extends Controller
             isset($validated['buffer_stock_days']) ? (int) $validated['buffer_stock_days'] : null,
             isset($validated['notification_to_order_days']) ? (int) $validated['notification_to_order_days'] : null,
             $itemIds,
-            $validated['order_type'] === InventoryOrder::TYPE_EXTERNAL && ! empty($validated['supplier_id'])
-                ? (int) $validated['supplier_id']
-                : null,
+            null, // External RFQs have no header supplier — selection happens at quotation analysis.
             $validated['order_type'],
             $validated['order_type'] === InventoryOrder::TYPE_INTERNAL ? (int) $validated['source_store_id'] : null,
         );
@@ -296,6 +294,7 @@ class InventoryOrderController extends Controller
             'purchaseOrders.supplier',
             'purchaseOrders.lines',
             'stockTransfers',
+            'invitedSuppliers',
         ]);
 
         $emptyOrderReason = $order->lines->isEmpty()
@@ -349,7 +348,10 @@ class InventoryOrderController extends Controller
         $order->refresh();
 
         if ($order->isInternal() && $order->isAwaitingInternalFulfillment()) {
-            $message = 'Internal order approved. Create a stock transfer to issue stock.';
+            $transfer = $order->activeStockTransfer();
+            $message = $transfer
+                ? 'Internal order approved. Stock transfer '.$transfer->reference.' is ready — review and submit it.'
+                : 'Internal order approved. Create a stock transfer to issue stock.';
         } elseif ($order->isRfqApproved()) {
             $message = 'RFQ approved. Invite suppliers and open Quotation analysis to compare quotes, then generate LPOs.';
         } elseif ($order->isPendingApproval()) {
@@ -379,7 +381,7 @@ class InventoryOrderController extends Controller
 
         return redirect()
             ->route('inventory.orders.show', $order)
-            ->with('success', 'RFQ rejected.');
+            ->with('success', $order->isInternal() ? 'Internal order rejected.' : 'RFQ rejected.');
     }
 
     public function createTransfer(InventoryOrder $order)
