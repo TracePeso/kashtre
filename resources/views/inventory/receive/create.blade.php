@@ -201,7 +201,7 @@
                                     <th class="px-4 py-2 text-left font-medium">Delivery unit</th>
                                     <th class="px-4 py-2 text-left font-medium">Sale unit</th>
                                     <th class="px-4 py-2 text-right font-medium">Sale units</th>
-                                    <th class="px-4 py-2 text-right font-medium">Unit price</th>
+                                    <th class="px-4 py-2 text-right font-medium">Purchase price</th>
                                     <th class="px-4 py-2 text-right font-medium">Line total</th>
                                     <th class="px-4 py-2 text-left font-medium">Batch</th>
                                     <th class="px-4 py-2 text-left font-medium">Expiry</th>

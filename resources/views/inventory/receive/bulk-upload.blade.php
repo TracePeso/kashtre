@@ -264,7 +264,7 @@
                                 <th class="px-1.5 py-1.5 text-left font-semibold text-gray-700 w-24">Batch</th>
                                 <th class="px-1.5 py-1.5 text-left font-semibold text-gray-700 w-28">Expiry</th>
                                 <th class="px-1.5 py-1.5 text-left font-semibold text-gray-700 w-24" title="Unit on the supplier delivery note">Del. unit</th>
-                                <th class="px-1.5 py-1.5 text-right font-semibold text-gray-700 w-20" title="Price per delivery unit">Price</th>
+                                <th class="px-1.5 py-1.5 text-right font-semibold text-gray-700 w-20" title="Purchase price per delivery unit">Purchase price</th>
                                 <th class="px-1.5 py-1.5 text-right font-semibold text-gray-700 w-16" title="Sale units in one delivery unit">Per del.</th>
                                 <th class="px-1.5 py-1.5 text-right font-semibold text-gray-700 w-16" title="Total sale units">Sale units</th>
                                 <th class="px-1 py-1.5 w-14"></th>
@@ -509,7 +509,7 @@ function grnBulkUploadForm(itemUnits, items, supplierItemIds, urls) {
 
                 if (line.purchase_price === '' || line.purchase_price === null || parseFloat(line.purchase_price) < 0) {
                     event.preventDefault();
-                    this.submitError = label + ': enter a valid unit price.';
+                    this.submitError = label + ': enter a valid purchase price.';
                     return;
                 }
 

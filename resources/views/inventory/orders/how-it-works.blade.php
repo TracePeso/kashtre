@@ -21,7 +21,9 @@
                     <p class="text-sm text-gray-500 mt-0.5">You enter <strong>days</strong> (BA6). The system shows the <strong>amount</strong> (Σ AG).</p>
                 </div>
                 <div class="px-6 py-5 font-mono text-sm text-gray-900 space-y-2">
-                    <p>AF = max(0, (BA6 + AB + AD − N) × graduated_MA(N))</p>
+                    <p>N = M ÷ (V or AA) <span class="font-sans text-xs text-gray-500">— stock days always use the 15-day rate</span></p>
+                    <p>AF = max(0, (BA6 + AB + AD − N) × graduated_MA(period))</p>
+                    <p class="font-sans text-xs text-gray-500">Period selects V/W/X/Y/Z for AF only. N still uses V/AA.</p>
                     <p>AG = AF × (F/J)</p>
                 </div>
             </section>
@@ -37,7 +39,7 @@
                     <p><span class="font-sans text-xs font-semibold uppercase text-violet-700">AJ</span> Order Days = (15 × BA7 ÷ Σ AH) − AI</p>
                     <p><span class="font-sans text-xs font-semibold uppercase text-violet-700">AK</span> Order Qty = AJ × (V or AA if V = 0)</p>
                     <p><span class="font-sans text-xs font-semibold uppercase text-violet-700">AL</span> Order amount = AK × (F/J)</p>
-                    <p class="font-sans text-xs text-gray-500 pt-2">Selected items always stay on the order. Items with more than 366 stock days get quantity 0 so they do not skew AVERAGE(AM).</p>
+                    <p class="font-sans text-xs text-gray-500 pt-2">N and AM always use V/AA (15-day): N = M ÷ (V or AA). Selected items always stay on the order. Items with more than 366 stock days get quantity 0 so they do not skew AVERAGE(AM) or Σ AH. If peak uplift pushes Σ AL above the UGX budget, quantities are scaled down proportionally.</p>
                 </div>
             </section>
 

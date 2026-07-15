@@ -40,7 +40,7 @@
                 <th>Item</th>
                 <th>Code</th>
                 <th class="text-right">Quantity (sale units)</th>
-                <th class="text-right">Unit price</th>
+                <th class="text-right">Purchase price</th>
                 <th class="text-right">Line total</th>
             </tr>
         </thead>

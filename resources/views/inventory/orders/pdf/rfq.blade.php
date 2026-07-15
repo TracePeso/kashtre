@@ -58,7 +58,7 @@
     </table>
 
     <p class="note">
-        Pricing is intentionally omitted on this RFQ. Please return your quotation with unit prices and totals for the quantities above.
+        Pricing is intentionally omitted on this RFQ. Please return your quotation with purchase prices and totals for the quantities above.
     </p>
 </body>
 </html>

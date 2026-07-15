@@ -173,7 +173,7 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
 
         $columns = array_merge($columns, [
             TextColumn::make('unit_price')
-                ->label('Unit price')
+                ->label('Purchase price')
                 ->alignEnd()
                 ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) ($state ?? 0), 2)),
 

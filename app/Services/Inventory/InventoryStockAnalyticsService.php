@@ -284,22 +284,37 @@ class InventoryStockAnalyticsService
     }
 
     /**
-     * Graduated MA for order qty (Excel AF):
-     * V if N < 15; W if N < 30; X if N < 90; Y if N < 180; Z if N < 360; else Z.
-     * Z also when V,W,X,Y are all zero (handled by caller fallback).
+     * Graduated MA window days from a threshold value (period of order for AF).
+     * V if < 15; W if < 30; X if < 90; Y if < 180; Z if < 360; else Z.
      */
-    public function graduatedMovingAverageByStockDays(InventoryStockLevel $stock, ?float $stockDaysN): float
+    public function graduatedMaWindowDays(?float $thresholdValue): int
     {
-        // Excel AF: N < 15 uses V (includes N = 0 / empty stock). Null N → treat as 0.
-        $n = $stockDaysN ?? 0.0;
+        $value = $thresholdValue ?? 0.0;
 
         foreach ([15, 30, 90, 180, 360] as $days) {
-            if ($n < $days) {
-                return $this->movingAverageForStock($stock, $days);
+            if ($value < $days) {
+                return $days;
             }
         }
 
-        return $this->movingAverageForStock($stock, 360);
+        return 360;
+    }
+
+    /**
+     * Graduated MA rate for the given threshold (period days for order-by-period).
+     */
+    public function graduatedMovingAverage(InventoryStockLevel $stock, ?float $thresholdValue): float
+    {
+        return $this->movingAverageForStock($stock, $this->graduatedMaWindowDays($thresholdValue));
+    }
+
+    /**
+     * @deprecated Prefer graduatedMovingAverage() with period days for AF.
+     * Kept for callers that still pass stock days.
+     */
+    public function graduatedMovingAverageByStockDays(InventoryStockLevel $stock, ?float $stockDaysN): float
+    {
+        return $this->graduatedMovingAverage($stock, $stockDaysN);
     }
 
     /**
@@ -343,7 +358,11 @@ class InventoryStockAnalyticsService
     }
 
     /**
-     * Excel column AF (period ordering): max(0, (period + safety + buffer − N) × graduated MA).
+     * Excel column AF (period ordering):
+     * max(0, (period + safety + buffer − N) × graduated_MA(period)).
+     *
+     * MA window is selected from the period of order (BA6):
+     * V if period < 15; W if < 30; X if < 90; Y if < 180; Z if < 360; else Z.
      */
     public function suggestedOrderQtyPeriod(
         InventoryStockLevel $stock,
@@ -361,13 +380,30 @@ class InventoryStockAnalyticsService
             return 0.0;
         }
 
-        $rate = $this->graduatedMovingAverageByStockDays($stock, $stockDays);
+        $rate = $this->graduatedMovingAverage($stock, $periodDays);
 
         if ($rate <= 0) {
             $rate = $this->excelDailyUsageSuom($stock, $config);
         }
 
         return max(0, round($coverage * $rate, 4));
+    }
+
+    /**
+     * Daily usage rate used for period ordering (graduated MA from period days).
+     */
+    public function periodOrderDailyRate(
+        InventoryStockLevel $stock,
+        ?InventoryModuleConfig $config,
+        float $periodDays
+    ): float {
+        $rate = $this->graduatedMovingAverage($stock, $periodDays);
+
+        if ($rate > 0) {
+            return $rate;
+        }
+
+        return $this->excelDailyUsageSuom($stock, $config);
     }
 
     /**
@@ -607,7 +643,7 @@ class InventoryStockAnalyticsService
                 $coverage = $periodDays + $safetyDays + $bufferDays - $stockDays;
 
                 if ($coverage > 0) {
-                    $rate = $this->graduatedMovingAverageByStockDays($stock, $stockDays);
+                    $rate = $this->graduatedMovingAverage($stock, $periodDays);
 
                     if ($rate <= 0) {
                         $rate = $excelUsage;

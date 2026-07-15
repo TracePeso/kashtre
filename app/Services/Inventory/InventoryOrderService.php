@@ -89,7 +89,14 @@ class InventoryOrderService
                 'item_ids' => $normalizedItemIds,
                 'budget_mode' => $budgetMode,
                 'budget_value' => $budgetValue,
-                'moving_average_days' => self::AUTO_CONSUMPTION_RATE_DAYS,
+                'moving_average_days' => in_array($budgetMode, [
+                    InventoryOrder::BUDGET_MODE_DAYS,
+                    InventoryOrder::BUDGET_MODE_AMOUNT,
+                ], true)
+                    ? self::AUTO_CONSUMPTION_RATE_DAYS
+                    : $this->analytics->graduatedMaWindowDays(
+                        $this->storedPeriodOfOrderDays($budgetMode, $periodOfOrderDays, $config)
+                    ),
                 'period_of_order_days' => $this->storedPeriodOfOrderDays($budgetMode, $periodOfOrderDays, $config),
                 'safety_stock_days' => $safetyStockDays ?? (float) ($config?->safety_stock_days ?? 0),
                 'buffer_stock_days' => $bufferStockDays ?? (float) ($config?->buffer_stock_days ?? 0),
@@ -165,6 +172,11 @@ class InventoryOrderService
 
         $periodDays = $this->periodDaysForCalculation($order, $config);
         $peakIncrease = max(0, (float) ($order->peak_consumption_increase_percent ?? 0));
+        $maWindowDays = $this->analytics->graduatedMaWindowDays($periodDays);
+
+        if ((int) ($order->moving_average_days ?? 0) !== $maWindowDays) {
+            $order->update(['moving_average_days' => $maWindowDays]);
+        }
 
         foreach ($stockLevels as $stock) {
             $item = $stock->item;
@@ -173,9 +185,12 @@ class InventoryOrderService
                 continue;
             }
 
-            $dailyAvg = $this->analytics->excelDailyUsageSuom($stock, $config);
+            // V / AA — always the 15-day rate used for stock days N = M ÷ (V or AA).
+            $vDaily = $this->analytics->excelDailyUsageSuom($stock, $config);
+            // Period AF rate — graduated V/W/X/Y/Z from BA6; used only for order qty.
+            $periodRate = $this->analytics->periodOrderDailyRate($stock, $config, $periodDays);
 
-            if ($dailyAvg <= 0 && ! $this->shouldKeepSelectedItem($order, $item)) {
+            if ($periodRate <= 0 && ! $this->shouldKeepSelectedItem($order, $item)) {
                 continue;
             }
 
@@ -195,7 +210,7 @@ class InventoryOrderService
                 $order,
                 $item,
                 $baseSuggested,
-                $dailyAvg,
+                $vDaily,
                 $arStock,
                 $currentStock,
                 $stockDays,
@@ -468,6 +483,7 @@ class InventoryOrderService
         }
 
         $avgAm = $amForAverage->isNotEmpty() ? (float) $amForAverage->avg() : 0.0;
+        $amSumForAverage = $amForAverage->isNotEmpty() ? (float) $amForAverage->sum() : 0.0;
 
         $sumAh = 0.0;
         $ahLinesForSum = $needyLines->isNotEmpty() ? $needyLines : $order->lines;
@@ -480,6 +496,7 @@ class InventoryOrderService
         $ahParts = [];
         $amParts = [];
         $lineRows = [];
+        $unscaledTotal = 0.0;
 
         foreach ($order->lines as $line) {
             $m = (float) ($line->current_stock_suom ?? 0);
@@ -503,6 +520,7 @@ class InventoryOrderService
             $akExpected = $v > 0 ? max(0, round($ajExpected * $v, 4)) : 0.0;
             $expectedAfterPeak = $this->applyPeakToSuggestedQuantity($akExpected, $linePeakImpact);
             $alExpected = round($expectedAfterPeak * $price, 2);
+            $unscaledTotal += $alExpected;
 
             $ahParts[] = [
                 'item_name' => $line->item?->name ?? '—',
@@ -515,7 +533,9 @@ class InventoryOrderService
 
             if ($am !== null) {
                 $amParts[] = [
+                    'item_id' => $line->item_id,
                     'item_name' => $line->item?->name ?? '—',
+                    'n' => $n,
                     'am' => $am,
                     'included_in_average' => $isNeedy,
                     'stock_days' => $n,
@@ -584,12 +604,18 @@ class InventoryOrderService
                 'unscaled_line_total' => $alExpected,
                 'skipped_reason' => $skippedReason,
                 'matches_af' => abs($base - $akExpected) < 0.02 || ($base <= 0 && $akExpected <= 0),
+                'matches_ah_ak' => abs($base - $akExpected) < 0.02
+                    && ($ajStored === null || abs($ajStored - $ajExpected) < 0.02),
                 'matches_ah_al' => abs($base - $akExpected) < 0.02
                     && ($ajStored === null || abs($ajStored - $ajExpected) < 0.02),
             ];
         }
 
         $computedPoolDays = ($sumAh > 0 && $ba7 > 0) ? round(15 * $ba7 / $sumAh, 4) : $poolDays;
+        $scaleFactor = ($unscaledTotal > 0 && abs($orderTotal - $unscaledTotal) >= 0.01)
+            ? round($orderTotal / $unscaledTotal, 6)
+            : null;
+        $budgetCapUgx = $order->effectiveAmountCap();
 
         return [
             'method' => $order->orderingTypeLabel(),
@@ -602,11 +628,13 @@ class InventoryOrderService
             'budget_mode' => $order->budget_mode,
             'budget_value' => $ba7,
             'order_total' => $orderTotal,
-            'unscaled_total' => $orderTotal,
-            'scale_factor' => null,
+            'unscaled_total' => round($unscaledTotal, 2),
+            'scale_factor' => $scaleFactor,
+            'budget_cap_ugx' => $budgetCapUgx,
             'ah_sum_test_amount' => round($sumAh, 2),
             'am_average_days_left' => round($avgAm, 4),
             'am_average_count' => $amForAverage->count(),
+            'am_sum_for_average' => round($amSumForAverage, 4),
             'ba7_budget_days' => $isAmount ? $computedPoolDays : $ba7,
             'ba7_budget_ugx' => $budgetUgx,
             'ba7_derived_from_amount' => $isAmount,
@@ -649,7 +677,7 @@ class InventoryOrderService
 
             $stockDaysForCoverage = $n ?? 0.0;
             $coverage = round($period + $safety + $buffer - $stockDaysForCoverage, 4);
-            $maSelection = $this->graduatedMaSelection($n);
+            $maSelection = $this->graduatedMaSelection($period);
             $graduatedWindow = $maSelection['window_label'];
             $impliedRate = $coverage > 0 && $base > 0
                 ? round($base / $coverage, 4)
@@ -658,14 +686,17 @@ class InventoryOrderService
             $excelExpectedRate = null;
             $excelExpectedBase = null;
             $rateMatchesExcel = true;
-            if ($coverage > 0) {
-                $nForRate = $n ?? 0.0;
-                if ($nForRate < 15 && $v > 0) {
+            if ($coverage > 0 && $impliedRate !== null) {
+                // N always uses V; AF qty uses graduated MA(period).
+                // Only when period selects V (< 15) should the qty rate match stored V.
+                if ($maSelection['window_days'] === 15 && $v > 0) {
                     $excelExpectedRate = $v;
                     $excelExpectedBase = round($coverage * $v, 4);
-                    if ($impliedRate !== null) {
-                        $rateMatchesExcel = abs($impliedRate - $v) < 0.01;
-                    }
+                    $rateMatchesExcel = abs($impliedRate - $v) < 0.01;
+                } else {
+                    $excelExpectedRate = $impliedRate;
+                    $excelExpectedBase = $base;
+                    $rateMatchesExcel = true;
                 }
             }
 
@@ -686,14 +717,10 @@ class InventoryOrderService
             }
 
             $rateSourceNote = null;
-            if ($impliedRate !== null && $maSelection['excel_column'] === 'V' && $v > 0) {
-                if (abs($impliedRate - $v) < 0.01) {
-                    $rateSourceNote = 'Rate matches stored V / AA ('.number_format($v, 4).')';
-                } else {
-                    $rateSourceNote = 'Excel requires V / AA ('.number_format($v, 4).'); stored AF used '.number_format($impliedRate, 4);
-                }
-            } elseif ($impliedRate !== null) {
-                $rateSourceNote = 'Rate taken from '.$maSelection['window_label'].' at order time';
+            if ($impliedRate !== null) {
+                $rateSourceNote = 'Order qty uses '.$maSelection['window_label']
+                    .' from period of order ('.$period.' days). '
+                    .'Stock days N still use V/AA (15-day) = '.number_format($v, 4).'.';
             }
 
             $vBreakdown = $this->fifteenDayUsageBreakdown(
@@ -822,7 +849,8 @@ class InventoryOrderService
     }
 
     /**
-     * Excel AF graduated MA picker: V if N<15; W if N<30; X if N<90; Y if N<180; Z otherwise.
+     * Excel AF graduated MA picker from period of order (BA6):
+     * V if period < 15; W if < 30; X if < 90; Y if < 180; Z otherwise.
      *
      * @return array{
      *     excel_column: string,
@@ -832,9 +860,9 @@ class InventoryOrderService
      *     n_value: float
      * }
      */
-    private function graduatedMaSelection(?float $stockDaysN): array
+    private function graduatedMaSelection(?float $periodDays): array
     {
-        $n = $stockDaysN ?? 0.0;
+        $period = $periodDays ?? 0.0;
 
         $map = [
             15 => ['excel_column' => 'V', 'name' => '15-day MA'],
@@ -845,16 +873,18 @@ class InventoryOrderService
         ];
 
         foreach ($map as $days => $meta) {
-            if ($n < $days) {
-                $nDisplay = $stockDaysN === null ? '0 (N missing → treated as 0)' : number_format($n, 1);
+            if ($period < $days) {
+                $periodDisplay = $periodDays === null
+                    ? '0 (period missing → treated as 0)'
+                    : number_format($period, 1);
 
                 return [
                     'excel_column' => $meta['excel_column'],
                     'window_days' => $days,
                     'window_label' => $meta['name'].' ('.$meta['excel_column'].')',
-                    'reason' => 'N = '.$nDisplay.' stock-days, and N < '.$days
+                    'reason' => 'Period = '.$periodDisplay.' days, and period < '.$days
                         .' → Excel AF uses column '.$meta['excel_column'].' ('.$meta['name'].')',
-                    'n_value' => $n,
+                    'n_value' => $period,
                 ];
             }
         }
@@ -863,8 +893,8 @@ class InventoryOrderService
             'excel_column' => 'Z',
             'window_days' => 360,
             'window_label' => '360-day MA (Z)',
-            'reason' => 'N = '.number_format($n, 1).' stock-days, and N ≥ 360 → Excel AF uses column Z (360-day MA)',
-            'n_value' => $n,
+            'reason' => 'Period = '.number_format($period, 1).' days, and period ≥ 360 → Excel AF uses column Z (360-day MA)',
+            'n_value' => $period,
         ];
     }
 

@@ -6,7 +6,7 @@ Please find attached RFQ **{{ $order->order_number }}** from {{ $order->business
 **Store / delivery point:** {{ $order->store?->name }}  
 **Date:** {{ $order->approved_at?->format('d M Y') ?? now()->format('d M Y') }}
 
-Quantities are listed in the PDF. **Unit prices are not shown** — please return your quotation with pricing.
+Quantities are listed in the PDF. **Purchase prices are not shown** — please return your quotation with pricing.
 
 Thanks,<br>
 {{ config('app.name') }}

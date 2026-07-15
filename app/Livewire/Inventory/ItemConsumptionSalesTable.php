@@ -58,7 +58,7 @@ class ItemConsumptionSalesTable extends Component implements HasForms, HasTable
                     ->formatStateUsing(fn ($state): string => number_format((int) $state, 0)),
 
                 TextColumn::make('unit_price')
-                    ->label('Unit price')
+                    ->label('Sale price')
                     ->alignEnd()
                     ->money('UGX', true),
 

@@ -23,7 +23,7 @@ Code: `InventoryStockAnalyticsService`, `InventoryOrderService`.
 **You enter:** period of order (**BA6** days) → system shows order **amount** (Σ AG)
 
 ```
-AF = max(0, (BA6 + AB + AD − N) × graduated_MA(N))
+AF = max(0, (BA6 + AB + AD − N) × graduated_MA(period))
 AG = AF × (F/J)
 ```
 

@@ -58,7 +58,7 @@
                             <th class="px-4 py-2 text-left font-medium text-gray-500">Item</th>
                             <th class="px-4 py-2 text-right font-medium text-gray-500">Qty</th>
                             <th class="px-4 py-2 text-right font-medium text-gray-500">Received</th>
-                            <th class="px-4 py-2 text-right font-medium text-gray-500">Unit price</th>
+                            <th class="px-4 py-2 text-right font-medium text-gray-500">Purchase price</th>
                             <th class="px-4 py-2 text-right font-medium text-gray-500">Total</th>
                         </tr>
                     </thead>

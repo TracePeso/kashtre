@@ -5,6 +5,10 @@
     $isBudgetDays = ($breakdown['budget_mode'] ?? null) === 'days';
     $isBudgetAmount = ($breakdown['budget_mode'] ?? null) === 'amount';
     $isBudgetAhAl = $isBudgetDays || $isBudgetAmount;
+    $budgetBa7ForAj = $isBudgetAmount
+        ? ($breakdown['budget_ugx'] ?? $breakdown['budget_value'])
+        : ($breakdown['budget_value'] ?? 0);
+    $budgetDayPool = $breakdown['ba7_budget_days'] ?? $breakdown['period_days'] ?? 0;
 @endphp
 <div class="min-h-screen bg-gray-50 py-6">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -43,7 +47,7 @@
                     @if($isBudgetAhAl)
                         <p class="mt-1 text-sm text-slate-300 font-mono">AH → AI → AJ → AK → AL · BA7 = budget UGX</p>
                     @else
-                        <p class="mt-1 text-sm text-slate-300 font-mono">AF = max(0, (BA6 + AB + AD − N) × graduated_MA(N))</p>
+                        <p class="mt-1 text-sm text-slate-300 font-mono">AF = max(0, (BA6 + AB + AD − N) × graduated_MA(period))</p>
                     @endif
                 </div>
                 <span class="shrink-0 text-slate-300 text-sm" x-text="open ? 'Hide' : 'Show'"></span>
@@ -83,7 +87,7 @@
                                 then AJ = pool − AI per item.
                             @else
                                 <strong>BA7</strong> on this order
-                                (= {{ $fmt($breakdown['ba7_budget_days'] ?? $breakdown['budget_value'], 0) }}).
+                                (= {{ $fmt($breakdown['budget_value'], 0) }} days).
                             @endif
                             Items with days left (AM) below the average get a larger AJ (more urgent).
                             If AJ would be negative, quantity is 0.
@@ -92,10 +96,21 @@
                     </div>
                     <div class="rounded-lg bg-slate-900 text-slate-100 p-5 space-y-2 font-mono text-sm">
                         <p class="font-sans text-xs font-semibold uppercase text-violet-300">This order’s portfolio totals</p>
-                        <p>BA7 (budget you entered) = UGX {{ $fmt($breakdown['ba7_budget_ugx'] ?? $breakdown['budget_value']) }}</p>
+                        @if($isBudgetAmount)
+                            <p>BA7 (budget you entered) = UGX {{ $fmt($breakdown['ba7_budget_ugx'] ?? $breakdown['budget_value']) }}</p>
+                        @else
+                            <p>BA7 (budget days you entered) = {{ $fmt($breakdown['budget_value'], 0) }} days</p>
+                        @endif
                         <p>Σ AH (15-day test spend, items that need stock) = UGX {{ $fmt($breakdown['ah_sum_test_amount']) }}</p>
                         <p>Day pool = 15 × BA7 ÷ Σ AH = {{ ($breakdown['ah_sum_test_amount'] ?? 0) > 0 ? number_format(15 * (float) ($breakdown['ba7_budget_ugx'] ?? $breakdown['budget_value']) / (float) $breakdown['ah_sum_test_amount'], 4) : '—' }}</p>
                         <p>Average AM (same needy items) = {{ $fmt($breakdown['am_average_days_left'], 2) }}</p>
+                        @if($isBudgetAmount && ($breakdown['scale_factor'] ?? null) !== null && abs((float) $breakdown['scale_factor'] - 1) >= 0.000001)
+                            <p class="font-sans text-amber-300 pt-1">
+                                After peak, Σ AL was UGX {{ $fmt($breakdown['unscaled_total']) }} — scaled to
+                                UGX {{ $fmt($breakdown['budget_cap_ugx'] ?? $breakdown['order_total']) }}
+                                (× {{ number_format((float) $breakdown['scale_factor'], 6) }}) to fit the budget cap.
+                            </p>
+                        @endif
                     </div>
                 @else
                 <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-5 space-y-4 text-sm text-gray-800">
@@ -107,10 +122,9 @@
                         </li>
                         <li>
                             <strong>How fast do we use this item each day?</strong>
-                            The system picks a daily usage rate from recent sales history.
-                            If you have little stock left, it uses a short recent average (last 15 days).
-                            If you have more stock, it uses a longer average (30, 90, 180, or 360 days).
-                            That pick is what Excel calls the graduated moving average — just “which daily usage figure to use.”
+                            The system picks a daily usage rate from the period of order you entered.
+                            Period under 15 days → 15-day average (V). Under 30 → 30-day (W). Under 90 → 90-day (X). Under 180 → 180-day (Y). Otherwise 360-day (Z).
+                            That pick is the graduated moving average.
                         </li>
                         <li>
                             <strong>How much should we order?</strong>
@@ -125,14 +139,14 @@
                     </ol>
                     <p class="rounded-md bg-white border border-emerald-200 px-4 py-3 text-gray-900">
                         <strong>One sentence:</strong>
-                        Order enough units to cover the days you are short, at the daily usage rate that matches how much stock you currently have — and if you are not short, order nothing.
+                        Order enough units to cover the days you are short, at the daily usage rate that matches the period of order you entered — and if you are not short, order nothing.
                     </p>
                 </div>
 
                 <div class="rounded-lg bg-slate-900 text-slate-100 p-5 space-y-4 overflow-x-auto">
                     <p class="font-sans text-xs font-semibold uppercase tracking-wide text-emerald-400">Same idea as Excel (column AF)</p>
                     <p class="font-mono text-base sm:text-lg text-white">
-                        AF = max( 0, ( BA6 + AB + AD − N ) × graduated_MA(N) )
+                        AF = max( 0, ( BA6 + AB + AD − N ) × graduated_MA(period) )
                     </p>
 
                     <div class="grid gap-3 font-sans text-sm">
@@ -150,28 +164,29 @@
                             </p>
                         </div>
                         <div class="rounded-md bg-slate-800/80 border border-slate-700 px-4 py-3">
-                            <p class="text-sky-300 font-medium">graduated_MA(N)</p>
+                            <p class="text-sky-300 font-medium">graduated_MA(period)</p>
                             <p class="text-slate-300 mt-1">
-                                The <strong class="text-white">daily usage rate</strong> chosen from how many stock-days you have left (N):
+                                The <strong class="text-white">daily usage rate</strong> chosen from the period of order you entered:
                             </p>
                             <ul class="mt-2 space-y-1 text-slate-300 list-disc list-inside">
-                                <li>Less than 15 days of stock → use last <strong class="text-white">15 days</strong> average (Excel column <strong class="text-white">V</strong>)</li>
-                                <li>Less than 30 days → use <strong class="text-white">30-day</strong> average (<strong class="text-white">W</strong>)</li>
-                                <li>Less than 90 days → use <strong class="text-white">90-day</strong> average (<strong class="text-white">X</strong>)</li>
-                                <li>Less than 180 days → use <strong class="text-white">180-day</strong> average (<strong class="text-white">Y</strong>)</li>
+                                <li>Period less than 15 days → use last <strong class="text-white">15 days</strong> average (Excel column <strong class="text-white">V</strong>)</li>
+                                <li>Period less than 30 days → use <strong class="text-white">30-day</strong> average (<strong class="text-white">W</strong>)</li>
+                                <li>Period less than 90 days → use <strong class="text-white">90-day</strong> average (<strong class="text-white">X</strong>)</li>
+                                <li>Period less than 180 days → use <strong class="text-white">180-day</strong> average (<strong class="text-white">Y</strong>)</li>
                                 <li>Otherwise → use <strong class="text-white">360-day</strong> average (<strong class="text-white">Z</strong>)</li>
                             </ul>
                             <p class="text-slate-400 mt-2 text-xs">
-                                Why? When stock is low, recent usage matters more. When stock is high, a longer average is steadier.
+                                Longer order periods use a longer consumption average so the forecast is more stable.
+                                This rate is only for AF (order qty). Stock days still use V/AA: N = M ÷ (V or AA).
                             </p>
                         </div>
                     </div>
 
                     <div class="border-t border-slate-700 pt-3 space-y-3 font-mono text-sm">
                         <p class="font-sans text-xs font-semibold uppercase tracking-wide text-sky-400">Other related formulas</p>
-                        <p>N = M ÷ (V or AA) <span class="font-sans text-slate-400 text-xs">— stock days = current stock ÷ daily usage</span></p>
+                        <p>N = M ÷ (V or AA) <span class="font-sans text-slate-400 text-xs">— stock days always use the 15-day rate (not the period MA)</span></p>
                         <p>AM = N − AB − AD <span class="font-sans text-slate-400 text-xs">— days left before you hit safety + buffer</span></p>
-                        <p>AG = final qty × unit price <span class="font-sans text-slate-400 text-xs">— line total in UGX</span></p>
+                        <p>AG = final qty × purchase price <span class="font-sans text-slate-400 text-xs">— line total in UGX</span></p>
                         
                     </div>
 
@@ -202,9 +217,10 @@
                                 <tr><td class="px-3 py-2 font-mono font-medium">AB</td><td class="px-3 py-2 text-gray-600">Safety days — reserve for supply delays.</td></tr>
                                 <tr><td class="px-3 py-2 font-mono font-medium">AD</td><td class="px-3 py-2 text-gray-600">Buffer days — extra cushion for busy periods.</td></tr>
                                 <tr><td class="px-3 py-2 font-mono font-medium">M</td><td class="px-3 py-2 text-gray-600">How many units you have on the shelf now.</td></tr>
-                                <tr><td class="px-3 py-2 font-mono font-medium">V / AA</td><td class="px-3 py-2 text-gray-600">How many units you use per day (recent average).</td></tr>
-                                <tr><td class="px-3 py-2 font-mono font-medium">N</td><td class="px-3 py-2 text-gray-600">How many days your current stock will last.</td></tr>
-                                <tr><td class="px-3 py-2 font-mono font-medium">AF</td><td class="px-3 py-2 text-gray-600">How many units to order (before peak).</td></tr>
+                                <tr><td class="px-3 py-2 font-mono font-medium">V / AA</td><td class="px-3 py-2 text-gray-600">15-day daily usage (or fixed AA). Used for stock days: N = M ÷ (V or AA).</td></tr>
+                                <tr><td class="px-3 py-2 font-mono font-medium">N</td><td class="px-3 py-2 text-gray-600">How many days your current stock will last (always from V/AA, not from period MA).</td></tr>
+                                <tr><td class="px-3 py-2 font-mono font-medium">W / X / Y / Z</td><td class="px-3 py-2 text-gray-600">Longer moving averages selected by the entered period for order quantity (AF).</td></tr>
+                                <tr><td class="px-3 py-2 font-mono font-medium">AF</td><td class="px-3 py-2 text-gray-600">How many units to order (before peak) = days still needed × graduated_MA(period).</td></tr>
                                 <tr><td class="px-3 py-2 font-mono font-medium">Peak</td><td class="px-3 py-2 text-gray-600">Uplift after AF — percentages are multiplied, then qty is multiplied by (1 + impact%).</td></tr>
                                 <tr><td class="px-3 py-2 font-mono font-medium">AG</td><td class="px-3 py-2 text-gray-600">Cost of that line (quantity × price).</td></tr>
                             </tbody>
@@ -295,7 +311,7 @@
                     <div>
                         <dt class="text-gray-500">Order total</dt>
                         <dd class="mt-0.5 font-mono font-semibold text-gray-900 tabular-nums">UGX {{ $fmt($breakdown['order_total']) }}</dd>
-                        <dd class="mt-1 text-xs text-gray-500">Sum of each line: quantity × unit price</dd>
+                        <dd class="mt-1 text-xs text-gray-500">Sum of each line: quantity × purchase price</dd>
                     </div>
                 </dl>
 
@@ -312,7 +328,7 @@
                             <button type="button" @click="showAhDetail = false" class="shrink-0 text-xs font-medium text-violet-700 hover:text-violet-900">Close</button>
                         </div>
                         <p class="font-mono text-[13px] bg-white border border-violet-100 rounded px-3 py-2">
-                            AH = 15 × daily usage × unit price
+                            AH = 15 × daily usage × purchase price
                         </p>
                         @if(! empty($breakdown['ah_parts']))
                             <div class="overflow-x-auto rounded border border-violet-100 bg-white">
@@ -321,7 +337,7 @@
                                         <tr>
                                             <th class="px-3 py-2 text-left font-medium">Item</th>
                                             <th class="px-3 py-2 text-right font-medium">Daily usage</th>
-                                            <th class="px-3 py-2 text-right font-medium">Unit price</th>
+                                            <th class="px-3 py-2 text-right font-medium">Purchase price</th>
                                             <th class="px-3 py-2 text-right font-medium">AH = 15 × usage × price</th>
                                             <th class="px-3 py-2 text-left font-medium">In Σ AH?</th>
                                         </tr>
@@ -398,9 +414,21 @@
                                     </tbody>
                                     <tfoot class="border-t border-violet-200 bg-violet-100/40">
                                         <tr>
-                                            <td class="px-3 py-2 font-medium">Average AM (Yes rows only)</td>
-                                            <td class="px-3 py-2 text-right font-mono font-semibold tabular-nums">{{ $fmt($breakdown['am_average_days_left'], 2) }}</td>
+                                            <td class="px-3 py-2 font-medium">Σ AM (Yes rows only)</td>
+                                            <td class="px-3 py-2 text-right font-mono font-semibold tabular-nums">{{ $fmt($breakdown['am_sum_for_average'] ?? 0, 4) }}</td>
                                             <td class="px-3 py-2 text-xs text-gray-600">{{ (int) ($breakdown['am_average_count'] ?? 0) }} item(s)</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="px-3 py-2 font-medium">Average AM = Σ AM ÷ count</td>
+                                            <td class="px-3 py-2 text-right font-mono font-semibold tabular-nums">
+                                                @if(($breakdown['am_average_count'] ?? 0) > 0)
+                                                    {{ $fmt($breakdown['am_sum_for_average'] ?? 0, 4) }} ÷ {{ (int) $breakdown['am_average_count'] }}
+                                                    = {{ $fmt($breakdown['am_average_days_left'], 4) }}
+                                                @else
+                                                    —
+                                                @endif
+                                            </td>
+                                            <td></td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -454,16 +482,86 @@
                         <table class="min-w-full text-sm">
                             <thead class="bg-gray-50 border-b border-gray-200">
                                 <tr>
-                                    <th class="px-3 py-2 text-left font-medium text-gray-600">Item</th>
-                                    <th class="px-3 py-2 text-right font-medium text-gray-600">Order qty</th>
-                                    <th class="px-3 py-2 text-right font-medium text-gray-600">Unit price</th>
-                                    <th class="px-3 py-2 text-right font-medium text-gray-600">AG (line total)</th>
+                                    <th class="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">Item</th>
+                                    <th class="px-3 py-2 text-right font-medium text-gray-600 whitespace-nowrap">
+                                        M
+                                        <span class="block text-[10px] font-normal text-gray-400">Current stock</span>
+                                    </th>
+                                    <th class="px-3 py-2 text-right font-medium text-gray-600 whitespace-nowrap">
+                                        V / AA
+                                        <span class="block text-[10px] font-normal text-gray-400">15-day rate</span>
+                                    </th>
+                                    <th class="px-3 py-2 text-right font-medium text-gray-600 whitespace-nowrap">
+                                        N
+                                        <span class="block text-[10px] font-normal text-gray-400">M ÷ V/AA</span>
+                                    </th>
+                                    @if($isBudgetAhAl)
+                                        <th class="px-3 py-2 text-right font-medium text-gray-600 whitespace-nowrap">
+                                            AM
+                                            <span class="block text-[10px] font-normal text-gray-400">N − safety − buffer</span>
+                                        </th>
+                                        <th class="px-3 py-2 text-right font-medium text-gray-600 whitespace-nowrap">
+                                            AH
+                                            <span class="block text-[10px] font-normal text-gray-400">15 × V × price</span>
+                                        </th>
+                                        <th class="px-3 py-2 text-right font-medium text-gray-600 whitespace-nowrap">
+                                            AI
+                                            <span class="block text-[10px] font-normal text-gray-400">AM − avg AM</span>
+                                        </th>
+                                        <th class="px-3 py-2 text-right font-medium text-gray-600 whitespace-nowrap">
+                                            AJ
+                                            <span class="block text-[10px] font-normal text-gray-400">Order days</span>
+                                        </th>
+                                        <th class="px-3 py-2 text-right font-medium text-gray-600 whitespace-nowrap">
+                                            AK
+                                            <span class="block text-[10px] font-normal text-gray-400">AJ × V</span>
+                                        </th>
+                                    @else
+                                        <th class="px-3 py-2 text-right font-medium text-gray-600 whitespace-nowrap">
+                                            {{ $breakdown['lines'][0]['ma_excel_column'] ?? 'MA' }}
+                                            <span class="block text-[10px] font-normal text-gray-400">Period MA rate</span>
+                                        </th>
+                                        <th class="px-3 py-2 text-right font-medium text-gray-600 whitespace-nowrap">
+                                            Days needed
+                                            <span class="block text-[10px] font-normal text-gray-400">BA6 + AB + AD − N</span>
+                                        </th>
+                                        <th class="px-3 py-2 text-right font-medium text-gray-600 whitespace-nowrap">
+                                            AF
+                                            <span class="block text-[10px] font-normal text-gray-400">Days needed × period MA</span>
+                                        </th>
+                                    @endif
+                                    <th class="px-3 py-2 text-right font-medium text-gray-600 whitespace-nowrap">
+                                        Order qty
+                                        <span class="block text-[10px] font-normal text-gray-400">After peak/budget</span>
+                                    </th>
+                                    <th class="px-3 py-2 text-right font-medium text-gray-600">Purchase price</th>
+                                    <th class="px-3 py-2 text-right font-medium text-gray-600 whitespace-nowrap">
+                                        {{ $isBudgetAhAl ? 'AL' : 'AG' }}
+                                        <span class="block text-[10px] font-normal text-gray-400">Qty × price</span>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100 font-mono text-[13px]">
                                 @foreach($breakdown['lines'] as $row)
                                     <tr @class(['bg-slate-50' => (float) $row['line_total'] <= 0])>
-                                        <td class="px-3 py-2 font-sans text-gray-800">{{ $row['item_name'] }}</td>
+                                        <td class="px-3 py-2 font-sans text-gray-800 min-w-56">{{ $row['item_name'] }}</td>
+                                        <td class="px-3 py-2 text-right tabular-nums">{{ $fmtQty($row['m_current_stock']) }}</td>
+                                        <td class="px-3 py-2 text-right tabular-nums">{{ $fmtQty($row['v_daily_usage']) }}</td>
+                                        <td class="px-3 py-2 text-right tabular-nums">{{ $row['n_stock_days'] !== null ? number_format($row['n_stock_days'], 1) : '—' }}</td>
+                                        @if($isBudgetAhAl)
+                                            <td class="px-3 py-2 text-right tabular-nums">{{ $row['am_days_left'] !== null ? $fmt($row['am_days_left'], 2) : '—' }}</td>
+                                            <td class="px-3 py-2 text-right tabular-nums">{{ $fmt($row['ah_test_amount'] ?? null) }}</td>
+                                            <td class="px-3 py-2 text-right tabular-nums">{{ $fmt($row['ai_gap_to_average'] ?? null, 4) }}</td>
+                                            <td class="px-3 py-2 text-right tabular-nums">{{ $fmtQty($row['aj_order_days_expected'] ?? $row['order_days'] ?? null) }}</td>
+                                            <td class="px-3 py-2 text-right tabular-nums">{{ $fmtQty($row['ak_base_qty_stored'] ?? $row['af_base_qty']) }}</td>
+                                        @else
+                                            <td class="px-3 py-2 text-right tabular-nums">
+                                                <span class="font-semibold text-indigo-700">{{ $row['ma_excel_column'] }}</span>
+                                                · {{ $fmtQty($row['implied_rate']) }}
+                                            </td>
+                                            <td class="px-3 py-2 text-right tabular-nums">{{ $fmtQty($row['coverage']) }}</td>
+                                            <td class="px-3 py-2 text-right tabular-nums">{{ $fmtQty($row['af_base_qty']) }}</td>
+                                        @endif
                                         <td class="px-3 py-2 text-right tabular-nums">{{ $fmtQty($row['order_qty']) }}</td>
                                         <td class="px-3 py-2 text-right tabular-nums">{{ $fmt($row['unit_price']) }}</td>
                                         <td class="px-3 py-2 text-right tabular-nums">{{ $fmt($row['line_total']) }}</td>
@@ -472,7 +570,9 @@
                             </tbody>
                             <tfoot class="border-t border-gray-200 bg-slate-50">
                                 <tr>
-                                    <td class="px-3 py-2 font-sans font-medium text-gray-900" colspan="3">Σ AG — Order total</td>
+                                    <td class="px-3 py-2 font-sans font-medium text-gray-900" colspan="{{ $isBudgetAhAl ? 11 : 9 }}">
+                                        Σ {{ $isBudgetAhAl ? 'AL' : 'AG' }} — Order total
+                                    </td>
                                     <td class="px-3 py-2 text-right font-mono font-semibold tabular-nums text-gray-900">UGX {{ $fmt($breakdown['order_total']) }}</td>
                                 </tr>
                             </tfoot>
@@ -486,7 +586,12 @@
                             For every item:
                             <strong>AH</strong> = 15 × V × price,
                             <strong>AI</strong> = AM − {{ $fmt($breakdown['am_average_days_left'], 4) }},
-                            <strong>AJ</strong> = (15 × {{ $fmt($breakdown['ba7_budget_days'] ?? $breakdown['budget_value'], 0) }} ÷ {{ $fmt($breakdown['ah_sum_test_amount']) }}) − AI,
+                            @if($isBudgetAmount)
+                                <strong>day pool</strong> = 15 × {{ $fmt($budgetBa7ForAj) }} ÷ {{ $fmt($breakdown['ah_sum_test_amount']) }} = {{ $fmt($budgetDayPool, 4) }},
+                                <strong>AJ</strong> = day pool − AI,
+                            @else
+                                <strong>AJ</strong> = (15 × {{ $fmt($budgetBa7ForAj, 0) }} ÷ {{ $fmt($breakdown['ah_sum_test_amount']) }}) − AI,
+                            @endif
                             <strong>AK</strong> = AJ × V,
                             <strong>AL</strong> = AK × price.
                             Urgent items (AI negative) get more AJ.
@@ -494,8 +599,11 @@
                     @else
                         <p class="font-sans text-gray-700">
                             For every item on this order:
-                            <strong>days still needed</strong> = {{ $fmt($breakdown['period_days'], 0) }} + {{ $fmt($breakdown['safety_days'], 0) }} + {{ $fmt($breakdown['buffer_days'], 0) }} − (that item’s stock days),
-                            then multiply by the daily usage rate for that item — or order <strong>0</strong> if you are not short.
+                            <strong>stock days N</strong> = current stock ÷ V (15-day average),
+                            then <strong>days still needed</strong> = {{ $fmt($breakdown['period_days'], 0) }} + {{ $fmt($breakdown['safety_days'], 0) }} + {{ $fmt($breakdown['buffer_days'], 0) }} − N.
+                            Because the entered period is <strong>{{ $fmt($breakdown['period_days'], 0) }} days</strong>,
+                            order quantity multiplies that gap by the matching V/W/X/Y/Z moving average (not by V unless period &lt; 15).
+                            If there is no shortage, it orders <strong>0</strong>.
                         </p>
                     @endif
                 </div>
@@ -520,7 +628,7 @@
                 @forelse($breakdown['lines'] as $i => $row)
                     <section class="bg-white shadow sm:rounded-lg overflow-hidden"
                              id="line-{{ $row['item_id'] }}"
-                             x-data="{ open: false }"
+                             x-data="{ open: false, showAiDetail: false }"
                              @toggle-lines.window="open = $event.detail.open">
                         <button type="button"
                                 @click="open = !open"
@@ -541,7 +649,7 @@
                             </div>
                             <div class="text-right shrink-0">
                                 <p class="font-mono text-lg font-semibold tabular-nums text-gray-900">{{ $fmtQty($row['order_qty']) }}</p>
-                                <p class="text-xs text-gray-500">qty · AG UGX {{ $fmt($row['line_total']) }}</p>
+                                <p class="text-xs text-gray-500">qty · {{ $isBudgetAhAl ? 'AL' : 'AG' }} UGX {{ $fmt($row['line_total']) }}</p>
                             </div>
                         </button>
 
@@ -570,12 +678,14 @@
                                             </tr>
                                             <tr class="bg-indigo-50/40">
                                                 <td class="px-3 py-2 font-mono font-medium">V / AA</td>
-                                                <td class="px-3 py-2 text-gray-600">How many units you use per day</td>
+                                                <td class="px-3 py-2 text-gray-600">How many units you use per day (for stock days)</td>
                                                 <td class="px-3 py-2 text-gray-600">
                                                     <strong>V</strong> = average daily consumption over the last <strong>15 days</strong>
                                                     (total units used in 15 days ÷ 15).<br>
                                                     <strong>AA</strong> = fixed daily average from inventory settings — used only if V is 0
                                                     (no recent consumption).<br>
+                                                    Stock days always use this 15-day rate:
+                                                    <span class="font-mono">N = M ÷ (V or AA)</span>.
                                                     @if((float) $row['v_daily_usage'] > 0)
                                                         Here <strong>V was used</strong> (15-day average &gt; 0), so AA was not needed.
                                                     @else
@@ -613,7 +723,7 @@
                                             </tr>
                                             <tr>
                                                 <td class="px-3 py-2 font-mono font-medium">F/J</td>
-                                                <td class="px-3 py-2 text-gray-600">Unit price per sale unit (UGX)</td>
+                                                <td class="px-3 py-2 text-gray-600">Purchase price per sale unit (UGX)</td>
                                                 <td class="px-3 py-2 text-gray-600">
                                                     Purchase cost per sale unit, from the latest GRN, stock cost, or item purchase price.
                                                 </td>
@@ -633,9 +743,14 @@
                                                     <td class="px-3 py-2 font-mono font-medium">AI</td>
                                                     <td class="px-3 py-2 text-gray-600">Gap to average AM</td>
                                                     <td class="px-3 py-2 text-gray-600 font-mono text-xs">
-                                                        {{ $row['am_days_left'] !== null ? number_format($row['am_days_left'], 4) : '—' }}
+                                                        AM − (Σ AM ÷ {{ (int) ($breakdown['am_average_count'] ?? 0) }})<br>
+                                                        = {{ $row['am_days_left'] !== null ? number_format($row['am_days_left'], 4) : '—' }}
                                                         − {{ $fmt($breakdown['am_average_days_left'], 4) }}
-                                                        = {{ $fmt($row['ai_gap_to_average'] ?? null, 4) }}
+                                                        = {{ $fmt($row['ai_gap_to_average'] ?? null, 4) }}<br>
+                                                        <span class="font-sans text-[11px] text-gray-500">
+                                                            Σ AM = {{ $fmt($breakdown['am_sum_for_average'] ?? 0, 4) }}
+                                                            · avg = {{ $fmt($breakdown['am_sum_for_average'] ?? 0, 4) }} ÷ {{ (int) ($breakdown['am_average_count'] ?? 0) }}
+                                                        </span>
                                                     </td>
                                                     <td class="px-3 py-2 text-right font-mono tabular-nums">{{ $fmt($row['ai_gap_to_average'] ?? null, 4) }}</td>
                                                 </tr>
@@ -643,8 +758,13 @@
                                                     <td class="px-3 py-2 font-mono font-medium">AJ</td>
                                                     <td class="px-3 py-2 text-gray-600">Order days</td>
                                                     <td class="px-3 py-2 text-gray-600 font-mono text-xs">
-                                                        (15 × {{ $fmt($breakdown['ba7_budget_days'] ?? $breakdown['budget_value'], 0) }}
-                                                        ÷ {{ $fmt($breakdown['ah_sum_test_amount']) }})
+                                                        @if($isBudgetAmount)
+                                                            day pool − AI =
+                                                            {{ $fmt($budgetDayPool, 4) }}
+                                                        @else
+                                                            (15 × {{ $fmt($budgetBa7ForAj, 0) }}
+                                                            ÷ {{ $fmt($breakdown['ah_sum_test_amount']) }})
+                                                        @endif
                                                         − ({{ $fmt($row['ai_gap_to_average'] ?? null, 4) }})
                                                         = {{ $fmtQty($row['aj_order_days_expected'] ?? null) }}
                                                         @if(isset($row['aj_order_days_stored']))
@@ -681,13 +801,22 @@
                                 <div class="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-950 space-y-3"
                                      x-data="{ showDays: false }">
                                     <div class="flex flex-wrap items-center justify-between gap-2">
-                                        <p class="font-medium">Values used for V (15-day average)</p>
+                                        <p class="font-medium">Values used for V (15-day average) — stock days N</p>
                                         <button type="button"
                                                 @click="showDays = !showDays"
                                                 class="text-xs font-medium text-indigo-700 hover:text-indigo-900">
                                             <span x-text="showDays ? 'Hide daily values' : 'Show daily values'"></span>
                                         </button>
                                     </div>
+                                    <p class="text-xs text-indigo-800">
+                                        @if($isBudgetAhAl)
+                                            Budget path uses V/AA (15-day) for N, AM, AH, and AK.
+                                            <span class="font-mono">N = M ÷ (V or AA)</span>.
+                                        @else
+                                            Stock days always use V (or AA if V = 0): <span class="font-mono">N = M ÷ (V or AA)</span>.
+                                            This is separate from the period-based moving average used for order quantity.
+                                        @endif
+                                    </p>
                                     <p>
                                         Formula:
                                         <span class="font-mono">V = (day1 + day2 + … + day15) ÷ 15</span>
@@ -769,18 +898,123 @@
                                     </p>
 
                                     <p class="font-sans text-xs text-gray-500 pt-1">AI — Gap to Average Days left to Order</p>
-                                    <p>
-                                        AI = AM − (Σ AM ÷ count AM)
-                                        = {{ $row['am_days_left'] !== null ? number_format($row['am_days_left'], 4) : '—' }}
-                                        − {{ $fmt($breakdown['am_average_days_left'], 4) }}
-                                        = <strong>{{ $fmt($row['ai_gap_to_average'] ?? null, 4) }}</strong>
-                                    </p>
+                                    <div class="space-y-2">
+                                        <p>
+                                            AI = AM − (Σ AM ÷ count AM)
+                                            = {{ $row['am_days_left'] !== null ? number_format($row['am_days_left'], 4) : '—' }}
+                                            − {{ $fmt($breakdown['am_average_days_left'], 4) }}
+                                            = <strong>{{ $fmt($row['ai_gap_to_average'] ?? null, 4) }}</strong>
+                                        </p>
+                                        <button type="button"
+                                                @click="showAiDetail = !showAiDetail"
+                                                class="font-sans text-xs font-medium text-violet-700 hover:text-violet-900">
+                                            <span x-text="showAiDetail ? 'Hide AI breakdown' : 'Show AI breakdown (AM, Σ AM, average)'"></span>
+                                        </button>
+                                        <div x-show="showAiDetail" x-cloak class="rounded-md border border-violet-200 bg-violet-50 px-3 py-3 space-y-3 font-sans text-sm text-gray-900">
+                                            <div>
+                                                <p class="font-medium text-violet-950">1. This item’s AM</p>
+                                                <p class="font-mono text-[13px] mt-1">
+                                                    AM = N − AB − AD
+                                                    = {{ $row['n_stock_days'] !== null ? number_format($row['n_stock_days'], 4) : '—' }}
+                                                    − {{ $fmt($breakdown['safety_days'], 0) }}
+                                                    − {{ $fmt($breakdown['buffer_days'], 0) }}
+                                                    = <strong>{{ $row['am_days_left'] !== null ? number_format($row['am_days_left'], 4) : '—' }}</strong>
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p class="font-medium text-violet-950">2. Average AM — each item included</p>
+                                                <p class="text-xs text-gray-600 mt-0.5">
+                                                    Only items with stock days ≤ 366 are included (same as Σ AH).
+                                                </p>
+                                                @if(! empty($breakdown['am_parts']))
+                                                    <div class="mt-2 overflow-x-auto rounded border border-violet-100 bg-white">
+                                                        <table class="min-w-full text-xs">
+                                                            <thead class="bg-violet-100/60 text-violet-900">
+                                                                <tr>
+                                                                    <th class="px-2 py-1.5 text-left font-medium">Item</th>
+                                                                    <th class="px-2 py-1.5 text-right font-medium">N</th>
+                                                                    <th class="px-2 py-1.5 text-right font-medium">AM</th>
+                                                                    <th class="px-2 py-1.5 text-left font-medium">In avg?</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody class="divide-y divide-violet-50 font-mono">
+                                                                @foreach($breakdown['am_parts'] as $amPart)
+                                                                    <tr @class([
+                                                                        'bg-violet-100/50 font-semibold' => (int) ($amPart['item_id'] ?? 0) === (int) $row['item_id'],
+                                                                        'bg-gray-50 text-gray-500' => empty($amPart['included_in_average']),
+                                                                    ])>
+                                                                        <td class="px-2 py-1 font-sans text-gray-800">
+                                                                            {{ $amPart['item_name'] }}
+                                                                            @if((int) ($amPart['item_id'] ?? 0) === (int) $row['item_id'])
+                                                                                <span class="text-violet-700">(this line)</span>
+                                                                            @endif
+                                                                        </td>
+                                                                        <td class="px-2 py-1 text-right tabular-nums">
+                                                                            {{ $amPart['n'] !== null ? number_format($amPart['n'], 1) : '—' }}
+                                                                        </td>
+                                                                        <td class="px-2 py-1 text-right tabular-nums">{{ $fmt($amPart['am'], 4) }}</td>
+                                                                        <td class="px-2 py-1 font-sans">
+                                                                            @if(! empty($amPart['included_in_average']))
+                                                                                <span class="text-emerald-700">Yes</span>
+                                                                            @else
+                                                                                <span class="text-gray-500">No</span>
+                                                                            @endif
+                                                                        </td>
+                                                                    </tr>
+                                                                @endforeach
+                                                            </tbody>
+                                                            <tfoot class="border-t border-violet-200 bg-violet-50">
+                                                                <tr>
+                                                                    <td class="px-2 py-1.5 font-sans font-medium" colspan="2">Σ AM (Yes rows)</td>
+                                                                    <td class="px-2 py-1.5 text-right font-semibold tabular-nums">{{ $fmt($breakdown['am_sum_for_average'] ?? 0, 4) }}</td>
+                                                                    <td class="px-2 py-1.5 font-sans text-gray-600">{{ (int) ($breakdown['am_average_count'] ?? 0) }} item(s)</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="px-2 py-1.5 font-sans font-medium" colspan="2">Σ AM ÷ count = average AM</td>
+                                                                    <td class="px-2 py-1.5 text-right font-semibold tabular-nums" colspan="2">
+                                                                        @if(($breakdown['am_average_count'] ?? 0) > 0)
+                                                                            {{ $fmt($breakdown['am_sum_for_average'] ?? 0, 4) }}
+                                                                            ÷ {{ (int) $breakdown['am_average_count'] }}
+                                                                            = {{ $fmt($breakdown['am_average_days_left'], 4) }}
+                                                                        @else
+                                                                            —
+                                                                        @endif
+                                                                    </td>
+                                                                </tr>
+                                                            </tfoot>
+                                                        </table>
+                                                    </div>
+                                                @endif
+                                            </div>
+                                            <div>
+                                                <p class="font-medium text-violet-950">3. AI for this item</p>
+                                                <p class="font-mono text-[13px] mt-1">
+                                                    AI = this AM − average AM
+                                                    = {{ $row['am_days_left'] !== null ? number_format($row['am_days_left'], 4) : '—' }}
+                                                    − {{ $fmt($breakdown['am_average_days_left'], 4) }}
+                                                    = <strong>{{ $fmt($row['ai_gap_to_average'] ?? null, 4) }}</strong>
+                                                </p>
+                                                <p class="text-xs text-violet-900 mt-1">
+                                                    Negative AI → more urgent than average → more order days (AJ).
+                                                    Positive AI → less urgent → fewer order days.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
 
                                     <p class="font-sans text-xs text-gray-500 pt-1">AJ — Order Days</p>
                                     <p>
-                                        AJ = (15 × BA7 ÷ Σ AH) − AI
-                                        = (15 × {{ $fmt($breakdown['ba7_budget_days'] ?? $breakdown['budget_value'], 0) }}
-                                        ÷ {{ $fmt($breakdown['ah_sum_test_amount']) }})
+                                        @if($isBudgetAmount)
+                                            day pool = 15 × BA7 ÷ Σ AH
+                                            = 15 × {{ $fmt($budgetBa7ForAj) }} ÷ {{ $fmt($breakdown['ah_sum_test_amount']) }}
+                                            = <strong>{{ $fmt($budgetDayPool, 4) }}</strong><br>
+                                            AJ = day pool − AI
+                                            = {{ $fmt($budgetDayPool, 4) }}
+                                        @else
+                                            AJ = (15 × BA7 ÷ Σ AH) − AI
+                                            = (15 × {{ $fmt($budgetBa7ForAj, 0) }}
+                                            ÷ {{ $fmt($breakdown['ah_sum_test_amount']) }})
+                                        @endif
                                         − ({{ $fmt($row['ai_gap_to_average'] ?? null, 4) }})
                                         = <strong>{{ $fmtQty($row['aj_order_days_expected'] ?? $row['order_days']) }}</strong>
                                         @if(isset($row['aj_order_days_stored']))
@@ -799,9 +1033,20 @@
                                     @if($row['peak_impact_percent'] > 0)
                                         <p class="font-sans text-xs text-gray-500 pt-1">Peak uplift (after AK)</p>
                                         <p>
-                                            {{ $fmtQty($row['af_base_qty']) }}
+                                            {{ $fmtQty($row['ak_base_qty_stored'] ?? $row['af_base_qty']) }}
                                             × (1 + {{ $fmt($row['peak_impact_percent'], 4) }} ÷ 100)
                                             = <strong>{{ $fmtQty($row['qty_after_peak']) }}</strong>
+                                        </p>
+                                    @endif
+
+                                    @if($breakdown['scale_factor'] !== null && abs($breakdown['scale_factor'] - 1) >= 0.000001)
+                                        <p class="font-sans text-xs text-gray-500 pt-1">Fit to budget cap</p>
+                                        <p>
+                                            {{ $fmtQty($row['qty_after_peak']) }} × {{ number_format($breakdown['scale_factor'], 6) }}
+                                            = <strong>{{ $fmtQty($row['order_qty']) }}</strong>
+                                        </p>
+                                        <p class="font-sans text-xs text-amber-800">
+                                            Quantities were scaled so Σ AL does not exceed the UGX budget cap.
                                         </p>
                                     @endif
 
@@ -817,8 +1062,11 @@
                                             {{ $row['skipped_reason'] }}
                                         </p>
                                     @endif
-                                    @if(! empty($row['matches_ah_al']))
-                                        <p class="font-sans text-xs text-emerald-700">✓ Matches AH→AL from stored snapshots</p>
+                                    @if(! empty($row['matches_ah_ak'] ?? $row['matches_ah_al'] ?? false))
+                                        <p class="font-sans text-xs text-emerald-700">✓ Matches AH→AK from stored snapshots</p>
+                                    @endif
+                                    @if(($breakdown['scale_factor'] ?? null) !== null && abs((float) $breakdown['scale_factor'] - 1) >= 0.000001)
+                                        <p class="font-sans text-xs text-amber-700">Final qty/AL may differ after budget-cap scaling (see above).</p>
                                     @endif
                                 </div>
                                 @else
@@ -846,8 +1094,9 @@
                                             <span class="font-medium">Why:</span> {{ $row['ma_reason'] }}
                                         </p>
                                         <p class="font-sans text-xs text-indigo-800">
-                                            Look at how many days of stock you have left, then pick a short or long usage average.
-                                            Low stock → recent 15-day usage. More stock → longer average.
+                                            The entered period selects the average used for <strong>order quantity</strong>:
+                                            under 15 → V, under 30 → W, under 90 → X, under 180 → Y, otherwise → Z.
+                                            Stock days still use V/AA only: <span class="font-mono">N = M ÷ (V or AA)</span>.
                                         </p>
                                         @if(! empty($row['rate_source_note']))
                                             <p class="font-sans text-xs text-indigo-800">{{ $row['rate_source_note'] }}</p>
@@ -861,7 +1110,7 @@
 
                                     @if(! empty($row['excel_expected_rate']) && empty($row['rate_matches_excel']))
                                         <p class="font-sans text-sm text-red-800 bg-red-50 border border-red-200 rounded px-3 py-2">
-                                            Excel expects the 15-day rate (V) = <strong class="font-mono">{{ $fmtQty($row['excel_expected_rate']) }}</strong>,
+                                            The selected {{ $row['graduated_ma_window'] }} rate should be <strong class="font-mono">{{ $fmtQty($row['excel_expected_rate']) }}</strong>,
                                             so quantity should be <strong class="font-mono">{{ $fmtQty($row['excel_expected_base_qty']) }}</strong>.
                                             This order still has an older rate (<strong class="font-mono">{{ $fmtQty($row['implied_rate']) }}</strong>) — refresh the order to recalculate.
                                         </p>

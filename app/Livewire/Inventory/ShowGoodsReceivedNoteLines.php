@@ -74,7 +74,7 @@ class ShowGoodsReceivedNoteLines extends Component implements HasForms, HasTable
                     ->placeholder('—'),
 
                 TextColumn::make('purchase_price')
-                    ->label('Unit price')
+                    ->label('Purchase price')
                     ->alignEnd()
                     ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2)),
 

@@ -114,7 +114,7 @@
         <section class="bg-white shadow sm:rounded-lg overflow-hidden">
             <div class="px-5 py-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
                 <h3 class="text-sm font-semibold text-gray-900">Computation sheet</h3>
-                <p class="text-xs text-gray-500">Lowest unit price per line is highlighted.</p>
+                <p class="text-xs text-gray-500">Lowest purchase price per line is highlighted.</p>
             </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full text-sm">
@@ -244,7 +244,7 @@
                                                 <th class="py-1 pr-2">Item</th>
                                                 <th class="py-1 pr-2 text-right">RFQ qty</th>
                                                 <th class="py-1 pr-2 text-right">Quoted qty</th>
-                                                <th class="py-1 text-right">Unit price</th>
+                                                <th class="py-1 text-right">Purchase price</th>
                                             </tr>
                                         </thead>
                                         <tbody>

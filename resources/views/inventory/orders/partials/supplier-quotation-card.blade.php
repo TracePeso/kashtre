@@ -73,7 +73,7 @@
                             <th class="py-1 pr-2">Item</th>
                             <th class="py-1 pr-2 text-right">RFQ qty</th>
                             <th class="py-1 pr-2 text-right">Quoted qty</th>
-                            <th class="py-1 text-right">Unit price</th>
+                            <th class="py-1 text-right">Purchase price</th>
                         </tr>
                     </thead>
                     <tbody>

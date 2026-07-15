@@ -76,15 +76,17 @@ class InventoryStockAnalyticsServiceTest extends TestCase
             'quantity_suom' => 50,
             'ma_15_days' => 10,
             'ma_30_days' => 8,
+            'ma_90_days' => 7,
         ]);
 
-        // N = 50/10 = 5; coverage = 30+10+5-5 = 40; AF = 40 * 10 (MA15 because N < 15)
+        // Period = 30 → X (90-day MA) because 30 < 90; N = 50/10 = 5;
+        // coverage = 30+10+5-5 = 40; AF = 40 * 7
         $qty = $this->analytics->suggestedOrderQtyPeriod($stock, $config, 30, $order);
 
-        $this->assertSame(400.0, $qty);
+        $this->assertSame(280.0, $qty);
     }
 
-    public function test_period_order_qty_uses_15_day_ma_when_stock_days_is_zero(): void
+    public function test_period_order_qty_uses_15_day_ma_when_period_is_under_15(): void
     {
         $config = new InventoryModuleConfig([
             'safety_stock_days' => 10,
@@ -94,13 +96,40 @@ class InventoryStockAnalyticsServiceTest extends TestCase
         $stock = new InventoryStockLevel([
             'quantity_suom' => 0,
             'ma_15_days' => 299.2667,
+            'ma_90_days' => 100,
             'ma_360_days' => 163.7778,
         ]);
 
-        // Excel AF: N = 0 < 15 → use V; coverage = 30+10+10-0 = 50; AF = 50 * 299.2667
-        $qty = $this->analytics->suggestedOrderQtyPeriod($stock, $config, 30);
+        // Period = 10 < 15 → V; coverage = 10+10+10-0 = 30; AF = 30 * 299.2667
+        $qty = $this->analytics->suggestedOrderQtyPeriod($stock, $config, 10);
 
-        $this->assertSame(14963.335, $qty);
+        $this->assertSame(8978.001, $qty);
+    }
+
+    public function test_period_order_qty_uses_90_day_ma_for_longer_period(): void
+    {
+        $config = new InventoryModuleConfig([
+            'safety_stock_days' => 0,
+            'buffer_stock_days' => 0,
+        ]);
+
+        $stock = new InventoryStockLevel([
+            'quantity_suom' => 0,
+            'ma_15_days' => 10,
+            'ma_30_days' => 8,
+            'ma_90_days' => 6,
+            'ma_180_days' => 4,
+        ]);
+
+        // Period = 45 → X (90-day); coverage = 45; AF = 45 * 6
+        $qty = $this->analytics->suggestedOrderQtyPeriod($stock, $config, 45);
+
+        $this->assertSame(270.0, $qty);
+        $this->assertSame(90, $this->analytics->graduatedMaWindowDays(45));
+        $this->assertSame(15, $this->analytics->graduatedMaWindowDays(10));
+        $this->assertSame(30, $this->analytics->graduatedMaWindowDays(20));
+        $this->assertSame(180, $this->analytics->graduatedMaWindowDays(100));
+        $this->assertSame(360, $this->analytics->graduatedMaWindowDays(200));
     }
 
     public function test_budget_order_days_allocation_matches_excel_aj_and_ak(): void
