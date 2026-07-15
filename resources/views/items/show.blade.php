@@ -66,23 +66,14 @@
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">Default Price</label>
+                            <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">Sale price</label>
                             <p class="mt-1 text-sm text-gray-900 dark:text-white">UGX {{ number_format($item->default_price, 2) }}</p>
                         </div>
 
-                        @if($item->type === 'good')
                         <div>
-                            <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">Purchase price (per SUOM)</label>
-                            <p class="mt-1 text-sm text-gray-900 dark:text-white">
-                                @if($item->purchase_price !== null)
-                                    UGX {{ number_format((float) $item->purchase_price, 2) }}
-                                @else
-                                    UGX {{ number_format($item->purchasePricePerSuom(), 2) }}
-                                    <span class="text-gray-500">(default price)</span>
-                                @endif
-                            </p>
+                            <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">Purchase price</label>
+                            <p class="mt-1 text-sm text-gray-900 dark:text-white">UGX {{ number_format((float) $item->purchase_price, 2) }}</p>
                         </div>
-                        @endif
 
                         <div>
                             <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">VAT Rate</label>
@@ -277,7 +268,8 @@
                             <thead class="bg-gray-50 dark:bg-gray-700">
                                 <tr>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Branch</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Price</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Sale price</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Purchase price</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Service Points</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Last Updated</th>
@@ -293,11 +285,9 @@
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                                             <span class="font-semibold">UGX {{ number_format($branchPrice->price, 2) }}</span>
-                                            @if($branchPrice->price != $item->default_price)
-                                                <span class="ml-2 text-xs {{ $branchPrice->price > $item->default_price ? 'text-red-600' : 'text-green-600' }}">
-                                                    ({{ $branchPrice->price > $item->default_price ? '+' : '' }}{{ number_format((($branchPrice->price - $item->default_price) / $item->default_price) * 100, 1) }}%)
-                                                </span>
-                                            @endif
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                            <span class="font-semibold">UGX {{ number_format((float) ($branchPrice->purchase_price ?? $item->purchase_price), 2) }}</span>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                                             @php
@@ -337,6 +327,9 @@
                                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                                             {{ $branchServicePoints->first()->branch->name ?? 'N/A' }}
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                            <span class="text-gray-400 text-xs">No branch-specific price</span>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                                             <span class="text-gray-400 text-xs">No branch-specific price</span>

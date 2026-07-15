@@ -28,7 +28,7 @@
                     <tr>
                         <th class="px-4 py-3 text-left font-medium text-gray-600">Item</th>
                         <th class="px-4 py-3 text-left font-medium text-gray-600">Batch</th>
-                        <th class="px-4 py-3 text-right font-medium text-gray-600">Qty (SUOM)</th>
+                        <th class="px-4 py-3 text-right font-medium text-gray-600">Quantity (sale units)</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">

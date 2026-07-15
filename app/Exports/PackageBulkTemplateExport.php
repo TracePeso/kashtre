@@ -65,13 +65,16 @@ class PackageBulkTemplateExport implements FromArray, WithHeadings, WithStyles, 
             // Row 5: Description
             ['Description', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
             
-            // Row 6: Default Price
-            ['Default Price', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+            // Row 6: Sale Price
+            ['Sale Price', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+
+            // Row 7: Purchase Price
+            ['Purchase Price', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
             
-            // Row 7: Validity Period
+            // Row 8: Validity Period
             ['Validity Period (Days) - Required for packages', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
             
-            // Row 8: Other Names
+            // Row 9: Other Names
             ['Other Names', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
         ];
         

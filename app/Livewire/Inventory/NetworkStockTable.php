@@ -51,7 +51,7 @@ class NetworkStockTable extends Component implements HasForms, HasTable
                     ->sortable(),
 
                 TextColumn::make('itemUnit.name')
-                    ->label('SUOM')
+                    ->label('Sale unit')
                     ->placeholder('—')
                     ->sortable(),
 

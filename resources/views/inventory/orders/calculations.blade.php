@@ -533,7 +533,7 @@
                                     </h4>
                                     <p class="text-xs text-gray-500 mt-0.5">
                                         @if($row['item_code']){{ $row['item_code'] }} · @endif
-                                        {{ $row['suom'] ?? 'SUOM' }}
+                                        {{ $row['suom'] ?? 'Sale unit' }}
                                         · V {{ $fmtQty($row['v_daily_usage']) }}
                                         · N {{ $row['n_stock_days'] !== null ? number_format($row['n_stock_days'], 1) : '—' }}
                                     </p>
@@ -613,9 +613,9 @@
                                             </tr>
                                             <tr>
                                                 <td class="px-3 py-2 font-mono font-medium">F/J</td>
-                                                <td class="px-3 py-2 text-gray-600">Unit price per SUOM (UGX)</td>
+                                                <td class="px-3 py-2 text-gray-600">Unit price per sale unit (UGX)</td>
                                                 <td class="px-3 py-2 text-gray-600">
-                                                    Purchase cost per sale unit, from latest GRN / stock cost / item purchase price / default price.
+                                                    Purchase cost per sale unit, from the latest GRN, stock cost, or item purchase price.
                                                 </td>
                                                 <td class="px-3 py-2 text-right font-mono tabular-nums">{{ $fmt($row['unit_price']) }}</td>
                                             </tr>

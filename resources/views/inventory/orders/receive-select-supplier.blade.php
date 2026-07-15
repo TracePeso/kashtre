@@ -16,7 +16,7 @@
                         <div>
                             <p class="font-medium text-gray-900">{{ $option['supplier_name'] }}</p>
                             <p class="text-sm text-gray-500 mt-0.5">
-                                {{ $option['lines_count'] }} item(s) · {{ number_format($option['remaining_suom'], 0) }} SUOM remaining
+                                {{ $option['lines_count'] }} item(s) · {{ number_format($option['remaining_suom'], 0) }} sale units remaining
                             </p>
                         </div>
                         <span class="text-sm text-blue-600 font-medium">Create goods receive note →</span>

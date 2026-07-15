@@ -341,7 +341,14 @@ class GoodsReceivedNoteController extends Controller
 
         return response()->streamDownload(function () use ($items): void {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['item_code', 'item_name', 'sale_unit_suom', 'default_price']);
+            fputcsv($handle, [
+                'item_code',
+                'item_name',
+                'sale_unit',
+                'sale_price',
+                'purchase_price',
+                'purchase_price_per_order_unit',
+            ]);
 
             foreach ($items as $item) {
                 fputcsv($handle, [
@@ -349,6 +356,8 @@ class GoodsReceivedNoteController extends Controller
                     $item->name,
                     $item->itemUnit?->name ?? '',
                     $item->default_price ?? 0,
+                    $item->purchasePricePerSuom(),
+                    $item->purchasePricePerOuom(),
                 ]);
             }
 
@@ -470,7 +479,7 @@ class GoodsReceivedNoteController extends Controller
 
             if (! $itemSuom) {
                 throw ValidationException::withMessages([
-                    'lines' => "Item \"{$item->name}\" has no sale unit (SUOM) configured.",
+                    'lines' => "Item \"{$item->name}\" has no sale unit configured.",
                 ]);
             }
 

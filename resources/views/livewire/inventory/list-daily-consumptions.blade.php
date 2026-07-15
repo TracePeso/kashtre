@@ -67,7 +67,7 @@
                 <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
                     <p class="text-xs font-medium text-gray-500">Total consumed</p>
                     <p class="mt-0.5 text-lg font-bold text-gray-900 tabular-nums">{{ number_format($summary['total_quantity_suom'], 0) }}</p>
-                    <p class="text-xs text-gray-500">SUOM</p>
+                    <p class="text-xs text-gray-500">Sale units</p>
                 </div>
                 <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
                     <p class="text-xs font-medium text-gray-500">Items with usage</p>

@@ -67,7 +67,7 @@
                             </select>
                         </div>
                         <div class="md:col-span-2">
-                            <label class="text-xs text-gray-600">Qty SUOM</label>
+                            <label class="text-xs text-gray-600">Quantity (sale units)</label>
                             <input type="number" step="1" min="1" :name="'lines['+i+'][quantity_suom]'" x-model="line.quantity_suom" required class="mt-1 w-full rounded-md border-gray-300 text-sm">
                         </div>
                         <div class="md:col-span-3">

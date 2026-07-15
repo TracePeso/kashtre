@@ -41,7 +41,7 @@
             <tr>
                 <th>Item</th>
                 <th>Code</th>
-                <th>SUOM</th>
+                <th>Sale unit</th>
                 <th class="text-right">Qty requested</th>
             </tr>
         </thead>

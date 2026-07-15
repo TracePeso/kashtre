@@ -67,9 +67,15 @@ class Items extends Component implements HasForms, HasTable
                     ->label('Unit of Measure')
                     ->sortable(),
                 TextColumn::make('default_price')
-                    ->label('Default Price')
+                    ->label('Sale price')
                     ->money('UGX')
                     ->sortable(),
+                TextColumn::make('purchase_price')
+                    ->label('Purchase price')
+                    ->money('UGX')
+                    ->sortable()
+                    ->placeholder('—')
+                    ->toggleable(),
                 TextColumn::make('hospital_share')
                     ->label('Company/Entity')
                     ->formatStateUsing(fn (string $state): string => $state . '%')

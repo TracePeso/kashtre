@@ -36,7 +36,7 @@
             <div class="bg-white shadow sm:rounded-lg p-4">
                 <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Qty from sales</p>
                 <p class="mt-1 text-xl font-bold text-gray-900 tabular-nums">{{ number_format($salesSummary['sales_quantity'], 0) }}</p>
-                <p class="text-xs text-gray-500">SUOM in sales rows</p>
+                <p class="text-xs text-gray-500">Sale units in sales rows</p>
             </div>
             <div class="bg-white shadow sm:rounded-lg p-4">
                 <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Sales value</p>

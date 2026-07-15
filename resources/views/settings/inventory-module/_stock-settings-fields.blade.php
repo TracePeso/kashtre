@@ -19,7 +19,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
             <label for="fixed_daily_average_suom" class="block text-sm font-medium text-gray-700">
-                Fixed daily average (SUOM)
+                Fixed daily average (sale units)
             </label>
             <input type="number" name="fixed_daily_average_suom" id="fixed_daily_average_suom"
                    step="0.0001" min="0"

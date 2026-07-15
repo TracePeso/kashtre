@@ -50,7 +50,7 @@ class EditStockCountLines extends Component implements HasForms, HasTable
                     ->description(fn (InventoryStockCountLine $record): ?string => $record->item?->code),
 
                 TextColumn::make('item.itemUnit.name')
-                    ->label('SUOM')
+                    ->label('Sale unit')
                     ->placeholder('—'),
 
                 TextColumn::make('system_quantity_suom')

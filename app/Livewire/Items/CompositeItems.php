@@ -63,7 +63,11 @@ class CompositeItems extends Component implements HasForms, HasTable
                         default => 'gray',
                     }),
                 TextColumn::make('default_price')
-                    ->label('Default Price')
+                    ->label('Sale price')
+                    ->money('UGX')
+                    ->sortable(),
+                TextColumn::make('purchase_price')
+                    ->label('Purchase price')
                     ->money('UGX')
                     ->sortable(),
                 TextColumn::make('contractor.user.name')

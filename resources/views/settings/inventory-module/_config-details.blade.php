@@ -77,7 +77,7 @@
     <dl class="px-4 py-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 text-sm">
       <div>
         <dt class="text-gray-500">Fixed daily average</dt>
-        <dd class="mt-1 font-medium text-gray-900">{{ number_format((float) $config->fixed_daily_average_suom, 4) }} SUOM</dd>
+        <dd class="mt-1 font-medium text-gray-900">{{ number_format((float) $config->fixed_daily_average_suom, 4) }} sale units</dd>
       </div>
       <div>
         <dt class="text-gray-500">Safety stock days</dt>

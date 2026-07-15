@@ -130,7 +130,7 @@ class ItemController extends Controller
             'order_unit_id' => 'nullable|exists:item_units,id',
             'suom_per_ouom' => 'nullable|numeric|min:0.0001',
             'default_price' => 'required|numeric|min:0',
-            'purchase_price' => 'nullable|numeric|min:0',
+            'purchase_price' => 'required|numeric|min:0',
             'vat_rate' => 'nullable|numeric|min:0|max:100',
             'hospital_share' => 'required_if:type,service,good|integer|between:0,100',
             'contractor_account_id' => 'nullable|exists:contractor_profiles,id',
@@ -142,6 +142,7 @@ class ItemController extends Controller
             'branch_prices' => 'nullable|array',
             'branch_prices.*.branch_id' => 'nullable|exists:branches,id',
             'branch_prices.*.price' => 'nullable|numeric|min:0',
+            'branch_prices.*.purchase_price' => 'nullable|numeric|min:0',
             'branch_service_points' => 'nullable|array',
             'branch_service_points.*' => 'nullable|exists:service_points,id',
             'package_items' => 'nullable|array',
@@ -183,7 +184,6 @@ class ItemController extends Controller
             $validated['importance_category'] = null;
             $validated['order_unit_id'] = null;
             $validated['suom_per_ouom'] = null;
-            $validated['purchase_price'] = null;
         }
 
         $this->applyImportanceCategoryToItem($validated);
@@ -195,20 +195,18 @@ class ItemController extends Controller
 
         // Validate that at least one branch has a custom price when custom pricing is selected
         if ($validated['pricing_type'] === 'custom' && isset($validated['branch_prices'])) {
-            $branches = Branch::where('business_id', $validated['business_id'])->get();
-            $providedPrices = collect($validated['branch_prices'])->pluck('price', 'branch_id');
-            
-            // Check if at least one branch has a custom price
             $hasCustomPrices = false;
-            foreach ($branches as $branch) {
-                if ($providedPrices->has($branch->id) && !empty($providedPrices->get($branch->id))) {
+            foreach ($validated['branch_prices'] as $branchPrice) {
+                $hasSalePrice = !empty($branchPrice['branch_id']) && isset($branchPrice['price']) && $branchPrice['price'] !== '';
+                $hasPurchasePrice = !empty($branchPrice['branch_id']) && isset($branchPrice['purchase_price']) && $branchPrice['purchase_price'] !== '';
+                if ($hasSalePrice || $hasPurchasePrice) {
                     $hasCustomPrices = true;
                     break;
                 }
             }
-            
+
             if (!$hasCustomPrices) {
-                return back()->withErrors(['branch_prices' => 'At least one branch must have a custom price when custom pricing is selected']);
+                return back()->withErrors(['branch_prices' => 'At least one branch must have a custom sale or purchase price when custom pricing is selected']);
             }
         }
 
@@ -218,14 +216,28 @@ class ItemController extends Controller
         // Handle branch item prices only if custom pricing is selected
         if ($validated['pricing_type'] === 'custom' && isset($validated['branch_prices'])) {
             foreach ($validated['branch_prices'] as $branchPrice) {
-                if (!empty($branchPrice['branch_id']) && !empty($branchPrice['price'])) {
-                    BranchItemPrice::create([
-                        'business_id' => $validated['business_id'],
-                        'branch_id' => $branchPrice['branch_id'],
-                        'item_id' => $item->id,
-                        'price' => $branchPrice['price'],
-                    ]);
+                if (empty($branchPrice['branch_id'])) {
+                    continue;
                 }
+
+                $salePrice = isset($branchPrice['price']) && $branchPrice['price'] !== ''
+                    ? $branchPrice['price']
+                    : null;
+                $purchasePrice = isset($branchPrice['purchase_price']) && $branchPrice['purchase_price'] !== ''
+                    ? $branchPrice['purchase_price']
+                    : null;
+
+                if ($salePrice === null && $purchasePrice === null) {
+                    continue;
+                }
+
+                BranchItemPrice::create([
+                    'business_id' => $validated['business_id'],
+                    'branch_id' => $branchPrice['branch_id'],
+                    'item_id' => $item->id,
+                    'price' => $salePrice ?? $validated['default_price'],
+                    'purchase_price' => $purchasePrice ?? $validated['purchase_price'],
+                ]);
             }
         }
 
@@ -380,7 +392,7 @@ class ItemController extends Controller
             'order_unit_id' => 'nullable|exists:item_units,id',
             'suom_per_ouom' => 'nullable|numeric|min:0.0001',
             'default_price' => 'required|numeric|min:0',
-            'purchase_price' => 'nullable|numeric|min:0',
+            'purchase_price' => 'required|numeric|min:0',
             'vat_rate' => 'nullable|numeric|min:0|max:100',
             'hospital_share' => 'required_if:type,service,good|integer|between:0,100',
             'contractor_account_id' => 'nullable|exists:contractor_profiles,id',
@@ -392,6 +404,7 @@ class ItemController extends Controller
             'branch_prices' => 'nullable|array',
             'branch_prices.*.branch_id' => 'nullable|exists:branches,id',
             'branch_prices.*.price' => 'nullable|numeric|min:0',
+            'branch_prices.*.purchase_price' => 'nullable|numeric|min:0',
             'branch_service_points' => 'nullable|array',
             'branch_service_points.*' => 'nullable|exists:service_points,id',
             'package_items' => 'nullable|array',
@@ -433,7 +446,6 @@ class ItemController extends Controller
             $validated['importance_category'] = null;
             $validated['order_unit_id'] = null;
             $validated['suom_per_ouom'] = null;
-            $validated['purchase_price'] = null;
         }
 
         $this->applyImportanceCategoryToItem($validated);
@@ -445,20 +457,18 @@ class ItemController extends Controller
 
         // Validate that at least one branch has a custom price when custom pricing is selected
         if ($validated['pricing_type'] === 'custom' && isset($validated['branch_prices'])) {
-            $branches = Branch::where('business_id', $validated['business_id'])->get();
-            $providedPrices = collect($validated['branch_prices'])->pluck('price', 'branch_id');
-            
-            // Check if at least one branch has a custom price
             $hasCustomPrices = false;
-            foreach ($branches as $branch) {
-                if ($providedPrices->has($branch->id) && !empty($providedPrices->get($branch->id))) {
+            foreach ($validated['branch_prices'] as $branchPrice) {
+                $hasSalePrice = !empty($branchPrice['branch_id']) && isset($branchPrice['price']) && $branchPrice['price'] !== '';
+                $hasPurchasePrice = !empty($branchPrice['branch_id']) && isset($branchPrice['purchase_price']) && $branchPrice['purchase_price'] !== '';
+                if ($hasSalePrice || $hasPurchasePrice) {
                     $hasCustomPrices = true;
                     break;
                 }
             }
-            
+
             if (!$hasCustomPrices) {
-                return back()->withErrors(['branch_prices' => 'At least one branch must have a custom price when custom pricing is selected']);
+                return back()->withErrors(['branch_prices' => 'At least one branch must have a custom sale or purchase price when custom pricing is selected']);
             }
         }
 
@@ -467,17 +477,31 @@ class ItemController extends Controller
 
         // Handle branch item prices - delete existing and create new ones only if custom pricing is selected
         $item->branchPrices()->delete();
-        
+
         if ($validated['pricing_type'] === 'custom' && isset($validated['branch_prices'])) {
             foreach ($validated['branch_prices'] as $branchPrice) {
-                if (!empty($branchPrice['branch_id']) && !empty($branchPrice['price'])) {
-                    BranchItemPrice::create([
-                        'business_id' => $validated['business_id'],
-                        'branch_id' => $branchPrice['branch_id'],
-                        'item_id' => $item->id,
-                        'price' => $branchPrice['price'],
-                    ]);
+                if (empty($branchPrice['branch_id'])) {
+                    continue;
                 }
+
+                $salePrice = isset($branchPrice['price']) && $branchPrice['price'] !== ''
+                    ? $branchPrice['price']
+                    : null;
+                $purchasePrice = isset($branchPrice['purchase_price']) && $branchPrice['purchase_price'] !== ''
+                    ? $branchPrice['purchase_price']
+                    : null;
+
+                if ($salePrice === null && $purchasePrice === null) {
+                    continue;
+                }
+
+                BranchItemPrice::create([
+                    'business_id' => $validated['business_id'],
+                    'branch_id' => $branchPrice['branch_id'],
+                    'item_id' => $item->id,
+                    'price' => $salePrice ?? $validated['default_price'],
+                    'purchase_price' => $purchasePrice ?? $validated['purchase_price'],
+                ]);
             }
         }
 

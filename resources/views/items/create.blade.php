@@ -86,10 +86,20 @@
                             <p class="mt-1 text-sm text-gray-500">Leave empty for auto-generation or click the refresh button to generate a new code</p>
                         </div>
 
-                        <!-- Default Price -->
+                        <!-- Sale Price -->
                         <div>
-                            <label for="default_price" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Default Price <span class="text-red-500">*</span></label>
+                            <label for="default_price" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Sale price <span class="text-red-500">*</span></label>
                             <input type="number" name="default_price" id="default_price" step="0.01" min="0" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required placeholder="0.00" value="{{ old('default_price') }}">
+                        </div>
+
+                        <!-- Purchase Price -->
+                        <div>
+                            <label for="purchase_price" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Purchase price <span class="text-red-500">*</span></label>
+                            <input type="number" name="purchase_price" id="purchase_price" step="0.01" min="0"
+                                   value="{{ old('purchase_price') }}"
+                                   placeholder="0.00"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                   required>
                         </div>
 
                         <!-- VAT Rate -->
@@ -170,7 +180,7 @@
 
                         <!-- Unit of Measure -->
                         <div class="service-good-only">
-                            <label for="uom_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Sale unit (SUOM) <span class="text-red-500">*</span></label>
+                            <label for="uom_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Sale unit <span class="text-red-500">*</span></label>
                             <select name="uom_id" id="uom_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
                                 <option value="" disabled selected>Select sale unit</option>
                                 @foreach($itemUnits as $itemUnit)
@@ -179,11 +189,11 @@
                                     </option>
                                 @endforeach
                             </select>
-                            <p class="mt-1 text-xs text-gray-500">Unit in which the business sells or issues this item (Excel: SUOM).</p>
+                            <p class="mt-1 text-xs text-gray-500">Unit in which the business sells or issues this item.</p>
                         </div>
 
                         <div class="good-only inventory-good-fields">
-                            <label for="order_unit_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Order unit (OUOM)</label>
+                            <label for="order_unit_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Order unit</label>
                             <select name="order_unit_id" id="order_unit_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                                 <option value="">Same as sale unit</option>
                                 @foreach($itemUnits as $itemUnit)
@@ -192,27 +202,17 @@
                                     </option>
                                 @endforeach
                             </select>
-                            <p class="mt-1 text-xs text-gray-500">Supplier quote unit (Excel: OUOM). DUOM on GRN is chosen per receipt.</p>
+                            <p class="mt-1 text-xs text-gray-500">Supplier quote unit. The delivery unit is chosen per receipt.</p>
                         </div>
 
                         <div class="good-only inventory-good-fields">
-                            <label for="suom_per_ouom" class="block text-sm font-medium text-gray-700 dark:text-gray-300">SUOM per OUOM</label>
+                            <label for="suom_per_ouom" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Sale units per order unit</label>
                             <input type="number" name="suom_per_ouom" id="suom_per_ouom" step="0.0001" min="0.0001"
                                    value="{{ old('suom_per_ouom') }}"
                                    placeholder="e.g. 100"
                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                             <p class="mt-1 text-xs text-gray-500">How many sale units are in one order unit (e.g. 100 tablets per box).</p>
                         </div>
-
-                        <div class="good-only inventory-good-fields">
-                            <label for="purchase_price" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Purchase price (per SUOM)</label>
-                            <input type="number" name="purchase_price" id="purchase_price" step="0.01" min="0"
-                                   value="{{ old('purchase_price') }}"
-                                   placeholder="Uses default price if empty"
-                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                        </div>
-
-
 
                         <!-- Other Name -->
                         <div class="md:col-span-2">
@@ -237,7 +237,7 @@
                                     <input type="radio" name="pricing_type" value="default" id="default_pricing" 
                                            {{ old('pricing_type', 'default') == 'default' ? 'checked' : '' }} 
                                            class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300">
-                                    <span class="ml-3 text-sm font-medium text-gray-700 dark:text-gray-300">Use default price for all branches</span>
+                                    <span class="ml-3 text-sm font-medium text-gray-700 dark:text-gray-300">Use sale price for all branches</span>
                                 </label>
                                 <label class="flex items-center">
                                     <input type="radio" name="pricing_type" value="custom" id="custom_pricing" 
@@ -252,25 +252,38 @@
                     <!-- Branch Pricing Section -->
                     <div class="mt-8 branch-pricing-section" id="branch_pricing_section" style="display: none;">
                         <h3 class="text-lg font-semibold text-gray-800 dark:text-white mb-4">Branch-Specific Pricing</h3>
-                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Set different prices for specific branches</p>
                         
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             @foreach($branches as $branch)
                             <div class="border rounded-lg p-4 bg-gray-50 dark:bg-gray-700">
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                                     {{ $branch->name }}
                                 </label>
-                                <input type="number" 
-                                       name="branch_prices[{{ $loop->index }}][branch_id]" 
-                                       value="{{ $branch->id }}" 
-                                       style="display: none;">
-                                <input type="number" 
-                                       name="branch_prices[{{ $loop->index }}][price]" 
-                                       step="0.01" 
-                                       min="0" 
-                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
-                                       placeholder="Use default price">
-                                <p class="mt-1 text-xs text-gray-500">Leave empty to use default price. At least one branch must have a custom price.</p>
+                                <input type="hidden"
+                                       name="branch_prices[{{ $loop->index }}][branch_id]"
+                                       value="{{ $branch->id }}">
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sale price</label>
+                                        <input type="number"
+                                               name="branch_prices[{{ $loop->index }}][price]"
+                                               step="0.01"
+                                               min="0"
+                                               value="{{ old('branch_prices.'.$loop->index.'.price') }}"
+                                               class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                               placeholder="0.00">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Purchase price</label>
+                                        <input type="number"
+                                               name="branch_prices[{{ $loop->index }}][purchase_price]"
+                                               step="0.01"
+                                               min="0"
+                                               value="{{ old('branch_prices.'.$loop->index.'.purchase_price') }}"
+                                               class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                               placeholder="0.00">
+                                    </div>
+                                </div>
                             </div>
                             @endforeach
                         </div>
@@ -495,7 +508,7 @@
                             importanceSelect.value = '';
                         }
                     }
-                    
+
                     // Re-trigger contractor toggle
                     toggleContractor();
                 }
@@ -691,20 +704,32 @@
                     const branchDiv = document.createElement('div');
                     branchDiv.className = 'border rounded-lg p-4 bg-gray-50 dark:bg-gray-700';
                     branchDiv.innerHTML = `
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                             ${branch.name}
                         </label>
-                        <input type="number" 
-                               name="branch_prices[${index}][branch_id]" 
-                               value="${branch.id}" 
-                               style="display: none;">
-                        <input type="number" 
-                               name="branch_prices[${index}][price]" 
-                               step="0.01" 
-                               min="0" 
-                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
-                               placeholder="Enter price">
-                        <p class="mt-1 text-xs text-gray-500">${customPricing && customPricing.checked ? 'Leave empty to use default price. At least one branch must have a custom price.' : 'Leave empty to use default price'}</p>
+                        <input type="hidden"
+                               name="branch_prices[${index}][branch_id]"
+                               value="${branch.id}">
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sale price</label>
+                                <input type="number"
+                                       name="branch_prices[${index}][price]"
+                                       step="0.01"
+                                       min="0"
+                                       class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                       placeholder="0.00">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Purchase price</label>
+                                <input type="number"
+                                       name="branch_prices[${index}][purchase_price]"
+                                       step="0.01"
+                                       min="0"
+                                       class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                       placeholder="0.00">
+                            </div>
+                        </div>
                     `;
                     grid.appendChild(branchDiv);
                 });

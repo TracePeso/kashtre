@@ -46,7 +46,7 @@ class EditStockTransferLines extends Component implements HasForms, HasTable
             )
             ->columns([
                 TextColumn::make('item.name')->label('Item')->description(fn (StockTransferLine $r) => $r->item?->code),
-                TextColumn::make('item.itemUnit.name')->label('SUOM')->placeholder('—'),
+                TextColumn::make('item.itemUnit.name')->label('Sale unit')->placeholder('—'),
                 TextColumn::make('requested_quantity_suom')
                     ->label('Requested')
                     ->alignEnd()

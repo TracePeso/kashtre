@@ -75,7 +75,7 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->visible($this->storeId === null),
 
                 TextColumn::make('itemUnit.name')
-                    ->label('SUOM')
+                    ->label('Sale unit')
                     ->placeholder('—')
                     ->sortable(),
 

@@ -411,7 +411,7 @@
                                                     @if(isset($item->final_price) && $item->final_price != $item->default_price)
                                                         <span class="text-green-600">(Branch Price)</span>
                                                     @else
-                                                        <span class="text-gray-500">(Default Price)</span>
+                                                        <span class="text-gray-500">(Sale price)</span>
                                                     @endif
                                                     @if($item->vat_rate && $item->vat_rate > 0)
                                                         <span class="text-orange-600">(VAT: {{ $item->vat_rate }}%)</span>

@@ -112,7 +112,7 @@
                         <thead class="bg-gray-50">
                             <tr>
                                 <th class="px-3 py-2 text-left font-medium text-gray-600 w-[45%]">Item</th>
-                                <th class="px-3 py-2 text-left font-medium text-gray-600 w-[12%]">SUOM</th>
+                                <th class="px-3 py-2 text-left font-medium text-gray-600 w-[12%]">Sale unit</th>
                                 <th class="px-3 py-2 text-right font-medium text-gray-600 w-[12%]">System stock</th>
                                 <th class="px-3 py-2 text-right font-medium text-gray-600 w-[18%]">Qty to transfer</th>
                                 <th class="px-3 py-2 w-[8%]"></th>

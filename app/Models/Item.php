@@ -245,15 +245,11 @@ class Item extends Model
     }
 
     /**
-     * Purchase cost per sale unit (SUOM). Falls back to default sale price when unset.
+     * Purchase cost per sale unit.
      */
     public function purchasePricePerSuom(): float
     {
-        if ($this->purchase_price !== null) {
-            return max(0, (float) $this->purchase_price);
-        }
-
-        return max(0, (float) ($this->default_price ?? 0));
+        return max(0, (float) ($this->purchase_price ?? 0));
     }
 
     /**

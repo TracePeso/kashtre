@@ -448,9 +448,9 @@
                     @if($order->isDraft())
                         Use search and filters to find items. Paginated for large orders.
                     @elseif($order->isInternal())
-                        Ordered vs received (SUOM). Received totals accumulate when linked stock transfers are confirmed at the destination.
+                        Ordered vs received in sale units. Received totals accumulate when linked stock transfers are confirmed at the destination.
                     @else
-                        Ordered vs received (SUOM). Received totals update when linked goods receive notes are approved.
+                        Ordered vs received in sale units. Received totals update when linked goods receive notes are approved.
                     @endif
                 </p>
             </div>
