@@ -96,6 +96,26 @@ class InventoryModuleConfig extends Model
         return $this->hasMany(InventoryModuleApprover::class)->orderBy('approval_order');
     }
 
+    public function regularApprovers()
+    {
+        return $this->approvers()
+            ->where('role', InventoryModuleApprover::ROLE_APPROVER);
+    }
+
+    public function technicalSupervisor()
+    {
+        return $this->hasOne(InventoryModuleApprover::class)
+            ->where('role', InventoryModuleApprover::ROLE_TECHNICAL_SUPERVISOR);
+    }
+
+    /**
+     * GRN chain: optional technical supervisor first, then Approver 1 / 2.
+     */
+    public function grnApprovers()
+    {
+        return $this->approvers()->orderBy('approval_order');
+    }
+
     /** @return array<int, string> */
     public function financeNotificationEmailList(): array
     {

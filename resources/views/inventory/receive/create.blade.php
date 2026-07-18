@@ -71,7 +71,7 @@
         <div x-show="draftRestored" x-cloak class="mt-4 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm flex flex-wrap items-center justify-between gap-3">
             <p>
                 <strong>Progress restored.</strong> Your entries were recovered from this browser.
-                Re-attach the delivery note and technical representative signature if you had selected them.
+                Re-attach the delivery note if you had selected one.
             </p>
             <button type="button" @click="discardSavedDraft()"
                     class="shrink-0 text-sm font-medium text-blue-800 hover:text-blue-950 underline">
@@ -142,30 +142,31 @@
                         </div>
                         <p class="mt-1 text-xs text-gray-500">PDF or image, max 10 MB.</p>
                     </div>
-                    <div>
-                        <label for="technical_representative_name" class="block text-sm font-medium text-gray-700">Technical representative</label>
-                        <input type="text" name="technical_representative_name" id="technical_representative_name"
-                               x-model="technicalRepresentativeName"
-                               placeholder="Name of supplier technical representative (optional)"
-                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
-                        <p class="mt-1 text-xs text-gray-500">Optional sign-off from the supplier’s technical representative.</p>
-                    </div>
-                    <div class="md:col-span-2">
-                        <span class="block text-sm font-medium text-gray-700">Technical representative signature</span>
-                        <div class="mt-1 flex flex-wrap items-center gap-3">
-                            <label for="technical_representative_signature"
-                                   class="cursor-pointer inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200">
-                                Attach signature
-                            </label>
-                            <input type="file" name="technical_representative_signature" id="technical_representative_signature"
-                                   accept=".pdf,.jpg,.jpeg,.png,.gif,.svg"
-                                   class="sr-only"
-                                   @change="technicalRepresentativeSignatureName = $el.files[0]?.name ?? ''">
-                            <span class="text-sm text-gray-500" x-text="technicalRepresentativeSignatureName || 'No file selected'"></span>
-                        </div>
-                        <p class="mt-1 text-xs text-gray-500">Optional. PDF or image, max 5 MB. Re-attach after a browser draft restore.</p>
-                    </div>
                 </div>
+
+                @if(isset($grnApprovers) && $grnApprovers->isNotEmpty())
+                    <div class="mt-5 rounded-md border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-sm text-indigo-950">
+                        <p class="font-medium text-indigo-900">Approval chain for this goods receive note</p>
+                        <ol class="mt-2 list-decimal list-inside space-y-1 text-indigo-900/90">
+                            @foreach($grnApprovers as $approver)
+                                <li>
+                                    <span class="font-medium">{{ $approver->roleLabel() }}:</span>
+                                    {{ $approver->user->name ?? '—' }}
+                                    @if($approver->isTechnicalSupervisor())
+                                        <span class="text-indigo-700/80">(optional — set under Goods receive note approvers)</span>
+                                    @endif
+                                </li>
+                            @endforeach
+                        </ol>
+                        @unless($technicalSupervisor)
+                            <p class="mt-2 text-xs text-indigo-800">
+                                No technical supervisor is configured. Add one under
+                                <a href="{{ route('inventory.approvers') }}" class="underline font-medium hover:text-indigo-950">Inventory → Approvers</a>
+                                if you want that extra approval step.
+                            </p>
+                        @endunless
+                    </div>
+                @endif
             </div>
 
             <div class="bg-white shadow sm:rounded-lg p-6">
@@ -419,8 +420,6 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
         inventoryOrderId: inventoryOrderId || null,
         inventoryPurchaseOrderId: inventoryPurchaseOrderId || null,
         deliveryNoteName: '',
-        technicalRepresentativeName: '',
-        technicalRepresentativeSignatureName: '',
         lines: initialLines,
         draftLine: blankLine(),
         editingIndex: null,
@@ -446,7 +445,6 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             this.$watch('storeId', () => this.schedulePersist());
             this.$watch('dateOfOrder', () => this.schedulePersist());
             this.$watch('dateOfDelivery', () => this.schedulePersist());
-            this.$watch('technicalRepresentativeName', () => this.schedulePersist());
             this.$watch('lines', () => this.flushPersist(), { deep: true });
             this.$watch('draftLine', () => this.schedulePersist(), { deep: true });
             this.$watch('editingIndex', () => this.schedulePersist());
@@ -459,7 +457,6 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             return (saved.lines && saved.lines.length > 0)
                 || saved.supplierId
                 || saved.storeId
-                || saved.technicalRepresentativeName
                 || saved.draftLine?.item_id;
         },
         draftSnapshot() {
@@ -468,7 +465,6 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
                 storeId: this.storeId,
                 dateOfOrder: this.dateOfOrder,
                 dateOfDelivery: this.dateOfDelivery,
-                technicalRepresentativeName: this.technicalRepresentativeName,
                 inventoryOrderId: this.inventoryOrderId,
                 inventoryPurchaseOrderId: this.inventoryPurchaseOrderId,
                 lines: this.lines.map(line => ({ ...line })),
@@ -514,7 +510,6 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             this.storeId = saved.storeId ? String(saved.storeId) : '';
             this.dateOfOrder = saved.dateOfOrder || this.dateOfOrder;
             this.dateOfDelivery = saved.dateOfDelivery || this.dateOfDelivery;
-            this.technicalRepresentativeName = saved.technicalRepresentativeName || '';
 
             if (Array.isArray(saved.lines) && saved.lines.length > 0) {
                 this.lines = saved.lines.map(line => ({ ...blankLine(), ...line, item_id: String(line.item_id || '') }));
@@ -558,17 +553,10 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             this.draftRestored = false;
             this.draftError = '';
             this.deliveryNoteName = '';
-            this.technicalRepresentativeName = '';
-            this.technicalRepresentativeSignatureName = '';
 
             const deliveryInput = document.getElementById('delivery_note');
             if (deliveryInput) {
                 deliveryInput.value = '';
-            }
-
-            const signatureInput = document.getElementById('technical_representative_signature');
-            if (signatureInput) {
-                signatureInput.value = '';
             }
 
             this.clearDraft();

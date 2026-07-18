@@ -140,27 +140,6 @@
                     <img src="{{ $deliveryNoteUrl }}" alt="Delivery note" class="max-h-40 rounded border border-gray-200">
                 </div>
             @endif
-
-            @if($goodsReceivedNote->technical_representative_name || $goodsReceivedNote->technical_representative_signature_path)
-                <div class="px-4 py-3 sm:px-6 border-t border-gray-100 bg-gray-50/50">
-                    <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Technical representative</p>
-                    <p class="mt-1 text-sm font-semibold text-gray-900">{{ $goodsReceivedNote->technical_representative_name ?? '—' }}</p>
-                    @if($goodsReceivedNote->technical_representative_signature_path)
-                        @php
-                            $signatureUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($goodsReceivedNote->technical_representative_signature_path);
-                            $signatureIsImage = preg_match('/\.(jpe?g|png|gif|webp|svg)$/i', $goodsReceivedNote->technical_representative_signature_path);
-                        @endphp
-                        <div class="mt-3">
-                            @if($signatureIsImage)
-                                <img src="{{ $signatureUrl }}" alt="Technical representative signature" class="max-h-24 rounded border border-gray-200 bg-white p-2">
-                            @endif
-                            <a href="{{ $signatureUrl }}" target="_blank" class="mt-2 inline-block text-sm font-medium text-blue-600 hover:text-blue-800">
-                                {{ $goodsReceivedNote->technical_representative_signature_original_name ?? 'View signature' }}
-                            </a>
-                        </div>
-                    @endif
-                </div>
-            @endif
         </div>
 
         <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6 w-full min-w-0">
@@ -284,7 +263,14 @@
                                             'bg-red-100 text-red-800' => $approval->status === 'rejected',
                                         ])>{{ ucfirst($approval->status) }}</span>
                                     </div>
-                                    <p class="text-xs text-gray-500 mt-1">Step {{ $approval->approval_order }} of {{ $goodsReceivedNote->approvals->count() }}</p>
+                                    <p class="text-xs text-gray-500 mt-1">
+                                        @if((int) $approval->approval_order === 0)
+                                            Technical supervisor
+                                        @else
+                                            Approver {{ $approval->approval_order }}
+                                        @endif
+                                        · Step {{ $loop->iteration }} of {{ $goodsReceivedNote->approvals->count() }}
+                                    </p>
                                     @if($approval->comment)<p class="text-xs text-gray-500 mt-1">{{ $approval->comment }}</p>@endif
                                     @if($approval->acted_at)<p class="text-xs text-gray-400 mt-1">{{ $approval->acted_at->format('M d, Y H:i') }}</p>@endif
                                 </li>

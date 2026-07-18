@@ -74,7 +74,8 @@ class InventoryModuleConfigController extends Controller
             'description' => 'nullable|string|max:1000',
             'is_active' => 'boolean',
             'approver_1' => 'required|exists:users,id',
-            'approver_2' => 'nullable|exists:users,id|different:approver_1',
+            'approver_2' => 'nullable|exists:users,id|different:approver_1|different:technical_supervisor',
+            'technical_supervisor' => 'nullable|exists:users,id|different:approver_1|different:approver_2',
         ], $this->stockSettingsRules()));
 
         if (InventoryModuleConfig::where('business_id', $validated['business_id'])->exists()) {
@@ -85,7 +86,11 @@ class InventoryModuleConfigController extends Controller
 
         $this->assertApproversBelongToBusiness(
             (int) $validated['business_id'],
-            [(int) $validated['approver_1'], isset($validated['approver_2']) ? (int) $validated['approver_2'] : null]
+            [
+                (int) $validated['approver_1'],
+                isset($validated['approver_2']) ? (int) $validated['approver_2'] : null,
+                isset($validated['technical_supervisor']) ? (int) $validated['technical_supervisor'] : null,
+            ]
         );
 
         $config = DB::transaction(function () use ($request, $validated) {
@@ -101,7 +106,12 @@ class InventoryModuleConfigController extends Controller
                 'created_by' => Auth::id(),
             ]);
 
-            $this->syncApprovers($config, $validated['approver_1'], $validated['approver_2'] ?? null);
+            $this->syncApprovers(
+                $config,
+                $validated['approver_1'],
+                $validated['approver_2'] ?? null,
+                $validated['technical_supervisor'] ?? null
+            );
 
             return $config;
         });
@@ -166,12 +176,17 @@ class InventoryModuleConfigController extends Controller
         $validated = $request->validate(array_merge([
             'description' => 'nullable|string|max:1000',
             'approver_1' => 'required|exists:users,id',
-            'approver_2' => 'nullable|exists:users,id|different:approver_1',
+            'approver_2' => 'nullable|exists:users,id|different:approver_1|different:technical_supervisor',
+            'technical_supervisor' => 'nullable|exists:users,id|different:approver_1|different:approver_2',
         ], $this->stockSettingsRules()));
 
         $this->assertApproversBelongToBusiness(
             (int) $inventoryModuleConfig->business_id,
-            [(int) $validated['approver_1'], isset($validated['approver_2']) ? (int) $validated['approver_2'] : null]
+            [
+                (int) $validated['approver_1'],
+                isset($validated['approver_2']) ? (int) $validated['approver_2'] : null,
+                isset($validated['technical_supervisor']) ? (int) $validated['technical_supervisor'] : null,
+            ]
         );
 
         DB::transaction(function () use ($inventoryModuleConfig, $validated) {
@@ -185,7 +200,12 @@ class InventoryModuleConfigController extends Controller
                 'updated_by' => Auth::id(),
             ]);
 
-            $this->syncApprovers($inventoryModuleConfig, $validated['approver_1'], $validated['approver_2'] ?? null);
+            $this->syncApprovers(
+                $inventoryModuleConfig,
+                $validated['approver_1'],
+                $validated['approver_2'] ?? null,
+                $validated['technical_supervisor'] ?? null
+            );
         });
 
         return redirect()->route('inventory-module-configs.show', $inventoryModuleConfig)
@@ -221,13 +241,27 @@ class InventoryModuleConfigController extends Controller
             ->with('success', "Inventory module {$status} successfully.");
     }
 
-    private function syncApprovers(InventoryModuleConfig $config, int $approver1Id, ?int $approver2Id): void
-    {
+    private function syncApprovers(
+        InventoryModuleConfig $config,
+        int $approver1Id,
+        ?int $approver2Id,
+        ?int $technicalSupervisorId = null
+    ): void {
         $config->approvers()->delete();
+
+        if ($technicalSupervisorId) {
+            InventoryModuleApprover::create([
+                'inventory_module_config_id' => $config->id,
+                'user_id' => $technicalSupervisorId,
+                'role' => InventoryModuleApprover::ROLE_TECHNICAL_SUPERVISOR,
+                'approval_order' => 0,
+            ]);
+        }
 
         InventoryModuleApprover::create([
             'inventory_module_config_id' => $config->id,
             'user_id' => $approver1Id,
+            'role' => InventoryModuleApprover::ROLE_APPROVER,
             'approval_order' => 1,
         ]);
 
@@ -235,6 +269,7 @@ class InventoryModuleConfigController extends Controller
             InventoryModuleApprover::create([
                 'inventory_module_config_id' => $config->id,
                 'user_id' => $approver2Id,
+                'role' => InventoryModuleApprover::ROLE_APPROVER,
                 'approval_order' => 2,
             ]);
         }

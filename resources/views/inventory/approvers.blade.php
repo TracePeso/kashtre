@@ -18,7 +18,7 @@
             <div class="px-6 py-5 border-b border-gray-200">
                 <h3 class="text-lg font-medium text-gray-900">Approval matrix</h3>
                 <p class="mt-1 text-sm text-gray-500">
-                    Each goods receive note and stock transfer must be approved by the assigned approvers below before stock levels change. RFQs use the same approver matrix.
+                    Each goods receive note and stock transfer must be approved by the assigned approvers below before stock levels change. RFQs use Approver 1 / 2. Goods receive notes also include the technical supervisor when that optional role is set.
                 </p>
             </div>
 
@@ -63,7 +63,7 @@
                                 <li class="px-4 py-3 flex items-center justify-between">
                                     <div>
                                         <p class="text-sm font-medium text-gray-900">
-                                            Approver {{ $approver->approval_order }}: {{ $approver->user->name ?? '—' }}
+                                            {{ $approver->roleLabel() }}: {{ $approver->user->name ?? '—' }}
                                         </p>
                                         <p class="text-xs text-gray-500">{{ $approver->user->email ?? '' }}</p>
                                     </div>

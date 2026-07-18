@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\RequiresInventoryModule;
 use App\Models\GoodsReceivedNote;
 use App\Models\GoodsReceivedNoteLine;
 use App\Models\InventoryModuleConfig;
+use App\Models\InventoryOrder;
 use App\Models\InventoryPurchaseOrder;
 use App\Models\Item;
 use App\Models\ItemUnit;
@@ -162,7 +163,6 @@ class GoodsReceivedNoteController extends Controller
 
         $grn = DB::transaction(function () use ($validated, $request, $user, $businessId, $action) {
             [$deliveryPath, $deliveryOriginal] = $this->storeUploadedFile($request, 'delivery_note', 'inventory/delivery-notes');
-            [$signaturePath, $signatureOriginal] = $this->storeUploadedFile($request, 'technical_representative_signature', 'inventory/grn-signatures');
 
             $leadTime = $this->service->calculateLeadTimeDays(
                 $validated['date_of_order'],
@@ -181,9 +181,6 @@ class GoodsReceivedNoteController extends Controller
                 'lead_time_days' => $leadTime,
                 'delivery_note_path' => $deliveryPath,
                 'delivery_note_original_name' => $deliveryOriginal,
-                'technical_representative_name' => $validated['technical_representative_name'] ?? null,
-                'technical_representative_signature_path' => $signaturePath,
-                'technical_representative_signature_original_name' => $signatureOriginal,
                 'status' => GoodsReceivedNote::STATUS_DRAFT,
                 'entry_by_user_id' => $user->id,
                 'created_by' => $user->id,
@@ -445,8 +442,6 @@ class GoodsReceivedNoteController extends Controller
             'date_of_order' => 'required|date',
             'date_of_delivery' => 'required|date|after_or_equal:date_of_order',
             'delivery_note' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
-            'technical_representative_name' => 'nullable|string|max:255',
-            'technical_representative_signature' => 'nullable|file|mimes:jpg,jpeg,png,gif,svg,pdf|max:5120',
             'lines' => 'required|array|min:1',
             'lines.*.item_id' => 'required|exists:items,id',
             'lines.*.inventory_order_line_id' => 'nullable|exists:inventory_order_lines,id',
@@ -523,6 +518,16 @@ class GoodsReceivedNoteController extends Controller
             ->orderBy('name')
             ->get();
 
+        $moduleConfig = InventoryModuleConfig::query()
+            ->where('business_id', $businessId)
+            ->where('is_active', true)
+            ->with(['approvers.user'])
+            ->first();
+
+        $grnApprovers = $moduleConfig
+            ? $moduleConfig->grnApprovers()->with('user')->get()
+            : collect();
+
         return [
             'suppliers' => $suppliers,
             'supplierItemIds' => $suppliers->mapWithKeys(fn (Supplier $supplier) => [
@@ -543,6 +548,10 @@ class GoodsReceivedNoteController extends Controller
                 ->with(['itemUnit', 'orderUnit'])
                 ->orderBy('name')
                 ->get(),
+            'grnApprovers' => $grnApprovers,
+            'technicalSupervisor' => $grnApprovers->first(
+                fn ($approver) => $approver->role === \App\Models\InventoryModuleApprover::ROLE_TECHNICAL_SUPERVISOR
+            ),
         ];
     }
 

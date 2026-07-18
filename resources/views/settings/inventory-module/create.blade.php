@@ -4,6 +4,7 @@
     usersByBusiness: @js($usersByBusiness->map(fn ($users) => $users->map(fn ($u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email])->values())->toArray()),
     approver1: '{{ old('approver_1') }}',
     approver2: '{{ old('approver_2') }}',
+    technicalSupervisor: '{{ old('technical_supervisor') }}',
     get businessUsers() {
         return this.businessId ? (this.usersByBusiness[this.businessId] || []) : [];
     }
@@ -33,7 +34,7 @@
                     @if($businesses->isEmpty())
                         <p class="mt-1 text-sm text-gray-500 italic">All businesses already have the inventory module configured.</p>
                     @else
-                        <select name="business_id" id="business_id" x-model="businessId" @change="approver1 = ''; approver2 = ''"
+                        <select name="business_id" id="business_id" x-model="businessId" @change="approver1 = ''; approver2 = ''; technicalSupervisor = ''"
                                 class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md @error('business_id') border-red-300 @enderror">
                             <option value="">— Select a business —</option>
                             @foreach($businesses as $biz)
@@ -63,7 +64,7 @@
                 <div class="border border-gray-200 rounded-lg p-4 space-y-4" x-show="businessId" x-cloak>
                     <div>
                         <p class="text-sm font-medium text-gray-700">Goods receive note approvers</p>
-                        <p class="text-xs text-gray-500 mt-0.5">Assign 1–2 staff from this business who will approve goods receive notes before stock is updated.</p>
+                        <p class="text-xs text-gray-500 mt-0.5">Assign 1–2 staff who approve RFQs and goods receive notes. Optionally add a technical supervisor for goods receive notes only.</p>
                     </div>
 
                     <div>
@@ -86,10 +87,25 @@
                                 class="mt-1 block w-full pl-3 pr-10 py-2 border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md @error('approver_2') border-red-300 @enderror">
                             <option value="">— None —</option>
                             <template x-for="user in businessUsers" :key="'a2-' + user.id">
-                                <option :value="user.id" x-text="user.name + ' (' + user.email + ')'" x-show="String(user.id) !== String(approver1)"></option>
+                                <option :value="user.id" x-text="user.name + ' (' + user.email + ')'" x-show="String(user.id) !== String(approver1) && String(user.id) !== String(technicalSupervisor)"></option>
                             </template>
                         </select>
                         @error('approver_2')
+                            <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <label for="technical_supervisor" class="block text-sm font-medium text-gray-700">Technical supervisor <span class="text-gray-400">(optional)</span></label>
+                        <p class="text-xs text-gray-500 mb-1">Extra first approver on goods receive notes only when set.</p>
+                        <select name="technical_supervisor" id="technical_supervisor" x-model="technicalSupervisor"
+                                class="mt-1 block w-full pl-3 pr-10 py-2 border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md @error('technical_supervisor') border-red-300 @enderror">
+                            <option value="">— None —</option>
+                            <template x-for="user in businessUsers" :key="'ts-' + user.id">
+                                <option :value="user.id" x-text="user.name + ' (' + user.email + ')'" x-show="String(user.id) !== String(approver1) && String(user.id) !== String(approver2)"></option>
+                            </template>
+                        </select>
+                        @error('technical_supervisor')
                             <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                         @enderror
                     </div>

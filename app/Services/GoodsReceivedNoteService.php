@@ -407,7 +407,7 @@ class GoodsReceivedNoteService
             return collect();
         }
 
-        return $config->approvers()->orderBy('approval_order')->get();
+        return $config->grnApprovers()->get();
     }
 
     private function ensureLineSaleUnits(GoodsReceivedNote $grn): void

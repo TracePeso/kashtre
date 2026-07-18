@@ -2,6 +2,7 @@
 
 namespace App\Services\Inventory;
 
+use App\Models\InventoryModuleApprover;
 use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockCount;
 use App\Models\InventoryStockCountApproval;
@@ -306,6 +307,9 @@ class InventoryStockCountService
             return collect();
         }
 
-        return $config->approvers()->orderBy('approval_order')->get();
+        return $config->approvers()
+            ->where('role', InventoryModuleApprover::ROLE_APPROVER)
+            ->orderBy('approval_order')
+            ->get();
     }
 }

@@ -95,18 +95,6 @@
                         <input type="file" name="delivery_note" accept=".pdf,.jpg,.jpeg,.png"
                                class="mt-1 block w-full text-sm text-gray-600">
                     </div>
-                    <div>
-                        <label for="technical_representative_name" class="block text-sm font-medium text-gray-700">Technical representative</label>
-                        <input type="text" name="technical_representative_name" id="technical_representative_name"
-                               placeholder="Optional supplier technical representative"
-                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Technical representative signature</label>
-                        <input type="file" name="technical_representative_signature" accept=".pdf,.jpg,.jpeg,.png,.gif,.svg"
-                               class="mt-1 block w-full text-sm text-gray-600">
-                        <p class="mt-1 text-xs text-gray-500">Optional. PDF or image, max 5 MB.</p>
-                    </div>
                 </div>
             </div>
 
