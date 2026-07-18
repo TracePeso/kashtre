@@ -244,6 +244,33 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
         return InventoryConsumptionQueryService::periodPresetOptions()[$this->periodPreset] ?? 'Custom';
     }
 
+    public function exportExcelUrl(): ?string
+    {
+        return $this->exportUrl('inventory.consumption.export.excel');
+    }
+
+    public function exportPdfUrl(): ?string
+    {
+        return $this->exportUrl('inventory.consumption.export.pdf');
+    }
+
+    private function exportUrl(string $routeName): ?string
+    {
+        if (! $this->storeId) {
+            return null;
+        }
+
+        [$from, $until] = $this->periodBounds();
+
+        return route($routeName, array_filter([
+            'store_id' => $this->storeId,
+            'item_id' => $this->itemId,
+            'period_preset' => $this->periodPreset,
+            'date_from' => $this->periodPreset === 'custom' ? $from : null,
+            'date_until' => $this->periodPreset === 'custom' ? $until : null,
+        ], fn ($value) => $value !== null && $value !== ''));
+    }
+
     public function showTestDataButton(): bool
     {
         return ! \App\Support\InventoryBusinessContext::isAdminBrowsing()

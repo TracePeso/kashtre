@@ -80,22 +80,35 @@
                 </div>
             </div>
 
-            @if($this->showTestDataButton())
-                <div class="shrink-0 sm:pl-3">
-                    <button type="button"
-                            wire:click="generateTestData"
-                            wire:loading.attr="disabled"
-                            wire:target="generateTestData"
-                            wire:confirm="Generate test consumption data from the day after your last record through today?"
-                            class="inline-flex items-center px-3 py-2 border border-amber-300 rounded-md text-xs font-medium text-amber-900 bg-amber-50 hover:bg-amber-100 disabled:opacity-60">
-                        <span wire:loading.remove wire:target="generateTestData">Generate test data</span>
-                        <span wire:loading wire:target="generateTestData">Generating…</span>
-                    </button>
-                    @if($this->backfillRangeLabel())
-                        <p class="mt-1 text-xs text-gray-500 max-w-[12rem]">{{ $this->backfillRangeLabel() }}</p>
-                    @endif
+            <div class="shrink-0 sm:pl-3 flex flex-col items-stretch sm:items-end gap-2">
+                <div class="flex flex-wrap gap-2">
+                    <a href="{{ $this->exportExcelUrl() }}"
+                       class="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Export Excel
+                    </a>
+                    <a href="{{ $this->exportPdfUrl() }}"
+                       class="inline-flex items-center px-3 py-2 border border-transparent rounded-md text-xs font-medium text-white bg-blue-600 hover:bg-blue-700">
+                        Export PDF
+                    </a>
                 </div>
-            @endif
+
+                @if($this->showTestDataButton())
+                    <div>
+                        <button type="button"
+                                wire:click="generateTestData"
+                                wire:loading.attr="disabled"
+                                wire:target="generateTestData"
+                                wire:confirm="Generate test consumption data from the day after your last record through today?"
+                                class="inline-flex items-center px-3 py-2 border border-amber-300 rounded-md text-xs font-medium text-amber-900 bg-amber-50 hover:bg-amber-100 disabled:opacity-60">
+                            <span wire:loading.remove wire:target="generateTestData">Generate test data</span>
+                            <span wire:loading wire:target="generateTestData">Generating…</span>
+                        </button>
+                        @if($this->backfillRangeLabel())
+                            <p class="mt-1 text-xs text-gray-500 max-w-[12rem] sm:text-right">{{ $this->backfillRangeLabel() }}</p>
+                        @endif
+                    </div>
+                @endif
+            </div>
         </div>
     @endif
 

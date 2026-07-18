@@ -190,7 +190,14 @@ class InventoryOrder extends Model
 
     public function documentLabel(): string
     {
-        return $this->isInternal() ? 'Internal order' : 'RFQ';
+        if ($this->isInternal()) {
+            return 'Internal order';
+        }
+
+        // Draft / pending approval are still a purchase request; RFQ starts after approval.
+        return $this->isDraft() || $this->isPendingApproval()
+            ? 'Purchase request'
+            : 'RFQ';
     }
 
     public function rfqLabel(): string
@@ -318,11 +325,11 @@ class InventoryOrder extends Model
         }
 
         return match ($this->status) {
-            self::STATUS_DRAFT => 'Draft RFQ',
-            self::STATUS_PENDING_APPROVAL => 'Pending RFQ approval',
+            self::STATUS_DRAFT => 'Purchase request',
+            self::STATUS_PENDING_APPROVAL => 'Pending approval',
             self::STATUS_APPROVED => 'RFQ approved',
             self::STATUS_PO_ISSUED => 'LPO issued',
-            self::STATUS_REJECTED => 'RFQ rejected',
+            self::STATUS_REJECTED => 'Rejected',
             self::STATUS_PARTIALLY_RECEIVED => 'Partially received',
             self::STATUS_FULFILLED => 'Fulfilled',
             self::STATUS_SUBMITTED => 'Submitted',

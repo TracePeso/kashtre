@@ -38,6 +38,22 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
 
     public bool $showBudgetCapNotice = false;
 
+    public string $budgetCapNotice = '';
+
+    /**
+     * Original vs adjusted line snapshot after an edit.
+     *
+     * @var array{
+     *     edited_line_id: int,
+     *     cap: ?float,
+     *     capped: bool,
+     *     order_total_before: float,
+     *     order_total_after: float,
+     *     lines: list<array<string, mixed>>
+     * }|null
+     */
+    public ?array $capAdjustmentComparison = null;
+
     /** @var Collection<int, InventoryStockLevel>|null */
     private ?Collection $stockByItemId = null;
 
@@ -117,14 +133,18 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
                     \App\Support\InventoryBusinessContext::assertWritable();
 
                     $requestedQty = (float) ($state ?? 0);
-                    $updated = $service->updateLine($record, $requestedQty);
+                    $result = $service->applyLineQuantityUpdate($record, $requestedQty, null, true);
                     $this->order->refresh();
 
-                    $actualQty = (float) $updated->order_quantity_suom;
-
-                    if ($this->order->enforcesBudgetCap() && $actualQty < $requestedQty) {
-                        $this->showBudgetCapNotice = true;
-                    }
+                    $actualQty = (float) $result['line']->order_quantity_suom;
+                    $this->applyCapAdjustmentFeedback(
+                        $result,
+                        $this->order->enforcesBudgetCap() && $actualQty + 0.0001 < $requestedQty
+                            ? 'Quantity limited so this line alone does not exceed the order cap.'
+                            : null,
+                        'This line was updated and 1 other line was adjusted equally so the order total stays at the cap.',
+                        'This line was updated and :count other lines were adjusted equally so the order total stays at the cap.'
+                    );
 
                     return $actualQty;
                 }),
@@ -146,12 +166,19 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
 
                     $requestedIncrease = (float) ($state ?? 0);
                     $beforeQty = (float) $record->order_quantity_suom;
-                    $updated = $service->updateLinePeakIncrease($record, $requestedIncrease);
+                    $result = $service->updateLinePeakIncrease($record, $requestedIncrease);
                     $this->order->refresh();
+                    $this->order->load('lines');
 
-                    if ($this->order->enforcesBudgetCap() && (float) $updated->order_quantity_suom < $beforeQty) {
-                        $this->showBudgetCapNotice = true;
-                    }
+                    $this->applyCapAdjustmentFeedback(
+                        $result,
+                        $this->order->enforcesBudgetCap()
+                            && (float) $result['line']->order_quantity_suom + 0.0001 < $beforeQty
+                            ? 'Quantity limited so this line alone does not exceed the order cap.'
+                            : null,
+                        'Peak change updated this line and adjusted 1 other line equally so the order total stays at the cap.',
+                        'Peak change updated this line and adjusted :count other lines equally so the order total stays at the cap.'
+                    );
 
                     return $state;
                 });
@@ -282,11 +309,62 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
         }
 
         $this->budgetCapEnforced = ! $this->budgetCapEnforced;
-        $this->showBudgetCapNotice = false;
+        $this->dismissCapAdjustmentComparison();
         $this->order = app(InventoryOrderService::class)->setBudgetCapEnforced(
             $this->order,
             $this->budgetCapEnforced
         );
+        $this->resetTable();
+    }
+
+    public function dismissCapAdjustmentComparison(): void
+    {
+        $this->capAdjustmentComparison = null;
+        $this->showBudgetCapNotice = false;
+        $this->budgetCapNotice = '';
+    }
+
+    /**
+     * @param  array{redistributed: bool, adjusted_count: int, comparison: ?array}  $result
+     */
+    private function applyCapAdjustmentFeedback(
+        array $result,
+        ?string $limitedAloneMessage,
+        string $redistributedSingular,
+        string $redistributedPlural
+    ): void {
+        $comparison = $result['comparison'] ?? null;
+        $hasChanges = is_array($comparison)
+            && collect($comparison['lines'] ?? [])->contains(fn (array $row) => (bool) ($row['changed'] ?? false));
+
+        if ($hasChanges) {
+            $this->capAdjustmentComparison = $comparison;
+            $this->showBudgetCapNotice = true;
+            if ($result['redistributed'] && (int) ($result['adjusted_count'] ?? 0) > 0) {
+                $count = (int) $result['adjusted_count'];
+                $this->budgetCapNotice = $count === 1
+                    ? $redistributedSingular
+                    : str_replace(':count', (string) $count, $redistributedPlural);
+            } elseif ($limitedAloneMessage) {
+                $this->budgetCapNotice = $limitedAloneMessage;
+            } elseif (! ($comparison['capped'] ?? true)) {
+                $this->budgetCapNotice = 'This line was updated. Original vs adjusted values for all lines are shown below.';
+            } else {
+                $this->budgetCapNotice = 'Line quantities were updated. Original vs adjusted values are shown below.';
+            }
+            $this->resetTable();
+
+            return;
+        }
+
+        $this->capAdjustmentComparison = null;
+        if ($limitedAloneMessage) {
+            $this->showBudgetCapNotice = true;
+            $this->budgetCapNotice = $limitedAloneMessage;
+        } else {
+            $this->showBudgetCapNotice = false;
+            $this->budgetCapNotice = '';
+        }
     }
 
     public function render(): View

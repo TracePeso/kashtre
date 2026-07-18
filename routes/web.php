@@ -228,7 +228,6 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     
     Route::resource("groups", GroupController::class);
     Route::resource("patient-categories", PatientCategoryController::class);
-    Route::resource("client-spaces", ClientSpaceController::class);
     Route::resource("suppliers", SupplierController::class);
     Route::resource("contractor-profiles", ContractorProfileController::class);
     
@@ -315,6 +314,10 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::post('/stock-counts/{stockCount}/approve', [InventoryStockCountController::class, 'approve'])->name('stock-counts.approve');
         Route::post('/stock-counts/{stockCount}/reject', [InventoryStockCountController::class, 'reject'])->name('stock-counts.reject');
         Route::get('/consumption', [InventoryDailyConsumptionController::class, 'index'])->name('consumption.index');
+        Route::get('/consumption/export/excel', [InventoryDailyConsumptionController::class, 'exportExcel'])
+            ->name('consumption.export.excel');
+        Route::get('/consumption/export/pdf', [InventoryDailyConsumptionController::class, 'exportPdf'])
+            ->name('consumption.export.pdf');
         Route::get('/consumption/items/{item}/months/{month}', [InventoryDailyConsumptionController::class, 'showMonth'])
             ->name('consumption.month')
             ->where('month', '[0-9]{4}-[0-9]{2}');

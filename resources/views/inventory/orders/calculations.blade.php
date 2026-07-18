@@ -297,11 +297,11 @@
                         <dd class="mt-0.5 font-mono font-medium text-gray-900 tabular-nums">{{ $fmt($breakdown['buffer_days'], 0) }}</dd>
                     </div>
                     <div>
-                        <dt class="text-gray-500">Peak period %</dt>
+                        <dt class="text-gray-500">Anticipated peak period %</dt>
                         <dd class="mt-0.5 font-mono font-medium text-gray-900 tabular-nums">{{ $fmt($breakdown['peak_period_percent'], 2) }}</dd>
                     </div>
                     <div>
-                        <dt class="text-gray-500">Peak increase %</dt>
+                        <dt class="text-gray-500">Expected peak increase %</dt>
                         <dd class="mt-0.5 font-mono font-medium text-gray-900 tabular-nums">{{ $fmt($breakdown['peak_increase_percent'], 2) }}</dd>
                     </div>
                     <div>

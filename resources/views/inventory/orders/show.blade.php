@@ -56,12 +56,12 @@
                             <a href="{{ $order->rfqDocumentUrl() }}"
                                target="_blank"
                                class="inline-flex items-center px-4 py-2 border border-blue-300 rounded-md shadow-sm text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100">
-                                Download draft RFQ
+                                Download purchase request
                             </a>
                         @endif
                         <a href="{{ route('inventory.orders.pdf', $order) }}"
                            class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                            Export RFQ PDF
+                            Export PDF
                         </a>
                     @endif
                     <form action="{{ route('inventory.orders.regenerate', $order) }}" method="POST">
@@ -75,7 +75,7 @@
                         <button type="button"
                                 onclick="confirmSubmitInventoryOrder()"
                                 class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                            {{ $order->isInternal() ? 'Submit for approval' : 'Submit RFQ for approval' }}
+                            Submit for approval
                         </button>
                     </form>
                 </div>
@@ -146,11 +146,11 @@
                 @if($order->isInternal())
                     <strong>Draft internal order.</strong> Review quantities for stock needed at <strong>{{ $order->store?->name }}</strong> from <strong>{{ $order->sourceStore?->name }}</strong>, then <strong>Submit for approval</strong>. After approval, fulfill via a stock transfer — no supplier quotation is required.
                 @else
-                    <strong>Draft RFQ.</strong>
+                    <strong>Purchase request.</strong>
                     @if($order->hasRfqDocument())
-                        A draft RFQ document has been generated automatically.
+                        A purchase request PDF has been generated automatically.
                     @endif
-                    Review quantities (purchase request), then <strong>Submit RFQ for approval</strong>. Suppliers are invited after approval.
+                    Review quantities, then <strong>Submit for approval</strong>. After approval it becomes an RFQ and suppliers can be invited.
                 @endif
             </div>
         @endif
@@ -160,7 +160,7 @@
                 @if($order->isInternal())
                     <strong>Awaiting approval.</strong> After approvers sign off, a stock transfer draft is prepared for the supplying store to review and issue.
                 @else
-                    <strong>Awaiting RFQ approval.</strong> After approvers sign off, the RFQ can be distributed to suppliers for quotations.
+                    <strong>Awaiting approval.</strong> After approvers sign off, this purchase request becomes an RFQ that can be distributed to suppliers for quotations.
                 @endif
             </div>
         @endif
@@ -232,7 +232,6 @@
             ]);
             $orderTotal = $order->orderTotal();
             $amountCap = $order->effectiveAmountCap();
-            $budgetCap = (float) ($order->budget_value ?? 0);
             $budgetCapEnforced = (bool) ($order->budget_cap_enforced ?? true);
             $budgetUsedPct = $amountCap !== null && $amountCap > 0
                 ? round(($orderTotal / $amountCap) * 100, 1)
@@ -314,16 +313,6 @@
                             Period-based order
                         @endif
                     </p>
-                    @if($budgetUsedDisplayPct !== null)
-                        <div class="mt-2 h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
-                            <div @class([
-                                'h-full rounded-full',
-                                'bg-emerald-500' => $budgetUsedDisplayPct < 90,
-                                'bg-amber-500' => $budgetUsedDisplayPct >= 90 && $budgetUsedDisplayPct < 100,
-                                'bg-red-500' => $budgetUsedDisplayPct >= 100,
-                            ]) style="width: {{ min(100, $budgetUsedDisplayPct) }}%"></div>
-                        </div>
-                    @endif
                 </div>
                 <div class="px-4 py-3 sm:px-5">
                     <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Safety / buffer</p>
@@ -335,15 +324,18 @@
                     <p class="text-xs text-gray-500 mt-0.5">Notify {{ number_format((float) ($order->notification_to_order_days ?? 0), 0) }} days ahead</p>
                 </div>
                 <div class="px-4 py-3 sm:px-5">
-                    <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Peak period</p>
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Anticipated peak period</p>
                     <p class="mt-1 text-sm font-semibold text-gray-900 tabular-nums">
                         {{ number_format((float) ($order->peak_period_percent ?? 0), 0) }}%
-                        @if((float) ($order->peak_consumption_increase_percent ?? 0) > 0)
-                            <span class="text-gray-400 font-normal">·</span>
-                            +{{ number_format((float) $order->peak_consumption_increase_percent, 0) }}% consumption
-                        @endif
                     </p>
-                    <p class="text-xs text-gray-500 mt-0.5">{{ $order->moving_average_days }}-day consumption rate</p>
+                    <p class="text-xs text-gray-500 mt-0.5">Share of the order period that is peak</p>
+                </div>
+                <div class="px-4 py-3 sm:px-5">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Expected peak increase</p>
+                    <p class="mt-1 text-sm font-semibold text-gray-900 tabular-nums">
+                        {{ number_format((float) ($order->peak_consumption_increase_percent ?? 0), 0) }}%
+                    </p>
+                    <p class="text-xs text-gray-500 mt-0.5">Consumption increase during peak</p>
                 </div>
                 <div class="px-4 py-3 sm:px-5">
                     <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Item scope</p>
@@ -364,8 +356,8 @@
 
         @if($order->isExternal() && $order->hasRfqDocument() && $order->isDraft())
             <div class="mt-4 bg-white shadow sm:rounded-lg p-4 sm:p-6">
-                <h3 class="text-sm font-semibold text-gray-900">Draft RFQ document</h3>
-                <p class="text-xs text-gray-500 mt-0.5">Generated automatically when this order was created. Refreshed when you use Refresh items or submit for approval.</p>
+                <h3 class="text-sm font-semibold text-gray-900">Purchase request document</h3>
+                <p class="text-xs text-gray-500 mt-0.5">Generated automatically when this purchase request was created. Refreshed when you use Refresh items or submit for approval.</p>
                 <div class="mt-3">
                     <a href="{{ $order->rfqDocumentUrl() }}"
                        target="_blank"
@@ -443,7 +435,15 @@
 
         <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6 w-full min-w-0">
             <div class="mb-4">
-                <h3 class="text-sm font-semibold text-gray-900">{{ $order->isInternal() ? 'Order line items' : 'RFQ line items' }}</h3>
+                <h3 class="text-sm font-semibold text-gray-900">
+                    @if($order->isInternal())
+                        Order line items
+                    @elseif($order->isDraft() || $order->isPendingApproval())
+                        Purchase request line items
+                    @else
+                        RFQ line items
+                    @endif
+                </h3>
                 <p class="text-xs text-gray-500 mt-0.5">
                     @if($order->isDraft())
                         Use search and filters to find items. Paginated for large orders.
@@ -543,10 +543,10 @@
         <script>
             function confirmSubmitInventoryOrder() {
                 Swal.fire({
-                    title: @json($order->isInternal() ? 'Submit for approval?' : 'Submit RFQ for approval?'),
+                    title: @json($order->isInternal() ? 'Submit for approval?' : 'Submit purchase request for approval?'),
                     html: @json($order->isInternal()
                         ? 'Internal order <strong>'.e($order->order_number).'</strong> will be sent to your configured approvers. After approval, a stock transfer draft is prepared for the supplying store — no supplier quotation is required.'
-                        : 'RFQ <strong>'.e($order->order_number).'</strong> will be sent to your configured approvers. After approval you will invite suppliers and compare quotations before issuing LPOs.'),
+                        : 'Purchase request <strong>'.e($order->order_number).'</strong> will be sent to your configured approvers. After approval it becomes an RFQ so you can invite suppliers and compare quotations before issuing LPOs.'),
                     icon: 'question',
                     showCancelButton: true,
                     confirmButtonText: 'Yes, submit',

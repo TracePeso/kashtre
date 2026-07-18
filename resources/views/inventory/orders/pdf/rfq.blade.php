@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>{{ $order->order_number }} — Request for Quotation</title>
+    @php
+        $documentTitle = $order->isDraft() || $order->isPendingApproval()
+            ? 'Purchase Request'
+            : 'Request for Quotation';
+    @endphp
+    <title>{{ $order->order_number }} — {{ $documentTitle }}</title>
     <style>
         body { font-family: DejaVu Sans, sans-serif; font-size: 12px; color: #111; }
         h1 { font-size: 18px; margin: 0 0 4px; }
@@ -19,18 +24,22 @@
     @if($branding)
         <x-business.document-header
             :branding="$branding"
-            document-title="Request for Quotation"
+            :document-title="$documentTitle"
             :document-subtitle="$order->order_number.' · '.$order->statusLabel()"
         />
     @else
-        <h1>Request for Quotation</h1>
+        <h1>{{ $documentTitle }}</h1>
         <p class="muted">{{ $order->order_number }} · {{ $order->statusLabel() }}</p>
     @endif
     <p><strong>Store:</strong> {{ $order->store?->name }}<br>
        <strong>Prepared by:</strong> {{ $order->createdBy?->name ?? '—' }}<br>
        <strong>Date:</strong> {{ $order->created_at?->format('d M Y') }}</p>
 
-    <p class="muted">Pricing is intentionally omitted. Please return your quotation for the quantities below.</p>
+    @if($order->isDraft() || $order->isPendingApproval())
+        <p class="muted">Internal purchase request — quantities for review before approval. Pricing is omitted.</p>
+    @else
+        <p class="muted">Pricing is intentionally omitted. Please return your quotation for the quantities below.</p>
+    @endif
 
     @if($order->notes)
         <p><strong>Notes:</strong> {{ $order->notes }}</p>

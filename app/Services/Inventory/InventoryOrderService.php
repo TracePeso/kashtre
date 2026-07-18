@@ -918,25 +918,41 @@ class InventoryOrderService
         return max(0, round($baseSuggested * (1 + ($peakImpactPercent / 100)), 4));
     }
 
-    public function updateLinePeakIncrease(InventoryOrderLine $line, float $consumptionIncreasePercent): InventoryOrderLine
+    /**
+     * @return array{
+     *     line: InventoryOrderLine,
+     *     redistributed: bool,
+     *     adjusted_count: int,
+     *     comparison: ?array{
+     *         edited_line_id: int,
+     *         cap: float,
+     *         order_total_before: float,
+     *         order_total_after: float,
+     *         lines: list<array<string, mixed>>
+     *     }
+     * }
+     */
+    public function updateLinePeakIncrease(InventoryOrderLine $line, float $consumptionIncreasePercent): array
     {
         $line->loadMissing(['order', 'item']);
         $baseSuggested = (float) ($line->base_suggested_quantity_suom ?? $line->suggested_quantity_suom);
         $peakImpact = self::computePeakImpactPercent($line->order->peak_period_percent, $consumptionIncreasePercent);
         $suggested = $this->applyPeakToSuggestedQuantity($baseSuggested, $peakImpact);
-        $suggested = $this->constrainLineQuantityToBudget($line, $suggested);
-        $unitPrice = (float) ($line->unit_price ?? 0);
 
         $line->update([
             'peak_consumption_increase_percent' => max(0, $consumptionIncreasePercent),
             'peak_impact_percent' => $peakImpact,
-            'suggested_quantity_suom' => $suggested,
-            'order_quantity_suom' => $suggested,
-            'order_quantity_ouom' => $line->item ? $this->toOuom($line->item, $suggested) : null,
-            'line_total' => round($suggested * $unitPrice, 2),
         ]);
 
-        return $line->fresh('item');
+        $result = $this->applyLineQuantityUpdate($line->fresh(['order', 'item']), $suggested, null, true);
+        $updated = $result['line'];
+        $updated->update([
+            'suggested_quantity_suom' => (float) $updated->order_quantity_suom,
+        ]);
+
+        $result['line'] = $updated->fresh('item');
+
+        return $result;
     }
 
     private function createOrderLine(
@@ -1088,30 +1104,220 @@ class InventoryOrderService
         return max(0, (int) round((float) ($avg ?? 0)));
     }
 
-    public function updateLine(InventoryOrderLine $line, float $orderQtySuom, ?float $orderQtyOuom = null): InventoryOrderLine
-    {
-        $line->loadMissing(['order', 'item']);
-        $orderQtySuom = $this->constrainLineQuantityToBudget($line, $orderQtySuom);
+    /**
+     * @return array{
+     *     line: InventoryOrderLine,
+     *     redistributed: bool,
+     *     adjusted_count: int,
+     *     comparison: ?array{
+     *         edited_line_id: int,
+     *         cap: ?float,
+     *         capped: bool,
+     *         order_total_before: float,
+     *         order_total_after: float,
+     *         lines: list<array<string, mixed>>
+     *     }
+     * }
+     */
+    public function applyLineQuantityUpdate(
+        InventoryOrderLine $line,
+        float $orderQtySuom,
+        ?float $orderQtyOuom = null,
+        bool $redistributeWhenCapped = true
+    ): array {
+        $line->loadMissing(['order.lines.item', 'item']);
+        $order = $line->order;
         $unitPrice = (float) ($line->unit_price ?? 0);
+        $orderQtySuom = max(0, $orderQtySuom);
+        $beforeSnapshot = $this->snapshotOrderLinesForCapDiff($order);
+        $orderTotalBefore = round(array_sum(array_column($beforeSnapshot, 'total')), 2);
+        $enforceCap = $redistributeWhenCapped && $order->enforcesBudgetCap() && $unitPrice > 0;
+
+        if (! $enforceCap) {
+            if ($orderQtyOuom === null && $line->item) {
+                $orderQtyOuom = $this->toOuom($line->item, $orderQtySuom);
+            }
+
+            $line->update([
+                'order_quantity_suom' => $orderQtySuom,
+                'order_quantity_ouom' => $orderQtyOuom,
+                'line_total' => round($orderQtySuom * $unitPrice, 2),
+            ]);
+
+            $freshOrder = $order->fresh(['lines.item']);
+            $cap = $order->effectiveAmountCap();
+
+            return [
+                'line' => $line->fresh('item'),
+                'redistributed' => false,
+                'adjusted_count' => 0,
+                'comparison' => $this->buildCapAdjustmentComparison(
+                    $beforeSnapshot,
+                    $freshOrder,
+                    (int) $line->id,
+                    $cap !== null ? (float) $cap : null,
+                    $orderTotalBefore,
+                    false
+                ),
+            ];
+        }
+
+        $cap = (float) $order->effectiveAmountCap();
+        $oldLineTotal = (float) ($line->line_total ?? 0);
+        $requestedTotal = round($orderQtySuom * $unitPrice, 2);
+        $newLineTotal = min($requestedTotal, $cap);
+        $newQty = round($newLineTotal / $unitPrice, 4);
 
         if ($orderQtyOuom === null && $line->item) {
-            $orderQtyOuom = $this->toOuom($line->item, $orderQtySuom);
+            $orderQtyOuom = $this->toOuom($line->item, $newQty);
         }
 
         $line->update([
-            'order_quantity_suom' => max(0, $orderQtySuom),
+            'order_quantity_suom' => $newQty,
             'order_quantity_ouom' => $orderQtyOuom,
-            'line_total' => round(max(0, $orderQtySuom) * $unitPrice, 2),
+            'line_total' => $newLineTotal,
         ]);
 
-        return $line->fresh('item');
+        $delta = round($newLineTotal - $oldLineTotal, 2);
+        $adjustedCount = 0;
+
+        if (abs($delta) >= 0.01) {
+            $adjustedCount = $this->redistributeBudgetDeltaEqually(
+                $order->fresh(['lines.item']),
+                $line->fresh(),
+                $delta
+            );
+        }
+
+        $this->reconcileOrderTotalToCap($order->fresh(['lines.item']), $cap);
+
+        $freshOrder = $order->fresh(['lines.item']);
+        $comparison = $this->buildCapAdjustmentComparison(
+            $beforeSnapshot,
+            $freshOrder,
+            (int) $line->id,
+            $cap,
+            $orderTotalBefore,
+            true
+        );
+
+        return [
+            'line' => $line->fresh('item'),
+            'redistributed' => $adjustedCount > 0 || collect($comparison['lines'])->contains(
+                fn (array $row) => $row['changed']
+            ),
+            'adjusted_count' => $adjustedCount,
+            'comparison' => $comparison,
+        ];
+    }
+
+    /**
+     * @return array<int, array{item_name: string, item_code: ?string, qty: float, total: float, unit_price: float}>
+     */
+    private function snapshotOrderLinesForCapDiff(InventoryOrder $order): array
+    {
+        $order->loadMissing('lines.item');
+
+        $snapshot = [];
+        foreach ($order->lines as $orderLine) {
+            $snapshot[(int) $orderLine->id] = [
+                'item_name' => $orderLine->item?->name ?? '—',
+                'item_code' => $orderLine->item?->code,
+                'qty' => (float) ($orderLine->order_quantity_suom ?? 0),
+                'total' => (float) ($orderLine->line_total ?? 0),
+                'unit_price' => (float) ($orderLine->unit_price ?? 0),
+            ];
+        }
+
+        return $snapshot;
+    }
+
+    /**
+     * @param  array<int, array{item_name: string, item_code: ?string, qty: float, total: float, unit_price: float}>  $before
+     * @return array{
+     *     edited_line_id: int,
+     *     cap: ?float,
+     *     capped: bool,
+     *     order_total_before: float,
+     *     order_total_after: float,
+     *     lines: list<array<string, mixed>>
+     * }
+     */
+    private function buildCapAdjustmentComparison(
+        array $before,
+        InventoryOrder $afterOrder,
+        int $editedLineId,
+        ?float $cap,
+        float $orderTotalBefore,
+        bool $capped = true
+    ): array {
+        $afterOrder->loadMissing('lines.item');
+        $rows = [];
+
+        foreach ($afterOrder->lines as $orderLine) {
+            $id = (int) $orderLine->id;
+            $beforeRow = $before[$id] ?? [
+                'item_name' => $orderLine->item?->name ?? '—',
+                'item_code' => $orderLine->item?->code,
+                'qty' => 0.0,
+                'total' => 0.0,
+                'unit_price' => (float) ($orderLine->unit_price ?? 0),
+            ];
+            $qtyAfter = (float) ($orderLine->order_quantity_suom ?? 0);
+            $totalAfter = (float) ($orderLine->line_total ?? 0);
+            $qtyDelta = round($qtyAfter - (float) $beforeRow['qty'], 4);
+            $totalDelta = round($totalAfter - (float) $beforeRow['total'], 2);
+            $changed = abs($qtyDelta) >= 0.0001 || abs($totalDelta) >= 0.01;
+
+            $rows[] = [
+                'line_id' => $id,
+                'item_name' => $beforeRow['item_name'],
+                'item_code' => $beforeRow['item_code'],
+                'role' => $id === $editedLineId ? 'edited' : ($changed ? 'adjusted' : 'unchanged'),
+                'qty_before' => (float) $beforeRow['qty'],
+                'qty_after' => $qtyAfter,
+                'qty_delta' => $qtyDelta,
+                'total_before' => (float) $beforeRow['total'],
+                'total_after' => $totalAfter,
+                'total_delta' => $totalDelta,
+                'changed' => $changed,
+            ];
+        }
+
+        usort($rows, function (array $a, array $b) use ($editedLineId) {
+            if ($a['line_id'] === $editedLineId) {
+                return -1;
+            }
+            if ($b['line_id'] === $editedLineId) {
+                return 1;
+            }
+            if ($a['changed'] !== $b['changed']) {
+                return $a['changed'] ? -1 : 1;
+            }
+
+            return strcmp($a['item_name'], $b['item_name']);
+        });
+
+        return [
+            'edited_line_id' => $editedLineId,
+            'cap' => $cap,
+            'capped' => $capped,
+            'order_total_before' => $orderTotalBefore,
+            'order_total_after' => $afterOrder->orderTotal(),
+            'lines' => $rows,
+        ];
+    }
+
+    public function updateLine(InventoryOrderLine $line, float $orderQtySuom, ?float $orderQtyOuom = null): InventoryOrderLine
+    {
+        return $this->applyLineQuantityUpdate($line, $orderQtySuom, $orderQtyOuom, true)['line'];
     }
 
     public function setOrderSupplier(InventoryOrder $order, int $supplierId): InventoryOrder
     {
         if (! $order->isDraft()) {
             throw ValidationException::withMessages([
-                'supplier_id' => 'Supplier can only be changed on draft RFQs.',
+                'supplier_id' => 'Supplier can only be changed on draft purchase requests.',
             ]);
         }
 
@@ -1159,12 +1365,104 @@ class InventoryOrderService
         }
 
         $budgetCap = (float) $order->effectiveAmountCap();
-        $currentLineTotal = (float) ($line->line_total ?? 0);
-        $otherLinesTotal = $order->orderTotal() - $currentLineTotal;
-        $availableForLine = max(0, $budgetCap - $otherLinesTotal);
-        $maxQty = floor(($availableForLine / $unitPrice) * 10000) / 10000;
+        $maxQty = floor(($budgetCap / $unitPrice) * 10000) / 10000;
 
         return max(0, min($requestedQtySuom, $maxQty));
+    }
+
+    /**
+     * Split a UGX delta equally across other priced lines so order total stays at the cap.
+     * Positive delta = edited line grew → reduce others. Negative = edited line shrank → increase others.
+     */
+    private function redistributeBudgetDeltaEqually(
+        InventoryOrder $order,
+        InventoryOrderLine $editedLine,
+        float $deltaUgx
+    ): int {
+        $pool = $order->lines
+            ->filter(fn (InventoryOrderLine $line) => (int) $line->id !== (int) $editedLine->id
+                && (float) ($line->unit_price ?? 0) > 0)
+            ->values();
+
+        if ($pool->isEmpty() || abs($deltaUgx) < 0.01) {
+            return 0;
+        }
+
+        $remaining = $deltaUgx;
+        $adjusted = 0;
+
+        for ($pass = 0; $pass < 25 && abs($remaining) >= 0.01 && $pool->isNotEmpty(); $pass++) {
+            $share = $remaining / $pool->count();
+            $nextPool = collect();
+            $progress = 0.0;
+
+            foreach ($pool as $line) {
+                $price = (float) $line->unit_price;
+                $oldTotal = (float) $line->line_total;
+                $targetTotal = round($oldTotal - $share, 2);
+
+                if ($share > 0 && $targetTotal < 0) {
+                    $targetTotal = 0.0;
+                }
+
+                $applied = round($oldTotal - $targetTotal, 2);
+                $progress += $applied;
+                $remaining = round($remaining - $applied, 2);
+
+                $qty = round($targetTotal / $price, 4);
+                $line->update([
+                    'order_quantity_suom' => max(0, $qty),
+                    'order_quantity_ouom' => $line->item ? $this->toOuom($line->item, $qty) : null,
+                    'line_total' => max(0, $targetTotal),
+                ]);
+                $adjusted++;
+
+                if ($targetTotal > 0.009) {
+                    $nextPool->push($line->fresh('item'));
+                }
+            }
+
+            if ($share < 0) {
+                break;
+            }
+
+            if (abs($progress) < 0.01) {
+                break;
+            }
+
+            $pool = $nextPool->values();
+        }
+
+        return $adjusted;
+    }
+
+    private function reconcileOrderTotalToCap(InventoryOrder $order, float $cap): void
+    {
+        $total = $order->orderTotal();
+        $diff = round($cap - $total, 2);
+
+        if (abs($diff) < 0.01) {
+            return;
+        }
+
+        $candidate = $order->lines
+            ->filter(fn (InventoryOrderLine $line) => (float) ($line->unit_price ?? 0) > 0)
+            ->sortByDesc(fn (InventoryOrderLine $line) => (float) $line->line_total)
+            ->first();
+
+        if (! $candidate) {
+            return;
+        }
+
+        $price = (float) $candidate->unit_price;
+        $newTotal = max(0, round((float) $candidate->line_total + $diff, 2));
+        $qty = round($newTotal / $price, 4);
+
+        $candidate->update([
+            'order_quantity_suom' => max(0, $qty),
+            'order_quantity_ouom' => $candidate->item ? $this->toOuom($candidate->item, $qty) : null,
+            'line_total' => $newTotal,
+        ]);
     }
 
     private function toOuom(Item $item, float $orderQtySuom): ?float

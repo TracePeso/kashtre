@@ -21,7 +21,7 @@ class InventoryOrderApprovalService
             throw ValidationException::withMessages([
                 'status' => $order->isInternal()
                     ? 'Only draft internal orders can be submitted for approval.'
-                    : 'Only draft RFQs can be submitted for approval.',
+                    : 'Only draft purchase requests can be submitted for approval.',
             ]);
         }
 
@@ -29,7 +29,7 @@ class InventoryOrderApprovalService
             throw ValidationException::withMessages([
                 'lines' => $order->isInternal()
                     ? 'Add at least one line item before submitting.'
-                    : 'Add at least one RFQ line before submitting.',
+                    : 'Add at least one line before submitting.',
             ]);
         }
 

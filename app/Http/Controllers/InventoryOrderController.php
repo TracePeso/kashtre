@@ -244,8 +244,8 @@ class InventoryOrderController extends Controller
         $message = $order->isInternal()
             ? 'Internal order generated. Review quantities before submitting for approval.'
             : ($order->hasRfqDocument()
-                ? 'Order generated and draft RFQ document saved. Review quantities before submitting.'
-                : 'Order generated. Review and edit quantities before submitting.');
+                ? 'Purchase request generated and PDF saved. Review quantities before submitting for approval.'
+                : 'Purchase request generated. Review and edit quantities before submitting for approval.');
 
         return $redirect->with('success', $message);
     }
@@ -446,7 +446,7 @@ class InventoryOrderController extends Controller
         }
 
         $message = $order->isExternal() && $order->hasRfqDocument()
-            ? 'Order items refreshed and draft RFQ document updated.'
+            ? 'Purchase request items refreshed and PDF updated.'
             : 'Order items refreshed from current stock and consumption.';
 
         return $redirect->with('success', $message);

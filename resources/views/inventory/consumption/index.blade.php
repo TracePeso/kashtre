@@ -5,6 +5,7 @@
             <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">Consumption</h2>
             <p class="mt-1 text-sm text-gray-500">
                 Filter by store, item, and period. Default view is the last 10 days — open a row for hourly detail.
+                Export the current filters to Excel or PDF.
             </p>
         </div>
 
