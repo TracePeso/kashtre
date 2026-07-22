@@ -31,7 +31,10 @@ class ListSuppliers extends Component implements HasForms, HasTable
 
     public function table(Table $table): Table
     {
-        $query = Supplier::query()->where('business_id', '!=', 1)->latest();
+        $query = Supplier::query()
+            ->with('linkedBusiness')
+            ->where('business_id', '!=', 1)
+            ->latest();
 
         if (Auth::check() && Auth::user()->business_id !== 1) {
             $query->where('business_id', Auth::user()->business_id);
@@ -41,7 +44,10 @@ class ListSuppliers extends Component implements HasForms, HasTable
             ->query($query)
             ->columns([
                 Tables\Columns\TextColumn::make('name')
-                    ->searchable(),
+                    ->searchable()
+                    ->description(fn (Supplier $record): ?string => $record->isKashtreEntitySupplier()
+                        ? 'Kashtre entity: ' . ($record->linkedBusiness?->name ?? '—')
+                        : null),
                 Tables\Columns\TextColumn::make('email')
                     ->label('Email')
                     ->placeholder('—')
@@ -91,9 +97,11 @@ class ListSuppliers extends Component implements HasForms, HasTable
                     ->modalHeading('Edit Supplier')
                     ->fillForm(fn (Supplier $record): array => array_merge($record->toArray(), [
                         'item_ids' => $record->items()->pluck('items.id')->all(),
+                        'linked_business_id' => $record->linked_business_id,
                     ]))
                     ->form(fn (Supplier $record) => $this->supplierForm($record->business_id))
                     ->using(function (Supplier $record, array $data): Supplier {
+                        $data = $this->normalizeSupplierData($data);
                         $itemIds = $data['item_ids'] ?? [];
                         unset($data['item_ids']);
                         $record->update($data);
@@ -121,6 +129,7 @@ class ListSuppliers extends Component implements HasForms, HasTable
                     ->modalHeading('Add New Supplier')
                     ->form($this->supplierForm(Auth::user()->business_id))
                     ->using(function (array $data): Supplier {
+                        $data = $this->normalizeSupplierData($data);
                         $itemIds = $data['item_ids'] ?? [];
                         unset($data['item_ids']);
                         $supplier = Supplier::create($data);
@@ -145,23 +154,38 @@ class ListSuppliers extends Component implements HasForms, HasTable
             Forms\Components\Select::make('business_id')
                 ->label('Business')
                 ->placeholder('Select a business')
-                ->options(Business::where('id', '!=', 1)->pluck('name', 'id'))
+                ->options(Business::kashtreEntities()->pluck('name', 'id'))
                 ->required()
                 ->default(Auth::user()->business_id)
                 ->disabled(fn () => Auth::user()->business_id !== 1)
                 ->live(),
+            Forms\Components\Select::make('linked_business_id')
+                ->label('Kashtre entity supplier')
+                ->placeholder('Manual supplier (not linked to a Kashtre entity)')
+                ->options(fn (Get $get): array => app(\App\Services\KashtreEntityService::class)
+                    ->registeredSuppliersQuery()
+                    ->when($get('business_id'), fn ($query, $id) => $query->where('id', '!=', (int) $id))
+                    ->orderBy('name')
+                    ->pluck('name', 'id')
+                    ->all())
+                ->searchable()
+                ->live()
+                ->helperText('Optional. Pick a Kashtre entity registered as a supplier, or leave blank for an external supplier.'),
             Forms\Components\TextInput::make('name')
                 ->label('Supplier Name')
-                ->required(),
+                ->required()
+                ->disabled(fn (Get $get): bool => filled($get('linked_business_id'))),
             Forms\Components\TextInput::make('email')
                 ->label('Email')
                 ->email()
                 ->nullable()
+                ->disabled(fn (Get $get): bool => filled($get('linked_business_id')))
                 ->helperText('Used to send RFQs and LPOs electronically.'),
             Forms\Components\TextInput::make('phone')
                 ->label('Phone')
                 ->tel()
-                ->nullable(),
+                ->nullable()
+                ->disabled(fn (Get $get): bool => filled($get('linked_business_id'))),
             Forms\Components\Textarea::make('description')
                 ->label('Description')
                 ->nullable(),
@@ -177,6 +201,33 @@ class ListSuppliers extends Component implements HasForms, HasTable
                 ->multiple()
                 ->searchable(),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function normalizeSupplierData(array $data): array
+    {
+        if (empty($data['linked_business_id'])) {
+            $data['linked_business_id'] = null;
+
+            return $data;
+        }
+
+        $linked = Business::query()->registeredAsSupplier()->find((int) $data['linked_business_id']);
+
+        if (! $linked) {
+            $data['linked_business_id'] = null;
+
+            return $data;
+        }
+
+        $data['name'] = $linked->name;
+        $data['email'] = $linked->email;
+        $data['phone'] = $linked->phone;
+
+        return $data;
     }
 
     public function render(): View

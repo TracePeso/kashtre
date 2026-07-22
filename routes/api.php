@@ -71,9 +71,12 @@ Route::prefix('hr')->middleware('hr.api')->group(function () {
     Route::get('/staff', [\App\Http\Controllers\API\HrIntegrationController::class, 'staff']);
     Route::get('/staff/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'staffShow']);
     Route::get('/businesses', [\App\Http\Controllers\API\HrIntegrationController::class, 'businesses']);
+    Route::get('/kashtre-entities', [\App\Http\Controllers\API\KashtreEntityController::class, 'index']);
+    Route::get('/kashtre-entities/{uuid}', [\App\Http\Controllers\API\KashtreEntityController::class, 'show']);
     Route::get('/branches', [\App\Http\Controllers\API\HrIntegrationController::class, 'branches']);
     Route::get('/departments', [\App\Http\Controllers\API\HrIntegrationController::class, 'departments']);
     Route::get('/qualifications', [\App\Http\Controllers\API\HrIntegrationController::class, 'qualifications']);
+    Route::get('/staff-categories', [\App\Http\Controllers\API\HrIntegrationController::class, 'staffCategories']);
     Route::get('/client-spaces', [\App\Http\Controllers\API\HrIntegrationController::class, 'clientSpaces']);
 });
 

@@ -61,6 +61,7 @@ class BusinessController extends Controller
 
             // Generate time-based account number with prefix '25' and random 2-digit suffix
             $validated['account_number'] = 'KS' . time();
+            $validated['registered_as_supplier'] = $request->boolean('register_as_supplier');
 
             // Create business
             $business = Business::create($validated);

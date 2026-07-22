@@ -3,6 +3,7 @@
     use App\Models\Qualification;
     use App\Models\Department;
     use App\Models\Title;
+    use App\Models\StaffCategory;
     use App\Models\ServicePoint;
 
     $businesses = Business::with('branches')->where('id', '!=', 1)->get()->keyBy('id');
@@ -22,6 +23,7 @@
     $qualifications = Qualification::all();
     $departments = Department::all();
     $titles = Title::all();
+    $staffCategories = StaffCategory::all();
     // Group by business_id for Alpine.js
     $qualificationsByBusiness = $qualifications->groupBy('business_id')->map(function($items) {
         return $items->map(function($item) {
@@ -34,6 +36,11 @@
         })->values();
     });
     $titlesByBusiness = $titles->groupBy('business_id')->map(function($items) {
+        return $items->map(function($item) {
+            return ['id' => $item->id, 'name' => $item->name];
+        })->values();
+    });
+    $staffCategoriesByBusiness = $staffCategories->groupBy('business_id')->map(function($items) {
         return $items->map(function($item) {
             return ['id' => $item->id, 'name' => $item->name];
         })->values();
@@ -137,13 +144,22 @@
                                 </template>
                             </select>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div>
                                 <label for="qualification_id">Qualification <span class="text-gray-500 text-sm">(optional)</span></label>
                                 <select name="qualification_id" id="qualification_id" class="form-select w-full">
                                     <option value="">Not specified</option>
                                     <template x-for="q in filteredQualifications" :key="q.id">
                                         <option :value="q.id" x-text="q.name" :selected="q.id == {{ old('qualification_id', $user->qualification_id) }}"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="staff_category_id">Staff category <span class="text-gray-500 text-sm">(optional)</span></label>
+                                <select name="staff_category_id" id="staff_category_id" class="form-select w-full">
+                                    <option value="">Not specified</option>
+                                    <template x-for="c in filteredStaffCategories" :key="c.id">
+                                        <option :value="c.id" x-text="c.name" :selected="c.id == {{ old('staff_category_id', $user->staff_category_id) }}"></option>
                                     </template>
                                 </select>
                             </div>
@@ -342,12 +358,14 @@
                     qualificationsByBusiness: @json($qualificationsByBusiness),
                     departmentsByBusiness: @json($departmentsByBusiness),
                     titlesByBusiness: @json($titlesByBusiness),
+                    staffCategoriesByBusiness: @json($staffCategoriesByBusiness),
                     userServicePoints: @json($user->service_points ?? []),
                     filteredServicePoints: [],
                     filteredBranches: [],
                     filteredQualifications: [],
                     filteredDepartments: [],
                     filteredTitles: [],
+                    filteredStaffCategories: [],
                     isContractorSelected: false,
                     init() {
                         // If user is not from business 1, force their business ID
@@ -399,6 +417,9 @@
                             : [];
                         this.filteredTitles = this.selectedBusinessId && this.titlesByBusiness[this.selectedBusinessId]
                             ? this.titlesByBusiness[this.selectedBusinessId]
+                            : [];
+                        this.filteredStaffCategories = this.selectedBusinessId && this.staffCategoriesByBusiness[this.selectedBusinessId]
+                            ? this.staffCategoriesByBusiness[this.selectedBusinessId]
                             : [];
                     },
                     handleFormSubmit(event) {

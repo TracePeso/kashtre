@@ -76,6 +76,7 @@ trait AccessTrait
         "Departments" => ['View Departments', 'Edit Departments', 'Add Departments', 'Bulky Update Departments'],
         "Qualifications" => ['View Qualifications', 'Edit Qualifications', 'Add Qualifications', 'Bulky Update Qualifications'],
         "Titles" => ['View Titles', 'Edit Titles', 'Add Titles', 'Bulky Update Titles'],
+        "Staff Categories" => ['View Staff Categories', 'Edit Staff Categories', 'Add Staff Categories', 'Bulky Update Staff Categories'],
         "Rooms" => ['View Rooms', 'Edit Rooms', 'Add Rooms', 'Bulky Update Rooms'],
         "Sections" => ['View Sections', 'Edit Sections', 'Add Sections', 'Bulky Update Sections'],
         "Item Units" => ['View Item Units', 'Edit Item Units', 'Add Item Units', 'Bulky Update Item Units'],

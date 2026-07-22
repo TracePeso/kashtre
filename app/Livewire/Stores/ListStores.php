@@ -49,18 +49,8 @@ class ListStores extends Component implements HasForms, HasTable
                     ->label('Store')
                     ->searchable()
                     ->description(fn (Store $record): ?string => $record->isChild() && $record->parent
-                        ? 'Child of ' . $record->parent->name
-                        : ($record->children_count > 0 ? $record->children_count . ' child store(s)' : null)),
-                Tables\Columns\TextColumn::make('hierarchy')
-                    ->label('Level')
-                    ->badge()
-                    ->state(fn (Store $record): string => $record->hierarchyLabel())
-                    ->color(fn (Store $record): string => match ($record->depth()) {
-                        0 => 'success',
-                        1 => 'info',
-                        2 => 'warning',
-                        default => 'gray',
-                    }),
+                        ? 'Under ' . $record->parent->name
+                        : ($record->children_count > 0 ? $record->children_count . ' linked end store(s)' : null)),
                 Tables\Columns\TextColumn::make('distribution_type')
                     ->label('Store type')
                     ->badge()
@@ -68,7 +58,7 @@ class ListStores extends Component implements HasForms, HasTable
                     ->color(fn (Store $record): string => $record->isInterimDistributionStore() ? 'warning' : 'primary')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('parent.name')
-                    ->label('Parent store')
+                    ->label('Distribution store')
                     ->placeholder('—')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('description')
@@ -97,19 +87,6 @@ class ListStores extends Component implements HasForms, HasTable
             ])
             ->filters([
                 TrashedFilter::make(),
-                Tables\Filters\SelectFilter::make('hierarchy')
-                    ->label('Level')
-                    ->options([
-                        'parent' => 'Parent stores',
-                        'child' => 'Child stores',
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return match ($data['value'] ?? null) {
-                            'parent' => $query->whereNull('parent_id'),
-                            'child' => $query->whereNotNull('parent_id'),
-                            default => $query,
-                        };
-                    }),
                 Tables\Filters\SelectFilter::make('distribution_type')
                     ->label('Store type')
                     ->options(Store::distributionTypeOptions())
@@ -126,7 +103,7 @@ class ListStores extends Component implements HasForms, HasTable
                 EditAction::make()
                     ->label('Edit')
                     ->visible(fn () => in_array('Edit Stores', Auth::user()->permissions ?? []))
-                    ->modalHeading(fn (Store $record) => $record->isChild() ? 'Edit Child Store' : 'Edit Parent Store')
+                    ->modalHeading(fn (Store $record) => $record->isEndStore() ? 'Edit End Store' : 'Edit Distribution Store')
                     ->form(fn (Store $record) => $this->storeForm($record))
                     ->successNotificationTitle('Store updated successfully.'),
                 DeleteAction::make()
@@ -135,8 +112,8 @@ class ListStores extends Component implements HasForms, HasTable
                         if ($record->children()->exists()) {
                             Notification::make()
                                 ->danger()
-                                ->title('Cannot delete parent store')
-                                ->body('Reassign or delete child stores first.')
+                                ->title('Cannot delete distribution store')
+                                ->body('Reassign or delete linked end stores first.')
                                 ->send();
 
                             $this->halt();
@@ -154,9 +131,9 @@ class ListStores extends Component implements HasForms, HasTable
             ->headerActions([
                 CreateAction::make()
                     ->visible(fn () => in_array('Add Stores', Auth::user()->permissions ?? []))
-                    ->label('Create Parent Store')
-                    ->modalHeading('Add Parent Store')
-                    ->modalDescription('Top-level distribution store. Add child end stores under it afterwards.')
+                    ->label('Create Distribution Store')
+                    ->modalHeading('Add Distribution Store')
+                    ->modalDescription('Warehouse or hub that supplies end stores. You can link end stores under it afterwards.')
                     ->form($this->parentStoreForm())
                     ->mutateFormDataUsing(fn (array $data) => array_merge($data, [
                         'parent_id' => null,
@@ -166,9 +143,9 @@ class ListStores extends Component implements HasForms, HasTable
                     ->after(fn () => $this->notifyCreated()),
                 CreateAction::make('createChildStore')
                     ->visible(fn () => in_array('Add Stores', Auth::user()->permissions ?? []))
-                    ->label('Create Child Store')
-                    ->modalHeading('Add Child Store')
-                    ->modalDescription('Select a business, then choose a parent store under that business. The child inherits the parent’s branch.')
+                    ->label('Create End Store')
+                    ->modalHeading('Add End Store')
+                    ->modalDescription('Customer-facing POS or dispensing location. Select a business, then choose the distribution store it belongs to.')
                     ->form($this->childStoreForm())
                     ->mutateFormDataUsing(fn (array $data) => array_merge($data, [
                         'distribution_type' => Store::DISTRIBUTION_END,
@@ -224,7 +201,7 @@ class ListStores extends Component implements HasForms, HasTable
                 ->live()
                 ->afterStateUpdated(fn (Set $set) => $set('parent_id', null)),
             Forms\Components\Select::make('parent_id')
-                ->label('Parent store')
+                ->label('Distribution store')
                 ->options(fn (Get $get) => $this->parentStoreOptions(
                     businessId: $this->resolvedBusinessId($get('business_id'))
                 ))
@@ -232,10 +209,10 @@ class ListStores extends Component implements HasForms, HasTable
                 ->searchable()
                 ->disabled(fn (Get $get) => ! $this->resolvedBusinessId($get('business_id')))
                 ->helperText(fn (Get $get) => $this->resolvedBusinessId($get('business_id'))
-                    ? 'Parent stores become interim distribution stores. End stores are promoted automatically when a child store is added.'
+                    ? 'The end store inherits the distribution store’s branch.'
                     : 'Select a business first.'),
             Forms\Components\TextInput::make('name')
-                ->label('Child store name')
+                ->label('End store name')
                 ->required()
                 ->maxLength(255),
             ...$this->distributionTypeFields(forChildStore: true),
@@ -262,7 +239,7 @@ class ListStores extends Component implements HasForms, HasTable
                     ->live()
                     ->afterStateUpdated(fn (Set $set) => $set('parent_id', null)),
                 Forms\Components\Select::make('parent_id')
-                    ->label('Parent store')
+                    ->label('Distribution store')
                     ->options(fn (Get $get) => $this->parentStoreOptions(
                         excludeId: $record->id,
                         businessId: $this->resolvedBusinessId($get('business_id') ?: $record->business_id)
@@ -303,10 +280,10 @@ class ListStores extends Component implements HasForms, HasTable
                 ->label('Description')
                 ->nullable(),
             Forms\Components\Placeholder::make('children_note')
-                ->label('Child stores')
+                ->label('Linked end stores')
                 ->content(fn () => $record->children()->count() > 0
-                    ? $record->children()->count() . ' child store(s) linked. This store is an interim distribution store.'
-                    : 'No child stores yet. Use “Create Child Store” to add one — the store becomes a distribution store when the first child is added.'),
+                    ? $record->children()->count() . ' end store(s) linked to this distribution store.'
+                    : 'No end stores linked yet. Use “Create End Store” to add one under this distribution store.'),
         ];
     }
 
@@ -325,7 +302,7 @@ class ListStores extends Component implements HasForms, HasTable
             Forms\Components\Select::make('distribution_type')
                 ->label('Store type')
                 ->options($lockedToDistribution
-                    ? [Store::DISTRIBUTION_INTERIM => 'Interim distribution store']
+                    ? [Store::DISTRIBUTION_INTERIM => 'Distribution store']
                     : ($forChildStore
                         ? [Store::DISTRIBUTION_END => 'End store']
                         : Store::distributionTypeOptions()))
@@ -335,10 +312,10 @@ class ListStores extends Component implements HasForms, HasTable
                 ->dehydrated(true)
                 ->native(false)
                 ->helperText(match (true) {
-                    $hasChildren => 'Stores with child locations are always interim distribution stores.',
-                    $forParentStore => 'Parent stores are interim distribution stores (warehouses / hubs).',
-                    $forChildStore => 'Child stores are end stores (POS or dispensing). Adding children to this store later promotes it to a distribution store.',
-                    default => 'End stores face customers. Interim distribution stores are warehouses.',
+                    $hasChildren => 'Stores with linked end stores are always distribution stores.',
+                    $forParentStore => 'Distribution stores are warehouses or hubs that supply end stores.',
+                    $forChildStore => 'End stores are customer-facing (POS or dispensing).',
+                    default => 'Choose distribution store for warehouses, or end store for customer-facing locations.',
                 }),
         ];
     }

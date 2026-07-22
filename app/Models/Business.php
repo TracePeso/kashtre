@@ -27,6 +27,7 @@ class Business extends Model
         'type',
         'account_number',
         'entity_code',
+        'registered_as_supplier',
         'account_balance',
         'mode',
         'date',
@@ -60,6 +61,7 @@ class Business extends Model
         'third_party_excluded_items' => 'array',
         'financial_year_start_month' => 'integer',
         'financial_year_start_day' => 'integer',
+        'registered_as_supplier' => 'boolean',
     ];
 
     // a businness has many users
@@ -128,6 +130,31 @@ class Business extends Model
         return $this->hasMany(Branch::class);
     }
 
+    public function supplierProfiles()
+    {
+        return $this->hasMany(Supplier::class, 'linked_business_id');
+    }
+
+    public function scopeKashtreEntities($query)
+    {
+        return $query->where('id', '!=', 1);
+    }
+
+    public function scopeRegisteredAsSupplier($query)
+    {
+        return $query->where('registered_as_supplier', true);
+    }
+
+    public function scopeActivelyUtilizing($query)
+    {
+        return $query->whereHas('users', fn ($userQuery) => $userQuery->where('status', 'active'));
+    }
+
+    public function isRegisteredAsSupplier(): bool
+    {
+        return (bool) $this->registered_as_supplier;
+    }
+
     public function qualifications()
     {
         return $this->hasMany(Qualification::class);
@@ -181,6 +208,11 @@ class Business extends Model
     public function creditLimitApprovers()
     {
         return $this->hasMany(CreditLimitApprovalApprover::class);
+    }
+
+    public function inventoryModuleConfig()
+    {
+        return $this->hasOne(InventoryModuleConfig::class);
     }
 
     public function branding(): BusinessBranding

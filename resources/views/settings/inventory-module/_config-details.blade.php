@@ -91,10 +91,6 @@
         <dt class="text-gray-500">Notification to order</dt>
         <dd class="mt-1 font-medium text-gray-900">{{ number_format((float) $config->notification_to_order_days, 1) }} days</dd>
       </div>
-      <div>
-        <dt class="text-gray-500">Default period of order</dt>
-        <dd class="mt-1 font-medium text-gray-900">{{ number_format((float) $config->period_of_order_days, 1) }} days</dd>
-      </div>
     </dl>
   </section>
 

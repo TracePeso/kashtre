@@ -8,7 +8,9 @@ use App\Models\Business;
 use App\Models\Branch;
 use App\Models\Department;
 use App\Models\Qualification;
+use App\Models\StaffCategory;
 use App\Models\ClientSpace;
+use App\Services\KashtreEntityService;
 use Illuminate\Http\Request;
 
 class HrIntegrationController extends Controller
@@ -28,7 +30,7 @@ class HrIntegrationController extends Controller
     {
         $query = User::query()
             ->where('business_id', '!=', 1)
-            ->select('id', 'uuid', 'name', 'email', 'phone', 'gender', 'business_id', 'branch_id', 'qualification_id', 'department_id', 'title_id', 'section_id', 'status', 'permissions', 'created_at');
+            ->select('id', 'uuid', 'name', 'email', 'phone', 'gender', 'business_id', 'branch_id', 'qualification_id', 'department_id', 'title_id', 'staff_category_id', 'section_id', 'status', 'permissions', 'created_at');
 
         if ($request->has('business_id')) {
             $query->where('business_id', $request->business_id);
@@ -42,7 +44,7 @@ class HrIntegrationController extends Controller
             $query->where('email', $request->email);
         }
 
-        $staff = $query->with(['qualification:id,name', 'department:id,name', 'title:id,name', 'branch:id,name'])
+        $staff = $query->with(['qualification:id,name', 'department:id,name', 'title:id,name', 'staffCategory:id,name', 'branch:id,name'])
             ->latest()
             ->paginate($request->get('per_page', 50));
 
@@ -55,7 +57,7 @@ class HrIntegrationController extends Controller
     {
         $user = User::where('uuid', $uuid)
             ->where('business_id', '!=', 1)
-            ->with(['qualification:id,name', 'department:id,name', 'title:id,name', 'branch:id,name', 'business:id,name,uuid'])
+            ->with(['qualification:id,name', 'department:id,name', 'title:id,name', 'staffCategory:id,name', 'branch:id,name', 'business:id,name,uuid'])
             ->firstOrFail();
 
         return response()->json($this->withHrPermissions($user));
@@ -63,11 +65,9 @@ class HrIntegrationController extends Controller
 
     public function businesses()
     {
-        $businesses = Business::where('id', '!=', 1)
-            ->select('id', 'uuid', 'name', 'email', 'phone', 'account_number')
-            ->get();
+        $entities = app(KashtreEntityService::class)->registry();
 
-        return response()->json($businesses);
+        return response()->json($entities);
     }
 
     public function branches(Request $request)
@@ -113,6 +113,17 @@ class HrIntegrationController extends Controller
     public function qualifications(Request $request)
     {
         $query = Qualification::query()->select('id', 'uuid', 'name', 'business_id');
+
+        if ($request->has('business_id')) {
+            $query->where('business_id', $request->business_id);
+        }
+
+        return response()->json($query->get());
+    }
+
+    public function staffCategories(Request $request)
+    {
+        $query = StaffCategory::query()->select('id', 'uuid', 'name', 'description', 'business_id');
 
         if ($request->has('business_id')) {
             $query->where('business_id', $request->business_id);

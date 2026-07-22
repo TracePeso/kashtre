@@ -1,4 +1,5 @@
 @php
+    $showTechnicalSupervisor = $showTechnicalSupervisor ?? true;
     $approver1Id = old(
         'approver_1',
         $moduleConfig?->approvers->firstWhere('approval_order', 1)?->user_id
@@ -16,7 +17,9 @@
         <p class="text-sm font-medium text-gray-700">Goods receive note approvers</p>
         <p class="text-xs text-gray-500 mt-0.5">
             Assign 1–2 staff who approve RFQs, stock transfers, stock counts, and goods receive notes.
-            Optionally add a technical supervisor — included only on goods receive notes when set.
+            @if($showTechnicalSupervisor)
+                Optionally add a technical supervisor — included only on goods receive notes when set.
+            @endif
         </p>
     </div>
 
@@ -91,6 +94,7 @@
         @enderror
     </div>
 
+    @if($showTechnicalSupervisor)
     <div>
         <label for="search-grn-technical-supervisor" class="block text-sm font-medium text-gray-700 mb-2">
             Technical supervisor <span class="text-gray-400">(optional)</span>
@@ -134,6 +138,7 @@
             <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
         @enderror
     </div>
+    @endif
 </div>
 
 <script>
@@ -157,6 +162,8 @@
 
         filterRows('search-grn-approver-1', 'grn-approver-1-row');
         filterRows('search-grn-approver-2', 'grn-approver-2-row');
+        @if($showTechnicalSupervisor)
         filterRows('search-grn-technical-supervisor', 'grn-technical-supervisor-row');
+        @endif
     })();
 </script>

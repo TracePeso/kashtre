@@ -23,7 +23,7 @@ class UserController extends Controller
     protected function normalizeNullableUserEnrollment(Request $request): void
     {
         foreach ([
-            'branch_id', 'qualification_id', 'department_id', 'title_id',
+            'branch_id', 'qualification_id', 'department_id', 'title_id', 'staff_category_id',
             'phone', 'nin', 'gender', 'birth_date', 'marital_status',
             'surname', 'first_name', 'middle_name', 'status',
         ] as $key) {
@@ -114,6 +114,7 @@ class UserController extends Controller
             'qualification_id' => 'nullable|exists:qualifications,id',
             'department_id' => 'nullable|exists:departments,id',
             'title_id' => 'nullable|exists:titles,id',
+            'staff_category_id' => 'nullable|exists:staff_categories,id',
             'service_points' => 'nullable|array',
             'service_points.*' => 'exists:service_points,id',
             'allowed_branches' => 'nullable|array',
@@ -162,6 +163,7 @@ class UserController extends Controller
                 'qualification_id' => $validated['qualification_id'] ?? null,
                 'department_id' => $validated['department_id'] ?? null,
                 'title_id' => $validated['title_id'] ?? null,
+                'staff_category_id' => $validated['staff_category_id'] ?? null,
                 'service_points' => $validated['service_points'] ?? [],
                 'allowed_branches' => $validated['allowed_branches'] ?? [],
                 'permissions' => $validated['permissions_menu'],
@@ -280,6 +282,7 @@ class UserController extends Controller
             'qualification_id' => 'nullable|exists:qualifications,id',
             'department_id' => 'nullable|exists:departments,id',
             'title_id' => 'nullable|exists:titles,id',
+            'staff_category_id' => 'nullable|exists:staff_categories,id',
             'service_points' => 'nullable|array',
             'service_points.*' => 'exists:service_points,id',
             'allowed_branches' => 'nullable|array',
@@ -322,6 +325,7 @@ class UserController extends Controller
                 'qualification_id' => $validated['qualification_id'] ?? null,
                 'department_id' => $validated['department_id'] ?? null,
                 'title_id' => $validated['title_id'] ?? null,
+                'staff_category_id' => $validated['staff_category_id'] ?? null,
                 'service_points' => $validated['service_points'] ?? [],
                 'allowed_branches' => $validated['allowed_branches'] ?? [],
                 'permissions' => $validated['permissions_menu'],

@@ -188,7 +188,7 @@ class Store extends Model
     {
         return [
             self::DISTRIBUTION_END => 'End store',
-            self::DISTRIBUTION_INTERIM => 'Interim distribution store',
+            self::DISTRIBUTION_INTERIM => 'Distribution store',
         ];
     }
 
@@ -247,10 +247,10 @@ class Store extends Model
         $childCount = count($storeIds) - 1;
 
         if ($childCount === 0) {
-            return $this->selectLabel().' only (no child stores in this network).';
+            return $this->selectLabel().' only (no linked end stores).';
         }
 
-        return $this->selectLabel().' + '.$childCount.' child store'.($childCount === 1 ? '' : 's');
+        return $this->selectLabel().' + '.$childCount.' end store'.($childCount === 1 ? '' : 's');
     }
 
     /**

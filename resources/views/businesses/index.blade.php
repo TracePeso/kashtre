@@ -4,7 +4,10 @@
 
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg p-6">
                 <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-bold text-gray-800 dark:text-white">Manage Businesses</h2>
+                    <h2 class="text-xl font-bold text-gray-800 dark:text-white">Kashtre Entities</h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        Organisations onboarded on Kashtre. Use <strong>Register as a supplier</strong> when creating an entity so other organisations can link it in procurement.
+                    </p>
 
                     <div class="flex space-x-2">
                         @if (Auth::check() && Auth::user()->business_id == 1)
@@ -92,6 +95,22 @@
                     <div class="mt-4 border-t border-gray-200 dark:border-gray-600 pt-4">
                         <p class="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3">Financial year</p>
                         @include('partials.financial-year-fields', ['idPrefix' => 'create-'])
+                    </div>
+
+                    <div class="mt-4 border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-900/40">
+                        <label class="inline-flex items-start gap-3 cursor-pointer">
+                            <input type="checkbox"
+                                   name="register_as_supplier"
+                                   value="1"
+                                   {{ old('register_as_supplier') ? 'checked' : '' }}
+                                   class="mt-1 rounded border-gray-300 text-[#011478] focus:ring-[#011478]">
+                            <span>
+                                <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">Register as a supplier</span>
+                                <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                    Mark this Kashtre entity as available to other organisations in the network. They can add it as a supplier for procurement (RFQs, LPOs, goods receive notes).
+                                </span>
+                            </span>
+                        </label>
                     </div>
 
 

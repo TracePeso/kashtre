@@ -44,6 +44,7 @@ class User extends Authenticatable
         'department_id',
         'section_id',
         'title_id',
+        'staff_category_id',
         'gender',
         'phone',
         'nin',
@@ -127,6 +128,11 @@ class User extends Authenticatable
     public function title()
     {
         return $this->belongsTo(\App\Models\Title::class);
+    }
+
+    public function staffCategory()
+    {
+        return $this->belongsTo(StaffCategory::class);
     }
 
     public function department()

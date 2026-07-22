@@ -26,7 +26,13 @@ class ListBusiness extends Component implements HasForms, HasTable
 
     public function table(Table $table): Table
     {
-        $query = Business::query()->where('id', '!=', 1)->latest();
+        $query = Business::query()
+            ->kashtreEntities()
+            ->withCount([
+                'users as active_staff_count' => fn ($q) => $q->where('status', 'active'),
+            ])
+            ->with('inventoryModuleConfig:id,business_id,is_active')
+            ->latest();
 
         if (Auth::check() && Auth::user()->business_id !== 1) {
             $query->where('id', Auth::user()->business_id);
@@ -63,12 +69,36 @@ class ListBusiness extends Component implements HasForms, HasTable
                     ->searchable(),
 
                 Tables\Columns\TextColumn::make('account_number')
+                    ->label('Kashtre ID')
                     ->searchable(),
+                Tables\Columns\TextColumn::make('active_staff_count')
+                    ->label('Active staff')
+                    ->numeric()
+                    ->sortable()
+                    ->alignEnd()
+                    ->description('Signals current platform use'),
+                Tables\Columns\IconColumn::make('inventory_module_active')
+                    ->label('Inventory')
+                    ->state(fn (Business $record): bool => (bool) $record->inventoryModuleConfig?->is_active)
+                    ->boolean()
+                    ->trueColor('success')
+                    ->falseColor('gray'),
                 Tables\Columns\TextColumn::make('entity_code')
                     ->label('Entity code')
                     ->placeholder('—')
                     ->searchable()
                     ->toggleable(),
+                Tables\Columns\IconColumn::make('registered_as_supplier')
+                    ->label('Kashtre supplier')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-badge')
+                    ->falseIcon('heroicon-o-minus')
+                    ->trueColor('success')
+                    ->falseColor('gray')
+                    ->tooltip(fn (Business $record): string => $record->isRegisteredAsSupplier()
+                        ? 'Registered as a supplier — other entities can link this organisation in procurement.'
+                        : 'Not registered as a network supplier.')
+                    ->sortable(),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
@@ -84,6 +114,20 @@ class ListBusiness extends Component implements HasForms, HasTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                Tables\Filters\TernaryFilter::make('registered_as_supplier')
+                    ->label('Kashtre supplier')
+                    ->placeholder('All entities')
+                    ->trueLabel('Registered as supplier')
+                    ->falseLabel('Not registered as supplier'),
+                Tables\Filters\TernaryFilter::make('actively_utilizing')
+                    ->label('Active use')
+                    ->placeholder('All entities')
+                    ->trueLabel('Has active staff')
+                    ->falseLabel('No active staff')
+                    ->queries(
+                        true: fn ($query) => $query->activelyUtilizing(),
+                        false: fn ($query) => $query->whereDoesntHave('users', fn ($q) => $q->where('status', 'active')),
+                    ),
                 ...(Auth::check() && Auth::user()->business_id === 1 ? [
                     Tables\Filters\SelectFilter::make('name')
                         ->label('Business')

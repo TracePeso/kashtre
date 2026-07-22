@@ -16,6 +16,7 @@ class Supplier extends Model
     protected $fillable = [
         'uuid',
         'business_id',
+        'linked_business_id',
         'name',
         'email',
         'phone',
@@ -32,6 +33,16 @@ class Supplier extends Model
     public function business()
     {
         return $this->belongsTo(Business::class);
+    }
+
+    public function linkedBusiness()
+    {
+        return $this->belongsTo(Business::class, 'linked_business_id');
+    }
+
+    public function isKashtreEntitySupplier(): bool
+    {
+        return $this->linked_business_id !== null;
     }
 
     public function branch()

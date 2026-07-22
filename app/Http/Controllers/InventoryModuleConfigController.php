@@ -74,8 +74,7 @@ class InventoryModuleConfigController extends Controller
             'description' => 'nullable|string|max:1000',
             'is_active' => 'boolean',
             'approver_1' => 'required|exists:users,id',
-            'approver_2' => 'nullable|exists:users,id|different:approver_1|different:technical_supervisor',
-            'technical_supervisor' => 'nullable|exists:users,id|different:approver_1|different:approver_2',
+            'approver_2' => 'nullable|exists:users,id|different:approver_1',
         ], $this->stockSettingsRules()));
 
         if (InventoryModuleConfig::where('business_id', $validated['business_id'])->exists()) {
@@ -89,7 +88,6 @@ class InventoryModuleConfigController extends Controller
             [
                 (int) $validated['approver_1'],
                 isset($validated['approver_2']) ? (int) $validated['approver_2'] : null,
-                isset($validated['technical_supervisor']) ? (int) $validated['technical_supervisor'] : null,
             ]
         );
 
@@ -101,7 +99,7 @@ class InventoryModuleConfigController extends Controller
                 'safety_stock_days' => $validated['safety_stock_days'],
                 'buffer_stock_days' => $validated['buffer_stock_days'],
                 'notification_to_order_days' => $validated['notification_to_order_days'],
-                'period_of_order_days' => $validated['period_of_order_days'],
+                'period_of_order_days' => 30,
                 'is_active' => $request->boolean('is_active', true),
                 'created_by' => Auth::id(),
             ]);
@@ -110,7 +108,7 @@ class InventoryModuleConfigController extends Controller
                 $config,
                 $validated['approver_1'],
                 $validated['approver_2'] ?? null,
-                $validated['technical_supervisor'] ?? null
+                null
             );
 
             return $config;
@@ -176,27 +174,30 @@ class InventoryModuleConfigController extends Controller
         $validated = $request->validate(array_merge([
             'description' => 'nullable|string|max:1000',
             'approver_1' => 'required|exists:users,id',
-            'approver_2' => 'nullable|exists:users,id|different:approver_1|different:technical_supervisor',
-            'technical_supervisor' => 'nullable|exists:users,id|different:approver_1|different:approver_2',
+            'approver_2' => 'nullable|exists:users,id|different:approver_1',
         ], $this->stockSettingsRules()));
+
+        $inventoryModuleConfig->loadMissing('approvers');
+
+        $existingTechnicalSupervisorId = $inventoryModuleConfig->approvers
+            ->firstWhere('role', InventoryModuleApprover::ROLE_TECHNICAL_SUPERVISOR)
+            ?->user_id;
 
         $this->assertApproversBelongToBusiness(
             (int) $inventoryModuleConfig->business_id,
             [
                 (int) $validated['approver_1'],
                 isset($validated['approver_2']) ? (int) $validated['approver_2'] : null,
-                isset($validated['technical_supervisor']) ? (int) $validated['technical_supervisor'] : null,
             ]
         );
 
-        DB::transaction(function () use ($inventoryModuleConfig, $validated) {
+        DB::transaction(function () use ($inventoryModuleConfig, $validated, $existingTechnicalSupervisorId) {
             $inventoryModuleConfig->update([
                 'description' => $validated['description'] ?? null,
                 'fixed_daily_average_suom' => $validated['fixed_daily_average_suom'],
                 'safety_stock_days' => $validated['safety_stock_days'],
                 'buffer_stock_days' => $validated['buffer_stock_days'],
                 'notification_to_order_days' => $validated['notification_to_order_days'],
-                'period_of_order_days' => $validated['period_of_order_days'],
                 'updated_by' => Auth::id(),
             ]);
 
@@ -204,7 +205,7 @@ class InventoryModuleConfigController extends Controller
                 $inventoryModuleConfig,
                 $validated['approver_1'],
                 $validated['approver_2'] ?? null,
-                $validated['technical_supervisor'] ?? null
+                $existingTechnicalSupervisorId ? (int) $existingTechnicalSupervisorId : null
             );
         });
 
@@ -285,7 +286,6 @@ class InventoryModuleConfigController extends Controller
             'safety_stock_days' => 'required|numeric|min:0',
             'buffer_stock_days' => 'required|numeric|min:0',
             'notification_to_order_days' => 'required|numeric|min:0',
-            'period_of_order_days' => 'required|numeric|min:0',
         ];
     }
 
