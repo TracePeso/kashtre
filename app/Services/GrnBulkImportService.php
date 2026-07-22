@@ -32,6 +32,7 @@ class GrnBulkImportService
     public function parseUpload(UploadedFile $file, int $businessId, ?int $supplierId = null): array
     {
         $items = $this->itemsForBusiness($businessId, $supplierId);
+        $lastGrnPrices = app(GoodsReceivedNoteService::class)->lastApprovedPurchasePricesPerOuom($businessId);
         $itemsByCode = $items->keyBy(fn (Item $item) => strtolower(trim((string) $item->code)));
 
         $unitNames = ItemUnit::query()
@@ -119,7 +120,7 @@ class GrnBulkImportService
                 continue;
             }
 
-            $defaults = $this->defaultLineFromItem($item);
+            $defaults = $this->defaultLineFromItem($item, $lastGrnPrices);
 
             $duom = trim((string) ($data['duom'] ?? ''));
 
@@ -211,8 +212,10 @@ class GrnBulkImportService
      */
     public function catalogueLines(int $businessId, ?int $supplierId = null): array
     {
+        $lastGrnPrices = app(GoodsReceivedNoteService::class)->lastApprovedPurchasePricesPerOuom($businessId);
+
         return $this->itemsForBusiness($businessId, $supplierId)
-            ->map(fn (Item $item) => $this->defaultLineFromItem($item))
+            ->map(fn (Item $item) => $this->defaultLineFromItem($item, $lastGrnPrices))
             ->values()
             ->all();
     }
@@ -220,7 +223,10 @@ class GrnBulkImportService
     /**
      * @return array<string, mixed>
      */
-    public function defaultLineFromItem(Item $item): array
+    /**
+     * @param  array<int, float>|null  $lastGrnPricesByItem
+     */
+    public function defaultLineFromItem(Item $item, ?array $lastGrnPricesByItem = null): array
     {
         $conversion = (float) ($item->suom_per_ouom ?? 0) > 0
             ? (float) $item->suom_per_ouom
@@ -228,6 +234,9 @@ class GrnBulkImportService
 
         $suom = $item->itemUnit?->name ?? '';
         $duom = $item->orderUnit?->name ?? $suom;
+
+        $grnService = app(GoodsReceivedNoteService::class);
+        $lastGrnPricesByItem ??= $grnService->lastApprovedPurchasePricesPerOuom((int) $item->business_id);
 
         return [
             'item_id' => (string) $item->id,
@@ -238,7 +247,7 @@ class GrnBulkImportService
             'quantity' => 1,
             'batch_number' => '',
             'expiry_date' => '',
-            'purchase_price' => $item->purchasePricePerOuom(),
+            'purchase_price' => $grnService->purchasePricePerOuomForItem($item, $lastGrnPricesByItem),
             'conversion' => $conversion,
         ];
     }
@@ -281,6 +290,7 @@ class GrnBulkImportService
     public function templateRows(int $businessId, ?int $supplierId = null, ?array $itemIds = null): array
     {
         $items = $this->itemsForBusiness($businessId, $supplierId, $itemIds);
+        $lastGrnPrices = app(GoodsReceivedNoteService::class)->lastApprovedPurchasePricesPerOuom($businessId);
 
         $rows = [
             ['# Fill quantity (and batch/expiry if needed) only for items received.'],
@@ -291,7 +301,7 @@ class GrnBulkImportService
         ];
 
         foreach ($items as $item) {
-            $defaults = $this->defaultLineFromItem($item);
+            $defaults = $this->defaultLineFromItem($item, $lastGrnPrices);
 
             $rows[] = [
                 $item->code ?? '',

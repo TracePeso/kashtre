@@ -47,6 +47,12 @@
             <div class="mt-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded text-sm">{{ session('success') }}</div>
         @endif
 
+        @if($errors->any())
+            <div class="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+                <ul class="list-disc list-inside">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
+            </div>
+        @endif
+
         @if($transfer->isDraft())
             <div class="mt-4 bg-slate-50 border border-slate-200 text-slate-800 px-4 py-3 rounded text-sm">
                 <strong>Draft request.</strong> Submit when quantities are correct. Configured approvers must sign off before stock is deducted from the dispatch store.

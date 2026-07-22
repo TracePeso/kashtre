@@ -8,9 +8,11 @@ use App\Models\GoodsReceivedNoteLine;
 use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
 use App\Models\InventoryStockMovement;
+use App\Models\Item;
 use App\Models\User;
 use App\Services\Inventory\InventoryProcurementAudit;
 use App\Services\Inventory\InventoryPurchaseOrderFulfillmentService;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -461,5 +463,79 @@ class GoodsReceivedNoteService
         }
 
         return true;
+    }
+
+    /**
+     * Latest approved GRN purchase price per delivery unit, keyed by item id.
+     *
+     * @return array<int, float>
+     */
+    public function lastApprovedPurchasePricesPerOuom(int $businessId): array
+    {
+        $lines = GoodsReceivedNoteLine::query()
+            ->select([
+                'goods_received_note_lines.item_id',
+                'goods_received_note_lines.purchase_price',
+            ])
+            ->join('goods_received_notes', 'goods_received_notes.id', '=', 'goods_received_note_lines.goods_received_note_id')
+            ->where('goods_received_notes.business_id', $businessId)
+            ->where('goods_received_notes.status', GoodsReceivedNote::STATUS_APPROVED)
+            ->whereNotNull('goods_received_notes.approved_at')
+            ->where('goods_received_note_lines.purchase_price', '>', 0)
+            ->orderByDesc('goods_received_notes.approved_at')
+            ->orderByDesc('goods_received_notes.id')
+            ->orderByDesc('goods_received_note_lines.id')
+            ->get();
+
+        $prices = [];
+
+        foreach ($lines as $line) {
+            $itemId = (int) $line->item_id;
+
+            if (! isset($prices[$itemId])) {
+                $prices[$itemId] = round((float) $line->purchase_price, 2);
+            }
+        }
+
+        return $prices;
+    }
+
+    /**
+     * @param  array<int, float>  $lastGrnPricesByItem
+     */
+    public function purchasePricePerOuomForItem(Item $item, array $lastGrnPricesByItem = []): float
+    {
+        $fromGrn = $lastGrnPricesByItem[$item->id] ?? null;
+
+        if ($fromGrn !== null && (float) $fromGrn > 0) {
+            return round((float) $fromGrn, 2);
+        }
+
+        return $item->purchasePricePerOuom();
+    }
+
+    /**
+     * @param  Collection<int, Item>  $items
+     * @param  array<int, float>  $lastGrnPricesByItem
+     * @return array<int, array<string, mixed>>
+     */
+    public function itemsForGrnForm(Collection $items, array $lastGrnPricesByItem): array
+    {
+        return $items->map(function (Item $item) use ($lastGrnPricesByItem) {
+            $fromLastGrn = isset($lastGrnPricesByItem[$item->id]) && (float) $lastGrnPricesByItem[$item->id] > 0;
+
+            return [
+                'id' => $item->id,
+                'name' => $item->name,
+                'code' => $item->code,
+                'suom' => $item->itemUnit?->name,
+                'order_unit' => $item->orderUnit?->name,
+                'suom_per_ouom' => (float) ($item->suom_per_ouom ?? 0),
+                'default_price' => (float) ($item->default_price ?? 0),
+                'purchase_price_per_ouom' => $item->purchasePricePerOuom(),
+                'default_purchase_price_per_ouom' => $this->purchasePricePerOuomForItem($item, $lastGrnPricesByItem),
+                'from_last_grn' => $fromLastGrn,
+            ];
+        })->values()->all();
     }
 }

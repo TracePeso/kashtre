@@ -64,7 +64,10 @@ class EditStockTransferLines extends Component implements HasForms, HasTable
 
                         \App\Support\InventoryBusinessContext::assertWritable();
 
-                        $service->updateLine($record, (float) ($state ?? 0), (float) $record->received_quantity_suom);
+                        $approved = (float) ($state ?? 0);
+                        $received = min((float) $record->received_quantity_suom, $approved);
+
+                        $service->updateLine($record, $approved, $received);
 
                         return $state;
                     }),

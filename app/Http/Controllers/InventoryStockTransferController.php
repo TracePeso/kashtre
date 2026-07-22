@@ -110,7 +110,7 @@ class InventoryStockTransferController extends Controller
 
         return redirect()
             ->route('inventory.transfers.show', $transfer)
-            ->with('success', 'Transfer request submitted. Awaiting dispatch store approval.');
+            ->with('success', 'Transfer request submitted. Awaiting configured approvers.');
     }
 
     public function show(StockTransfer $transfer)
@@ -140,7 +140,7 @@ class InventoryStockTransferController extends Controller
 
         return redirect()
             ->route('inventory.transfers.show', $transfer)
-            ->with('success', 'Transfer submitted to dispatch store for approval.');
+            ->with('success', 'Transfer submitted for approval.');
     }
 
     public function approve(Request $request, StockTransfer $transfer)

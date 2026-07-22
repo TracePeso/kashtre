@@ -1,15 +1,7 @@
 <x-app-layout>
 <div class="min-h-screen bg-gray-50 py-6" x-data="grnBulkUploadForm(
     @js($itemUnits->pluck('name')->values()),
-    @js($items->map(fn ($i) => [
-        'id' => $i->id,
-        'name' => $i->name,
-        'code' => $i->code,
-        'suom' => $i->itemUnit?->name,
-        'order_unit' => $i->orderUnit?->name,
-        'suom_per_ouom' => (float) ($i->suom_per_ouom ?? 0),
-        'default_price' => (float) ($i->default_price ?? 0),
-    ])->values()),
+    @js($grnFormItems),
     @js($supplierItemIds),
     @js([
         'bulkTemplate' => route('inventory.receive.bulk-template'),

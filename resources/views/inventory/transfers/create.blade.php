@@ -24,7 +24,7 @@
             <p class="font-medium text-gray-900">How transfers work</p>
             <ol class="mt-2 list-decimal list-inside space-y-1">
                 <li>Create and submit a transfer request with the items and quantities needed.</li>
-                <li>The dispatch store approves — stock is deducted from that store.</li>
+                <li>Configured approvers sign off in order — stock is moved to in-transit at the dispatch store after the last approval.</li>
                 <li>Goods are physically moved to the receiving store.</li>
                 <li>The receiving store confirms receipt — stock is added there.</li>
             </ol>

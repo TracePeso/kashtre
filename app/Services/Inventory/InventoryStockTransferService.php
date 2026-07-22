@@ -266,8 +266,13 @@ class InventoryStockTransferService
         return DB::transaction(function () use ($transfer, $user) {
             $transfer->load('lines.item');
 
+            $this->assertReceivableQuantities($transfer);
+
             foreach ($transfer->lines as $line) {
-                $qty = (float) $line->received_quantity_suom;
+                $qty = min(
+                    (float) $line->received_quantity_suom,
+                    (float) $line->approved_quantity_suom
+                );
 
                 if ($qty <= 0) {
                     continue;
@@ -401,9 +406,18 @@ class InventoryStockTransferService
             throw ValidationException::withMessages(['status' => 'Lines can only be edited while draft or pending approval.']);
         }
 
+        $approvedQty = max(0, round($approvedQty, 4));
+        $receivedQty = max(0, round($receivedQty, 4));
+
+        if ($receivedQty > $approvedQty + 0.0001) {
+            throw ValidationException::withMessages([
+                'received_quantity_suom' => 'Quantity to receive cannot exceed the approved quantity.',
+            ]);
+        }
+
         $line->update([
-            'approved_quantity_suom' => max(0, $approvedQty),
-            'received_quantity_suom' => max(0, $receivedQty),
+            'approved_quantity_suom' => $approvedQty,
+            'received_quantity_suom' => $receivedQty,
         ]);
 
         return $line->fresh('item');
@@ -475,11 +489,22 @@ class InventoryStockTransferService
     {
         $transfer->load('lines.item');
 
+        $issuedAny = false;
+
         foreach ($transfer->lines as $line) {
             $qty = (float) $line->approved_quantity_suom;
 
             if ($qty <= 0) {
                 continue;
+            }
+
+            $received = (float) $line->received_quantity_suom;
+
+            if ($received > $qty + 0.0001) {
+                throw ValidationException::withMessages([
+                    'lines' => 'Quantity to receive cannot exceed the approved quantity for '
+                        .($line->item->name ?? 'an item').'.',
+                ]);
             }
 
             // Temporary decrement: leave available stock, hold as in-transit until receipt confirmed.
@@ -492,6 +517,14 @@ class InventoryStockTransferService
                 $user->id,
                 'Issued in transit '.$transfer->reference
             );
+
+            $issuedAny = true;
+        }
+
+        if (! $issuedAny) {
+            throw ValidationException::withMessages([
+                'lines' => 'At least one line must have an approved quantity greater than zero.',
+            ]);
         }
 
         $transfer->update([
@@ -583,6 +616,33 @@ class InventoryStockTransferService
             $userId,
             'Transfer in '.$transfer->reference
         );
+    }
+
+    private function assertReceivableQuantities(StockTransfer $transfer): void
+    {
+        $hasReceivable = false;
+
+        foreach ($transfer->lines as $line) {
+            $approved = (float) $line->approved_quantity_suom;
+            $received = (float) $line->received_quantity_suom;
+
+            if ($received > $approved + 0.0001) {
+                throw ValidationException::withMessages([
+                    'lines' => 'Quantity to receive cannot exceed the approved quantity for '
+                        .($line->item->name ?? 'an item').'.',
+                ]);
+            }
+
+            if ($received > 0) {
+                $hasReceivable = true;
+            }
+        }
+
+        if (! $hasReceivable) {
+            throw ValidationException::withMessages([
+                'lines' => 'At least one line must have a quantity to receive greater than zero.',
+            ]);
+        }
     }
 
     private function currentPendingApproval(StockTransfer $transfer): ?StockTransferApproval

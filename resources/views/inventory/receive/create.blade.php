@@ -1,17 +1,7 @@
 <x-app-layout>
 <div class="min-h-screen bg-gray-50 py-6" x-data="grnCreateForm(
     @js($itemUnits->pluck('name')->values()),
-    @js($items->map(fn ($i) => [
-        'id' => $i->id,
-        'name' => $i->name,
-        'code' => $i->code,
-        'suom' => $i->itemUnit?->name,
-        'order_unit' => $i->orderUnit?->name,
-        'suom_per_ouom' => (float) ($i->suom_per_ouom ?? 0),
-        'default_price' => (float) ($i->default_price ?? 0),
-        'purchase_price_per_suom' => $i->purchasePricePerSuom(),
-        'purchase_price_per_ouom' => $i->purchasePricePerOuom(),
-    ])->values()),
+    @js($grnFormItems),
     @js($supplierItemIds),
     @js($prefillLines ?? []),
     @js($prefillStoreId),
@@ -297,6 +287,10 @@
                                 <label class="block text-xs font-medium text-gray-600 mb-1">Purchase price <span class="text-red-500">*</span></label>
                                 <input type="number" step="0.01" min="0" x-model.number="draftLine.purchase_price" required
                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                                <p class="mt-1 text-xs text-gray-500" x-show="draftLine.item_id" x-cloak>
+                                    <span x-show="itemForLine(draftLine)?.from_last_grn">Pre-filled from the last approved goods receive note.</span>
+                                    <span x-show="!itemForLine(draftLine)?.from_last_grn">Pre-filled from the item purchase price (no approved GRN yet).</span>
+                                </p>
                             </div>
                         </div>
 
@@ -639,7 +633,7 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
                 line.duom = duom;
             }
             line.conversion = conversion;
-            line.purchase_price = Math.round((parseFloat(item.purchase_price_per_ouom) || 0) * 100) / 100;
+            line.purchase_price = Math.round((parseFloat(item.default_purchase_price_per_ouom) || 0) * 100) / 100;
             this.draftError = '';
         },
         validateDraft() {

@@ -528,6 +528,14 @@ class GoodsReceivedNoteController extends Controller
             ? $moduleConfig->grnApprovers()->with('user')->get()
             : collect();
 
+        $lastGrnPurchasePricesByItem = $this->service->lastApprovedPurchasePricesPerOuom($businessId);
+
+        $items = Item::where('business_id', $businessId)
+            ->where('type', 'good')
+            ->with(['itemUnit', 'orderUnit'])
+            ->orderBy('name')
+            ->get();
+
         return [
             'suppliers' => $suppliers,
             'supplierItemIds' => $suppliers->mapWithKeys(fn (Supplier $supplier) => [
@@ -543,11 +551,9 @@ class GoodsReceivedNoteController extends Controller
                 ->where('business_id', $businessId)
                 ->orderBy('name')
                 ->get(),
-            'items' => Item::where('business_id', $businessId)
-                ->where('type', 'good')
-                ->with(['itemUnit', 'orderUnit'])
-                ->orderBy('name')
-                ->get(),
+            'items' => $items,
+            'grnFormItems' => $this->service->itemsForGrnForm($items, $lastGrnPurchasePricesByItem),
+            'lastGrnPurchasePricesByItem' => $lastGrnPurchasePricesByItem,
             'grnApprovers' => $grnApprovers,
             'technicalSupervisor' => $grnApprovers->first(
                 fn ($approver) => $approver->role === \App\Models\InventoryModuleApprover::ROLE_TECHNICAL_SUPERVISOR

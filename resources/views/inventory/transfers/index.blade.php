@@ -4,7 +4,7 @@
         <div class="md:flex md:items-center md:justify-between">
             <div class="flex-1 min-w-0">
                 <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">Stock Transfers</h2>
-                <p class="mt-1 text-sm text-gray-500">Request stock moves between stores: submit → dispatch approves → receive confirms.</p>
+                <p class="mt-1 text-sm text-gray-500">Request stock moves between stores: submit → configured approvers → receive confirms.</p>
             </div>
             <div class="mt-4 md:mt-0">
                 <a href="{{ route('inventory.transfers.create') }}"
