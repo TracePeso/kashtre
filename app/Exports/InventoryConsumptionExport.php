@@ -2,9 +2,12 @@
 
 namespace App\Exports;
 
+use App\Exports\Concerns\WithInstitutionExportHeader;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithCustomStartCell;
+use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithStyles;
@@ -12,8 +15,10 @@ use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class InventoryConsumptionExport implements FromCollection, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithTitle
+class InventoryConsumptionExport implements FromCollection, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithTitle, WithCustomStartCell, WithEvents
 {
+    use WithInstitutionExportHeader;
+
     /**
      * @param  Collection<int, object>  $rows
      * @param  array{
@@ -71,10 +76,15 @@ class InventoryConsumptionExport implements FromCollection, WithHeadings, WithMa
         ];
     }
 
+    public function registerEvents(): array
+    {
+        return $this->institutionHeaderEvents();
+    }
+
     public function styles(Worksheet $sheet): array
     {
         return [
-            1 => [
+            $this->institutionHeaderStartRow() => [
                 'font' => ['bold' => true],
                 'fill' => [
                     'fillType' => Fill::FILL_SOLID,

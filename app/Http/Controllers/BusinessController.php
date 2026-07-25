@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\HandlesBusinessBranding;
 use App\Models\Business;
 use App\Models\Country;
 use App\Support\BusinessBranding;
+use App\Support\SupplierCategorySelection;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -47,6 +48,9 @@ class BusinessController extends Controller
                 'country_id' => 'required|exists:countries,id',
                 'financial_year_start_month' => 'required|integer|min:1|max:12',
                 'financial_year_start_day' => 'required|integer|min:1|max:31',
+                'register_as_supplier' => 'sometimes|boolean',
+                'supplier_industry_id' => 'nullable|exists:supplier_industries,id',
+                'supplier_sub_category_id' => 'nullable|exists:supplier_sub_categories,id',
             ]
         ));
 
@@ -61,7 +65,9 @@ class BusinessController extends Controller
 
             // Generate time-based account number with prefix '25' and random 2-digit suffix
             $validated['account_number'] = 'KS' . time();
-            $validated['registered_as_supplier'] = $request->boolean('register_as_supplier');
+            $registeredAsSupplier = $request->boolean('register_as_supplier');
+            $validated['registered_as_supplier'] = $registeredAsSupplier;
+            $validated = SupplierCategorySelection::normalize($registeredAsSupplier, $validated);
 
             // Create business
             $business = Business::create($validated);
@@ -90,6 +96,8 @@ class BusinessController extends Controller
 
             // Log::error('DB error while creating business: ' . $e->getMessage());
             // return redirect()->back()->with('error', 'A database error occurred. Please contact support.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             dd($e);
             Log::error('General error while creating business: ' . $e->getMessage());

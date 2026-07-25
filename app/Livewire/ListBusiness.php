@@ -4,6 +4,10 @@ namespace App\Livewire;
 
 use App\Models\Business;
 use App\Support\BusinessBranding;
+use App\Support\SupplierCategorySelection;
+use App\Models\SupplierSubCategory;
+use Filament\Forms;
+use Filament\Forms\Get;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Tables;
@@ -28,6 +32,7 @@ class ListBusiness extends Component implements HasForms, HasTable
     {
         $query = Business::query()
             ->kashtreEntities()
+            ->with(['supplierIndustry', 'supplierSubCategory'])
             ->withCount([
                 'users as active_staff_count' => fn ($q) => $q->where('status', 'active'),
             ])
@@ -99,6 +104,14 @@ class ListBusiness extends Component implements HasForms, HasTable
                         ? 'Registered as a supplier — other entities can link this organisation in procurement.'
                         : 'Not registered as a network supplier.')
                     ->sortable(),
+                Tables\Columns\TextColumn::make('supplierIndustry.name')
+                    ->label('Supplier industry')
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('supplierSubCategory.name')
+                    ->label('Supplier sub category')
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
@@ -139,6 +152,68 @@ class ListBusiness extends Component implements HasForms, HasTable
 
             ])
             ->actions([
+                Tables\Actions\Action::make('supplier_registration')
+                    ->label('Supplier profile')
+                    ->modalHeading('Supplier registration')
+                    ->modalDescription('Register this entity as a network supplier and classify it by industry and sub category.')
+                    ->modalSubmitActionLabel('Save')
+                    ->icon('heroicon-o-truck')
+                    ->color('primary')
+                    ->visible(fn (): bool => Auth::user()->business_id === 1)
+                    ->fillForm(fn (Business $record): array => [
+                        'registered_as_supplier' => $record->registered_as_supplier,
+                        'supplier_industry_id' => $record->supplier_industry_id,
+                        'supplier_sub_category_id' => $record->supplier_sub_category_id,
+                    ])
+                    ->form([
+                        Forms\Components\Toggle::make('registered_as_supplier')
+                            ->label('Register as a supplier')
+                            ->helperText('Other organisations can link this entity in procurement.')
+                            ->live(),
+                        Forms\Components\Select::make('supplier_industry_id')
+                            ->label('Industry')
+                            ->placeholder('Select industry')
+                            ->options(SupplierCategorySelection::industryOptions())
+                            ->searchable()
+                            ->required(fn (Get $get): bool => (bool) $get('registered_as_supplier'))
+                            ->visible(fn (Get $get): bool => (bool) $get('registered_as_supplier'))
+                            ->live()
+                            ->afterStateUpdated(fn (Forms\Set $set) => $set('supplier_sub_category_id', null)),
+                        Forms\Components\Select::make('supplier_sub_category_id')
+                            ->label('Sub category')
+                            ->placeholder('Select sub category')
+                            ->options(fn (Get $get): array => SupplierSubCategory::query()
+                                ->when($get('supplier_industry_id'), fn ($query, $id) => $query->where('supplier_industry_id', (int) $id))
+                                ->orderBy('name')
+                                ->get()
+                                ->mapWithKeys(fn (SupplierSubCategory $subCategory): array => [
+                                    $subCategory->id => $subCategory->name . ' (' . ($subCategory->business?->name ?? 'Entity') . ')',
+                                ])
+                                ->all())
+                            ->searchable()
+                            ->required(fn (Get $get): bool => (bool) $get('registered_as_supplier'))
+                            ->visible(fn (Get $get): bool => (bool) $get('registered_as_supplier'))
+                            ->disabled(fn (Get $get): bool => blank($get('supplier_industry_id'))),
+                    ])
+                    ->action(function (Business $record, array $data): void {
+                        $registered = (bool) ($data['registered_as_supplier'] ?? false);
+                        $normalized = SupplierCategorySelection::normalize($registered, $data);
+
+                        $record->update([
+                            'registered_as_supplier' => $registered,
+                            'supplier_industry_id' => $normalized['supplier_industry_id'],
+                            'supplier_sub_category_id' => $normalized['supplier_sub_category_id'],
+                        ]);
+
+                        Notification::make()
+                            ->title('Supplier profile saved')
+                            ->success()
+                            ->body($registered
+                                ? 'This entity is registered as a network supplier.'
+                                : 'Supplier registration removed for this entity.')
+                            ->send();
+                    }),
+
                 Tables\Actions\Action::make('entity_code')
                     ->label('Entity code')
                     ->modalHeading('Procurement entity code')

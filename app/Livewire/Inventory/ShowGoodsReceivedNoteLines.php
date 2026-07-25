@@ -74,12 +74,22 @@ class ShowGoodsReceivedNoteLines extends Component implements HasForms, HasTable
                     ->placeholder('—'),
 
                 TextColumn::make('purchase_price')
-                    ->label('Purchase price')
+                    ->label('Unit price (delivery)')
                     ->alignEnd()
                     ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2)),
 
+                TextColumn::make('unit_price_sale')
+                    ->label('Unit price (sale)')
+                    ->alignEnd()
+                    ->state(function (GoodsReceivedNoteLine $record): float {
+                        $conversion = max((float) $record->sale_units_per_purchase_unit, 0.0001);
+
+                        return round((float) $record->purchase_price / $conversion, 2);
+                    })
+                    ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2)),
+
                 TextColumn::make('line_total')
-                    ->label('Item total')
+                    ->label('Total amount')
                     ->alignEnd()
                     ->state(fn (GoodsReceivedNoteLine $record): float => (float) $record->quantity * (float) $record->purchase_price)
                     ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2))

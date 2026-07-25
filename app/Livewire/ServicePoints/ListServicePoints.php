@@ -2,6 +2,7 @@
 
 namespace App\Livewire\ServicePoints;
 
+use App\Models\Branch;
 use App\Models\ServicePoint;
 use App\Models\Business;
 use Filament\Forms;
@@ -9,6 +10,8 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Notifications\Notification;
 use Filament\Tables;
 use Filament\Tables\Actions\CreateAction;
@@ -91,35 +94,7 @@ class ListServicePoints extends Component implements HasForms, HasTable
                 EditAction::make()
                     ->visible(fn() => in_array('Edit Service Points', Auth::user()->permissions))
                     ->modalHeading('Edit Service Point')
-                    ->form(fn(ServicePoint $record) => [
-                        Forms\Components\Select::make('business_id')
-                            ->label('Business')
-                            ->placeholder('Select a business')
-                            ->options(Business::where('id', '!=', 1)->pluck('name', 'id'))
-                            ->required()
-                            ->disabled(fn() => Auth::user()->business_id !== 1),
-
-                        Forms\Components\Select::make('branch_id')
-                            ->label('Branch')
-                            ->placeholder('Select a branch')
-                            ->options(function ($get) {
-                                $businessId = $get('business_id');
-                                return $businessId
-                                    ? \App\Models\Branch::where('business_id', $businessId)->pluck('name', 'id')
-                                    : [];
-                            })
-                            ->required(),
-
-                        TextInput::make('name')
-                            ->label('Service Point Name')
-                            ->placeholder('Enter service point name')
-                            ->required(),
-
-                        Textarea::make('description')
-                            ->label('Description')
-                            ->placeholder('Enter service point description')
-                            ->nullable(),
-                    ])
+                    ->form(fn (ServicePoint $record) => $this->servicePointFormFields())
                     ->successNotificationTitle('Service Point updated successfully.'),
 
                 DeleteAction::make()
@@ -139,36 +114,7 @@ class ListServicePoints extends Component implements HasForms, HasTable
                     ->label('Create Service Point')
                     ->visible(fn() => in_array('Add Service Points', Auth::user()->permissions))
                     ->modalHeading('Add New Service Point')
-                    ->form([
-                        Forms\Components\Select::make('business_id')
-                            ->label('Business')
-                            ->placeholder('Select a business')
-                            ->options(Business::where('id', '!=', 1)->pluck('name', 'id'))
-                            ->required()
-                            ->default(Auth::user()->business_id)
-                            ->disabled(fn() => Auth::user()->business_id !== 1),
-
-                        Forms\Components\Select::make('branch_id')
-                            ->label('Branch')
-                            ->placeholder('Select a branch')
-                            ->options(function ($get) {
-                                $businessId = $get('business_id');
-                                return $businessId
-                                    ? \App\Models\Branch::where('business_id', $businessId)->pluck('name', 'id')
-                                    : [];
-                            })
-                            ->required(),
-
-                        TextInput::make('name')
-                            ->label('Service Point Name')
-                            ->placeholder('Enter service point name')
-                            ->required(),
-
-                        Textarea::make('description')
-                            ->label('Description')
-                            ->placeholder('Enter service point description')
-                            ->nullable(),
-                    ])
+                    ->form($this->servicePointFormFields())
                     ->createAnother(false)
                     ->after(function (ServicePoint $record) {
                         Notification::make()
@@ -177,6 +123,59 @@ class ListServicePoints extends Component implements HasForms, HasTable
                             ->send();
                     }),
             ]);
+    }
+
+    /**
+     * @return array<int, \Filament\Forms\Components\Component>
+     */
+    protected function servicePointFormFields(): array
+    {
+        return [
+            Forms\Components\Select::make('business_id')
+                ->label('Business')
+                ->placeholder('Select a business')
+                ->options(Business::where('id', '!=', 1)->pluck('name', 'id'))
+                ->required()
+                ->default(Auth::user()->business_id !== 1 ? Auth::user()->business_id : null)
+                ->disabled(fn () => Auth::user()->business_id !== 1)
+                ->dehydrated()
+                ->live()
+                ->afterStateUpdated(fn (Set $set) => $set('branch_id', null)),
+
+            Forms\Components\Select::make('branch_id')
+                ->label('Branch')
+                ->placeholder('Select a branch')
+                ->options(fn (Get $get): array => $this->branchOptionsForBusiness($get('business_id')))
+                ->required()
+                ->searchable()
+                ->disabled(fn (Get $get): bool => ! $get('business_id')),
+
+            TextInput::make('name')
+                ->label('Service Point Name')
+                ->placeholder('Enter service point name')
+                ->required(),
+
+            Textarea::make('description')
+                ->label('Description')
+                ->placeholder('Enter service point description')
+                ->nullable(),
+        ];
+    }
+
+    /**
+     * @return array<int|string, string>
+     */
+    protected function branchOptionsForBusiness(mixed $businessId): array
+    {
+        if (! $businessId) {
+            return [];
+        }
+
+        return Branch::query()
+            ->where('business_id', (int) $businessId)
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->all();
     }
 
     public function render(): View

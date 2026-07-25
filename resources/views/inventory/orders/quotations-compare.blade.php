@@ -1,4 +1,5 @@
 <x-app-layout>
+@include('partials.inventory.supplier-category-filter-script')
 <div class="min-h-screen bg-gray-50 py-6">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         <div class="flex flex-wrap items-start justify-between gap-4">
@@ -81,7 +82,13 @@
                     </a>
                 </div>
             </div>
-            <div class="px-5 py-4">
+            <div class="px-5 py-4" x-data="supplierCategoryFilterMixin(
+                @js($supplierCatalog),
+                @js($supplierIndustries),
+                @js($supplierSubCategoriesByIndustry)
+            )">
+                @include('partials.inventory.supplier-category-filter-fields', ['class' => 'mb-4'])
+
                 <form action="{{ route('inventory.orders.rfq-suppliers.invite', $order) }}" method="POST" class="space-y-3">
                     @csrf
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
@@ -89,13 +96,20 @@
                             @php
                                 $already = $rfqSuppliers->contains(fn ($row) => (int) $row['supplier_id'] === (int) $supplier->id);
                             @endphp
-                            <label class="flex items-start gap-2 text-sm text-gray-800">
+                            <label class="flex items-start gap-2 text-sm text-gray-800"
+                                   x-show="supplierMatchesCategoryFilter(@js($supplier->supplier_industry_id), @js($supplier->supplier_sub_category_id))"
+                                   x-cloak>
                                 <input type="checkbox" name="supplier_ids[]" value="{{ $supplier->id }}"
                                        @checked($already)
                                        class="mt-1 rounded border-gray-300 text-blue-600">
                                 <span>
                                     {{ $supplier->name }}
-                                    <span class="block text-xs text-gray-500">{{ $supplier->email ?: 'No email — download RFQ to share' }}</span>
+                                    <span class="block text-xs text-gray-500">
+                                        {{ $supplier->email ?: 'No email — download RFQ to share' }}
+                                        @if($supplier->industry?->name || $supplier->subCategory?->name)
+                                            · {{ $supplier->industry?->name ?? '—' }} / {{ $supplier->subCategory?->name ?? '—' }}
+                                        @endif
+                                    </span>
                                 </span>
                             </label>
                         @endforeach

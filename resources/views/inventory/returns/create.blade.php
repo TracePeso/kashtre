@@ -1,5 +1,21 @@
 <x-app-layout>
-<div class="min-h-screen bg-gray-50 py-6" x-data="{ lines: @js(collect(old('lines', [['item_id' => '', 'quantity_suom' => '', 'batch_number' => '']]))->values()) }">
+@include('partials.inventory.supplier-category-filter-script')
+<div class="min-h-screen bg-gray-50 py-6" x-data="Object.assign(
+    supplierCategoryFilterMixin(
+        @js($supplierCatalog ?? []),
+        @js($supplierIndustries ?? []),
+        @js($supplierSubCategoriesByIndustry ?? [])
+    ),
+    {
+        lines: @js(collect(old('lines', [['item_id' => '', 'quantity_suom' => '', 'batch_number' => '']]))->values()),
+        supplierId: @js((string) old('supplier_id', '')),
+        onSupplierCategoryFilterChange() {
+            if (this.supplierId && ! this.filteredSupplierCatalog().some((supplier) => String(supplier.id) === String(this.supplierId))) {
+                this.supplierId = '';
+            }
+        },
+    }
+)">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <a href="{{ route('inventory.returns.index') }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back</a>
         <h2 class="mt-4 text-2xl font-bold text-gray-900">New goods return</h2>
@@ -24,11 +40,12 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Supplier</label>
-                    <select name="supplier_id" class="mt-1 block w-full rounded-md border-gray-300 text-sm">
+                    @include('partials.inventory.supplier-category-filter-fields', ['class' => 'mb-2'])
+                    <select name="supplier_id" id="supplier_id" x-model="supplierId" class="mt-1 block w-full rounded-md border-gray-300 text-sm">
                         <option value="">— Optional —</option>
-                        @foreach($suppliers as $id => $name)
-                            <option value="{{ $id }}" @selected(old('supplier_id') == $id)>{{ $name }}</option>
-                        @endforeach
+                        <template x-for="supplier in filteredSupplierCatalog()" :key="supplier.id">
+                            <option :value="supplier.id" x-text="supplier.name"></option>
+                        </template>
                     </select>
                 </div>
                 <div>

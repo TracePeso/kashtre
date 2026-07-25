@@ -77,6 +77,8 @@ trait AccessTrait
         "Qualifications" => ['View Qualifications', 'Edit Qualifications', 'Add Qualifications', 'Bulky Update Qualifications'],
         "Titles" => ['View Titles', 'Edit Titles', 'Add Titles', 'Bulky Update Titles'],
         "Staff Categories" => ['View Staff Categories', 'Edit Staff Categories', 'Add Staff Categories', 'Bulky Update Staff Categories'],
+        "Supplier Industries" => ['View Supplier Industries', 'Edit Supplier Industries', 'Add Supplier Industries', 'Bulky Update Supplier Industries'],
+        "Supplier Sub Categories" => ['View Supplier Sub Categories', 'Edit Supplier Sub Categories', 'Add Supplier Sub Categories', 'Bulky Update Supplier Sub Categories'],
         "Rooms" => ['View Rooms', 'Edit Rooms', 'Add Rooms', 'Bulky Update Rooms'],
         "Sections" => ['View Sections', 'Edit Sections', 'Add Sections', 'Bulky Update Sections'],
         "Item Units" => ['View Item Units', 'Edit Item Units', 'Add Item Units', 'Bulky Update Item Units'],

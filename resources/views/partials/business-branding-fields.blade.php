@@ -15,10 +15,6 @@
 @endphp
 
 <div class="space-y-4">
-    <p class="text-sm text-gray-500 dark:text-gray-400">
-        Company name, logo, and contact details appear on invoices, quotations, and inventory documents.
-    </p>
-
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
             <label for="{{ $nameId }}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">

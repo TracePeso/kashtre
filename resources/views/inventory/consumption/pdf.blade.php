@@ -1,36 +1,25 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>Consumption — {{ $meta['store_name'] }}</title>
-    <style>
-        body { font-family: DejaVu Sans, sans-serif; font-size: 11px; color: #111; }
-        h1 { font-size: 16px; margin: 0 0 4px; }
-        .muted { color: #555; font-size: 10px; }
-        .meta { margin: 12px 0 16px; line-height: 1.45; }
-        .summary { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
-        .summary td { border: 1px solid #e5e7eb; padding: 6px 8px; width: 25%; background: #f9fafb; }
-        .summary .label { display: block; font-size: 9px; color: #6b7280; text-transform: uppercase; }
-        .summary .value { display: block; margin-top: 2px; font-size: 12px; font-weight: bold; }
-        table.data { width: 100%; border-collapse: collapse; }
-        table.data th, table.data td { border: 1px solid #ddd; padding: 5px 7px; text-align: left; }
-        table.data th { background: #f3f4f6; font-size: 10px; }
-        .text-right { text-align: right; }
-        .code { color: #6b7280; font-size: 9px; }
-    </style>
-</head>
-<body>
-    @if(! empty($branding))
-        <x-business.document-header
-            :branding="$branding"
-            document-title="Inventory Consumption"
-            :document-subtitle="$meta['period_label']"
-        />
-    @else
-        <h1>Inventory Consumption</h1>
-        <p class="muted">{{ $meta['period_label'] }}</p>
-    @endif
+@php
+    $documentTitle = 'Inventory Consumption';
+    $documentSubtitle = $meta['period_label'];
+    $generatedAt = $generatedAt ?? now();
+@endphp
+@extends('layouts.pdf')
 
+@section('title', 'Consumption — '.$meta['store_name'])
+
+@push('styles')
+<style>
+    .meta { margin: 12px 0 16px; line-height: 1.45; }
+    .summary { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+    .summary td { border: 1px solid #e5e7eb; padding: 6px 8px; width: 25%; background: #f9fafb; }
+    .summary .label { display: block; font-size: 9px; color: #6b7280; text-transform: uppercase; }
+    .summary .value { display: block; margin-top: 2px; font-size: 12px; font-weight: bold; }
+    table.data th { font-size: 10px; }
+    .code { color: #6b7280; font-size: 9px; }
+</style>
+@endpush
+
+@section('content')
     <div class="meta">
         <strong>Store:</strong> {{ $meta['store_name'] }}<br>
         <strong>Item:</strong> {{ $meta['item_name'] ?? 'All items' }}<br>
@@ -86,6 +75,4 @@
             @endforelse
         </tbody>
     </table>
-
-</body>
-</html>
+@endsection

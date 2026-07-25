@@ -1,4 +1,5 @@
 <x-app-layout>
+@include('partials.inventory.supplier-category-filter-script')
 <div class="min-h-screen bg-gray-50 py-6" x-data="grnBulkUploadForm(
     @js($itemUnits->pluck('name')->values()),
     @js($grnFormItems),
@@ -7,7 +8,10 @@
         'bulkTemplate' => route('inventory.receive.bulk-template'),
         'bulkImport' => route('inventory.receive.bulk-import'),
         'csrf' => csrf_token(),
-    ])
+    ]),
+    @js($supplierCatalog ?? []),
+    @js($supplierIndustries ?? []),
+    @js($supplierSubCategoriesByIndustry ?? [])
 )">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="mb-6">
@@ -52,15 +56,18 @@
             <input type="hidden" name="action" value="submit">
 
             <div class="bg-white shadow sm:rounded-lg p-6">
+                <div class="mb-4">
+                    @include('partials.inventory.supplier-category-filter-fields')
+                </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div>
                         <label for="supplier_id" class="block text-sm font-medium text-gray-700">Supplier <span class="text-red-500">*</span></label>
                         <select name="supplier_id" id="supplier_id" required x-model="supplierId" @change="onSupplierChange()"
                                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
                             <option value="">— Select —</option>
-                            @foreach($suppliers as $supplier)
-                                <option value="{{ $supplier->id }}">{{ $supplier->name }}</option>
-                            @endforeach
+                            <template x-for="supplier in filteredSupplierCatalog()" :key="supplier.id">
+                                <option :value="supplier.id" x-text="supplier.name"></option>
+                            </template>
                         </select>
                     </div>
                     <div>
@@ -86,6 +93,30 @@
                         <label class="block text-sm font-medium text-gray-700">Delivery note</label>
                         <input type="file" name="delivery_note" accept=".pdf,.jpg,.jpeg,.png"
                                class="mt-1 block w-full text-sm text-gray-600">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label for="technical_supervisor_user_id" class="block text-sm font-medium text-gray-700">
+                            Technical supervisor
+                            @if($grnTechnicalSupervisorRequired)
+                                <span class="text-red-500">*</span>
+                            @else
+                                <span class="text-gray-400 font-normal">(optional, per GRN)</span>
+                            @endif
+                        </label>
+                        <select name="technical_supervisor_user_id" id="technical_supervisor_user_id"
+                                @if($grnTechnicalSupervisorRequired) required @endif
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                            @unless($grnTechnicalSupervisorRequired)
+                                <option value="">— None —</option>
+                            @else
+                                <option value="" disabled @selected(! old('technical_supervisor_user_id'))>Select technical supervisor</option>
+                            @endunless
+                            @foreach($businessUsers as $user)
+                                <option value="{{ $user->id }}" @selected(old('technical_supervisor_user_id') == $user->id)>
+                                    {{ $user->name }} ({{ $user->email }})
+                                </option>
+                            @endforeach
+                        </select>
                     </div>
                 </div>
             </div>
@@ -244,7 +275,8 @@
                                 <th class="px-1.5 py-1.5 text-left font-semibold text-gray-700 w-24">Batch</th>
                                 <th class="px-1.5 py-1.5 text-left font-semibold text-gray-700 w-28">Expiry</th>
                                 <th class="px-1.5 py-1.5 text-left font-semibold text-gray-700 w-24" title="Unit on the supplier delivery note">Del. unit</th>
-                                <th class="px-1.5 py-1.5 text-right font-semibold text-gray-700 w-20" title="Purchase price per delivery unit">Purchase price</th>
+                                <th class="px-1.5 py-1.5 text-right font-semibold text-gray-700 w-20" title="Unit price per delivery unit">Unit price</th>
+                                <th class="px-1.5 py-1.5 text-right font-semibold text-gray-700 w-20" title="Line total amount">Total</th>
                                 <th class="px-1.5 py-1.5 text-right font-semibold text-gray-700 w-16" title="Sale units in one delivery unit">Per del.</th>
                                 <th class="px-1.5 py-1.5 text-right font-semibold text-gray-700 w-16" title="Total sale units">Sale units</th>
                                 <th class="px-1 py-1.5 w-14"></th>
@@ -259,6 +291,7 @@
                                     </td>
                                     <td class="px-1.5 py-1">
                                         <input type="number" step="1" min="1" x-model.number="line.quantity"
+                                               @input="onLineCostChange(line, 'qty')"
                                                class="w-14 rounded border-gray-300 py-1 px-1.5 text-xs text-right">
                                     </td>
                                     <td class="px-1.5 py-1">
@@ -279,7 +312,13 @@
                                     </td>
                                     <td class="px-1.5 py-1">
                                         <input type="number" step="0.01" min="0" x-model.number="line.purchase_price"
+                                               @input="onLineCostChange(line, 'unit')"
                                                class="w-16 rounded border-gray-300 py-1 px-1.5 text-xs text-right">
+                                    </td>
+                                    <td class="px-1.5 py-1">
+                                        <input type="number" step="0.01" min="0" x-model.number="line.total_amount"
+                                               @input="onLineCostChange(line, 'total')"
+                                               class="w-20 rounded border-gray-300 py-1 px-1.5 text-xs text-right">
                                     </td>
                                     <td class="px-1.5 py-1">
                                         <input type="number" step="1" min="1" x-model.number="line.conversion"
@@ -327,8 +366,9 @@
 </div>
 
 <script>
-function grnBulkUploadForm(itemUnits, items, supplierItemIds, urls) {
+function grnBulkUploadForm(itemUnits, items, supplierItemIds, urls, supplierCatalog, supplierIndustries, supplierSubCategoriesByIndustry) {
     return {
+        ...supplierCategoryFilterMixin(supplierCatalog, supplierIndustries, supplierSubCategoriesByIndustry),
         itemUnits,
         items,
         supplierItemIds: supplierItemIds || {},
@@ -348,6 +388,12 @@ function grnBulkUploadForm(itemUnits, items, supplierItemIds, urls) {
         lines: [],
         init() {
             this.selectAllVisible();
+        },
+        onSupplierCategoryFilterChange() {
+            if (this.supplierId && ! this.filteredSupplierCatalog().some((supplier) => String(supplier.id) === String(this.supplierId))) {
+                this.supplierId = '';
+                this.onSupplierChange();
+            }
         },
         catalogItems() {
             let list = this.items;
@@ -410,6 +456,31 @@ function grnBulkUploadForm(itemUnits, items, supplierItemIds, urls) {
         },
         linePurchaseTotal(line) {
             return Math.round((parseFloat(line.quantity) || 0) * (parseFloat(line.purchase_price) || 0) * 100) / 100;
+        },
+        onLineCostChange(line, source) {
+            const qty = parseFloat(line.quantity) || 0;
+
+            if (source === 'total') {
+                if (qty > 0) {
+                    line.purchase_price = Math.round(((parseFloat(line.total_amount) || 0) / qty) * 100) / 100;
+                }
+
+                return;
+            }
+
+            line.total_amount = Math.round(qty * (parseFloat(line.purchase_price) || 0) * 100) / 100;
+        },
+        normalizeImportedLine(line) {
+            const normalized = {
+                ...line,
+                expiry_date: line.expiry_date || '',
+            };
+
+            if (normalized.total_amount === undefined || normalized.total_amount === null) {
+                normalized.total_amount = this.linePurchaseTotal(normalized);
+            }
+
+            return normalized;
         },
         totals() {
             return {
@@ -489,7 +560,13 @@ function grnBulkUploadForm(itemUnits, items, supplierItemIds, urls) {
 
                 if (line.purchase_price === '' || line.purchase_price === null || parseFloat(line.purchase_price) < 0) {
                     event.preventDefault();
-                    this.submitError = label + ': enter a valid purchase price.';
+                    this.submitError = label + ': enter a valid unit price.';
+                    return;
+                }
+
+                if (line.total_amount === '' || line.total_amount === null || parseFloat(line.total_amount) < 0) {
+                    event.preventDefault();
+                    this.submitError = label + ': enter a valid total amount.';
                     return;
                 }
 
@@ -586,10 +663,7 @@ function grnBulkUploadForm(itemUnits, items, supplierItemIds, urls) {
                     return;
                 }
 
-                this.lines = (data.lines || []).map(line => ({
-                    ...line,
-                    expiry_date: line.expiry_date || '',
-                }));
+                this.lines = (data.lines || []).map(line => this.normalizeImportedLine(line));
                 this.bulkImportOk = true;
                 const warning = this.bulkImportErrors.length ? ' Some rows were skipped.' : '';
                 this.bulkImportMessage = 'Imported ' + data.imported_count + ' item(s).' + warning;

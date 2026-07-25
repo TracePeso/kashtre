@@ -18,7 +18,8 @@
             <div class="px-6 py-5 border-b border-gray-200">
                 <h3 class="text-lg font-medium text-gray-900">Approval matrix</h3>
                 <p class="mt-1 text-sm text-gray-500">
-                    Each goods receive note and stock transfer must be approved by the assigned approvers below before stock levels change. RFQs use Approver 1 / 2. Goods receive notes also include the technical supervisor when that optional role is set.
+                    Assign Approver 1 and optional Approver 2 for RFQs, stock transfers, stock counts, and goods receive notes.
+                    Technical supervisor is chosen separately on each goods receive note when creating it.
                 </p>
             </div>
 
@@ -30,6 +31,7 @@
                     @include('settings.inventory-module._approvers-fields', [
                         'moduleConfig' => $config,
                         'businessUsers' => $businessUsers,
+                        'showTechnicalSupervisor' => false,
                     ])
 
                     <div class="border border-gray-200 rounded-lg p-4 space-y-3">

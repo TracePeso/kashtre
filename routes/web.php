@@ -15,6 +15,8 @@ use App\Http\Controllers\RoomController;
 use App\Http\Controllers\ServicePointController;
 use App\Http\Controllers\SectionController;
 use App\Http\Controllers\StaffCategoryController;
+use App\Http\Controllers\SupplierIndustryController;
+use App\Http\Controllers\SupplierSubCategoryController;
 use App\Http\Controllers\ItemUnitController;
 use App\Http\Controllers\ItemController;
 use App\Http\Controllers\ItemBulkUploadController;
@@ -179,6 +181,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource("client-spaces", ClientSpaceController::class);
     Route::resource("titles", TitleController::class);
     Route::resource("staff-categories", StaffCategoryController::class)->only(['index']);
+    Route::resource("supplier-industries", SupplierIndustryController::class)->only(['index']);
+    Route::resource("supplier-sub-categories", SupplierSubCategoryController::class)->only(['index']);
     Route::resource("qualifications", QualificationController::class);
     Route::resource("rooms", RoomController::class);
     Route::resource("service-points", ServicePointController::class);

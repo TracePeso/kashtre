@@ -118,6 +118,10 @@
                     @endif
                 </div>
                 <div class="px-4 py-3 sm:px-5">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Technical supervisor</p>
+                    <p class="mt-1 text-sm font-semibold text-gray-900">{{ $goodsReceivedNote->technicalSupervisor->name ?? '—' }}</p>
+                </div>
+                <div class="px-4 py-3 sm:px-5">
                     <p class="text-[11px] font-medium uppercase tracking-wide text-gray-500">Delivery note</p>
                     @if($goodsReceivedNote->delivery_note_path)
                         @php

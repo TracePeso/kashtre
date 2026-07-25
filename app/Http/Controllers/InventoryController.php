@@ -99,8 +99,7 @@ class InventoryController extends Controller
 
         $validated = $request->validate([
             'approver_1' => 'required|exists:users,id',
-            'approver_2' => 'nullable|exists:users,id|different:approver_1|different:technical_supervisor',
-            'technical_supervisor' => 'nullable|exists:users,id|different:approver_1|different:approver_2',
+            'approver_2' => 'nullable|exists:users,id|different:approver_1',
             'finance_notification_emails' => 'nullable|string|max:2000',
             'lpo_email_copy_to_approvers' => 'nullable|boolean',
         ]);
@@ -109,7 +108,6 @@ class InventoryController extends Controller
         $ids = array_values(array_filter([
             (int) $validated['approver_1'],
             ! empty($validated['approver_2']) ? (int) $validated['approver_2'] : null,
-            ! empty($validated['technical_supervisor']) ? (int) $validated['technical_supervisor'] : null,
         ]));
 
         $validCount = User::query()
@@ -125,15 +123,6 @@ class InventoryController extends Controller
 
         DB::transaction(function () use ($config, $validated, $request) {
             $config->approvers()->delete();
-
-            if (! empty($validated['technical_supervisor'])) {
-                InventoryModuleApprover::create([
-                    'inventory_module_config_id' => $config->id,
-                    'user_id' => $validated['technical_supervisor'],
-                    'role' => InventoryModuleApprover::ROLE_TECHNICAL_SUPERVISOR,
-                    'approval_order' => 0,
-                ]);
-            }
 
             InventoryModuleApprover::create([
                 'inventory_module_config_id' => $config->id,

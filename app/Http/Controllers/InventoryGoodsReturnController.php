@@ -9,6 +9,7 @@ use App\Models\Store;
 use App\Models\Supplier;
 use App\Services\Inventory\InventoryGoodsReturnService;
 use App\Support\InventoryBusinessContext;
+use App\Support\SupplierCategorySelection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -31,9 +32,18 @@ class InventoryGoodsReturnController extends Controller
     {
         $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
 
+        $suppliers = Supplier::query()
+            ->where('business_id', $businessId)
+            ->with(['industry:id,name', 'subCategory:id,name'])
+            ->orderBy('name')
+            ->get();
+
         return view('inventory.returns.create', [
             'stores' => Store::optionsForSelect($businessId),
-            'suppliers' => Supplier::query()->where('business_id', $businessId)->orderBy('name')->pluck('name', 'id'),
+            'suppliers' => $suppliers,
+            'supplierCatalog' => SupplierCategorySelection::catalogFromSuppliers($suppliers),
+            'supplierIndustries' => SupplierCategorySelection::industryOptionsForBusiness($businessId),
+            'supplierSubCategoriesByIndustry' => SupplierCategorySelection::subCategoryOptionsByIndustryForBusiness($businessId),
             'reasonOptions' => GoodsReturnNote::reasonOptions(),
             'items' => Item::query()
                 ->where('business_id', $businessId)

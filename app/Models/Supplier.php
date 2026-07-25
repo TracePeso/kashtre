@@ -16,6 +16,8 @@ class Supplier extends Model
     protected $fillable = [
         'uuid',
         'business_id',
+        'supplier_industry_id',
+        'supplier_sub_category_id',
         'linked_business_id',
         'name',
         'email',
@@ -33,6 +35,16 @@ class Supplier extends Model
     public function business()
     {
         return $this->belongsTo(Business::class);
+    }
+
+    public function industry()
+    {
+        return $this->belongsTo(SupplierIndustry::class, 'supplier_industry_id');
+    }
+
+    public function subCategory()
+    {
+        return $this->belongsTo(SupplierSubCategory::class, 'supplier_sub_category_id');
     }
 
     public function linkedBusiness()

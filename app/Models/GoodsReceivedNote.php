@@ -40,6 +40,7 @@ class GoodsReceivedNote extends Model
         'technical_representative_name',
         'technical_representative_signature_path',
         'technical_representative_signature_original_name',
+        'technical_supervisor_user_id',
         'status',
         'inspection_status',
         'inspection_notes',
@@ -109,6 +110,11 @@ class GoodsReceivedNote extends Model
     public function submittedBy()
     {
         return $this->belongsTo(User::class, 'submitted_by_user_id');
+    }
+
+    public function technicalSupervisor()
+    {
+        return $this->belongsTo(User::class, 'technical_supervisor_user_id');
     }
 
     public function lines()

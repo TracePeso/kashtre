@@ -2806,11 +2806,22 @@
             const printReceipt = function() {
                 const printWin = window.open('', '_blank', 'width=400,height=600');
                 if (!printWin) return;
-                const printContent = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Client portion – ' + invoiceNumber + '</title>' +
-                    '<style>body{font-family:ui-sans-serif,sans-serif;font-size:14px;padding:24px;max-width:320px;margin:0 auto;color:#334155}.receipt-title{font-weight:600;font-size:1rem;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:8px}.sub{font-size:12px;color:#64748b;margin-bottom:12px}table{width:100%;border-collapse:collapse;margin:12px 0}td{padding:4px 0}td:last-child{text-align:right}.total{font-weight:600;margin-top:12px;padding-top:8px;border-top:1px solid #f1f5f9}@media print{body{padding:0}}</style></head><body>' +
-                    '<div class="receipt-title">Client portion receipt</div><p class="sub">Amount due from client</p>' + (posClientName ? '<p>Client <strong>' + (posClientName.replace(/</g, '&lt;').replace(/>/g, '&gt;')) + '</strong></p>' : '') + (posInsuranceName ? '<p>Insurance <strong>' + (posInsuranceName.replace(/</g, '&lt;').replace(/>/g, '&gt;')) + '</strong></p>' : '') + '<p>Invoice <strong>' + invoiceNumber + '</strong></p><p>Date ' + todayStr + '</p>' +
+                const docFormat = window.KashtreDocumentFormat;
+                const headerBlock = docFormat
+                    ? docFormat.headerHtml('Client portion receipt', invoiceNumber)
+                    : '<div class="receipt-title">Client portion receipt</div><p class="sub">Amount due from client</p>';
+                const bodyBlock =
+                    (posClientName ? '<p>Client <strong>' + (posClientName.replace(/</g, '&lt;').replace(/>/g, '&gt;')) + '</strong></p>' : '') +
+                    (posInsuranceName ? '<p>Insurance <strong>' + (posInsuranceName.replace(/</g, '&lt;').replace(/>/g, '&gt;')) + '</strong></p>' : '') +
+                    (!docFormat ? '<p>Invoice <strong>' + invoiceNumber + '</strong></p><p>Date ' + todayStr + '</p>' : '') +
                     '<table><tbody>' + receiptBreakdownRows + '</tbody></table>' +
-                    '<p class="total">Amount to collect: UGX ' + fmt(clientTotalDue) + '</p><p style="font-size:12px;color:#64748b">Phone ' + (paymentPhone || '—') + '</p></body></html>';
+                    '<p class="total">Amount to collect: UGX ' + fmt(clientTotalDue) + '</p><p style="font-size:12px;color:#64748b">Phone ' + (paymentPhone || '—') + '</p>';
+                const footerBlock = docFormat
+                    ? docFormat.footerHtml(['Client portion receipt', 'Amount due from client'])
+                    : '<p style="font-size:8px;color:#9ca3af;margin-top:12px;">Powered by Kashtre</p>';
+                const printContent = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Client portion – ' + invoiceNumber + '</title>' +
+                    '<style>body{font-family:ui-sans-serif,sans-serif;font-size:14px;padding:24px;max-width:360px;margin:0 auto;color:#334155}.receipt-title{font-weight:600;font-size:1rem;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:8px}.sub{font-size:12px;color:#64748b;margin-bottom:12px}table{width:100%;border-collapse:collapse;margin:12px 0}td{padding:4px 0}td:last-child{text-align:right}.total{font-weight:600;margin-top:12px;padding-top:8px;border-top:1px solid #f1f5f9}@media print{body{padding:0}}</style></head><body>' +
+                    headerBlock + bodyBlock + footerBlock + '</body></html>';
                 printWin.document.write(printContent);
                 printWin.document.close();
                 printWin.focus();
@@ -3912,6 +3923,8 @@
             </div>
         </div>
     </div>
+
+    @include('partials.document-format-script', ['business' => auth()->user()?->business])
 
     @stack('scripts')
 </x-app-layout>

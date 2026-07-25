@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Business;
 use App\Models\GoodsReceivedNote;
 use App\Models\GoodsReceivedNoteApproval;
 use App\Models\GoodsReceivedNoteLine;
@@ -56,7 +57,15 @@ class GoodsReceivedNoteService
             ]);
         }
 
-        $approvers = $this->configuredApprovers($grn->business_id);
+        $business = Business::query()->find($grn->business_id);
+
+        if ($business?->isGrnTechnicalSupervisorRequired() && ! $grn->technical_supervisor_user_id) {
+            throw ValidationException::withMessages([
+                'technical_supervisor_user_id' => 'A technical supervisor is required for goods receive notes in your organisation.',
+            ]);
+        }
+
+        $approvers = $this->configuredRegularApprovers($grn->business_id);
 
         if ($approvers->isEmpty()) {
             throw ValidationException::withMessages([
@@ -64,9 +73,25 @@ class GoodsReceivedNoteService
             ]);
         }
 
-        $firstApprovalOrder = (int) $approvers->min('approval_order');
+        $approvalSteps = collect();
 
-        return DB::transaction(function () use ($grn, $user, $approvers, $firstApprovalOrder) {
+        if ($grn->technical_supervisor_user_id) {
+            $approvalSteps->push([
+                'approver_user_id' => (int) $grn->technical_supervisor_user_id,
+                'approval_order' => 0,
+            ]);
+        }
+
+        foreach ($approvers as $approver) {
+            $approvalSteps->push([
+                'approver_user_id' => (int) $approver->user_id,
+                'approval_order' => (int) $approver->approval_order,
+            ]);
+        }
+
+        $firstApprovalOrder = (int) $approvalSteps->min('approval_order');
+
+        return DB::transaction(function () use ($grn, $user, $approvalSteps, $firstApprovalOrder) {
             $grn->update([
                 'status' => GoodsReceivedNote::STATUS_PENDING,
                 'current_approval_order' => $firstApprovalOrder,
@@ -76,16 +101,16 @@ class GoodsReceivedNoteService
                 'updated_by' => $user->id,
             ]);
 
-            foreach ($approvers as $approver) {
+            foreach ($approvalSteps as $step) {
                 GoodsReceivedNoteApproval::create([
                     'goods_received_note_id' => $grn->id,
-                    'approver_user_id' => $approver->user_id,
-                    'approval_order' => $approver->approval_order,
+                    'approver_user_id' => $step['approver_user_id'],
+                    'approval_order' => $step['approval_order'],
                     'status' => GoodsReceivedNoteApproval::STATUS_PENDING,
                 ]);
             }
 
-            return $grn->fresh(['lines', 'approvals.approver', 'supplier', 'store', 'entryBy']);
+            return $grn->fresh(['lines', 'approvals.approver', 'supplier', 'store', 'entryBy', 'technicalSupervisor']);
         });
     }
 
@@ -398,7 +423,7 @@ class GoodsReceivedNoteService
             ->first();
     }
 
-    private function configuredApprovers(int $businessId)
+    private function configuredRegularApprovers(int $businessId)
     {
         $config = InventoryModuleConfig::query()
             ->where('business_id', $businessId)
@@ -409,7 +434,7 @@ class GoodsReceivedNoteService
             return collect();
         }
 
-        return $config->grnApprovers()->get();
+        return $config->regularApprovers()->get();
     }
 
     private function ensureLineSaleUnits(GoodsReceivedNote $grn): void

@@ -4,11 +4,17 @@ namespace App\Services\Inventory;
 
 use App\Models\InventoryOrder;
 use App\Models\InventoryPurchaseOrder;
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\DocumentPdfService;
+use Barryvdh\DomPDF\PDF as PdfInstance;
 
 class InventoryProcurementPdfService
 {
-    public function rfqPdf(InventoryOrder $order)
+    public function __construct(
+        private readonly DocumentPdfService $documents,
+    ) {
+    }
+
+    public function rfqPdf(InventoryOrder $order): PdfInstance
     {
         $order->loadMissing([
             'lines.item.itemUnit',
@@ -20,11 +26,14 @@ class InventoryProcurementPdfService
             'subgroup',
         ]);
 
-        return Pdf::loadView('inventory.orders.pdf.rfq', compact('order'))
-            ->setPaper('a4', 'portrait');
+        return $this->documents->render(
+            'inventory.orders.pdf.rfq',
+            compact('order'),
+            $order->business,
+        );
     }
 
-    public function lpoPdf(InventoryPurchaseOrder $po)
+    public function lpoPdf(InventoryPurchaseOrder $po): PdfInstance
     {
         $po->loadMissing([
             'lines.item.itemUnit',
@@ -35,8 +44,11 @@ class InventoryProcurementPdfService
             'issuedBy',
         ]);
 
-        return Pdf::loadView('inventory.purchase-orders.pdf.lpo', compact('po'))
-            ->setPaper('a4', 'portrait');
+        return $this->documents->render(
+            'inventory.purchase-orders.pdf.lpo',
+            compact('po'),
+            $po->business,
+        );
     }
 
     public function lpoPdfContent(InventoryPurchaseOrder $po): string

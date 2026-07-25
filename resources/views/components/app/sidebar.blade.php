@@ -650,6 +650,11 @@
                                     Business Settings
                                 </a>
                             </li>
+                            <li>
+                                <a href="{{ route('business-settings.edit') }}#document-letterhead" class="block text-sm text-gray-600 hover:text-blue-700 py-1.5 pl-2 border-l-2 border-transparent hover:border-blue-400" @click.stop>
+                                    Document letterhead preview
+                                </a>
+                            </li>
                             @endif
 
                             @php
@@ -690,6 +695,14 @@
 
                             @if(in_array('View Staff Categories', $permissions))
                             <li><a href="{{ route('staff-categories.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Staff Categories</a></li>
+                            @endif
+
+                            @if(in_array('View Supplier Industries', $permissions))
+                            <li><a href="{{ route('supplier-industries.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Supplier Industries</a></li>
+                            @endif
+
+                            @if(in_array('View Supplier Sub Categories', $permissions))
+                            <li><a href="{{ route('supplier-sub-categories.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Supplier Sub Categories</a></li>
                             @endif
 
                             @if(Auth::user()->business_id == 1)

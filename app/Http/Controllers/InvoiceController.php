@@ -3727,7 +3727,9 @@ class InvoiceController extends Controller
         // Mark as printed
         $invoice->markAsPrinted();
 
-        return view('invoices.print', compact('invoice'));
+        $invoice->load(['business', 'branch', 'createdBy']);
+
+        return view('invoices.print', \App\Support\DocumentViewData::merge(compact('invoice')));
     }
 
     /**

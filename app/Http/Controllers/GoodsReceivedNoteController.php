@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\RequiresInventoryModule;
+use App\Models\Business;
 use App\Models\GoodsReceivedNote;
 use App\Models\GoodsReceivedNoteLine;
 use App\Models\InventoryModuleConfig;
@@ -12,9 +13,11 @@ use App\Models\Item;
 use App\Models\ItemUnit;
 use App\Models\Store;
 use App\Models\Supplier;
+use App\Models\User;
 use App\Services\GoodsReceivedNoteService;
 use App\Services\GrnBulkImportService;
 use App\Support\InventoryBusinessContext;
+use App\Support\SupplierCategorySelection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -111,12 +114,6 @@ class GoodsReceivedNoteController extends Controller
             $prefillStoreId = $inventoryOrder->store_id;
         }
 
-        $suppliers = Supplier::query()
-            ->where('business_id', $businessId)
-            ->with('items:id')
-            ->orderBy('name')
-            ->get();
-
         return view('inventory.receive.create', array_merge($this->grnFormOptions($businessId), [
             'inventoryOrder' => $inventoryOrder,
             'purchaseOrder' => $purchaseOrder,
@@ -181,6 +178,7 @@ class GoodsReceivedNoteController extends Controller
                 'lead_time_days' => $leadTime,
                 'delivery_note_path' => $deliveryPath,
                 'delivery_note_original_name' => $deliveryOriginal,
+                'technical_supervisor_user_id' => $validated['technical_supervisor_user_id'] ?? null,
                 'status' => GoodsReceivedNote::STATUS_DRAFT,
                 'entry_by_user_id' => $user->id,
                 'created_by' => $user->id,
@@ -214,6 +212,7 @@ class GoodsReceivedNoteController extends Controller
             'entryBy',
             'submittedBy',
             'inspectedBy',
+            'technicalSupervisor',
             'approvals.approver',
             'inventoryOrder',
             'purchaseOrder.lines',
@@ -434,7 +433,12 @@ class GoodsReceivedNoteController extends Controller
             ->pluck('name')
             ->all();
 
-        return $request->validate([
+        $business = Business::query()->findOrFail($businessId);
+        $supervisorRule = $business->isGrnTechnicalSupervisorRequired()
+            ? 'required|exists:users,id'
+            : 'nullable|exists:users,id';
+
+        $validated = $request->validate([
             'inventory_order_id' => 'nullable|exists:inventory_orders,id',
             'inventory_purchase_order_id' => 'nullable|exists:inventory_purchase_orders,id',
             'supplier_id' => 'required|exists:suppliers,id',
@@ -442,6 +446,7 @@ class GoodsReceivedNoteController extends Controller
             'date_of_order' => 'required|date',
             'date_of_delivery' => 'required|date|after_or_equal:date_of_order',
             'delivery_note' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'technical_supervisor_user_id' => $supervisorRule,
             'lines' => 'required|array|min:1',
             'lines.*.item_id' => 'required|exists:items,id',
             'lines.*.inventory_order_line_id' => 'nullable|exists:inventory_order_lines,id',
@@ -455,6 +460,24 @@ class GoodsReceivedNoteController extends Controller
             'lines.*.ordered_quantity' => 'nullable|numeric|min:0',
             'lines.*.condition_status' => 'nullable|in:good,damaged,expired,short',
         ]);
+
+        if (! empty($validated['technical_supervisor_user_id'])) {
+            $supervisorValid = User::query()
+                ->where('business_id', $businessId)
+                ->where('status', 'active')
+                ->whereKey((int) $validated['technical_supervisor_user_id'])
+                ->exists();
+
+            if (! $supervisorValid) {
+                throw ValidationException::withMessages([
+                    'technical_supervisor_user_id' => 'The technical supervisor must be active staff of your organisation.',
+                ]);
+            }
+        } else {
+            $validated['technical_supervisor_user_id'] = null;
+        }
+
+        return $validated;
     }
 
     private function syncLines(GoodsReceivedNote $grn, array $lines): void
@@ -514,7 +537,7 @@ class GoodsReceivedNoteController extends Controller
     {
         $suppliers = Supplier::query()
             ->where('business_id', $businessId)
-            ->with('items:id')
+            ->with(['items:id', 'industry:id,name', 'subCategory:id,name'])
             ->orderBy('name')
             ->get();
 
@@ -525,8 +548,14 @@ class GoodsReceivedNoteController extends Controller
             ->first();
 
         $grnApprovers = $moduleConfig
-            ? $moduleConfig->grnApprovers()->with('user')->get()
+            ? $moduleConfig->regularApprovers()->with('user')->get()
             : collect();
+
+        $businessUsers = User::query()
+            ->where('business_id', $businessId)
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
 
         $lastGrnPurchasePricesByItem = $this->service->lastApprovedPurchasePricesPerOuom($businessId);
 
@@ -538,6 +567,9 @@ class GoodsReceivedNoteController extends Controller
 
         return [
             'suppliers' => $suppliers,
+            'supplierCatalog' => SupplierCategorySelection::catalogFromSuppliers($suppliers),
+            'supplierIndustries' => SupplierCategorySelection::industryOptionsForBusiness($businessId),
+            'supplierSubCategoriesByIndustry' => SupplierCategorySelection::subCategoryOptionsByIndustryForBusiness($businessId),
             'supplierItemIds' => $suppliers->mapWithKeys(fn (Supplier $supplier) => [
                 $supplier->id => $supplier->items->pluck('id')->values()->all(),
             ]),
@@ -555,9 +587,11 @@ class GoodsReceivedNoteController extends Controller
             'grnFormItems' => $this->service->itemsForGrnForm($items, $lastGrnPurchasePricesByItem),
             'lastGrnPurchasePricesByItem' => $lastGrnPurchasePricesByItem,
             'grnApprovers' => $grnApprovers,
-            'technicalSupervisor' => $grnApprovers->first(
-                fn ($approver) => $approver->role === \App\Models\InventoryModuleApprover::ROLE_TECHNICAL_SUPERVISOR
-            ),
+            'businessUsers' => $businessUsers,
+            'grnTechnicalSupervisorRequired' => (bool) (Business::query()
+                ->whereKey($businessId)
+                ->value('grn_technical_supervisor_required') ?? false),
+            'technicalSupervisor' => null,
         ];
     }
 

@@ -42,7 +42,9 @@ class BusinessSettingsController extends Controller
 
         $countries = Country::with('currency')->orderedDefaultUsFirst()->get();
 
-        return view('business-settings.edit', compact('business', 'users', 'items', 'countries'));
+        $documentBranding = BusinessBranding::for($business);
+
+        return view('business-settings.edit', compact('business', 'users', 'items', 'countries', 'documentBranding'));
     }
 
     /**
@@ -88,6 +90,7 @@ class BusinessSettingsController extends Controller
             'credit_excluded_items.*' => 'integer|exists:items,id',
             'third_party_excluded_items' => 'nullable|array',
             'third_party_excluded_items.*' => 'integer|exists:items,id',
+            'grn_technical_supervisor_required' => 'nullable|boolean',
             ]
         ));
 
@@ -128,6 +131,7 @@ class BusinessSettingsController extends Controller
             'discharge_remove_long_stay' => $request->has('discharge_remove_long_stay') ? (bool)$validated['discharge_remove_long_stay'] : true,
             'credit_excluded_items' => $validated['credit_excluded_items'] ?? [],
             'third_party_excluded_items' => $validated['third_party_excluded_items'] ?? [],
+            'grn_technical_supervisor_required' => $request->boolean('grn_technical_supervisor_required'),
         ]);
 
         // Handle credit limit approval approvers

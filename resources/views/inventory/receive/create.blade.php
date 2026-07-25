@@ -1,4 +1,5 @@
 <x-app-layout>
+@include('partials.inventory.supplier-category-filter-script')
 <div class="min-h-screen bg-gray-50 py-6" x-data="grnCreateForm(
     @js($itemUnits->pluck('name')->values()),
     @js($grnFormItems),
@@ -11,7 +12,10 @@
     @js((int) \App\Support\InventoryBusinessContext::effectiveBusinessId()),
     @js(is_array(old('lines')) && count(old('lines')) > 0),
     @js(old('date_of_order', now()->toDateString())),
-    @js(old('date_of_delivery', now()->toDateString()))
+    @js(old('date_of_delivery', now()->toDateString())),
+    @js($supplierCatalog ?? []),
+    @js($supplierIndustries ?? []),
+    @js($supplierSubCategoriesByIndustry ?? [])
 )" x-init="initDraftPersistence()">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="mb-6">
@@ -84,14 +88,17 @@
 
             <div class="bg-white shadow sm:rounded-lg p-6 space-y-5">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div class="md:col-span-2">
+                        @include('partials.inventory.supplier-category-filter-fields', ['class' => 'mb-1'])
+                    </div>
                     <div>
                         <label for="supplier_id" class="block text-sm font-medium text-gray-700">Supplier <span class="text-red-500">*</span></label>
                         <select name="supplier_id" id="supplier_id" required x-model="supplierId" @change="onSupplierChange()"
                                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
                             <option value="">— Select supplier —</option>
-                            @foreach($suppliers as $supplier)
-                                <option value="{{ $supplier->id }}" @selected(old('supplier_id') == $supplier->id)>{{ $supplier->name }}</option>
-                            @endforeach
+                            <template x-for="supplier in filteredSupplierCatalog()" :key="supplier.id">
+                                <option :value="supplier.id" x-text="supplier.name"></option>
+                            </template>
                         </select>
                     </div>
                     <div>
@@ -136,27 +143,53 @@
 
                 @if(isset($grnApprovers) && $grnApprovers->isNotEmpty())
                     <div class="mt-5 rounded-md border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-sm text-indigo-950">
-                        <p class="font-medium text-indigo-900">Approval chain for this goods receive note</p>
+                        <p class="font-medium text-indigo-900">Organisation approvers for this GRN</p>
+                        <p class="mt-1 text-xs text-indigo-800">Approver 1 and Approver 2 are set under Inventory → Goods receive note approvers.</p>
                         <ol class="mt-2 list-decimal list-inside space-y-1 text-indigo-900/90">
                             @foreach($grnApprovers as $approver)
                                 <li>
                                     <span class="font-medium">{{ $approver->roleLabel() }}:</span>
                                     {{ $approver->user->name ?? '—' }}
-                                    @if($approver->isTechnicalSupervisor())
-                                        <span class="text-indigo-700/80">(optional — set under Goods receive note approvers)</span>
-                                    @endif
                                 </li>
                             @endforeach
                         </ol>
-                        @unless($technicalSupervisor)
-                            <p class="mt-2 text-xs text-indigo-800">
-                                No technical supervisor is configured. Add one under
-                                <a href="{{ route('inventory.approvers') }}" class="underline font-medium hover:text-indigo-950">Inventory → Approvers</a>
-                                if you want that extra approval step.
-                            </p>
-                        @endunless
                     </div>
                 @endif
+
+                <div class="mt-5 rounded-md border border-gray-200 bg-gray-50 px-4 py-4">
+                    <label for="technical_supervisor_user_id" class="block text-sm font-medium text-gray-900">
+                        Technical supervisor
+                        @if($grnTechnicalSupervisorRequired)
+                            <span class="text-red-500">*</span>
+                        @else
+                            <span class="text-gray-400 font-normal">(optional, per goods receive note)</span>
+                        @endif
+                    </label>
+                    <p class="mt-1 text-xs text-gray-500">
+                        @if($grnTechnicalSupervisorRequired)
+                            Your organisation requires a technical supervisor on every goods receive note. They must approve before Approver 1 and Approver 2.
+                        @else
+                            Choose a technical supervisor for this delivery only. When set, they must approve before Approver 1 and Approver 2.
+                        @endif
+                    </p>
+                    <select name="technical_supervisor_user_id" id="technical_supervisor_user_id"
+                            @if($grnTechnicalSupervisorRequired) required @endif
+                            class="mt-2 block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                        @unless($grnTechnicalSupervisorRequired)
+                            <option value="">— None —</option>
+                        @else
+                            <option value="" disabled @selected(! old('technical_supervisor_user_id'))>Select technical supervisor</option>
+                        @endunless
+                        @foreach($businessUsers as $user)
+                            <option value="{{ $user->id }}" @selected(old('technical_supervisor_user_id') == $user->id)>
+                                {{ $user->name }} ({{ $user->email }})
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('technical_supervisor_user_id')
+                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
             </div>
 
             <div class="bg-white shadow sm:rounded-lg p-6">
@@ -177,7 +210,7 @@
                                 <dd class="font-semibold text-blue-900 tabular-nums" x-text="formatNumber(totals().saleUnits)"></dd>
                             </div>
                             <div class="flex gap-1.5">
-                                <dt class="text-blue-700">Purchase value:</dt>
+                                <dt class="text-blue-700">Total amount:</dt>
                                 <dd class="font-semibold text-blue-900 tabular-nums" x-text="'UGX ' + formatMoney(totals().purchaseValue)"></dd>
                             </div>
                         </dl>
@@ -192,8 +225,9 @@
                                     <th class="px-4 py-2 text-left font-medium">Delivery unit</th>
                                     <th class="px-4 py-2 text-left font-medium">Sale unit</th>
                                     <th class="px-4 py-2 text-right font-medium">Sale units</th>
-                                    <th class="px-4 py-2 text-right font-medium">Purchase price</th>
-                                    <th class="px-4 py-2 text-right font-medium">Line total</th>
+                                    <th class="px-4 py-2 text-right font-medium">Unit price</th>
+                                    <th class="px-4 py-2 text-right font-medium">Unit price (sale)</th>
+                                    <th class="px-4 py-2 text-right font-medium">Total amount</th>
                                     <th class="px-4 py-2 text-left font-medium">Batch</th>
                                     <th class="px-4 py-2 text-left font-medium">Expiry</th>
                                     <th class="px-4 py-2 text-right font-medium">Actions</th>
@@ -212,6 +246,7 @@
                                         <td class="px-4 py-2 text-gray-700" x-text="line.suom || '—'"></td>
                                         <td class="px-4 py-2 text-right tabular-nums font-medium text-emerald-800" x-text="formatNumber(saleUnits(line))"></td>
                                         <td class="px-4 py-2 text-right tabular-nums text-gray-700" x-text="'UGX ' + formatMoney(line.purchase_price)"></td>
+                                        <td class="px-4 py-2 text-right tabular-nums text-gray-600" x-text="'UGX ' + formatMoney(unitPricePerSaleUnit(line))"></td>
                                         <td class="px-4 py-2 text-right tabular-nums font-medium text-gray-900" x-text="'UGX ' + formatMoney(linePurchaseTotal(line))"></td>
                                         <td class="px-4 py-2 text-gray-600" x-text="line.batch_number || '—'"></td>
                                         <td class="px-4 py-2 text-gray-600 whitespace-nowrap" x-text="line.expiry_date ? formatDate(line.expiry_date) : '—'"></td>
@@ -229,7 +264,7 @@
                                 <tr>
                                     <td colspan="5" class="px-4 py-2 text-right">Totals</td>
                                     <td class="px-4 py-2 text-right tabular-nums" x-text="formatNumber(totals().saleUnits)"></td>
-                                    <td class="px-4 py-2"></td>
+                                    <td class="px-4 py-2" colspan="2"></td>
                                     <td class="px-4 py-2 text-right tabular-nums" x-text="'UGX ' + formatMoney(totals().purchaseValue)"></td>
                                     <td colspan="3"></td>
                                 </tr>
@@ -271,6 +306,7 @@
                             <div class="lg:col-span-1">
                                 <label class="block text-xs font-medium text-gray-600 mb-1">Qty <span class="text-red-500">*</span></label>
                                 <input type="number" step="1" min="1" x-model.number="draftLine.quantity" required
+                                       @input="onDraftCostChange('qty')"
                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
                             </div>
                             <div class="lg:col-span-2">
@@ -282,15 +318,6 @@
                                 <label class="block text-xs font-medium text-gray-600 mb-1">Expiry date</label>
                                 <input type="date" x-model="draftLine.expiry_date"
                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
-                            </div>
-                            <div class="lg:col-span-2">
-                                <label class="block text-xs font-medium text-gray-600 mb-1">Purchase price <span class="text-red-500">*</span></label>
-                                <input type="number" step="0.01" min="0" x-model.number="draftLine.purchase_price" required
-                                       class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
-                                <p class="mt-1 text-xs text-gray-500" x-show="draftLine.item_id" x-cloak>
-                                    <span x-show="itemForLine(draftLine)?.from_last_grn">Pre-filled from the last approved goods receive note.</span>
-                                    <span x-show="!itemForLine(draftLine)?.from_last_grn">Pre-filled from the item purchase price (no approved GRN yet).</span>
-                                </p>
                             </div>
                         </div>
 
@@ -306,23 +333,59 @@
                                     </template>
                                 </select>
                             </div>
-                            <div class="lg:col-span-3">
+                            <div class="lg:col-span-2">
                                 <label class="block text-xs font-medium text-gray-600 mb-1">Sale unit</label>
                                 <div class="flex h-[38px] items-center rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800">
                                     <span x-text="draftLine.suom || 'Select an item first'"></span>
                                 </div>
                             </div>
-                            <div class="lg:col-span-3">
+                            <div class="lg:col-span-2">
                                 <label class="block text-xs font-medium text-gray-600 mb-1">Sale units per delivery <span class="text-red-500">*</span></label>
                                 <input type="number" step="1" min="1" x-model.number="draftLine.conversion" required
                                        placeholder="e.g. 100"
                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
                             </div>
-                            <div class="lg:col-span-3">
+                            <div class="lg:col-span-2">
                                 <label class="block text-xs font-medium text-gray-600 mb-1">Sale units</label>
                                 <div class="flex h-[38px] items-center rounded-md border border-emerald-200 bg-emerald-50 px-3">
                                     <span class="text-lg font-semibold text-emerald-900 tabular-nums"
                                           x-text="saleUnits(draftLine).toLocaleString(undefined, {maximumFractionDigits: 0})"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-3 rounded-lg border border-amber-200 bg-amber-50/40 p-4">
+                            <p class="text-xs font-semibold text-amber-950 mb-3">Cost tracking</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">
+                                        Unit price <span class="text-red-500">*</span>
+                                        <span class="font-normal text-gray-500" x-show="draftLine.duom" x-text="'(per ' + (draftLine.duom || 'delivery unit') + ')'"></span>
+                                    </label>
+                                    <input type="number" step="0.01" min="0" x-model.number="draftLine.purchase_price" required
+                                           @input="onDraftCostChange('unit')"
+                                           class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <p class="mt-1 text-xs text-gray-500" x-show="draftLine.item_id" x-cloak>
+                                        <span x-show="itemForLine(draftLine)?.from_last_grn">From last approved GRN.</span>
+                                        <span x-show="!itemForLine(draftLine)?.from_last_grn">From item master (no approved GRN yet).</span>
+                                    </p>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">
+                                        Unit price (sale)
+                                        <span class="font-normal text-gray-500" x-show="draftLine.suom" x-text="'(per ' + (draftLine.suom || 'sale unit') + ')'"></span>
+                                    </label>
+                                    <div class="flex h-[38px] items-center rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-900 tabular-nums">
+                                        <span x-text="'UGX ' + formatMoney(unitPricePerSaleUnit(draftLine))"></span>
+                                    </div>
+                                    <p class="mt-1 text-xs text-gray-500">Used for stock valuation.</p>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Total amount <span class="text-red-500">*</span></label>
+                                    <input type="number" step="0.01" min="0" x-model.number="draftLine.total_amount" required
+                                           @input="onDraftCostChange('total')"
+                                           class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <p class="mt-1 text-xs text-gray-500">Delivery qty × unit price, or enter total to back-calculate unit price.</p>
                                 </div>
                             </div>
                         </div>
@@ -366,24 +429,30 @@
 </div>
 
 <script>
-function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillStoreId, prefillSupplierId, inventoryOrderId, inventoryPurchaseOrderId, businessId, hasServerOldState, defaultDateOfOrder, defaultDateOfDelivery) {
+function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillStoreId, prefillSupplierId, inventoryOrderId, inventoryPurchaseOrderId, businessId, hasServerOldState, defaultDateOfOrder, defaultDateOfDelivery, supplierCatalog, supplierIndustries, supplierSubCategoriesByIndustry) {
     const blankLine = () => ({
         item_id: '', inventory_order_line_id: '', suom: '', duom: '', item_suom: '', quantity: 1, batch_number: '', expiry_date: '',
-        purchase_price: 0, conversion: 1,
+        purchase_price: 0, total_amount: 0, conversion: 1,
     });
 
-    const mapPrefill = (row) => ({
-        item_id: String(row.item_id || ''),
-        inventory_order_line_id: row.inventory_order_line_id || '',
-        suom: row.suom || '',
-        duom: row.duom || row.suom || '',
-        item_suom: row.suom || '',
-        quantity: row.quantity || 1,
-        batch_number: row.batch_number || '',
-        expiry_date: row.expiry_date || '',
-        purchase_price: row.purchase_price || 0,
-        conversion: row.conversion || 1,
-    });
+    const mapPrefill = (row) => {
+        const quantity = row.quantity || 1;
+        const purchasePrice = row.purchase_price || 0;
+
+        return {
+            item_id: String(row.item_id || ''),
+            inventory_order_line_id: row.inventory_order_line_id || '',
+            suom: row.suom || '',
+            duom: row.duom || row.suom || '',
+            item_suom: row.suom || '',
+            quantity,
+            batch_number: row.batch_number || '',
+            expiry_date: row.expiry_date || '',
+            purchase_price: purchasePrice,
+            total_amount: Math.round(quantity * purchasePrice * 100) / 100,
+            conversion: row.conversion || 1,
+        };
+    };
 
     const initialLines = (prefillLines && prefillLines.length)
         ? prefillLines.map(mapPrefill)
@@ -404,6 +473,7 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
     };
 
     return {
+        ...supplierCategoryFilterMixin(supplierCatalog, supplierIndustries, supplierSubCategoriesByIndustry),
         itemUnits,
         items,
         supplierItemIds: supplierItemIds || {},
@@ -422,6 +492,12 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
         draftRestored: false,
         _persistTimer: null,
         _draftAbandoned: false,
+        onSupplierCategoryFilterChange() {
+            if (this.supplierId && ! this.filteredSupplierCatalog().some((supplier) => String(supplier.id) === String(this.supplierId))) {
+                this.supplierId = '';
+                this.onSupplierChange();
+            }
+        },
         initDraftPersistence() {
             if (! hasServerOldState) {
                 const saved = this.loadDraft();
@@ -506,11 +582,23 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             this.dateOfDelivery = saved.dateOfDelivery || this.dateOfDelivery;
 
             if (Array.isArray(saved.lines) && saved.lines.length > 0) {
-                this.lines = saved.lines.map(line => ({ ...blankLine(), ...line, item_id: String(line.item_id || '') }));
+                this.lines = saved.lines.map(line => {
+                    const mapped = { ...blankLine(), ...line, item_id: String(line.item_id || '') };
+
+                    if (! mapped.total_amount) {
+                        mapped.total_amount = Math.round((parseFloat(mapped.quantity) || 0) * (parseFloat(mapped.purchase_price) || 0) * 100) / 100;
+                    }
+
+                    return mapped;
+                });
             }
 
             if (saved.draftLine) {
                 this.draftLine = { ...blankLine(), ...saved.draftLine, item_id: String(saved.draftLine.item_id || '') };
+
+                if (! this.draftLine.total_amount) {
+                    this.draftLine.total_amount = Math.round((parseFloat(this.draftLine.quantity) || 0) * (parseFloat(this.draftLine.purchase_price) || 0) * 100) / 100;
+                }
             }
 
             if (saved.editingIndex !== null && saved.editingIndex !== undefined) {
@@ -634,7 +722,31 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             }
             line.conversion = conversion;
             line.purchase_price = Math.round((parseFloat(item.default_purchase_price_per_ouom) || 0) * 100) / 100;
+            line.total_amount = Math.round((parseFloat(line.quantity) || 0) * line.purchase_price * 100) / 100;
             this.draftError = '';
+        },
+        onDraftCostChange(source) {
+            const qty = parseFloat(this.draftLine.quantity) || 0;
+
+            if (source === 'total') {
+                if (qty > 0) {
+                    this.draftLine.purchase_price = Math.round(((parseFloat(this.draftLine.total_amount) || 0) / qty) * 100) / 100;
+                }
+
+                return;
+            }
+
+            this.draftLine.total_amount = Math.round(qty * (parseFloat(this.draftLine.purchase_price) || 0) * 100) / 100;
+        },
+        unitPricePerSaleUnit(line) {
+            const conversion = parseFloat(line.conversion) || 0;
+            const unitPrice = parseFloat(line.purchase_price) || 0;
+
+            if (conversion <= 0) {
+                return 0;
+            }
+
+            return Math.round((unitPrice / conversion) * 100) / 100;
         },
         validateDraft() {
             const line = this.draftLine;
@@ -652,7 +764,10 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
                 return 'Select a delivery unit.';
             }
             if (line.purchase_price === '' || line.purchase_price === null || parseFloat(line.purchase_price) < 0) {
-                return 'Enter a valid purchase price.';
+                return 'Enter a valid unit price.';
+            }
+            if (line.total_amount === '' || line.total_amount === null || parseFloat(line.total_amount) < 0) {
+                return 'Enter a valid total amount.';
             }
             if (!line.conversion || parseFloat(line.conversion) <= 0) {
                 return 'Sale units per delivery must be greater than zero.';
@@ -661,6 +776,8 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             return '';
         },
         saveDraftLine() {
+            this.onDraftCostChange('unit');
+
             const error = this.validateDraft();
             if (error) {
                 this.draftError = error;
@@ -681,6 +798,9 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
         },
         editLine(index) {
             this.draftLine = this.cloneLine(this.lines[index]);
+            if (! this.draftLine.total_amount) {
+                this.draftLine.total_amount = this.linePurchaseTotal(this.draftLine);
+            }
             this.editingIndex = index;
             this.draftError = '';
             this.$nextTick(() => this.$refs.draftForm?.scrollIntoView({ behavior: 'smooth', block: 'start' }));

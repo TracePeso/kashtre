@@ -19,14 +19,39 @@
                 @csrf
                 @method('PUT')
 
-                <!-- Branding & Contact -->
-                <div class="mb-6">
-                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Branding & Contact</h3>
+                <!-- Document letterhead -->
+                <div id="document-letterhead" class="mb-6 scroll-mt-24">
+                    <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Document letterhead</h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                Logo, company name, and address appear in the header of all system-generated PDFs and exports.
+                            </p>
+                        </div>
+                        <a
+                            href="#document-letterhead-preview"
+                            class="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50"
+                        >
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            Preview header &amp; footer
+                        </a>
+                    </div>
+
+                    <h4 class="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3">Branding &amp; contact details</h4>
                     @include('partials.business-branding-fields', [
                         'business' => $business,
                         'logoRequired' => false,
                         'showLogoPreview' => true,
                     ])
+
+                    <div id="document-letterhead-preview" class="mt-8 scroll-mt-24">
+                        @include('partials.document-letterhead-preview', [
+                            'branding' => $documentBranding,
+                        ])
+                    </div>
                 </div>
 
                 <!-- Location & Currency -->
@@ -107,7 +132,7 @@
                 </div>
 
                 <!-- Financial year -->
-                <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                <div id="financial-year" class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6 scroll-mt-24">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Financial Year</h3>
                     @include('partials.financial-year-fields', [
                         'business' => $business,
@@ -116,7 +141,7 @@
                 </div>
                 
                 <!-- Credit Limits -->
-                <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                <div id="credit-limits" class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6 scroll-mt-24">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Credit Limits</h3>
                     
                     <!-- Maximum Third Party Credit Limit -->
@@ -186,7 +211,7 @@
                 </div>
 
                 <!-- Admission & Discharge Configuration -->
-                <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                <div id="admission-discharge" class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6 scroll-mt-24">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Admission & Discharge Settings</h3>
                     
                     <!-- Admit Button Label -->
@@ -270,8 +295,53 @@
                     </div>
                 </div>
 
+                <!-- Goods receive note approvers -->
+                <div id="grn-approvers" class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6 scroll-mt-24">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Goods Receive Note Approvers</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                        Configure whether staff must select a technical supervisor (end-user approver) on each goods receive note before it can be submitted.
+                        Approver 1 and Approver 2 are still configured under Inventory → Goods receive note approvers.
+                    </p>
+
+                    <div class="p-4 bg-indigo-50 dark:bg-gray-700 rounded-lg border border-indigo-200 dark:border-gray-600">
+                        <p class="text-sm font-medium text-gray-900 dark:text-white mb-3">Technical supervisor requirement</p>
+                        <div class="space-y-3">
+                            <label class="flex items-start">
+                                <input
+                                    type="radio"
+                                    name="grn_technical_supervisor_required"
+                                    value="0"
+                                    {{ old('grn_technical_supervisor_required', $business->grn_technical_supervisor_required ? '1' : '0') === '0' ? 'checked' : '' }}
+                                    class="mt-1 mr-3 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                                >
+                                <div>
+                                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Optional</span>
+                                    <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                        Technical supervisor can be left blank on a goods receive note. When selected, they approve before Approver 1 and Approver 2.
+                                    </p>
+                                </div>
+                            </label>
+                            <label class="flex items-start">
+                                <input
+                                    type="radio"
+                                    name="grn_technical_supervisor_required"
+                                    value="1"
+                                    {{ old('grn_technical_supervisor_required', $business->grn_technical_supervisor_required ? '1' : '0') === '1' ? 'checked' : '' }}
+                                    class="mt-1 mr-3 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                                >
+                                <div>
+                                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Mandatory</span>
+                                    <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                        Every goods receive note must name a technical supervisor before submission.
+                                    </p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Credit Exclusions -->
-                <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                <div id="credit-exclusions" class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6 scroll-mt-24">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Credit Service Exclusions</h3>
                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
                         Select items from your price list that should be excluded from credit terms. Invoices containing excluded items will not be saved for credit clients.
@@ -377,7 +447,7 @@
                 </div>
 
                 <!-- Credit Limit Approval Workflow -->
-                <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                <div id="credit-approval-workflow" class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6 scroll-mt-24">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Credit Limit Approval Workflow</h3>
                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
                         Select users who will be part of the 3-step approval process for credit limit changes (for both clients and third-party payers).

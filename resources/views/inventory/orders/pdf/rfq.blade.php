@@ -1,36 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    @php
-        $documentTitle = $order->isDraft() || $order->isPendingApproval()
-            ? 'Purchase Request'
-            : 'Request for Quotation';
-    @endphp
-    <title>{{ $order->order_number }} — {{ $documentTitle }}</title>
-    <style>
-        body { font-family: DejaVu Sans, sans-serif; font-size: 12px; color: #111; }
-        h1 { font-size: 18px; margin: 0 0 4px; }
-        .muted { color: #555; font-size: 11px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-        th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
-        th { background: #f3f4f6; }
-        .text-right { text-align: right; }
-        .note { margin-top: 14px; padding: 10px; background: #f9fafb; border: 1px solid #e5e7eb; font-size: 11px; }
-    </style>
-</head>
-<body>
-    @php($branding = \App\Support\BusinessBranding::for($order->business))
-    @if($branding)
-        <x-business.document-header
-            :branding="$branding"
-            :document-title="$documentTitle"
-            :document-subtitle="$order->order_number.' · '.$order->statusLabel()"
-        />
-    @else
-        <h1>{{ $documentTitle }}</h1>
-        <p class="muted">{{ $order->order_number }} · {{ $order->statusLabel() }}</p>
-    @endif
+@php
+    $branding = $branding ?? \App\Support\BusinessBranding::for($order->business);
+    $documentTitle = $order->isDraft() || $order->isPendingApproval()
+        ? 'Purchase Request'
+        : 'Request for Quotation';
+    $documentSubtitle = $order->order_number.' · '.$order->statusLabel();
+    $generatedAt = $generatedAt ?? now();
+@endphp
+@extends('layouts.pdf')
+
+@section('title', $order->order_number.' — '.$documentTitle)
+
+@section('content')
     <p><strong>Store:</strong> {{ $order->store?->name }}<br>
        <strong>Prepared by:</strong> {{ $order->createdBy?->name ?? '—' }}<br>
        <strong>Date:</strong> {{ $order->created_at?->format('d M Y') }}</p>
@@ -45,7 +25,7 @@
         <p><strong>Notes:</strong> {{ $order->notes }}</p>
     @endif
 
-    <table>
+    <table style="margin-top: 16px;">
         <thead>
             <tr>
                 <th>Item</th>
@@ -69,5 +49,4 @@
     <p class="note">
         Pricing is intentionally omitted on this RFQ. Please return your quotation with purchase prices and totals for the quantities above.
     </p>
-</body>
-</html>
+@endsection

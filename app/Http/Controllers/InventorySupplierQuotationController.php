@@ -8,6 +8,7 @@ use App\Models\InventorySupplierQuotation;
 use App\Models\Supplier;
 use App\Services\Inventory\InventorySupplierQuotationService;
 use App\Support\InventoryBusinessContext;
+use App\Support\SupplierCategorySelection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -68,13 +69,17 @@ class InventorySupplierQuotationController extends Controller
         $sheet = $this->service->comparisonSheet($order);
         $availableSuppliers = Supplier::query()
             ->where('business_id', $order->business_id)
+            ->with(['industry:id,name', 'subCategory:id,name'])
             ->orderBy('name')
-            ->get(['id', 'name', 'email']);
+            ->get(['id', 'name', 'email', 'supplier_industry_id', 'supplier_sub_category_id']);
 
         return view('inventory.orders.quotations-compare', [
             'order' => $order,
             'sheet' => $sheet,
             'availableSuppliers' => $availableSuppliers,
+            'supplierCatalog' => SupplierCategorySelection::catalogFromSuppliers($availableSuppliers),
+            'supplierIndustries' => SupplierCategorySelection::industryOptionsForBusiness((int) $order->business_id),
+            'supplierSubCategoriesByIndustry' => SupplierCategorySelection::subCategoryOptionsByIndustryForBusiness((int) $order->business_id),
             'rfqSuppliers' => $this->service->suppliersForRfq($order->fresh(['invitedSuppliers', 'supplierQuotations.lines', 'lines', 'supplier'])),
         ]);
     }

@@ -7,10 +7,10 @@ use App\Http\Controllers\Concerns\RequiresInventoryModule;
 use App\Models\InventoryStockLevel;
 use App\Models\Item;
 use App\Models\Store;
+use App\Services\DocumentPdfService;
 use App\Services\Inventory\InventoryConsumptionQueryService;
 use App\Support\BusinessBranding;
 use App\Support\InventoryBusinessContext;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -36,28 +36,31 @@ class InventoryDailyConsumptionController extends Controller
     {
         $payload = $this->exportPayload($request, $queries);
         $filename = $this->exportFilename($payload['meta'], 'xlsx');
-
-        return Excel::download(
-            new InventoryConsumptionExport($payload['rows'], $payload['meta']),
-            $filename
-        );
-    }
-
-    public function exportPdf(Request $request, InventoryConsumptionQueryService $queries): Response
-    {
-        $payload = $this->exportPayload($request, $queries);
-        $filename = $this->exportFilename($payload['meta'], 'pdf');
         $branding = BusinessBranding::for(
             \App\Models\Business::query()->find($payload['business_id'])
         );
 
-        return Pdf::loadView('inventory.consumption.pdf', [
-            'rows' => $payload['rows'],
-            'meta' => $payload['meta'],
-            'branding' => $branding,
-        ])
-            ->setPaper('a4', 'portrait')
-            ->download($filename);
+        return Excel::download(
+            (new InventoryConsumptionExport($payload['rows'], $payload['meta']))
+                ->setExportBranding($branding),
+            $filename
+        );
+    }
+
+    public function exportPdf(Request $request, InventoryConsumptionQueryService $queries, DocumentPdfService $documents): Response
+    {
+        $payload = $this->exportPayload($request, $queries);
+        $filename = $this->exportFilename($payload['meta'], 'pdf');
+
+        return $documents->download(
+            'inventory.consumption.pdf',
+            [
+                'rows' => $payload['rows'],
+                'meta' => $payload['meta'],
+            ],
+            \App\Models\Business::query()->find($payload['business_id']),
+            $filename,
+        );
     }
 
     /**

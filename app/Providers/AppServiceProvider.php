@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\CallingModuleConfig;
 use App\Models\InventoryModuleConfig;
 use App\Support\BusinessBranding;
+use App\Support\DocumentViewData;
 use App\Support\InventoryBusinessContext;
 use App\Models\Caller;
 use App\Models\Transaction;
@@ -62,6 +63,10 @@ class AppServiceProvider extends ServiceProvider
             }
 
             $view->with($shared);
+        });
+
+        View::composer(\App\Support\DocumentViewData::documentViewNames(), function ($view): void {
+            $view->with(\App\Support\DocumentViewData::merge($view->getData()));
         });
 
          // Register observers

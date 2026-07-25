@@ -28,6 +28,8 @@ class Business extends Model
         'account_number',
         'entity_code',
         'registered_as_supplier',
+        'supplier_industry_id',
+        'supplier_sub_category_id',
         'account_balance',
         'mode',
         'date',
@@ -45,6 +47,7 @@ class Business extends Model
         'discharge_remove_long_stay',
         'credit_excluded_items',
         'third_party_excluded_items',
+        'grn_technical_supervisor_required',
     ];
 
     protected $casts = [
@@ -59,9 +62,12 @@ class Business extends Model
         'discharge_remove_long_stay' => 'boolean',
         'credit_excluded_items' => 'array',
         'third_party_excluded_items' => 'array',
+        'grn_technical_supervisor_required' => 'boolean',
         'financial_year_start_month' => 'integer',
         'financial_year_start_day' => 'integer',
         'registered_as_supplier' => 'boolean',
+        'supplier_industry_id' => 'integer',
+        'supplier_sub_category_id' => 'integer',
     ];
 
     // a businness has many users
@@ -133,6 +139,16 @@ class Business extends Model
     public function supplierProfiles()
     {
         return $this->hasMany(Supplier::class, 'linked_business_id');
+    }
+
+    public function supplierIndustry()
+    {
+        return $this->belongsTo(SupplierIndustry::class, 'supplier_industry_id');
+    }
+
+    public function supplierSubCategory()
+    {
+        return $this->belongsTo(SupplierSubCategory::class, 'supplier_sub_category_id');
     }
 
     public function scopeKashtreEntities($query)
@@ -208,6 +224,11 @@ class Business extends Model
     public function creditLimitApprovers()
     {
         return $this->hasMany(CreditLimitApprovalApprover::class);
+    }
+
+    public function isGrnTechnicalSupervisorRequired(): bool
+    {
+        return (bool) ($this->grn_technical_supervisor_required ?? false);
     }
 
     public function inventoryModuleConfig()
