@@ -321,78 +321,9 @@ class GoodsReceivedNoteService
         return $pending && (int) $pending->approver_user_id === (int) $user->id;
     }
 
-    public function recordInspection(
-        GoodsReceivedNote $grn,
-        User $user,
-        string $status,
-        ?string $notes = null,
-        array $lineConditions = []
-    ): GoodsReceivedNote {
-        if (! in_array($status, [
-            GoodsReceivedNote::INSPECTION_PASSED,
-            GoodsReceivedNote::INSPECTION_FAILED,
-            GoodsReceivedNote::INSPECTION_PENDING,
-        ], true)) {
-            throw ValidationException::withMessages([
-                'inspection_status' => 'Invalid inspection status.',
-            ]);
-        }
-
-        if (! $grn->isDraft() && ! $grn->isPending()) {
-            throw ValidationException::withMessages([
-                'status' => 'Inspection can only be recorded on draft or pending GRNs.',
-            ]);
-        }
-
-        return DB::transaction(function () use ($grn, $user, $status, $notes, $lineConditions) {
-            $grn->load('lines');
-
-            foreach ($grn->lines as $line) {
-                $ordered = $line->ordered_quantity !== null
-                    ? (float) $line->ordered_quantity
-                    : null;
-                $received = (float) $line->quantity;
-                $variance = $ordered !== null ? round($received - $ordered, 4) : null;
-                $condition = $lineConditions[$line->id] ?? $line->condition_status ?? 'good';
-
-                $line->update([
-                    'variance_quantity' => $variance,
-                    'condition_status' => $condition,
-                ]);
-            }
-
-            $grn->update([
-                'inspection_status' => $status,
-                'inspection_notes' => $notes,
-                'inspected_by_user_id' => $user->id,
-                'inspected_at' => now(),
-                'updated_by' => $user->id,
-            ]);
-
-            InventoryProcurementAudit::log(
-                'grn_inspection',
-                $grn,
-                'GRN '.$grn->grn_number.' inspection '.$status,
-                why: $notes,
-                newValues: [
-                    'inspection_status' => $status,
-                    'has_variance' => $grn->fresh('lines')->hasVariance(),
-                ],
-            );
-
-            return $grn->fresh(['lines', 'inspectedBy', 'approvals.approver']);
-        });
-    }
-
     private function finalizeApproval(GoodsReceivedNote $grn, User $user): void
     {
         $grn->refresh();
-
-        if ($grn->inspection_status !== GoodsReceivedNote::INSPECTION_PASSED) {
-            throw ValidationException::withMessages([
-                'inspection_status' => 'Complete QC inspection and mark it as passed before final GRN approval (stock cannot post yet).',
-            ]);
-        }
 
         $grn->update([
             'status' => GoodsReceivedNote::STATUS_APPROVED,
@@ -410,8 +341,8 @@ class GoodsReceivedNoteService
         InventoryProcurementAudit::log(
             'grn_approved',
             $grn,
-            'GRN '.$grn->grn_number.' approved after QC — stock updated',
-            why: 'Final approval after inspection passed',
+            'GRN '.$grn->grn_number.' approved — stock updated',
+            why: 'Final approval',
         );
     }
 
@@ -526,6 +457,48 @@ class GoodsReceivedNoteService
     }
 
     /**
+     * Latest GRN line per item (any non-rejected GRN), keyed by item id.
+     *
+     * @return array<int, array{quantity: float, line_total: float, purchase_price_per_ouom: float}>
+     */
+    public function lastGrnLineSnapshotsByItem(int $businessId): array
+    {
+        $lines = GoodsReceivedNoteLine::query()
+            ->select([
+                'goods_received_note_lines.item_id',
+                'goods_received_note_lines.quantity',
+                'goods_received_note_lines.purchase_price',
+            ])
+            ->join('goods_received_notes', 'goods_received_notes.id', '=', 'goods_received_note_lines.goods_received_note_id')
+            ->where('goods_received_notes.business_id', $businessId)
+            ->where('goods_received_notes.status', '!=', GoodsReceivedNote::STATUS_REJECTED)
+            ->where('goods_received_note_lines.quantity', '>', 0)
+            ->where('goods_received_note_lines.purchase_price', '>', 0)
+            ->orderByDesc('goods_received_notes.id')
+            ->orderByDesc('goods_received_note_lines.id')
+            ->get();
+
+        $snapshots = [];
+
+        foreach ($lines as $line) {
+            $itemId = (int) $line->item_id;
+
+            if (! isset($snapshots[$itemId])) {
+                $quantity = (float) $line->quantity;
+                $purchasePrice = (float) $line->purchase_price;
+
+                $snapshots[$itemId] = [
+                    'quantity' => $quantity,
+                    'line_total' => round($quantity * $purchasePrice, 2),
+                    'purchase_price_per_ouom' => round($purchasePrice, 2),
+                ];
+            }
+        }
+
+        return $snapshots;
+    }
+
+    /**
      * @param  array<int, float>  $lastGrnPricesByItem
      */
     public function purchasePricePerOuomForItem(Item $item, array $lastGrnPricesByItem = []): float
@@ -542,12 +515,14 @@ class GoodsReceivedNoteService
     /**
      * @param  Collection<int, Item>  $items
      * @param  array<int, float>  $lastGrnPricesByItem
+     * @param  array<int, array{quantity: float, line_total: float, purchase_price_per_ouom: float}>  $lastGrnLineSnapshots
      * @return array<int, array<string, mixed>>
      */
-    public function itemsForGrnForm(Collection $items, array $lastGrnPricesByItem): array
+    public function itemsForGrnForm(Collection $items, array $lastGrnPricesByItem, array $lastGrnLineSnapshots = []): array
     {
-        return $items->map(function (Item $item) use ($lastGrnPricesByItem) {
-            $fromLastGrn = isset($lastGrnPricesByItem[$item->id]) && (float) $lastGrnPricesByItem[$item->id] > 0;
+        return $items->map(function (Item $item) use ($lastGrnPricesByItem, $lastGrnLineSnapshots) {
+            $snapshot = $lastGrnLineSnapshots[$item->id] ?? null;
+            $fromLastGrn = $snapshot !== null;
 
             return [
                 'id' => $item->id,
@@ -558,7 +533,11 @@ class GoodsReceivedNoteService
                 'suom_per_ouom' => (float) ($item->suom_per_ouom ?? 0),
                 'default_price' => (float) ($item->default_price ?? 0),
                 'purchase_price_per_ouom' => $item->purchasePricePerOuom(),
-                'default_purchase_price_per_ouom' => $this->purchasePricePerOuomForItem($item, $lastGrnPricesByItem),
+                'default_purchase_price_per_ouom' => $fromLastGrn
+                    ? $snapshot['purchase_price_per_ouom']
+                    : $this->purchasePricePerOuomForItem($item, $lastGrnPricesByItem),
+                'last_grn_total_amount' => $fromLastGrn ? $snapshot['line_total'] : 0,
+                'last_grn_quantity' => $fromLastGrn ? $snapshot['quantity'] : 1,
                 'from_last_grn' => $fromLastGrn,
             ];
         })->values()->all();

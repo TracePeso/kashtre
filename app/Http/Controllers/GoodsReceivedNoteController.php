@@ -211,7 +211,6 @@ class GoodsReceivedNoteController extends Controller
             'store',
             'entryBy',
             'submittedBy',
-            'inspectedBy',
             'technicalSupervisor',
             'approvals.approver',
             'inventoryOrder',
@@ -226,34 +225,6 @@ class GoodsReceivedNoteController extends Controller
         $canApprove = $this->service->userCanApprove($goodsReceivedNote, Auth::user());
 
         return view('inventory.receive.show', compact('goodsReceivedNote', 'canApprove'));
-    }
-
-    public function inspect(Request $request, GoodsReceivedNote $goodsReceivedNote)
-    {
-        $this->authorizeBusiness($goodsReceivedNote);
-
-        $validated = $request->validate([
-            'inspection_status' => 'required|in:passed,failed,pending',
-            'inspection_notes' => 'nullable|string|max:2000',
-            'line_conditions' => 'nullable|array',
-            'line_conditions.*' => 'nullable|in:good,damaged,expired,short',
-        ]);
-
-        try {
-            $this->service->recordInspection(
-                $goodsReceivedNote,
-                Auth::user(),
-                $validated['inspection_status'],
-                $validated['inspection_notes'] ?? null,
-                $validated['line_conditions'] ?? [],
-            );
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return back()->withErrors($e->errors());
-        }
-
-        return redirect()
-            ->route('inventory.receive.show', $goodsReceivedNote)
-            ->with('success', 'QC inspection recorded.');
     }
 
     public function submit(GoodsReceivedNote $goodsReceivedNote)
@@ -558,6 +529,7 @@ class GoodsReceivedNoteController extends Controller
             ->get(['id', 'name', 'email']);
 
         $lastGrnPurchasePricesByItem = $this->service->lastApprovedPurchasePricesPerOuom($businessId);
+        $lastGrnLineSnapshots = $this->service->lastGrnLineSnapshotsByItem($businessId);
 
         $items = Item::where('business_id', $businessId)
             ->where('type', 'good')
@@ -584,7 +556,7 @@ class GoodsReceivedNoteController extends Controller
                 ->orderBy('name')
                 ->get(),
             'items' => $items,
-            'grnFormItems' => $this->service->itemsForGrnForm($items, $lastGrnPurchasePricesByItem),
+            'grnFormItems' => $this->service->itemsForGrnForm($items, $lastGrnPurchasePricesByItem, $lastGrnLineSnapshots),
             'lastGrnPurchasePricesByItem' => $lastGrnPurchasePricesByItem,
             'grnApprovers' => $grnApprovers,
             'businessUsers' => $businessUsers,

@@ -81,7 +81,6 @@ class InventoryPurchaseOrderFulfillmentService
                 : 1.0;
 
             $duomQty = max(0.0001, round($remaining / $conversion, 4));
-            $unitPriceSuom = (float) ($line->unit_price ?? $item->purchasePricePerSuom());
 
             $lines[] = [
                 'inventory_order_line_id' => $line->inventory_order_line_id,
@@ -92,7 +91,6 @@ class InventoryPurchaseOrderFulfillmentService
                 'expiry_date' => '',
                 'duom' => $item->orderUnit?->name ?? $item->itemUnit?->name ?? '',
                 'suom' => $item->itemUnit?->name ?? '',
-                'purchase_price' => round($unitPriceSuom * $conversion, 2),
                 'conversion' => $conversion,
                 'remaining_suom' => $remaining,
                 'ordered_suom' => (float) $line->quantity_suom,

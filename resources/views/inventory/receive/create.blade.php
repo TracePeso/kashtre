@@ -225,8 +225,6 @@
                                     <th class="px-4 py-2 text-left font-medium">Delivery unit</th>
                                     <th class="px-4 py-2 text-left font-medium">Sale unit</th>
                                     <th class="px-4 py-2 text-right font-medium">Sale units</th>
-                                    <th class="px-4 py-2 text-right font-medium">Unit price</th>
-                                    <th class="px-4 py-2 text-right font-medium">Unit price (sale)</th>
                                     <th class="px-4 py-2 text-right font-medium">Total amount</th>
                                     <th class="px-4 py-2 text-left font-medium">Batch</th>
                                     <th class="px-4 py-2 text-left font-medium">Expiry</th>
@@ -245,9 +243,7 @@
                                         <td class="px-4 py-2 text-gray-700" x-text="line.duom || '—'"></td>
                                         <td class="px-4 py-2 text-gray-700" x-text="line.suom || '—'"></td>
                                         <td class="px-4 py-2 text-right tabular-nums font-medium text-emerald-800" x-text="formatNumber(saleUnits(line))"></td>
-                                        <td class="px-4 py-2 text-right tabular-nums text-gray-700" x-text="'UGX ' + formatMoney(line.purchase_price)"></td>
-                                        <td class="px-4 py-2 text-right tabular-nums text-gray-600" x-text="'UGX ' + formatMoney(unitPricePerSaleUnit(line))"></td>
-                                        <td class="px-4 py-2 text-right tabular-nums font-medium text-gray-900" x-text="'UGX ' + formatMoney(linePurchaseTotal(line))"></td>
+                                        <td class="px-4 py-2 text-right tabular-nums font-medium text-gray-900" x-text="'UGX ' + formatMoney(lineTotalAmount(line))"></td>
                                         <td class="px-4 py-2 text-gray-600" x-text="line.batch_number || '—'"></td>
                                         <td class="px-4 py-2 text-gray-600 whitespace-nowrap" x-text="line.expiry_date ? formatDate(line.expiry_date) : '—'"></td>
                                         <td class="px-4 py-2 text-right whitespace-nowrap">
@@ -264,7 +260,6 @@
                                 <tr>
                                     <td colspan="5" class="px-4 py-2 text-right">Totals</td>
                                     <td class="px-4 py-2 text-right tabular-nums" x-text="formatNumber(totals().saleUnits)"></td>
-                                    <td class="px-4 py-2" colspan="2"></td>
                                     <td class="px-4 py-2 text-right tabular-nums" x-text="'UGX ' + formatMoney(totals().purchaseValue)"></td>
                                     <td colspan="3"></td>
                                 </tr>
@@ -291,7 +286,7 @@
                     </div>
                     <div class="px-4 py-4 space-y-3 bg-white">
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
-                            <div class="sm:col-span-2 lg:col-span-4">
+                            <div class="sm:col-span-2 lg:col-span-3">
                                 <label class="block text-xs font-medium text-gray-600 mb-1">Item <span class="text-red-500">*</span></label>
                                 <select x-model="draftLine.item_id" @change="onDraftItemChange()" required
                                         class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
@@ -306,7 +301,6 @@
                             <div class="lg:col-span-1">
                                 <label class="block text-xs font-medium text-gray-600 mb-1">Qty <span class="text-red-500">*</span></label>
                                 <input type="number" step="1" min="1" x-model.number="draftLine.quantity" required
-                                       @input="onDraftCostChange('qty')"
                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
                             </div>
                             <div class="lg:col-span-2">
@@ -317,6 +311,12 @@
                             <div class="lg:col-span-2">
                                 <label class="block text-xs font-medium text-gray-600 mb-1">Expiry date</label>
                                 <input type="date" x-model="draftLine.expiry_date"
+                                       class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Total amount <span class="text-red-500">*</span></label>
+                                <input type="number" step="0.01" min="0" x-model="draftLine.total_amount" required
+                                       placeholder="UGX" autocomplete="off"
                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
                             </div>
                         </div>
@@ -354,42 +354,6 @@
                             </div>
                         </div>
 
-                        <div class="mt-3 rounded-lg border border-amber-200 bg-amber-50/40 p-4">
-                            <p class="text-xs font-semibold text-amber-950 mb-3">Cost tracking</p>
-                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-700 mb-1">
-                                        Unit price <span class="text-red-500">*</span>
-                                        <span class="font-normal text-gray-500" x-show="draftLine.duom" x-text="'(per ' + (draftLine.duom || 'delivery unit') + ')'"></span>
-                                    </label>
-                                    <input type="number" step="0.01" min="0" x-model.number="draftLine.purchase_price" required
-                                           @input="onDraftCostChange('unit')"
-                                           class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
-                                    <p class="mt-1 text-xs text-gray-500" x-show="draftLine.item_id" x-cloak>
-                                        <span x-show="itemForLine(draftLine)?.from_last_grn">From last approved GRN.</span>
-                                        <span x-show="!itemForLine(draftLine)?.from_last_grn">From item master (no approved GRN yet).</span>
-                                    </p>
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-700 mb-1">
-                                        Unit price (sale)
-                                        <span class="font-normal text-gray-500" x-show="draftLine.suom" x-text="'(per ' + (draftLine.suom || 'sale unit') + ')'"></span>
-                                    </label>
-                                    <div class="flex h-[38px] items-center rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-900 tabular-nums">
-                                        <span x-text="'UGX ' + formatMoney(unitPricePerSaleUnit(draftLine))"></span>
-                                    </div>
-                                    <p class="mt-1 text-xs text-gray-500">Used for stock valuation.</p>
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-700 mb-1">Total amount <span class="text-red-500">*</span></label>
-                                    <input type="number" step="0.01" min="0" x-model.number="draftLine.total_amount" required
-                                           @input="onDraftCostChange('total')"
-                                           class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
-                                    <p class="mt-1 text-xs text-gray-500">Delivery qty × unit price, or enter total to back-calculate unit price.</p>
-                                </div>
-                            </div>
-                        </div>
-
                         <div x-show="draftError" x-cloak class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800" x-text="draftError"></div>
 
                         <div class="flex justify-end pt-1">
@@ -414,15 +378,6 @@
                         <input type="hidden" :name="'lines[' + index + '][sale_units_per_purchase_unit]'" :value="line.conversion">
                     </div>
                 </template>
-
-                <div x-show="lines.length === 0" x-cloak class="mt-4 flex flex-wrap justify-end gap-3">
-                    <button type="button" @click="cancelForm()"
-                            class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
-                    <button type="submit" @disabled($itemUnits->isEmpty())
-                            class="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                        Submit for approval
-                    </button>
-                </div>
             </div>
         </form>
     </div>
@@ -432,12 +387,11 @@
 function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillStoreId, prefillSupplierId, inventoryOrderId, inventoryPurchaseOrderId, businessId, hasServerOldState, defaultDateOfOrder, defaultDateOfDelivery, supplierCatalog, supplierIndustries, supplierSubCategoriesByIndustry) {
     const blankLine = () => ({
         item_id: '', inventory_order_line_id: '', suom: '', duom: '', item_suom: '', quantity: 1, batch_number: '', expiry_date: '',
-        purchase_price: 0, total_amount: 0, conversion: 1,
+        purchase_price: 0, total_amount: '', conversion: 1,
     });
 
     const mapPrefill = (row) => {
         const quantity = row.quantity || 1;
-        const purchasePrice = row.purchase_price || 0;
 
         return {
             item_id: String(row.item_id || ''),
@@ -448,8 +402,8 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             quantity,
             batch_number: row.batch_number || '',
             expiry_date: row.expiry_date || '',
-            purchase_price: purchasePrice,
-            total_amount: Math.round(quantity * purchasePrice * 100) / 100,
+            purchase_price: 0,
+            total_amount: '',
             conversion: row.conversion || 1,
         };
     };
@@ -582,27 +536,30 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             this.dateOfDelivery = saved.dateOfDelivery || this.dateOfDelivery;
 
             if (Array.isArray(saved.lines) && saved.lines.length > 0) {
-                this.lines = saved.lines.map(line => {
-                    const mapped = { ...blankLine(), ...line, item_id: String(line.item_id || '') };
-
-                    if (! mapped.total_amount) {
-                        mapped.total_amount = Math.round((parseFloat(mapped.quantity) || 0) * (parseFloat(mapped.purchase_price) || 0) * 100) / 100;
-                    }
-
-                    return mapped;
-                });
-            }
-
-            if (saved.draftLine) {
-                this.draftLine = { ...blankLine(), ...saved.draftLine, item_id: String(saved.draftLine.item_id || '') };
-
-                if (! this.draftLine.total_amount) {
-                    this.draftLine.total_amount = Math.round((parseFloat(this.draftLine.quantity) || 0) * (parseFloat(this.draftLine.purchase_price) || 0) * 100) / 100;
-                }
+                this.lines = saved.lines.map(line => ({
+                    ...blankLine(),
+                    ...line,
+                    item_id: String(line.item_id || ''),
+                }));
             }
 
             if (saved.editingIndex !== null && saved.editingIndex !== undefined) {
                 this.editingIndex = saved.editingIndex;
+                if (this.lines[this.editingIndex]) {
+                    this.draftLine = this.cloneLine(this.lines[this.editingIndex]);
+                } else {
+                    this.editingIndex = null;
+                    this.draftLine = blankLine();
+                }
+            } else if (saved.draftLine) {
+                this.draftLine = {
+                    ...blankLine(),
+                    ...saved.draftLine,
+                    item_id: String(saved.draftLine.item_id || ''),
+                };
+                if (this.editingIndex === null && ! this.draftLine.total_amount && this.draftLine.item_id) {
+                    this.prefillTotalAmountFromLastGrn(this.draftLine);
+                }
             }
         },
         clearDraft() {
@@ -721,32 +678,38 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
                 line.duom = duom;
             }
             line.conversion = conversion;
-            line.purchase_price = Math.round((parseFloat(item.default_purchase_price_per_ouom) || 0) * 100) / 100;
-            line.total_amount = Math.round((parseFloat(line.quantity) || 0) * line.purchase_price * 100) / 100;
+            if (this.editingIndex === null) {
+                this.prefillTotalAmountFromLastGrn(line);
+            }
             this.draftError = '';
         },
-        onDraftCostChange(source) {
-            const qty = parseFloat(this.draftLine.quantity) || 0;
-
-            if (source === 'total') {
-                if (qty > 0) {
-                    this.draftLine.purchase_price = Math.round(((parseFloat(this.draftLine.total_amount) || 0) / qty) * 100) / 100;
-                }
-
+        prefillTotalAmountFromLastGrn(line) {
+            const item = this.items.find(i => String(i.id) === String(line.item_id));
+            if (! item) {
+                line.total_amount = '';
                 return;
             }
 
-            this.draftLine.total_amount = Math.round(qty * (parseFloat(this.draftLine.purchase_price) || 0) * 100) / 100;
-        },
-        unitPricePerSaleUnit(line) {
-            const conversion = parseFloat(line.conversion) || 0;
-            const unitPrice = parseFloat(line.purchase_price) || 0;
+            const lastTotal = parseFloat(item.last_grn_total_amount) || 0;
 
-            if (conversion <= 0) {
+            if (lastTotal > 0) {
+                line.total_amount = lastTotal;
+                return;
+            }
+
+            const qty = parseFloat(line.quantity) || 1;
+            const unitPrice = parseFloat(item.default_purchase_price_per_ouom) || 0;
+            line.total_amount = unitPrice > 0 ? Math.round(unitPrice * qty * 100) / 100 : '';
+        },
+        purchasePriceFromTotal(line) {
+            const qty = parseFloat(line.quantity) || 0;
+            const total = parseFloat(line.total_amount) || 0;
+
+            if (qty <= 0) {
                 return 0;
             }
 
-            return Math.round((unitPrice / conversion) * 100) / 100;
+            return Math.round((total / qty) * 100) / 100;
         },
         validateDraft() {
             const line = this.draftLine;
@@ -763,21 +726,16 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             if (!line.duom) {
                 return 'Select a delivery unit.';
             }
-            if (line.purchase_price === '' || line.purchase_price === null || parseFloat(line.purchase_price) < 0) {
-                return 'Enter a valid unit price.';
-            }
-            if (line.total_amount === '' || line.total_amount === null || parseFloat(line.total_amount) < 0) {
-                return 'Enter a valid total amount.';
-            }
             if (!line.conversion || parseFloat(line.conversion) <= 0) {
                 return 'Sale units per delivery must be greater than zero.';
+            }
+            if (line.total_amount === '' || line.total_amount === null || parseFloat(line.total_amount) <= 0) {
+                return 'Enter a total amount greater than zero.';
             }
 
             return '';
         },
         saveDraftLine() {
-            this.onDraftCostChange('unit');
-
             const error = this.validateDraft();
             if (error) {
                 this.draftError = error;
@@ -785,6 +743,7 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             }
 
             const saved = this.cloneLine(this.draftLine);
+            saved.purchase_price = this.purchasePriceFromTotal(saved);
 
             if (this.editingIndex !== null) {
                 this.lines.splice(this.editingIndex, 1, saved);
@@ -798,9 +757,6 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
         },
         editLine(index) {
             this.draftLine = this.cloneLine(this.lines[index]);
-            if (! this.draftLine.total_amount) {
-                this.draftLine.total_amount = this.linePurchaseTotal(this.draftLine);
-            }
             this.editingIndex = index;
             this.draftError = '';
             this.$nextTick(() => this.$refs.draftForm?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -858,6 +814,10 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
                 return;
             }
 
+            this.lines.forEach((line) => {
+                line.purchase_price = this.purchasePriceFromTotal(line);
+            });
+
             this._draftAbandoned = true;
             this.clearDraft();
         },
@@ -872,15 +832,22 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             }
             return this.items.find(i => String(i.id) === String(line.item_id)) || null;
         },
-        linePurchaseTotal(line) {
+        lineTotalAmount(line) {
+            const total = parseFloat(line.total_amount);
+
+            if (! Number.isNaN(total) && total >= 0) {
+                return Math.round(total * 100) / 100;
+            }
+
             const q = parseFloat(line.quantity) || 0;
             const p = parseFloat(line.purchase_price) || 0;
+
             return Math.round(q * p * 100) / 100;
         },
         totals() {
             return {
                 saleUnits: this.lines.reduce((sum, line) => sum + this.saleUnits(line), 0),
-                purchaseValue: this.lines.reduce((sum, line) => sum + this.linePurchaseTotal(line), 0),
+                purchaseValue: this.lines.reduce((sum, line) => sum + this.lineTotalAmount(line), 0),
             };
         },
         formatNumber(value) {

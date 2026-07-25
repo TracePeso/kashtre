@@ -307,7 +307,6 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::post('/receive', [GoodsReceivedNoteController::class, 'store'])->name('receive.store');
         Route::get('/receive/{goodsReceivedNote}', [GoodsReceivedNoteController::class, 'show'])->name('receive.show');
         Route::post('/receive/{goodsReceivedNote}/submit', [GoodsReceivedNoteController::class, 'submit'])->name('receive.submit');
-        Route::post('/receive/{goodsReceivedNote}/inspect', [GoodsReceivedNoteController::class, 'inspect'])->name('receive.inspect');
         Route::post('/receive/{goodsReceivedNote}/approve', [GoodsReceivedNoteController::class, 'approve'])->name('receive.approve');
         Route::post('/receive/{goodsReceivedNote}/reject', [GoodsReceivedNoteController::class, 'reject'])->name('receive.reject');
         Route::get('/monitor', [InventoryController::class, 'monitor'])->name('monitor');
