@@ -240,7 +240,7 @@
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                    <label for="importance_filter" class="block text-sm font-medium text-gray-700">Importance</label>
+                    <label for="importance_filter" class="block text-sm font-medium text-gray-700">Category</label>
                     <select name="importance_filter" id="importance_filter"
                             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                         <option value="">All items</option>
@@ -299,7 +299,7 @@
                     </div>
                     <input type="search" x-model="itemSearch" placeholder="Search by name or code…"
                            class="block w-full rounded-md border-gray-300 py-1.5 px-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                    <p class="text-xs text-gray-500">The picker respects your importance, group, and subgroup filters above.</p>
+                    <p class="text-xs text-gray-500">The picker respects your category, group, and subgroup filters above.</p>
                     <div class="max-h-48 overflow-y-auto rounded border border-gray-200 bg-white divide-y divide-gray-100">
                         <template x-if="visibleItems().length === 0">
                             <p class="px-3 py-4 text-xs text-gray-500 text-center">No items match your search or filters.</p>

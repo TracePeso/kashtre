@@ -220,7 +220,7 @@ class InventoryOrderController extends Controller
             $validated['importance_filter'] ?? null,
             $validated['budget_mode'] ?? null,
             isset($validated['budget_value']) ? (float) $validated['budget_value'] : null,
-            isset($validated['period_of_order_days']) ? (int) $validated['period_of_order_days'] : null,
+            isset($validated['period_of_order_days']) ? (float) $validated['period_of_order_days'] : null,
             $validated['notes'] ?? null,
             isset($validated['group_id']) ? (int) $validated['group_id'] : null,
             isset($validated['subgroup_id']) ? (int) $validated['subgroup_id'] : null,
@@ -330,7 +330,7 @@ class InventoryOrderController extends Controller
             ->route('inventory.orders.show', $order)
             ->with('success', $order->isInternal()
                 ? 'Internal order submitted for approval.'
-                : 'RFQ submitted for approval.');
+                : 'Purchase request submitted for approval.');
     }
 
     public function approve(Request $request, InventoryOrder $order)

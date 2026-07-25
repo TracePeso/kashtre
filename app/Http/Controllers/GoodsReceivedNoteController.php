@@ -133,7 +133,7 @@ class GoodsReceivedNoteController extends Controller
         $validated = $this->validateGrn($request);
 
         $user = Auth::user();
-        $businessId = $user->business_id;
+        $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
         $action = $request->input('action', 'submit');
 
         if (! empty($validated['inventory_purchase_order_id'])) {

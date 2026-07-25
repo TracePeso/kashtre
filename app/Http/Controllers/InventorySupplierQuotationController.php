@@ -99,6 +99,16 @@ class InventorySupplierQuotationController extends Controller
         ]);
 
         try {
+            $validLineIds = $order->lines()->pluck('id')->all();
+
+            foreach ($validated['lines'] as $index => $line) {
+                if (! in_array((int) $line['inventory_order_line_id'], $validLineIds, true)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        "lines.{$index}.inventory_order_line_id" => 'One or more lines do not belong to this order.',
+                    ]);
+                }
+            }
+
             $quotation = $this->service->createOrUpdateFromRfq(
                 $order,
                 (int) $validated['supplier_id'],
