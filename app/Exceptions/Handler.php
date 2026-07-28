@@ -46,6 +46,30 @@ class Handler extends ExceptionHandler
 
             return $this->sessionExpiredResponse($request);
         });
+
+        // routes/api.php is unambiguously an API surface — force JSON error
+        // responses there regardless of the client's Accept header, rather
+        // than falling back to Laravel's default web-form behavior
+        // (a redirect on validation failure, an HTML page on 404) that
+        // only kicks in when Accept: application/json wasn't sent.
+        $this->renderable(function (\Illuminate\Validation\ValidationException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
+            return response()->json([
+                'error' => $e->validator->errors()->first(),
+                'errors' => $e->errors(),
+            ], 422);
+        });
+
+        $this->renderable(function (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
+            return response()->json(['error' => 'Not found.'], 404);
+        });
     }
 
     /**

@@ -307,6 +307,49 @@
                     </li>
                     @endif
 
+                    <!-- Imaging Group -->
+                    @if(in_array('View Imaging Orders', $permissions) || in_array('View Imaging Studies', $permissions) || in_array('View Peer Review Cases', $permissions) || in_array('View My Imaging Queue', $permissions) || in_array('View Imaging Audit Log', $permissions) || in_array('View Imaging Analytics', $permissions) || in_array('View Contrast Vials', $permissions) || in_array('View Consumption Exceptions', $permissions))
+                    <li>
+                        <button @click="openGroup === 'imaging' ? openGroup = '' : openGroup = 'imaging'" :class="openGroup === 'imaging' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'" class="flex items-center justify-between w-full text-left pl-4 pr-3 py-2 rounded-md">
+                            <span class="flex items-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7l9-4 9 4M4 10v9a1 1 0 001 1h4a1 1 0 001-1v-4h4v4a1 1 0 001 1h4a1 1 0 001-1v-9"></path>
+                                </svg>
+                                <span class="ml-3">Imaging</span>
+                            </span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200" :class="{ 'rotate-180': openGroup === 'imaging' }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        <ul x-show="openGroup === 'imaging'" x-collapse class="mt-1 space-y-1 pl-10">
+                            @if(in_array('View Imaging Orders', $permissions))
+                            <li><a href="{{ route('imaging-orders.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Imaging Orders</a></li>
+                            @endif
+                            @if(in_array('View Imaging Studies', $permissions))
+                            <li><a href="{{ route('imaging-studies.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Imaging Worklist</a></li>
+                            @endif
+                            @if(in_array('View Peer Review Cases', $permissions))
+                            <li><a href="{{ route('peer-review-cases.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Peer Review</a></li>
+                            @endif
+                            @if(in_array('View My Imaging Queue', $permissions))
+                            <li><a href="{{ route('imaging-my-queue.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>My Queue</a></li>
+                            @endif
+                            @if(in_array('View Imaging Audit Log', $permissions))
+                            <li><a href="{{ route('imaging-audit-log.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Audit Log</a></li>
+                            @endif
+                            @if(in_array('View Imaging Analytics', $permissions))
+                            <li><a href="{{ route('imaging-analytics.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Analytics</a></li>
+                            @endif
+                            @if(in_array('View Contrast Vials', $permissions))
+                            <li><a href="{{ route('contrast-vials.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Contrast Vials</a></li>
+                            @endif
+                            @if(in_array('View Consumption Exceptions', $permissions))
+                            <li><a href="{{ route('imaging-consumption-exceptions.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Consumption Exceptions</a></li>
+                            @endif
+                        </ul>
+                    </li>
+                    @endif
+
                     <!-- Items Group -->
                     @if(in_array('View Items', $permissions))
                     <li>
@@ -778,6 +821,32 @@
                             <li><a href="{{ route('item-importance-categories.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Item Categories</a></li>
                             @endif
 
+                            {{-- Imaging settings, kept clustered together rather than
+                                 interleaved alphabetically with the rest of Settings. --}}
+                            @if(in_array('View Imaging Protocols', $permissions) || in_array('View Imaging Readiness Checks', $permissions) || in_array('View Imaging Critical Findings', $permissions) || in_array('View Imaging Module', $permissions) || in_array('View Imaging Service Point Configs', $permissions) || in_array('View Imaging Modalities', $permissions) || in_array('View Imaging Workflow Steps', $permissions))
+                            <li class="pt-2 pb-1 pl-0 text-xs font-semibold text-gray-400 uppercase tracking-wide">Imaging</li>
+                            @if(in_array('View Imaging Protocols', $permissions))
+                            <li><a href="{{ route('imaging-protocols.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Protocols</a></li>
+                            @endif
+                            @if(in_array('View Imaging Readiness Checks', $permissions))
+                            <li><a href="{{ route('imaging-readiness-check-types.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Readiness Checks</a></li>
+                            @endif
+                            @if(in_array('View Imaging Critical Findings', $permissions))
+                            <li><a href="{{ route('imaging-critical-finding-types.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Critical Findings</a></li>
+                            @endif
+                            @if(in_array('View Imaging Module', $permissions))
+                            <li><a href="{{ route('imaging-module-configs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Module</a></li>
+                            @endif
+                            @if(in_array('View Imaging Service Point Configs', $permissions))
+                            <li><a href="{{ route('imaging-service-point-configs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Rooms</a></li>
+                            @endif
+                            @if(in_array('View Imaging Modalities', $permissions))
+                            <li><a href="{{ route('imaging-modalities.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Modalities</a></li>
+                            @endif
+                            @if(in_array('View Imaging Workflow Steps', $permissions))
+                            <li><a href="{{ route('imaging-workflow-steps.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Workflow Steps</a></li>
+                            @endif
+                            @endif
 
                             @if(in_array('View Insurance Companies', $permissions))
                             <li><a href="{{ route('settings.index', ['tab' => 'insurance-companies']) }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Third Party Vendors</a></li>

@@ -15,6 +15,7 @@ class InventoryDailyConsumption extends Model
     public const SOURCE_SALE = 'sale';
 
     public const SOURCE_ISSUE = 'issue';
+    public const SOURCE_IMAGING = 'imaging';
 
     /** Expired wastage — stock ↓ but excluded from moving-average / reorder demand. */
     public const SOURCE_WASTAGE_EXPIRED = 'wastage_expired';

@@ -183,6 +183,28 @@ trait AccessTrait
         "Package Sales" => ['View Package Sales', 'Edit Package Sales', 'Add Package Sales', 'View Package Sales History', 'Export Package Sales'],
     ];
 
+    public static $imagingModule = [
+        "Imaging Orders" => ['View Imaging Orders', 'Add Imaging Orders'],
+        "Imaging Studies" => ['View Imaging Studies', 'Progress Imaging Studies'],
+        "Imaging Reports" => ['Report Imaging Studies', 'Verify Imaging Reports'],
+        "Peer Review" => ['View Peer Review Cases', 'Complete Peer Review Cases'],
+        "Critical Findings" => ['Receive Critical Imaging Alerts'],
+        "My Imaging Queue" => ['View My Imaging Queue', 'Claim Imaging Studies', 'Release Imaging Studies', 'Transfer Imaging Studies'],
+        "Imaging Audit Log" => ['View Imaging Audit Log'],
+        "Imaging Analytics" => ['View Imaging Analytics'],
+        "Contrast Vials" => ['View Contrast Vials', 'Manage Contrast Vials'],
+        "Consumption Exceptions" => ['View Consumption Exceptions', 'Resolve Consumption Exceptions'],
+        "Imaging Settings" => [
+            'View Imaging Protocols', 'Manage Imaging Protocols',
+            'View Imaging Readiness Checks', 'Manage Imaging Readiness Checks',
+            'View Imaging Critical Findings', 'Manage Imaging Critical Findings',
+            'View Imaging Module', 'Manage Imaging Module',
+            'View Imaging Service Point Configs', 'Manage Imaging Service Point Configs',
+            'View Imaging Modalities', 'Manage Imaging Modalities',
+            'View Imaging Workflow Steps', 'Manage Imaging Workflow Steps',
+        ],
+    ];
+
 
     public static function spreadArrayKeys($assocArray)
     {
@@ -231,7 +253,8 @@ trait AccessTrait
                 static::$bulkUpload,
                 static::$finance,
                 static::$packageTracking,
-                static::$packageSales
+                static::$packageSales,
+                static::$imagingModule
             )
         );
         return $roles;
@@ -268,6 +291,7 @@ trait AccessTrait
         "Finance" => self::$finance,
         "Package Tracking" => self::$packageTracking,
         "Package Sales" => self::$packageSales,
+        "Imaging" => self::$imagingModule,
     ];
 
     if (!empty($exclude)) {

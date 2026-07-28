@@ -24,11 +24,22 @@ use App\Models\GoodsReceivedNote;
 use App\Models\StockTransfer;
 use App\Observers\ClientClinicalEncounterObserver;
 use App\Observers\ModelActivityObserver;
+<<<<<<< HEAD
 use App\Observers\UserHrSyncObserver;
 use App\Models\Client;
 use Dedoc\Scramble\Scramble;
 use Dedoc\Scramble\Support\Generator\OpenApi;
 use Dedoc\Scramble\Support\Generator\SecurityScheme;
+=======
+use App\Observers\ImagingReportObserver;
+use App\Models\ImagingReport;
+use App\Models\ImagingOrder;
+use App\Models\ImagingStudy;
+use App\Models\PeerReviewCase;
+use App\Models\ContrastAdministration;
+use App\Models\RecoveryRecord;
+use App\Models\RadiationExposureLog;
+>>>>>>> 9868a4f8 (Add Imaging (RIS) module with configurable Workflow Engine (RIS Amendment v2.6))
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -44,6 +55,13 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(\App\Services\Inventory\InventoryStockAgingService::class);
         $this->app->singleton(\App\Services\Inventory\InventoryStockCountShrinkageService::class);
         $this->app->singleton(\App\Services\FinancialYearService::class);
+
+        // Pillars 1.1/7/8: real Orthanc-backed implementations — no caller
+        // (BroadcastModalityWorklist, ImagingStudyController) changes.
+        // Revert to LoggingDicomWorklistBroker/StubPacsClient here if
+        // Orthanc isn't reachable in a given environment.
+        $this->app->bind(\App\Contracts\DicomWorklistBroker::class, \App\Services\Imaging\OrthancDicomWorklistBroker::class);
+        $this->app->bind(\App\Contracts\PacsClient::class, \App\Services\Imaging\OrthancPacsClient::class);
     }
 
     /**
@@ -95,6 +113,19 @@ class AppServiceProvider extends ServiceProvider
          InventorySupplierQuotation::observe(ModelActivityObserver::class);
          GoodsReceivedNote::observe(ModelActivityObserver::class);
          StockTransfer::observe(ModelActivityObserver::class);
+         ImagingReport::observe(ImagingReportObserver::class);
+
+         // Pillar 19: Security & Audit Trail — generic CRUD coverage for
+         // every patient-care-relevant Imaging model. Non-mutation actions
+         // (View Study, Open Images, Export Images) go through
+         // ImagingAuditService instead, since there's no model event for those.
+         ImagingOrder::observe(ModelActivityObserver::class);
+         ImagingStudy::observe(ModelActivityObserver::class);
+         ImagingReport::observe(ModelActivityObserver::class);
+         PeerReviewCase::observe(ModelActivityObserver::class);
+         ContrastAdministration::observe(ModelActivityObserver::class);
+         RecoveryRecord::observe(ModelActivityObserver::class);
+         RadiationExposureLog::observe(ModelActivityObserver::class);
     }
 
     /**
