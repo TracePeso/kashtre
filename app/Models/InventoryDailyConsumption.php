@@ -13,6 +13,7 @@ class InventoryDailyConsumption extends Model
     public const SOURCE_MANUAL = 'manual';
     public const SOURCE_SALE = 'sale';
     public const SOURCE_ISSUE = 'issue';
+    public const SOURCE_IMAGING = 'imaging';
 
     protected $fillable = [
         'business_id',

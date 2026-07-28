@@ -53,8 +53,24 @@ return [
         'api_key' => env('HR_MODULE_API_KEY'),
     ],
 
+    'imaging_module' => [
+        'api_key' => env('IMAGING_MODULE_API_KEY'),
+    ],
+
     'vendor' => [
         'api_url' => env('VENDOR_API_URL', 'http://localhost:8001'),
+    ],
+
+    // Pillars 1.1/7/8: Orthanc (PACS + DICOM Modality Worklist broker).
+    // OrthancDicomWorklistBroker / OrthancPacsClient talk to this; unset
+    // ORTHANC_URL falls back to LoggingDicomWorklistBroker/StubPacsClient
+    // only if AppServiceProvider's bindings are reverted to the stubs.
+    'orthanc' => [
+        'url' => env('ORTHANC_URL', 'http://127.0.0.1:8042'),
+        'username' => env('ORTHANC_USERNAME'),
+        'password' => env('ORTHANC_PASSWORD'),
+        'uid_root' => env('DICOM_UID_ROOT', '2.25'),
+        'webhook_secret' => env('ORTHANC_WEBHOOK_SECRET'),
     ],
 
 ];
