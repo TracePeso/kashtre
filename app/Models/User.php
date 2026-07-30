@@ -162,6 +162,37 @@ class User extends Authenticatable
             && $this->securityQuestions()->count() >= (int) config('security_questions.required_count', 3);
     }
 
+    public function hasAuthenticatorConfigured(): bool
+    {
+        return $this->two_factor_confirmed_at !== null;
+    }
+
+    public function effectivePrimaryTwoFactorMethod(): string
+    {
+        $preferred = $this->primary_two_factor_method ?? 'authenticator';
+
+        if ($preferred === 'security_questions' && $this->hasSecurityQuestionsConfigured()) {
+            return 'security_questions';
+        }
+
+        if ($this->hasAuthenticatorConfigured()) {
+            return 'authenticator';
+        }
+
+        if ($this->hasSecurityQuestionsConfigured()) {
+            return 'security_questions';
+        }
+
+        return 'authenticator';
+    }
+
+    public function loginChallengeDefaultMode(): string
+    {
+        return $this->effectivePrimaryTwoFactorMethod() === 'security_questions'
+            ? 'security'
+            : 'code';
+    }
+
     /**
      * Age in full years from birth_date (HR display); null when unknown.
      */

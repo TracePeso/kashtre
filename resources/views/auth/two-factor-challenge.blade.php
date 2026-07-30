@@ -1,6 +1,18 @@
 <x-authentication-layout>
     <h1 class="text-3xl text-gray-800 dark:text-gray-100 font-bold mb-6">{{ __('Confirm access') }}</h1>
-    <div x-data="{ mode: 'code' }">
+    <div
+        x-data="{ mode: @js($defaultChallengeMode ?? 'code') }"
+        x-init="
+            $nextTick(() => {
+                if (mode === 'security') {
+                    const first = document.querySelector('[id^=security_answer_]');
+                    if (first) first.focus();
+                } else if ($refs.code) {
+                    $refs.code.focus();
+                }
+            })
+        "
+    >
         <div class="mb-4" x-show="mode === 'code'">
             {{ __('Please confirm access to your account by entering the authentication code provided by your authenticator application.') }}
         </div>
@@ -26,7 +38,7 @@
             <div class="space-y-4">
                 <div x-show="mode === 'code'">
                     <x-label for="code" value="{{ __('Code') }}" />
-                    <x-input id="code" type="text" inputmode="numeric" name="code" autofocus x-ref="code" autocomplete="one-time-code" />
+                    <x-input id="code" type="text" inputmode="numeric" name="code" x-ref="code" autocomplete="one-time-code" />
                 </div>
 
                 <div x-show="mode === 'recovery'">

@@ -17,6 +17,7 @@ class TwoFactorChallengeViewResponse implements TwoFactorChallengeViewResponseCo
     {
         $canUseSecurityQuestions = false;
         $challengeQuestions = [];
+        $defaultChallengeMode = 'code';
 
         if ($request->session()->has('login.id')) {
             $user = User::query()->find($request->session()->get('login.id'));
@@ -24,6 +25,7 @@ class TwoFactorChallengeViewResponse implements TwoFactorChallengeViewResponseCo
             if ($user && $this->securityQuestions->userHasConfigured($user)) {
                 $canUseSecurityQuestions = true;
                 $challengeQuestions = $this->challengeQuestionsForSession($request, $user);
+                $defaultChallengeMode = $user->loginChallengeDefaultMode();
             } else {
                 $request->session()->forget('login.security_question_keys');
             }
@@ -32,6 +34,7 @@ class TwoFactorChallengeViewResponse implements TwoFactorChallengeViewResponseCo
         return view('auth.two-factor-challenge', [
             'canUseSecurityQuestions' => $canUseSecurityQuestions,
             'challengeQuestions' => $challengeQuestions,
+            'defaultChallengeMode' => $defaultChallengeMode,
         ]);
     }
 

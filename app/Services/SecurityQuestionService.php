@@ -96,6 +96,7 @@ class SecurityQuestionService
 
             $user->forceFill([
                 'security_questions_enabled_at' => null,
+                'primary_two_factor_method' => 'authenticator',
             ])->save();
         });
     }
