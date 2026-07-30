@@ -20,38 +20,53 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
     use InteractsWithForms;
     use InteractsWithTable;
 
+    public string $statusFilter = 'all';
+
     /** @var array<string, string>|null */
     private ?array $importanceLabels = null;
+
+    public function mount(string $statusFilter = 'all'): void
+    {
+        if (! in_array($statusFilter, ['all', 'draft', 'pending_approval', 'approved', 'po_issued', 'fulfilled', 'rejected'], true)) {
+            $statusFilter = 'all';
+        }
+
+        $this->statusFilter = $statusFilter;
+    }
 
     public function table(Table $table): Table
     {
         $businessId = InventoryBusinessContext::effectiveBusinessId();
 
+        $query = InventoryOrder::query()
+            ->select([
+                'id',
+                'business_id',
+                'store_id',
+                'source_store_id',
+                'supplier_id',
+                'group_id',
+                'order_number',
+                'order_type',
+                'status',
+                'importance_filter',
+                'created_at',
+            ])
+            ->where('business_id', $businessId)
+            ->with([
+                'store:id,name',
+                'sourceStore:id,name',
+                'group:id,name',
+            ])
+            ->withCount('lines')
+            ->latest('created_at');
+
+        if ($this->statusFilter !== 'all') {
+            $query->where('status', $this->statusFilter);
+        }
+
         return $table
-            ->query(
-                InventoryOrder::query()
-                    ->select([
-                        'id',
-                        'business_id',
-                        'store_id',
-                        'source_store_id',
-                        'supplier_id',
-                        'group_id',
-                        'order_number',
-                        'order_type',
-                        'status',
-                        'importance_filter',
-                        'created_at',
-                    ])
-                    ->where('business_id', $businessId)
-                    ->with([
-                        'store:id,name',
-                        'sourceStore:id,name',
-                        'group:id,name',
-                    ])
-                    ->withCount('lines')
-                    ->latest('created_at')
-            )
+            ->query($query)
             ->columns([
                 TextColumn::make('order_number')
                     ->label('Order #')
@@ -112,6 +127,11 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
                 Action::make('calculations')
                     ->label('View calculation')
                     ->url(fn (InventoryOrder $record): string => route('inventory.orders.calculations', $record)),
+                Action::make('download_rfq')
+                    ->label('Download PDF')
+                    ->icon('heroicon-o-arrow-down-tray')
+                    ->url(fn (InventoryOrder $record): string => route('inventory.orders.pdf', $record))
+                    ->visible(fn (InventoryOrder $record): bool => $record->isExternal() && (int) $record->lines_count > 0),
             ])
             ->defaultSort('created_at', 'desc')
             ->striped()

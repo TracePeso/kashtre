@@ -28,23 +28,29 @@ class InventoryProcurementNotificationService
     {
         $order->loadMissing(['approvals.approver', 'store', 'supplier', 'createdBy', 'business']);
 
+        $config = $this->moduleConfig((int) $order->business_id);
+
         $pending = $order->approvals
             ->where('status', InventoryOrderApproval::STATUS_PENDING)
             ->sortBy('approval_order');
 
-        foreach ($pending as $approval) {
-            if ($approval->approver?->email) {
-                $this->safeSend(
-                    $approval->approver->email,
-                    new InventoryOrderApprovalRequestedMail($order, $approval)
-                );
+        if ($config?->notify_approvers_on_order_submitted ?? true) {
+            foreach ($pending as $approval) {
+                if ($approval->approver?->email) {
+                    $this->safeSend(
+                        $approval->approver->email,
+                        new InventoryOrderApprovalRequestedMail($order, $approval)
+                    );
+                }
             }
         }
 
-        foreach ($this->financeEmails((int) $order->business_id) as $email) {
-            $first = $pending->first();
-            if ($first) {
-                $this->safeSend($email, new InventoryOrderApprovalRequestedMail($order, $first));
+        if ($config?->notify_finance_on_order_submitted ?? true) {
+            foreach ($this->financeEmails((int) $order->business_id) as $email) {
+                $first = $pending->first();
+                if ($first) {
+                    $this->safeSend($email, new InventoryOrderApprovalRequestedMail($order, $first));
+                }
             }
         }
     }
@@ -54,6 +60,12 @@ class InventoryProcurementNotificationService
      */
     public function notifyNextApprover(InventoryOrder $order): void
     {
+        $config = $this->moduleConfig((int) $order->business_id);
+
+        if (! ($config?->notify_next_approver_on_approval ?? true)) {
+            return;
+        }
+
         $order->loadMissing(['approvals.approver', 'store', 'supplier', 'createdBy', 'business']);
 
         $next = $order->approvals
@@ -74,13 +86,17 @@ class InventoryProcurementNotificationService
      */
     public function notifyFullyApproved(InventoryOrder $order, User $approver): void
     {
+        $config = $this->moduleConfig((int) $order->business_id);
+
         $order->loadMissing(['store', 'supplier', 'createdBy', 'business', 'lines.item']);
 
-        foreach ($this->financeAndApproverEmails((int) $order->business_id) as $email) {
-            $this->safeSend($email, new InventoryOrderApprovedMail($order, $approver));
+        if ($config?->notify_on_order_fully_approved ?? true) {
+            foreach ($this->financeAndApproverEmails((int) $order->business_id) as $email) {
+                $this->safeSend($email, new InventoryOrderApprovedMail($order, $approver));
+            }
         }
 
-        if ($order->isExternal()) {
+        if ($order->isExternal() && ($config?->notify_suppliers_on_rfq_approved ?? true)) {
             $this->sendRfqToAllInvitedSuppliers($order);
         }
     }
@@ -202,5 +218,13 @@ class InventoryProcurementNotificationService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    private function moduleConfig(int $businessId): ?InventoryModuleConfig
+    {
+        return InventoryModuleConfig::query()
+            ->forBusiness($businessId)
+            ->active()
+            ->first();
     }
 }

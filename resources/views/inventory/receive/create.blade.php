@@ -26,17 +26,23 @@
         <div class="md:flex md:items-center md:justify-between mb-6">
             <div>
                 <h2 class="text-2xl font-bold text-gray-900">Goods receive note</h2>
-                @if(!empty($inventoryOrder))
+                @if(!empty($purchaseOrder))
                     <p class="mt-1 text-sm text-gray-500">
-                        Receiving against RFQ <strong>{{ $inventoryOrder->order_number }}</strong>
-                        @if(!empty($purchaseOrder))
-                            · LPO <strong>{{ $purchaseOrder->po_number }}</strong>
+                        Receiving against LPO <strong>{{ $purchaseOrder->po_number }}</strong>
+                        @if($purchaseOrder->inventoryOrder)
+                            · RFQ <strong>{{ $purchaseOrder->inventoryOrder->order_number }}</strong>
                         @endif
-                        .
+                        · {{ $purchaseOrder->supplier?->name }}
                     </p>
+                @elseif(!empty($inventoryOrder))
+                    <p class="mt-1 text-sm text-gray-500">
+                        Receiving against RFQ <strong>{{ $inventoryOrder->order_number }}</strong>.
+                    </p>
+                @else
+                    <p class="mt-1 text-sm text-gray-500">Record goods received from a supplier, or load an issued LPO to auto-fill the form.</p>
                 @endif
             </div>
-            @if(empty($inventoryOrder))
+            @if(empty($inventoryOrder) && empty($purchaseOrder))
                 <a href="{{ route('inventory.receive.bulk-upload') }}" class="mt-4 md:mt-0 text-sm text-blue-600 hover:text-blue-800">
                     Bulk upload instead
                 </a>
@@ -78,11 +84,61 @@
             <p class="mt-1 text-gray-500">Your progress is saved automatically in this browser as you work.</p>
         </div>
 
+        @if(($receivableLpos ?? collect())->isNotEmpty())
+            <div class="mt-6 bg-white shadow sm:rounded-lg border border-indigo-100 overflow-hidden">
+                <div class="px-5 py-4 border-b border-indigo-100 bg-indigo-50/50">
+                    <h3 class="text-sm font-semibold text-gray-900">Receive from LPO</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">
+                        Select an issued local purchase order to auto-fill supplier, store, and line items with remaining quantities and prices.
+                    </p>
+                </div>
+                <div class="px-5 py-4 flex flex-wrap items-end gap-3">
+                    <div class="flex-1 min-w-[16rem]">
+                        <label for="lpo_selector" class="block text-sm font-medium text-gray-700">Local purchase order</label>
+                        <select id="lpo_selector"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                onchange="if (this.value) { window.location.href = '{{ route('inventory.receive.create') }}?inventory_purchase_order_id=' + encodeURIComponent(this.value); }">
+                            <option value="">— Select an LPO —</option>
+                            @foreach($receivableLpos as $lpo)
+                                <option value="{{ $lpo->id }}" @selected(($purchaseOrder?->id ?? null) == $lpo->id)>
+                                    {{ $lpo->po_number }}
+                                    · {{ $lpo->supplier?->name ?? 'Supplier' }}
+                                    @if($lpo->inventoryOrder)
+                                        · {{ $lpo->inventoryOrder->order_number }}
+                                    @endif
+                                    · {{ $lpo->store?->name ?? 'Store' }}
+                                    · {{ $lpo->statusLabel() }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @if(!empty($purchaseOrder))
+                        <a href="{{ route('inventory.receive.create') }}"
+                           class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">
+                            Clear LPO selection
+                        </a>
+                        <a href="{{ route('inventory.purchase-orders.show', $purchaseOrder) }}"
+                           class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100">
+                            View LPO
+                        </a>
+                    @else
+                        <p class="text-xs text-gray-500 pb-2">Or continue below without linking an LPO.</p>
+                    @endif
+                </div>
+            </div>
+        @elseif(empty($purchaseOrder) && empty($inventoryOrder))
+            <div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                No issued LPOs with remaining quantities are available. You can still create a manual goods receive note below, or
+                <a href="{{ route('inventory.purchase-orders.index') }}" class="font-medium underline hover:text-amber-950">open LPOs</a>
+                to issue one first.
+            </div>
+        @endif
+
         <form method="POST" action="{{ route('inventory.receive.store') }}" enctype="multipart/form-data" class="mt-6 space-y-6" novalidate @submit="handleFormSubmit($event)">
             <input type="hidden" name="action" value="submit">
             @csrf
             <input type="hidden" name="inventory_order_id" :value="inventoryOrderId ?? ''">
-            <input type="hidden" name="inventory_purchase_order_id" value="{{ old('inventory_purchase_order_id', $purchaseOrder?->id) }}">
+            <input type="hidden" name="inventory_purchase_order_id" :value="inventoryPurchaseOrderId ?? ''">
 
             <div x-show="formError" x-cloak class="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800" x-text="formError"></div>
 
@@ -144,7 +200,7 @@
                 @if(isset($grnApprovers) && $grnApprovers->isNotEmpty())
                     <div class="mt-5 rounded-md border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-sm text-indigo-950">
                         <p class="font-medium text-indigo-900">Organisation approvers for this GRN</p>
-                        <p class="mt-1 text-xs text-indigo-800">Approver 1 and Approver 2 are set under Inventory → Goods receive note approvers.</p>
+                        <p class="mt-1 text-xs text-indigo-800">Approver 1 and Approver 2 are set under Inventory → Settings → Approvers.</p>
                         <ol class="mt-2 list-decimal list-inside space-y-1 text-indigo-900/90">
                             @foreach($grnApprovers as $approver)
                                 <li>
@@ -402,8 +458,8 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             quantity,
             batch_number: row.batch_number || '',
             expiry_date: row.expiry_date || '',
-            purchase_price: 0,
-            total_amount: '',
+            purchase_price: row.purchase_price || 0,
+            total_amount: row.total_amount ?? '',
             conversion: row.conversion || 1,
         };
     };
@@ -453,7 +509,9 @@ function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillS
             }
         },
         initDraftPersistence() {
-            if (! hasServerOldState) {
+            const hasPrefill = prefillLines && prefillLines.length > 0;
+
+            if (! hasServerOldState && ! hasPrefill) {
                 const saved = this.loadDraft();
                 if (saved && this.hasDraftContent(saved)) {
                     this.applyDraft(saved);

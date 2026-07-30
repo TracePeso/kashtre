@@ -17,6 +17,7 @@ class InventorySupplierQuotationLine extends Model
         'quoted_quantity_suom',
         'unit_price',
         'line_total',
+        'comments',
     ];
 
     protected $casts = [

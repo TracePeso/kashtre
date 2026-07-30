@@ -2,9 +2,9 @@
 @php
     $config = $moduleConfig ?? null;
     $periodOfOrderDaysValue = old('period_of_order_days');
-    $defaultSafetyDays = (int) old('safety_stock_days', $config?->safety_stock_days ?? 0);
-    $defaultBufferDays = (int) old('buffer_stock_days', $config?->buffer_stock_days ?? 0);
-    $defaultNotificationDays = (int) old('notification_to_order_days', $config?->notification_to_order_days ?? 0);
+    $defaultSafetyDays = (float) old('safety_stock_days', $config?->safety_stock_days ?? 0);
+    $defaultBufferDays = (float) old('buffer_stock_days', $config?->buffer_stock_days ?? 0);
+    $defaultNotificationDays = (float) old('notification_to_order_days', $config?->notification_to_order_days ?? 0);
     $initialOrderApproach = old('ordering_approach', in_array(old('budget_mode'), ['amount', 'days'], true) ? 'budget' : 'period');
     $budgetAmountValue = $initialOrderApproach === 'budget' ? old('budget_value') : '';
     $oldItemIds = collect(old('item_ids', []))->map(fn ($id) => (int) $id)->values();
@@ -13,9 +13,11 @@
     $initialSourceStoreId = old('source_store_id', '');
     $initialReceivingStoreId = old('store_id', '');
     $initialEditOrderSettings = $errors->hasAny(['safety_stock_days', 'buffer_stock_days', 'notification_to_order_days']);
-    $safetyDays = (int) old('safety_stock_days', $defaultSafetyDays);
-    $bufferDays = (int) old('buffer_stock_days', $defaultBufferDays);
-    $notificationDays = (int) old('notification_to_order_days', $defaultNotificationDays);
+    $safetyDays = (float) old('safety_stock_days', $defaultSafetyDays);
+    $bufferDays = (float) old('buffer_stock_days', $defaultBufferDays);
+    $notificationDays = (float) old('notification_to_order_days', $defaultNotificationDays);
+    $oldCommitteeIds = collect(old('committee_members', $defaultCommitteeMemberIds ?? []))->map(fn ($id) => (int) $id)->values();
+    $oldCommitteeChairId = old('committee_chair_user_id', $defaultCommitteeChairId ?? null);
 @endphp
 <div class="min-h-screen bg-gray-50 py-6" x-data="{
     orderApproach: '{{ $initialOrderApproach }}',
@@ -123,11 +125,33 @@
         if (this.orderType === 'external') {
             this.sourceStoreId = '';
         }
+        if (this.orderType === 'internal' && this.activeTab === 'review') {
+            this.activeTab = 'rules';
+        }
     },
     onSourceStoreChange() {
         if (this.receivingStoreId && ! this.canOrderBetween(this.sourceStoreId, this.receivingStoreId)) {
             this.receivingStoreId = '';
         }
+    },
+    activeTab: 'setup',
+    tabs() {
+        return this.orderType === 'external'
+            ? ['setup', 'items', 'rules', 'review']
+            : ['setup', 'items', 'rules'];
+    },
+    tabIndex() {
+        return this.tabs().indexOf(this.activeTab);
+    },
+    goNext() {
+        const tabs = this.tabs();
+        const idx = this.tabIndex();
+        if (idx < tabs.length - 1) this.activeTab = tabs[idx + 1];
+    },
+    goPrev() {
+        const tabs = this.tabs();
+        const idx = this.tabIndex();
+        if (idx > 0) this.activeTab = tabs[idx - 1];
     },
 }">
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -148,10 +172,28 @@
 
         @include('inventory.partials.subnav')
 
-        <form method="POST" action="{{ route('inventory.orders.store') }}" class="mt-6 bg-white shadow sm:rounded-lg p-6 space-y-6" novalidate>
+        <form method="POST" action="{{ route('inventory.orders.store') }}" class="mt-6 bg-white shadow sm:rounded-lg overflow-hidden" novalidate>
             @csrf
             <input type="hidden" name="ordering_approach" :value="orderApproach">
 
+            <div class="px-6 pt-5 border-b border-gray-200">
+                <nav class="-mb-px flex flex-wrap gap-1" aria-label="Order form steps">
+                    <button type="button" @click="activeTab = 'setup'"
+                            :class="activeTab === 'setup' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                            class="px-4 py-3 text-sm font-medium border-b-2">1. Type &amp; stores</button>
+                    <button type="button" @click="activeTab = 'items'"
+                            :class="activeTab === 'items' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                            class="px-4 py-3 text-sm font-medium border-b-2">2. Items</button>
+                    <button type="button" @click="activeTab = 'rules'"
+                            :class="activeTab === 'rules' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                            class="px-4 py-3 text-sm font-medium border-b-2">3. Ordering rules</button>
+                    <button type="button" x-show="orderType === 'external'" @click="activeTab = 'review'"
+                            :class="activeTab === 'review' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                            class="px-4 py-3 text-sm font-medium border-b-2">4. Committee &amp; review</button>
+                </nav>
+            </div>
+
+            <div class="p-6 space-y-6">
             @if ($errors->any())
                 <div class="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
                     <p class="font-medium">Could not generate this order:</p>
@@ -163,6 +205,7 @@
                 </div>
             @endif
 
+            <div x-show="activeTab === 'setup'" x-cloak class="space-y-6">
             <div class="border border-gray-200 rounded-lg p-4 space-y-4">
                 <div>
                     <p class="text-sm font-medium text-gray-900">Order type</p>
@@ -237,7 +280,9 @@
                     <p class="text-xs text-gray-500">Internal orders follow the same parent/child store rules as stock transfers. No supplier is required.</p>
                 </div>
             </template>
+            </div>
 
+            <div x-show="activeTab === 'items'" x-cloak class="space-y-6">
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                     <label for="importance_filter" class="block text-sm font-medium text-gray-700">Category</label>
@@ -322,7 +367,9 @@
                     @error('item_ids.*')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
             </div>
+            </div>
 
+            <div x-show="activeTab === 'rules'" x-cloak class="space-y-6">
             <div class="border border-gray-200 rounded-lg p-4 space-y-4">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -486,10 +533,50 @@
                 <textarea name="notes" id="notes" rows="3"
                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">{{ old('notes') }}</textarea>
             </div>
+            </div>
 
-            <div class="flex justify-end gap-3">
+            <div x-show="activeTab === 'review' && orderType === 'external'" x-cloak class="space-y-6">
+                <div class="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4">
+                    <h3 class="text-sm font-semibold text-gray-900">Evaluation committee</h3>
+                    <p class="text-xs text-gray-500 mt-1">
+                        @if($evaluationCommitteeRequired ?? false)
+                            Pre-appoint members who will evaluate supplier quotations after approval. Required before submission for your organisation.
+                        @else
+                            Optionally pre-appoint members who will evaluate supplier quotations after approval. Defaults come from Inventory → Settings.
+                        @endif
+                    </p>
+                    <div class="mt-4">
+                        @include('inventory.partials.committee-member-fields', [
+                            'businessUsers' => $businessUsers ?? collect(),
+                            'selectedMemberIds' => $oldCommitteeIds->all(),
+                            'chairUserId' => $oldCommitteeChairId,
+                            'required' => $evaluationCommitteeRequired ?? false,
+                        ])
+                    </div>
+                </div>
+                <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                    <p class="font-medium text-gray-900">Ready to generate</p>
+                    <p class="mt-1">After generating, review line quantities on the order page, adjust the committee if needed, then submit for approval.</p>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap justify-between gap-3 pt-4 border-t border-gray-200">
                 <a href="{{ route('inventory.orders.index') }}" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</a>
-                <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Generate order</button>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" x-show="tabIndex() > 0" @click="goPrev()"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Previous
+                    </button>
+                    <button type="button" x-show="tabIndex() < tabs().length - 1" @click="goNext()"
+                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-600 hover:bg-slate-700">
+                        Next
+                    </button>
+                    <button type="submit" x-show="orderType === 'internal' ? activeTab === 'rules' : activeTab === 'review'"
+                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                        Generate order
+                    </button>
+                </div>
+            </div>
             </div>
         </form>
     </div>

@@ -2,15 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\InventoryModuleApprover;
-use App\Models\InventoryModuleConfig;
 use App\Models\Item;
-use App\Models\User;
 use App\Support\InventoryBusinessContext;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 class InventoryController extends Controller
 {
@@ -68,94 +61,5 @@ class InventoryController extends Controller
         $item->load('itemUnit');
 
         return view('inventory.monitor.history', compact('item'));
-    }
-
-    public function approvers()
-    {
-        $config = $this->businessConfig();
-        $config->load(['approvers.user']);
-
-        $businessUsers = User::query()
-            ->where('business_id', InventoryBusinessContext::effectiveBusinessId())
-            ->where('status', 'active')
-            ->orderBy('name')
-            ->get(['id', 'name', 'email']);
-
-        $canManageApprovers = ! InventoryBusinessContext::isAdminBrowsing()
-            && in_array('Edit Business Settings', Auth::user()->permissions ?? []);
-
-        return view('inventory.approvers', compact('config', 'businessUsers', 'canManageApprovers'));
-    }
-
-    public function updateApprovers(Request $request)
-    {
-        InventoryBusinessContext::assertWritable();
-
-        if (! in_array('Edit Business Settings', Auth::user()->permissions ?? [])) {
-            abort(403, 'You do not have permission to update goods receive note approvers.');
-        }
-
-        $config = $this->businessConfig();
-
-        $validated = $request->validate([
-            'approver_1' => 'required|exists:users,id',
-            'approver_2' => 'nullable|exists:users,id|different:approver_1',
-            'finance_notification_emails' => 'nullable|string|max:2000',
-            'lpo_email_copy_to_approvers' => 'nullable|boolean',
-        ]);
-
-        $businessId = InventoryBusinessContext::effectiveBusinessId();
-        $ids = array_values(array_filter([
-            (int) $validated['approver_1'],
-            ! empty($validated['approver_2']) ? (int) $validated['approver_2'] : null,
-        ]));
-
-        $validCount = User::query()
-            ->where('business_id', $businessId)
-            ->whereIn('id', $ids)
-            ->count();
-
-        if ($validCount !== count($ids)) {
-            throw ValidationException::withMessages([
-                'approver_1' => 'Selected approvers must be active staff of your organisation.',
-            ]);
-        }
-
-        DB::transaction(function () use ($config, $validated, $request) {
-            $config->approvers()->delete();
-
-            InventoryModuleApprover::create([
-                'inventory_module_config_id' => $config->id,
-                'user_id' => $validated['approver_1'],
-                'role' => InventoryModuleApprover::ROLE_APPROVER,
-                'approval_order' => 1,
-            ]);
-
-            if (! empty($validated['approver_2'])) {
-                InventoryModuleApprover::create([
-                    'inventory_module_config_id' => $config->id,
-                    'user_id' => $validated['approver_2'],
-                    'role' => InventoryModuleApprover::ROLE_APPROVER,
-                    'approval_order' => 2,
-                ]);
-            }
-
-            $config->update([
-                'updated_by' => Auth::id(),
-                'finance_notification_emails' => $validated['finance_notification_emails'] ?? null,
-                'lpo_email_copy_to_approvers' => $request->boolean('lpo_email_copy_to_approvers'),
-            ]);
-        });
-
-        return redirect()->route('inventory.approvers')
-            ->with('success', 'Goods receive note approvers updated successfully.');
-    }
-
-    private function businessConfig(): InventoryModuleConfig
-    {
-        return InventoryModuleConfig::query()
-            ->where('business_id', InventoryBusinessContext::effectiveBusinessId())
-            ->where('is_active', true)
-            ->firstOrFail();
     }
 }

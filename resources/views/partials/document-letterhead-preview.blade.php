@@ -81,12 +81,18 @@
                 {{ $branding->address() ?: 'Company address' }}
             </div>
             <div class="mt-2 italic">This is a system-generated document.</div>
-            <div class="mt-2.5 text-[8px] text-gray-400 tracking-wide">Powered by Kashtre</div>
+            @include('partials.kashtre-document-credit', ['style' => 'preview'])
         </div>
     </div>
 
     <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
         Changes to name, address, phone, email, and logo update here as you type. Save settings to apply them to new documents.
+        The “Powered by” line and website link are configured in Kashtre Settings
+        @if((int) auth()->user()?->business_id === 1)
+            (<a href="{{ route('settings.kashtre.edit') }}" class="text-blue-600 hover:text-blue-800 dark:text-blue-400">edit</a>).
+        @else
+            .
+        @endif
     </p>
 </div>
 

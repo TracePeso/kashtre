@@ -1,5 +1,7 @@
 @php
     $documentBranding = $documentBranding ?? \App\Support\BusinessBranding::for($business ?? auth()->user()?->business);
+    $kashtreDocumentSettings = \App\Models\KashtreCashTraySetting::resolved();
+    $kashtreWebsite = $kashtreDocumentSettings->primaryWebsiteLink();
 @endphp
 @if($documentBranding)
 <script>
@@ -10,6 +12,10 @@
         phone: @json($documentBranding->phone()),
         email: @json($documentBranding->email()),
         logoUrl: @json($documentBranding->logoUrl()),
+    };
+    const kashtreCredit = {
+        poweredByLine: @json($kashtreDocumentSettings->documentPoweredByLine()),
+        website: @json($kashtreWebsite),
     };
 
     function escapeHtml(value) {
@@ -53,12 +59,15 @@
         footerHtml(extraLines) {
             const lines = Array.isArray(extraLines) ? extraLines : (extraLines ? [extraLines] : []);
             const extras = lines.map((line) => `<div style="margin-top:4px;">${escapeHtml(line)}</div>`).join('');
+            const website = kashtreCredit.website
+                ? `<div style="margin-top:4px;font-size:8px;"><a href="${escapeHtml(kashtreCredit.website.url)}" style="color:#2563eb;text-decoration:none;">${escapeHtml(kashtreCredit.website.label)}</a></div>`
+                : '';
 
             return `<div style="margin-top:16px;padding-top:10px;border-top:1px solid #e5e7eb;text-align:center;font-size:10px;color:#6b7280;">`
                 + `<div style="font-weight:600;color:#374151;">${escapeHtml(branding.name)}</div>`
                 + `<div>${escapeHtml(branding.address || '')}</div>${extras}`
                 + `<div style="margin-top:8px;font-style:italic;">This is a system-generated document.</div>`
-                + `<div style="margin-top:8px;font-size:8px;color:#9ca3af;">Powered by Kashtre</div></div>`;
+                + `<div style="margin-top:8px;font-size:8px;color:#9ca3af;">${escapeHtml(kashtreCredit.poweredByLine)}</div>${website}</div>`;
         },
     };
 })();

@@ -145,6 +145,7 @@ class InventoryModuleConfigController extends Controller
             'createdBy',
             'updatedBy',
             'approvers.user',
+            'evaluationCommitteeMembers',
         ]);
 
         return view('settings.inventory-module.show', [

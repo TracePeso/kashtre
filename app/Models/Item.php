@@ -127,6 +127,47 @@ class Item extends Model
         return $this->belongsTo(ItemUnit::class, 'order_unit_id');
     }
 
+    /**
+     * Human-readable packaging / order unit for procurement documents.
+     */
+    public function packagingDescription(): string
+    {
+        $saleUnit = trim((string) ($this->itemUnit?->name ?? ''));
+        $orderUnit = trim((string) ($this->orderUnit?->name ?? ''));
+        $perPack = (float) ($this->suom_per_ouom ?? 0);
+
+        if ($saleUnit === '') {
+            $saleUnit = 'unit';
+        }
+
+        if ($orderUnit !== '' && $orderUnit !== $saleUnit) {
+            if ($perPack > 0) {
+                return sprintf(
+                    '%s (%s %s per %s)',
+                    $orderUnit,
+                    number_format($perPack, $perPack == floor($perPack) ? 0 : 2),
+                    $saleUnit,
+                    $orderUnit
+                );
+            }
+
+            return $orderUnit;
+        }
+
+        return $saleUnit;
+    }
+
+    public function usesPackagingUnits(): bool
+    {
+        $saleUnit = trim((string) ($this->itemUnit?->name ?? ''));
+        $orderUnit = trim((string) ($this->orderUnit?->name ?? ''));
+
+        return $orderUnit !== ''
+            && $saleUnit !== ''
+            && $orderUnit !== $saleUnit
+            && (float) ($this->suom_per_ouom ?? 0) > 0;
+    }
+
     public function suppliers()
     {
         return $this->belongsToMany(Supplier::class, 'supplier_item')->withTimestamps();

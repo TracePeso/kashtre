@@ -26,6 +26,6 @@
     @endif
 
     @if($showKashtreCredit)
-        <div style="margin-top: 10px; font-size: 8px; color: #9ca3af; letter-spacing: 0.02em;">Powered by Kashtre</div>
+        @include('partials.kashtre-document-credit')
     @endif
 </div>

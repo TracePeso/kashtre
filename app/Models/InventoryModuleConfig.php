@@ -21,6 +21,13 @@ class InventoryModuleConfig extends Model
         'financial_year_start_month',
         'finance_notification_emails',
         'lpo_email_copy_to_approvers',
+        'notify_approvers_on_order_submitted',
+        'notify_finance_on_order_submitted',
+        'notify_next_approver_on_approval',
+        'notify_on_order_fully_approved',
+        'notify_suppliers_on_rfq_approved',
+        'notify_on_lpo_issued',
+        'evaluation_committee_required',
         'created_by',
         'updated_by',
     ];
@@ -34,6 +41,13 @@ class InventoryModuleConfig extends Model
         'period_of_order_days' => 'decimal:2',
         'financial_year_start_month' => 'integer',
         'lpo_email_copy_to_approvers' => 'boolean',
+        'notify_approvers_on_order_submitted' => 'boolean',
+        'notify_finance_on_order_submitted' => 'boolean',
+        'notify_next_approver_on_approval' => 'boolean',
+        'notify_on_order_fully_approved' => 'boolean',
+        'notify_suppliers_on_rfq_approved' => 'boolean',
+        'notify_on_lpo_issued' => 'boolean',
+        'evaluation_committee_required' => 'boolean',
     ];
 
     /**
@@ -96,6 +110,11 @@ class InventoryModuleConfig extends Model
         return $this->hasMany(InventoryModuleApprover::class)->orderBy('approval_order');
     }
 
+    public function evaluationCommitteeMembers()
+    {
+        return $this->hasMany(InventoryEvaluationCommitteeMember::class)->orderBy('sort_order');
+    }
+
     public function regularApprovers()
     {
         return $this->approvers()
@@ -131,5 +150,10 @@ class InventoryModuleConfig extends Model
             ->unique()
             ->values()
             ->all();
+    }
+
+    public function evaluationCommitteeRequired(): bool
+    {
+        return (bool) ($this->evaluation_committee_required ?? false);
     }
 }

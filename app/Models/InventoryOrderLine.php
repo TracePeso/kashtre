@@ -30,14 +30,15 @@ class InventoryOrderLine extends Model
         'order_quantity_ouom',
         'unit_price',
         'line_total',
+        'quotation_analysis_comment',
     ];
 
     protected $casts = [
         'daily_average_suom' => 'decimal:4',
         'system_quantity_suom' => 'decimal:4',
         'current_stock_suom' => 'decimal:4',
-        'stock_days_at_order' => 'decimal:1',
-        'days_left_at_order' => 'decimal:1',
+        'stock_days_at_order' => 'decimal:4',
+        'days_left_at_order' => 'decimal:4',
         'order_days' => 'decimal:4',
         'base_suggested_quantity_suom' => 'decimal:4',
         'peak_consumption_increase_percent' => 'decimal:4',

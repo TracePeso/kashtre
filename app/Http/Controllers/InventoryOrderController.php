@@ -11,6 +11,8 @@ use App\Models\Item;
 use App\Models\Store;
 use App\Models\SubGroup;
 use App\Models\Supplier;
+use App\Models\User;
+use App\Services\Inventory\InventoryEvaluationCommitteeService;
 use App\Services\Inventory\InventoryOrderApprovalService;
 use App\Services\Inventory\InventoryOrderFulfillmentService;
 use App\Services\Inventory\InventoryOrderService;
@@ -32,13 +34,19 @@ class InventoryOrderController extends Controller
         private readonly InventoryOrderFulfillmentService $fulfillmentService,
         private readonly InventoryProcurementPdfService $pdfService,
         private readonly InventoryStockTransferService $transferService,
+        private readonly InventoryEvaluationCommitteeService $committeeService,
     ) {
         $this->middleware($this->inventoryMiddleware(...));
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        return view('inventory.orders.index');
+        $status = $request->query('status', 'all');
+        if (! in_array($status, ['all', 'draft', 'pending_approval', 'approved', 'po_issued', 'fulfilled', 'rejected'], true)) {
+            $status = 'all';
+        }
+
+        return view('inventory.orders.index', compact('status'));
     }
 
     public function howItWorks()
@@ -53,7 +61,16 @@ class InventoryOrderController extends Controller
         $moduleConfig = InventoryModuleConfig::query()
             ->forBusiness($businessId)
             ->active()
+            ->with('evaluationCommitteeMembers')
             ->first();
+
+        $businessUsers = User::query()
+            ->where('business_id', $businessId)
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+
+        $defaultChair = $moduleConfig?->evaluationCommitteeMembers?->firstWhere('role', 'chair');
 
         return view('inventory.orders.create', [
             'stores' => Store::optionsForSelect($businessId),
@@ -83,6 +100,10 @@ class InventoryOrderController extends Controller
                 ->orderBy('name')
                 ->pluck('name', 'id'),
             'moduleConfig' => $moduleConfig,
+            'businessUsers' => $businessUsers,
+            'defaultCommitteeMemberIds' => $moduleConfig?->evaluationCommitteeMembers?->pluck('user_id')->map(fn ($id) => (int) $id)->all() ?? [],
+            'defaultCommitteeChairId' => $defaultChair?->user_id,
+            'evaluationCommitteeRequired' => $moduleConfig?->evaluationCommitteeRequired() ?? false,
         ]);
     }
 
@@ -116,6 +137,9 @@ class InventoryOrderController extends Controller
             'notes' => 'nullable|string|max:2000',
             'item_ids' => 'nullable|array',
             'item_ids.*' => 'integer|exists:items,id',
+            'committee_members' => 'nullable|array',
+            'committee_members.*' => 'integer|exists:users,id',
+            'committee_chair_user_id' => 'nullable|integer|exists:users,id',
         ]);
 
         $orderingApproach = $validated['ordering_approach']
@@ -226,14 +250,33 @@ class InventoryOrderController extends Controller
             isset($validated['subgroup_id']) ? (int) $validated['subgroup_id'] : null,
             isset($validated['peak_period_percent']) ? (float) $validated['peak_period_percent'] : null,
             isset($validated['peak_consumption_increase_percent']) ? (float) $validated['peak_consumption_increase_percent'] : null,
-            isset($validated['safety_stock_days']) ? (int) $validated['safety_stock_days'] : null,
-            isset($validated['buffer_stock_days']) ? (int) $validated['buffer_stock_days'] : null,
-            isset($validated['notification_to_order_days']) ? (int) $validated['notification_to_order_days'] : null,
+            isset($validated['safety_stock_days']) ? (float) $validated['safety_stock_days'] : null,
+            isset($validated['buffer_stock_days']) ? (float) $validated['buffer_stock_days'] : null,
+            isset($validated['notification_to_order_days']) ? (float) $validated['notification_to_order_days'] : null,
             $itemIds,
             null, // External RFQs have no header supplier — selection happens at quotation analysis.
             $validated['order_type'],
             $validated['order_type'] === InventoryOrder::TYPE_INTERNAL ? (int) $validated['source_store_id'] : null,
         );
+
+        if ($order->isExternal()) {
+            try {
+                $memberInputs = $this->committeeService->memberInputsFromRequest(
+                    $validated['committee_members'] ?? [],
+                    isset($validated['committee_chair_user_id']) ? (int) $validated['committee_chair_user_id'] : null,
+                );
+
+                if ($memberInputs !== []) {
+                    $this->committeeService->syncOrderMembers($order, $memberInputs, Auth::user());
+                } else {
+                    $this->committeeService->applyDefaultsToOrder($order, Auth::user());
+                }
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                $order->delete();
+
+                return back()->withInput()->withErrors($e->errors());
+            }
+        }
 
         $redirect = redirect()->route('inventory.orders.show', $order);
 
@@ -243,8 +286,8 @@ class InventoryOrderController extends Controller
 
         $message = $order->isInternal()
             ? 'Internal order generated. Review quantities before submitting for approval.'
-            : ($order->hasRfqDocument()
-                ? 'Purchase request generated and PDF saved. Review quantities before submitting for approval.'
+            : ($order->canDownloadRfqPdf()
+                ? 'Purchase request generated. Download the PDF from the order page, then submit for approval when ready.'
                 : 'Purchase request generated. Review and edit quantities before submitting for approval.');
 
         return $redirect->with('success', $message);
@@ -254,11 +297,11 @@ class InventoryOrderController extends Controller
     {
         $this->authorizeOrder($order);
 
-        if ($order->isInternal()) {
-            abort(404);
+        if (! $order->canDownloadRfqPdf()) {
+            abort(404, 'This order has no RFQ PDF available.');
         }
 
-        return $this->pdfService->rfqPdf($order)->download($order->order_number.'.pdf');
+        return $this->pdfService->rfqPdf($order)->download($order->rfqPdfFilename());
     }
 
     public function calculations(InventoryOrder $order)
@@ -295,7 +338,24 @@ class InventoryOrderController extends Controller
             'purchaseOrders.lines',
             'stockTransfers',
             'invitedSuppliers',
+            'committeeMembers.user',
         ]);
+
+        $businessUsers = User::query()
+            ->where('business_id', $order->business_id)
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+
+        $committeeChair = $order->committeeMembers->firstWhere('role', 'chair');
+        $canManageCommittee = $order->isDraft()
+            && $order->isExternal()
+            && ! InventoryBusinessContext::isAdminBrowsing();
+        $moduleConfig = InventoryModuleConfig::query()
+            ->forBusiness((int) $order->business_id)
+            ->active()
+            ->first();
+        $evaluationCommitteeRequired = $moduleConfig?->evaluationCommitteeRequired() ?? false;
 
         $emptyOrderReason = $order->lines->isEmpty()
             ? app(InventoryOrderService::class)->explainEmptyOrder($order)
@@ -309,7 +369,44 @@ class InventoryOrderController extends Controller
             'emptyOrderReason',
             'canApprove',
             'receiptOptions',
+            'businessUsers',
+            'committeeChair',
+            'canManageCommittee',
+            'evaluationCommitteeRequired',
         ));
+    }
+
+    public function saveCommittee(Request $request, InventoryOrder $order)
+    {
+        $this->authorizeOrder($order);
+        InventoryBusinessContext::assertWritable();
+
+        if (! $order->isDraft() || ! $order->isExternal()) {
+            return back()->withErrors(['committee' => 'Committee can only be updated on draft external orders.']);
+        }
+
+        $validated = $request->validate([
+            'committee_members' => 'nullable|array',
+            'committee_members.*' => 'integer|exists:users,id',
+            'committee_chair_user_id' => 'nullable|integer|exists:users,id',
+        ]);
+
+        try {
+            $this->committeeService->syncOrderMembers(
+                $order,
+                $this->committeeService->memberInputsFromRequest(
+                    $validated['committee_members'] ?? [],
+                    isset($validated['committee_chair_user_id']) ? (int) $validated['committee_chair_user_id'] : null,
+                ),
+                Auth::user(),
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withInput()->withErrors($e->errors());
+        }
+
+        return redirect()
+            ->route('inventory.orders.show', [$order, 'tab' => 'committee'])
+            ->with('success', 'Evaluation committee saved.');
     }
 
     public function submit(InventoryOrder $order)
@@ -445,8 +542,8 @@ class InventoryOrderController extends Controller
             return $redirect->with('warning', $this->service->explainEmptyOrder($order));
         }
 
-        $message = $order->isExternal() && $order->hasRfqDocument()
-            ? 'Purchase request items refreshed and PDF updated.'
+        $message = $order->isExternal() && $order->canDownloadRfqPdf()
+            ? 'Purchase request items refreshed. Download the updated PDF from the order page.'
             : 'Order items refreshed from current stock and consumption.';
 
         return $redirect->with('success', $message);

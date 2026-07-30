@@ -200,6 +200,7 @@ class InventorySupplierQuotationService
                     'quoted_quantity_suom' => $qty,
                     'unit_price' => $unitPrice,
                     'line_total' => $lineTotal,
+                    'comments' => filled($input['comments'] ?? null) ? trim((string) $input['comments']) : null,
                 ]);
             }
 
@@ -230,7 +231,7 @@ class InventorySupplierQuotationService
      */
     public function comparisonSheet(InventoryOrder $order): array
     {
-        $order->loadMissing(['lines.item', 'supplierQuotations.lines', 'supplierQuotations.supplier']);
+        $order->loadMissing(['lines.item', 'supplierQuotations.lines', 'supplierQuotations.supplier', 'rfqLineAwards.supplier']);
 
         $quotations = $order->supplierQuotations
             ->filter(fn (InventorySupplierQuotation $q) => in_array($q->status, [
@@ -254,21 +255,30 @@ class InventorySupplierQuotationService
 
         $lines = [];
 
+        $awardsByLine = $order->rfqLineAwards->groupBy('inventory_order_line_id');
+
         foreach ($order->lines as $orderLine) {
             $bySupplier = [];
             $bestPrice = null;
             $bestSupplierId = null;
+            $lineAwards = $awardsByLine[$orderLine->id] ?? collect();
+            $awardedTotal = (float) $lineAwards->sum('awarded_quantity_suom');
+            $rfqQty = (float) $orderLine->order_quantity_suom;
 
             foreach ($quotations as $quotation) {
                 $qLine = $quotation->lines->firstWhere('inventory_order_line_id', $orderLine->id);
                 $unitPrice = $qLine ? (float) $qLine->unit_price : null;
                 $qty = $qLine ? (float) $qLine->quoted_quantity_suom : null;
                 $lineTotal = $qLine ? (float) $qLine->line_total : null;
+                $award = $lineAwards->firstWhere('supplier_id', $quotation->supplier_id);
 
                 $bySupplier[$quotation->supplier_id] = [
                     'unit_price' => $unitPrice,
                     'quoted_qty' => $qty,
                     'line_total' => $lineTotal,
+                    'comments' => $qLine?->comments,
+                    'is_awarded' => $award !== null,
+                    'awarded_qty' => $award ? (float) $award->awarded_quantity_suom : null,
                 ];
 
                 if ($unitPrice !== null && $unitPrice > 0 && ($bestPrice === null || $unitPrice < $bestPrice)) {
@@ -278,12 +288,23 @@ class InventorySupplierQuotationService
             }
 
             $lines[] = [
+                'order_line_id' => (int) $orderLine->id,
                 'item_name' => $orderLine->item?->name ?? '—',
                 'item_code' => $orderLine->item?->code,
-                'rfq_qty' => (float) $orderLine->order_quantity_suom,
+                'rfq_qty' => $rfqQty,
+                'analysis_comment' => $orderLine->quotation_analysis_comment,
+                'awarded_total' => $awardedTotal,
+                'remaining_qty' => max(0, $rfqQty - $awardedTotal),
+                'fulfillment_label' => $this->fulfillmentLabel($awardedTotal, $rfqQty),
                 'quotes' => $bySupplier,
                 'best_supplier_id' => $bestSupplierId,
                 'best_unit_price' => $bestPrice,
+                'awards' => $lineAwards->map(fn ($award) => [
+                    'supplier_id' => (int) $award->supplier_id,
+                    'supplier_name' => $award->supplier?->name ?? '—',
+                    'awarded_quantity_suom' => (float) $award->awarded_quantity_suom,
+                    'unit_price' => (float) $award->unit_price,
+                ])->values()->all(),
             ];
         }
 
@@ -291,6 +312,19 @@ class InventorySupplierQuotationService
             'suppliers' => $suppliers,
             'lines' => $lines,
         ];
+    }
+
+    private function fulfillmentLabel(float $awarded, float $rfqQty): string
+    {
+        if ($awarded <= 0) {
+            return 'Unallocated';
+        }
+
+        if ($awarded >= $rfqQty - 0.0001) {
+            return 'Fully allocated';
+        }
+
+        return 'Partial ('.number_format($awarded, 0).' / '.number_format($rfqQty, 0).')';
     }
 
     public function accept(InventorySupplierQuotation $quotation): InventorySupplierQuotation
@@ -340,5 +374,47 @@ class InventorySupplierQuotationService
         );
 
         return $quotation->fresh(['lines.item', 'supplier']);
+    }
+
+    /**
+     * @param  list<array{inventory_order_line_id: int, quotation_analysis_comment?: ?string}>  $lineComments
+     */
+    public function saveLineComments(InventoryOrder $order, array $lineComments): void
+    {
+        if (! $order->canManageSupplierQuotations()) {
+            throw ValidationException::withMessages([
+                'status' => 'Item comments can only be saved after the RFQ is approved.',
+            ]);
+        }
+
+        $order->loadMissing('lines');
+        $validLineIds = $order->lines->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        foreach ($lineComments as $index => $input) {
+            $lineId = (int) ($input['inventory_order_line_id'] ?? 0);
+
+            if (! in_array($lineId, $validLineIds, true)) {
+                throw ValidationException::withMessages([
+                    "line_comments.{$index}.inventory_order_line_id" => 'One or more lines do not belong to this RFQ.',
+                ]);
+            }
+
+            $comment = trim((string) ($input['quotation_analysis_comment'] ?? ''));
+            $orderLine = $order->lines->firstWhere('id', $lineId);
+
+            if ($orderLine) {
+                $orderLine->update([
+                    'quotation_analysis_comment' => $comment !== '' ? $comment : null,
+                ]);
+            }
+        }
+
+        InventoryProcurementAudit::log(
+            'quotation_line_comments_saved',
+            $order,
+            'Item comments updated on '.$order->order_number,
+            why: 'Procurement notes captured during quotation analysis',
+            newValues: ['line_count' => count($lineComments)],
+        );
     }
 }

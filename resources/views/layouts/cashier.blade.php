@@ -62,11 +62,7 @@
             </main>
             
             <!-- Footer -->
-            <footer class="w-full bg-gray-100 text-gray-600 py-2 border-t border-gray-200">
-                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-                    <p class="text-sm text-gray-500">© Copyright {{ date('Y') }} Kashtre. All Rights Reserved</p>
-                </div>
-            </footer>
+            <x-kashtre.cash-tray />
 
         </div>
 

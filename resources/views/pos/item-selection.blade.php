@@ -2818,7 +2818,7 @@
                     '<p class="total">Amount to collect: UGX ' + fmt(clientTotalDue) + '</p><p style="font-size:12px;color:#64748b">Phone ' + (paymentPhone || '—') + '</p>';
                 const footerBlock = docFormat
                     ? docFormat.footerHtml(['Client portion receipt', 'Amount due from client'])
-                    : '<p style="font-size:8px;color:#9ca3af;margin-top:12px;">Powered by Kashtre</p>';
+                    : '<p style="font-size:8px;color:#9ca3af;margin-top:12px;">{{ addslashes(\App\Models\KashtreCashTraySetting::resolved()->documentPoweredByLine()) }}</p>';
                 const printContent = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Client portion – ' + invoiceNumber + '</title>' +
                     '<style>body{font-family:ui-sans-serif,sans-serif;font-size:14px;padding:24px;max-width:360px;margin:0 auto;color:#334155}.receipt-title{font-weight:600;font-size:1rem;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:8px}.sub{font-size:12px;color:#64748b;margin-bottom:12px}table{width:100%;border-collapse:collapse;margin:12px 0}td{padding:4px 0}td:last-child{text-align:right}.total{font-weight:600;margin-top:12px;padding-top:8px;border-top:1px solid #f1f5f9}@media print{body{padding:0}}</style></head><body>' +
                     headerBlock + bodyBlock + footerBlock + '</body></html>';

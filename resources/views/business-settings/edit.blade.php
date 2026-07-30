@@ -300,7 +300,7 @@
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Goods Receive Note Approvers</h3>
                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
                         Configure whether staff must select a technical supervisor (end-user approver) on each goods receive note before it can be submitted.
-                        Approver 1 and Approver 2 are still configured under Inventory → Goods receive note approvers.
+                        Approver 1 and Approver 2 are configured under Inventory → Settings → Approvers.
                     </p>
 
                     <div class="p-4 bg-indigo-50 dark:bg-gray-700 rounded-lg border border-indigo-200 dark:border-gray-600">

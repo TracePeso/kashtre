@@ -18,6 +18,7 @@ class InventoryProcurementPdfService
     {
         $order->loadMissing([
             'lines.item.itemUnit',
+            'lines.item.orderUnit',
             'store',
             'supplier',
             'business',
@@ -64,6 +65,7 @@ class InventoryProcurementPdfService
 
         $order->loadMissing([
             'lines.item.itemUnit',
+            'lines.item.orderUnit',
             'store',
             'supplier',
             'business',

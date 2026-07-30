@@ -2,6 +2,7 @@
 
 namespace App\Exports\Concerns;
 
+use App\Models\KashtreCashTraySetting;
 use App\Support\BusinessBranding;
 use Carbon\CarbonInterface;
 use Maatwebsite\Excel\Concerns\WithCustomStartCell;
@@ -47,6 +48,8 @@ trait WithInstitutionExportHeader
 
                 $sheet = $event->sheet->getDelegate();
                 $generatedAt = ($this->exportGeneratedAt ?? now())->format('d M Y H:i');
+                $kashtreSettings = KashtreCashTraySetting::resolved();
+                $website = $kashtreSettings->primaryWebsiteLink();
 
                 $rows = array_values(array_filter([
                     $this->exportBranding->name(),
@@ -56,7 +59,8 @@ trait WithInstitutionExportHeader
                         $this->exportBranding->email() ? 'Email: '.$this->exportBranding->email() : null,
                     ])->filter()->implode('  |  '),
                     'Generated: '.$generatedAt,
-                    'Powered by Kashtre',
+                    $kashtreSettings->documentPoweredByLine(),
+                    $website ? $website['label'].' — '.$website['url'] : null,
                 ]));
 
                 foreach ($rows as $index => $line) {

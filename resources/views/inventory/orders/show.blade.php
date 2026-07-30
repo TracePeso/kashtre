@@ -52,17 +52,7 @@
                         View calculation
                     </a>
                     @if($order->isExternal())
-                        @if($order->hasRfqDocument())
-                            <a href="{{ $order->rfqDocumentUrl() }}"
-                               target="_blank"
-                               class="inline-flex items-center px-4 py-2 border border-blue-300 rounded-md shadow-sm text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100">
-                                Download purchase request
-                            </a>
-                        @endif
-                        <a href="{{ route('inventory.orders.pdf', $order) }}"
-                           class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                            Export PDF
-                        </a>
+                        @include('inventory.partials.rfq-download-button', ['order' => $order, 'variant' => 'primary'])
                     @endif
                     <form action="{{ route('inventory.orders.regenerate', $order) }}" method="POST">
                         @csrf
@@ -86,17 +76,7 @@
                         View calculation
                     </a>
                     @if($order->isExternal())
-                        @if($order->hasRfqDocument())
-                            <a href="{{ $order->rfqDocumentUrl() }}"
-                               target="_blank"
-                               class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                                Download RFQ document
-                            </a>
-                        @endif
-                        <a href="{{ route('inventory.orders.pdf', $order) }}"
-                           class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                            Export RFQ PDF
-                        </a>
+                        @include('inventory.partials.rfq-download-button', ['order' => $order])
                     @endif
                     @if($order->canReceiveGoods())
                         <a href="{{ route('inventory.orders.receive', $order) }}"
@@ -147,10 +127,7 @@
                     <strong>Draft internal order.</strong> Review quantities for stock needed at <strong>{{ $order->store?->name }}</strong> from <strong>{{ $order->sourceStore?->name }}</strong>, then <strong>Submit for approval</strong>. After approval, fulfill via a stock transfer — no supplier quotation is required.
                 @else
                     <strong>Purchase request.</strong>
-                    @if($order->hasRfqDocument())
-                        A purchase request PDF has been generated automatically.
-                    @endif
-                    Review quantities, then <strong>Submit for approval</strong>. After approval it becomes an RFQ and suppliers can be invited.
+                    Review quantities@if($evaluationCommitteeRequired ?? false), appoint the evaluation committee@endif, then <strong>Submit for approval</strong>. After approval it becomes an RFQ and suppliers can be invited.
                 @endif
             </div>
         @endif
@@ -198,7 +175,7 @@
             </div>
         @elseif($order->isRfqApproved())
             <div class="mt-4 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm">
-                <strong>RFQ approved.</strong> Next: invite suppliers, open quotation analysis, accept quote(s), then generate and issue LPOs. Goods are received only against issued LPOs.
+                <strong>RFQ approved.</strong> Next: invite suppliers, open quotation analysis, select suppliers per item (partial quantities allowed), then generate and issue LPOs. Goods are received only against issued LPOs.
             </div>
         @endif
 
@@ -354,16 +331,24 @@
             @endif
         </div>
 
-        @if($order->isExternal() && $order->hasRfqDocument() && $order->isDraft())
+        @if($order->isExternal())
+            <div class="mt-6">
+                @include('inventory.partials.order-committee-form', [
+                    'order' => $order,
+                    'businessUsers' => $businessUsers ?? collect(),
+                    'committeeChair' => $committeeChair ?? null,
+                    'canManageCommittee' => $canManageCommittee ?? false,
+                    'evaluationCommitteeRequired' => $evaluationCommitteeRequired ?? false,
+                ])
+            </div>
+        @endif
+
+        @if($order->isExternal() && $order->canDownloadRfqPdf() && $order->isDraft())
             <div class="mt-4 bg-white shadow sm:rounded-lg p-4 sm:p-6">
                 <h3 class="text-sm font-semibold text-gray-900">Purchase request document</h3>
-                <p class="text-xs text-gray-500 mt-0.5">Generated automatically when this purchase request was created. Refreshed when you use Refresh items or submit for approval.</p>
+                <p class="text-xs text-gray-500 mt-0.5">Download the current purchase request PDF. It is regenerated when you refresh items or submit for approval.</p>
                 <div class="mt-3">
-                    <a href="{{ $order->rfqDocumentUrl() }}"
-                       target="_blank"
-                       class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800">
-                        {{ $order->rfq_document_original_name ?? ($order->order_number.'.pdf') }}
-                    </a>
+                    @include('inventory.partials.rfq-download-button', ['order' => $order, 'variant' => 'primary'])
                 </div>
             </div>
         @endif
@@ -374,7 +359,7 @@
                     <div>
                         <h3 class="text-sm font-semibold text-gray-900">Quotation analysis &amp; supplier selection</h3>
                         <p class="text-xs text-gray-500 mt-0.5">
-                            Invite suppliers to this RFQ, record quotes on the computation sheet, accept one or more, then split into LPOs.
+                            Invite suppliers, record quotes, allocate each RFQ line to one or more suppliers, then generate LPOs.
                         </p>
                     </div>
                     <a href="{{ route('inventory.orders.quotations.compare', $order) }}"

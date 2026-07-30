@@ -182,8 +182,8 @@
                                 </a>
                             </li>
                             <li>
-                                <a href="{{ route('inventory.approvers') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.approvers') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
-                                    Goods receive note approvers
+                                <a href="{{ route('inventory.settings.edit') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.settings*') || request()->routeIs('inventory.approvers') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Settings
                                 </a>
                             </li>
                         </ul>
@@ -763,6 +763,15 @@
                                 <a href="{{ route('settings.countries.index') }}"
                                    class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
                                     Manage Countries & Currencies
+                                </a>
+                            </li>
+                            @endif
+
+                            @if((int) Auth::user()->business_id === 1)
+                            <li>
+                                <a href="{{ route('settings.kashtre.edit') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    Kashtre Settings
                                 </a>
                             </li>
                             @endif

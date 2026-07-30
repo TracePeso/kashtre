@@ -134,6 +134,10 @@ class InventoryPurchaseOrderService
             ->with('approvers.user')
             ->first();
 
+        if (! ($config?->notify_on_lpo_issued ?? true)) {
+            return;
+        }
+
         $recipients = $config?->financeNotificationEmailList() ?? [];
 
         if ($config && (bool) ($config->lpo_email_copy_to_approvers ?? true)) {

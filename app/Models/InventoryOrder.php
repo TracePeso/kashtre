@@ -130,6 +130,11 @@ class InventoryOrder extends Model
         return $this->hasMany(InventoryOrderApproval::class)->orderBy('approval_order');
     }
 
+    public function committeeMembers(): HasMany
+    {
+        return $this->hasMany(InventoryOrderCommitteeMember::class)->orderBy('sort_order');
+    }
+
     public function goodsReceivedNotes(): HasMany
     {
         return $this->hasMany(GoodsReceivedNote::class);
@@ -155,6 +160,11 @@ class InventoryOrder extends Model
     public function purchaseOrders(): HasMany
     {
         return $this->hasMany(InventoryPurchaseOrder::class);
+    }
+
+    public function rfqLineAwards(): HasMany
+    {
+        return $this->hasMany(InventoryRfqLineAward::class);
     }
 
     public function stockTransfers(): HasMany
@@ -298,12 +308,54 @@ class InventoryOrder extends Model
 
     public function hasRfqDocument(): bool
     {
-        return $this->isExternal() && filled($this->rfq_document_path);
+        return $this->storedRfqDocumentExists();
     }
 
+    public function canDownloadRfqPdf(): bool
+    {
+        return $this->isExternal() && $this->lines()->exists();
+    }
+
+    public function rfqPdfDownloadUrl(): string
+    {
+        return route('inventory.orders.pdf', $this);
+    }
+
+    public function rfqPdfDownloadLabel(): string
+    {
+        if ($this->isDraft() || $this->isPendingApproval()) {
+            return 'Download purchase request PDF';
+        }
+
+        return 'Download RFQ PDF';
+    }
+
+    public function rfqPdfFilename(): string
+    {
+        $name = trim((string) ($this->rfq_document_original_name ?? $this->order_number));
+
+        if ($name === '') {
+            return 'rfq.pdf';
+        }
+
+        return str_ends_with(strtolower($name), '.pdf') ? $name : $name.'.pdf';
+    }
+
+    public function storedRfqDocumentExists(): bool
+    {
+        if (! $this->isExternal() || ! filled($this->rfq_document_path)) {
+            return false;
+        }
+
+        return \Illuminate\Support\Facades\Storage::disk('public')->exists($this->rfq_document_path);
+    }
+
+    /**
+     * @deprecated Use rfqPdfDownloadUrl() — public disk URLs are unreliable across environments.
+     */
     public function rfqDocumentUrl(): ?string
     {
-        if (! $this->rfq_document_path) {
+        if (! $this->storedRfqDocumentExists()) {
             return null;
         }
 

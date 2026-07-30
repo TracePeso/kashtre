@@ -114,6 +114,7 @@ class ListPurchaseOrders extends Component implements HasForms, HasTable
                     ->url(fn (InventoryPurchaseOrder $record): string => route('inventory.purchase-orders.show', $record)),
                 Action::make('download')
                     ->label('Download')
+                    ->icon('heroicon-o-arrow-down-tray')
                     ->url(fn (InventoryPurchaseOrder $record): string => route('inventory.purchase-orders.pdf', $record)),
             ])
             ->defaultSort('created_at', 'desc')

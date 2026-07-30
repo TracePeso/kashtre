@@ -1,10 +1,22 @@
 <x-app-layout>
+@php
+    $statusTabs = [
+        'all' => 'All orders',
+        'draft' => 'Draft',
+        'pending_approval' => 'Pending approval',
+        'approved' => 'Approved',
+        'po_issued' => 'LPO issued',
+        'fulfilled' => 'Fulfilled',
+        'rejected' => 'Rejected',
+    ];
+    $currentStatus = $status ?? request()->query('status', 'all');
+@endphp
 <div class="min-h-screen bg-gray-50 py-6">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="md:flex md:items-center md:justify-between">
             <div class="flex-1 min-w-0">
                 <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">Make an order</h2>
-                <p class="mt-1 text-sm text-gray-500">Suggested quantities use consumption averages plus safety, buffer, lead time, notification, and order period days.</p>
+                <p class="mt-1 text-sm text-gray-500">Create purchase requests and internal store orders. Track approval, quotations, and LPOs.</p>
                 <p class="mt-2">
                     <a href="{{ route('inventory.orders.how-it-works') }}" class="text-sm font-medium text-blue-600 hover:text-blue-800">How ordering works &rarr;</a>
                 </p>
@@ -12,7 +24,7 @@
             <div class="mt-4 md:mt-0">
                 <a href="{{ route('inventory.orders.create') }}"
                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                    Make an order
+                    New order
                 </a>
             </div>
         </div>
@@ -23,8 +35,20 @@
             <div class="mt-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">{{ session('success') }}</div>
         @endif
 
-        <div class="mt-6 bg-white shadow sm:rounded-lg p-6">
-            @livewire('inventory.list-inventory-orders')
+        <div class="mt-6 bg-white shadow sm:rounded-lg overflow-hidden">
+            <div class="border-b border-gray-200 overflow-x-auto">
+                <nav class="-mb-px flex min-w-max" aria-label="Order status filters">
+                    @foreach($statusTabs as $key => $label)
+                        <a href="{{ route('inventory.orders.index', ['status' => $key]) }}"
+                           class="px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap {{ $currentStatus === $key ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
+                            {{ $label }}
+                        </a>
+                    @endforeach
+                </nav>
+            </div>
+            <div class="p-6">
+                @livewire('inventory.list-inventory-orders', ['statusFilter' => $currentStatus])
+            </div>
         </div>
     </div>
 </div>

@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\RequiresInventoryModule;
 use App\Models\InventoryOrder;
 use App\Models\InventorySupplierQuotation;
 use App\Models\Supplier;
+use App\Services\Inventory\InventoryRfqAwardService;
 use App\Services\Inventory\InventorySupplierQuotationService;
 use App\Support\InventoryBusinessContext;
 use App\Support\SupplierCategorySelection;
@@ -18,6 +19,7 @@ class InventorySupplierQuotationController extends Controller
 
     public function __construct(
         private readonly InventorySupplierQuotationService $service,
+        private readonly InventoryRfqAwardService $awardService,
     ) {
         $this->middleware($this->inventoryMiddleware(...));
     }
@@ -59,9 +61,12 @@ class InventorySupplierQuotationController extends Controller
             'lines.item',
             'supplierQuotations.supplier',
             'supplierQuotations.purchaseOrder',
+            'supplierQuotations.lines',
             'purchaseOrders.supplier',
             'invitedSuppliers',
+            'rfqLineAwards.supplier',
             'supplier',
+            'committeeMembers.user',
         ]);
 
         $this->service->ensurePrimarySupplierInvited($order);
@@ -76,6 +81,7 @@ class InventorySupplierQuotationController extends Controller
         return view('inventory.orders.quotations-compare', [
             'order' => $order,
             'sheet' => $sheet,
+            'awardForm' => $this->awardService->awardFormData($order),
             'availableSuppliers' => $availableSuppliers,
             'supplierCatalog' => SupplierCategorySelection::catalogFromSuppliers($availableSuppliers),
             'supplierIndustries' => SupplierCategorySelection::industryOptionsForBusiness((int) $order->business_id),
@@ -96,6 +102,7 @@ class InventorySupplierQuotationController extends Controller
             'lines.*.inventory_order_line_id' => 'required|exists:inventory_order_lines,id',
             'lines.*.quoted_quantity_suom' => 'required|numeric|min:0',
             'lines.*.unit_price' => 'required|numeric|min:0',
+            'lines.*.comments' => 'nullable|string|max:2000',
         ]);
 
         try {
@@ -154,6 +161,50 @@ class InventorySupplierQuotationController extends Controller
         return redirect()
             ->route('inventory.orders.quotations.compare', $quotation->inventoryOrder)
             ->with('success', 'Supplier quotation rejected.');
+    }
+
+    public function saveAwards(Request $request, InventoryOrder $order)
+    {
+        $this->authorizeOrder($order);
+
+        $validated = $request->validate([
+            'awards' => 'nullable|array',
+            'awards.*.inventory_order_line_id' => 'required|exists:inventory_order_lines,id',
+            'awards.*.supplier_id' => 'required|exists:suppliers,id',
+            'awards.*.awarded_quantity_suom' => 'required|numeric|min:0',
+            'awards.*.unit_price' => 'required|numeric|min:0',
+        ]);
+
+        try {
+            $this->awardService->saveAwards($order, $validated['awards'] ?? []);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withInput()->withErrors($e->errors());
+        }
+
+        return redirect()
+            ->route('inventory.orders.quotations.compare', $order)
+            ->with('success', 'Supplier selections saved per item. Generate LPOs when ready.');
+    }
+
+    public function saveLineComments(Request $request, InventoryOrder $order)
+    {
+        $this->authorizeOrder($order);
+
+        $validated = $request->validate([
+            'line_comments' => 'nullable|array',
+            'line_comments.*.inventory_order_line_id' => 'required|exists:inventory_order_lines,id',
+            'line_comments.*.quotation_analysis_comment' => 'nullable|string|max:2000',
+        ]);
+
+        try {
+            $this->service->saveLineComments($order, $validated['line_comments'] ?? []);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return back()->withInput()->withErrors($e->errors());
+        }
+
+        return redirect()
+            ->route('inventory.orders.quotations.compare', $order)
+            ->with('success', 'Item comments saved.');
     }
 
     private function authorizeOrder(InventoryOrder $order): void

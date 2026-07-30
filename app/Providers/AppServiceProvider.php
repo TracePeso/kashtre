@@ -6,6 +6,7 @@ namespace App\Providers;
 use App\Models\Business;
 use App\Models\CallingModuleConfig;
 use App\Models\InventoryModuleConfig;
+use App\Models\KashtreCashTraySetting;
 use App\Support\BusinessBranding;
 use App\Support\DocumentViewData;
 use App\Support\InventoryBusinessContext;
@@ -141,6 +142,7 @@ class AppServiceProvider extends ServiceProvider
             'inventoryAdminContextBusiness' => $inventoryAdminContextBusiness,
             'globalActiveEmergency' => (bool) $activeEmergencyAlert,
             'activeEmergencyAlert' => $activeEmergencyAlert,
+            'cashTraySettings' => KashtreCashTraySetting::resolved(),
         ];
     }
 }

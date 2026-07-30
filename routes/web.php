@@ -67,6 +67,7 @@ use App\Http\Controllers\InventoryModuleConfigController;
 use App\Http\Controllers\InventoryContextController;
 use App\Http\Controllers\GoodsReceivedNoteController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\InventorySettingsController;
 use App\Http\Controllers\InventoryDailyConsumptionController;
 use App\Http\Controllers\InventoryOrderController;
 use App\Http\Controllers\InventoryPurchaseOrderController;
@@ -81,6 +82,7 @@ use App\Http\Controllers\EmergencyController;
 use App\Http\Controllers\BankScheduleController;
 use App\Http\Controllers\WithdrawalSettingController;
 use App\Http\Controllers\BusinessWithdrawalSettingController;
+use App\Http\Controllers\CashTraySettingsController;
 use App\Http\Controllers\WithdrawalRequestController;
 use App\Http\Controllers\BusinessSettingsController;
 use App\Http\Controllers\BroadcastAuthController;
@@ -253,6 +255,8 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     Route::delete('/settings/countries/{country}', [SettingsController::class, 'destroyCountry'])->name('settings.countries.destroy');
     Route::post('/settings/vendor-service-charge-defaults', [SettingsController::class, 'updateVendorServiceChargeDefaults'])
         ->name('settings.vendor-service-charge-defaults.update');
+    Route::get('/settings/kashtre', [CashTraySettingsController::class, 'edit'])->name('settings.kashtre.edit');
+    Route::put('/settings/kashtre', [CashTraySettingsController::class, 'update'])->name('settings.kashtre.update');
 
     // Insurance Companies routes (redirect index to settings)
     Route::get('/insurance-companies', function() {
@@ -336,6 +340,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/orders/{order}', [InventoryOrderController::class, 'show'])->name('orders.show');
         Route::get('/orders/{order}/calculations', [InventoryOrderController::class, 'calculations'])->name('orders.calculations');
         Route::post('/orders/{order}/submit', [InventoryOrderController::class, 'submit'])->name('orders.submit');
+        Route::put('/orders/{order}/committee', [InventoryOrderController::class, 'saveCommittee'])->name('orders.committee.update');
         Route::post('/orders/{order}/approve', [InventoryOrderController::class, 'approve'])->name('orders.approve');
         Route::post('/orders/{order}/reject', [InventoryOrderController::class, 'reject'])->name('orders.reject');
         Route::post('/orders/{order}/create-transfer', [InventoryOrderController::class, 'createTransfer'])->name('orders.create-transfer');
@@ -345,7 +350,10 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::post('/orders/{order}/quotations', [InventorySupplierQuotationController::class, 'store'])->name('orders.quotations.store');
         Route::post('/orders/{order}/rfq-suppliers', [InventorySupplierQuotationController::class, 'invite'])->name('orders.rfq-suppliers.invite');
         Route::get('/orders/{order}/quotations/compare', [InventorySupplierQuotationController::class, 'compare'])->name('orders.quotations.compare');
+        Route::post('/orders/{order}/quotations/awards', [InventorySupplierQuotationController::class, 'saveAwards'])->name('orders.quotations.awards.store');
+        Route::post('/orders/{order}/quotations/line-comments', [InventorySupplierQuotationController::class, 'saveLineComments'])->name('orders.quotations.line-comments.store');
         Route::post('/orders/{order}/purchase-orders/generate-accepted', [InventoryPurchaseOrderController::class, 'generateAccepted'])->name('orders.purchase-orders.generate-accepted');
+        Route::post('/orders/{order}/purchase-orders/generate-awards', [InventoryPurchaseOrderController::class, 'generateFromAwards'])->name('orders.purchase-orders.generate-awards');
         Route::post('/quotations/{quotation}/accept', [InventorySupplierQuotationController::class, 'accept'])->name('quotations.accept');
         Route::post('/quotations/{quotation}/reject', [InventorySupplierQuotationController::class, 'reject'])->name('quotations.reject');
         Route::post('/quotations/{quotation}/purchase-order', [InventoryPurchaseOrderController::class, 'createFromQuotation'])->name('quotations.purchase-order');
@@ -354,8 +362,12 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/purchase-orders/{purchaseOrder}/pdf', [InventoryPurchaseOrderController::class, 'pdf'])->name('purchase-orders.pdf');
         Route::post('/purchase-orders/{purchaseOrder}/issue', [InventoryPurchaseOrderController::class, 'issue'])->name('purchase-orders.issue');
         Route::get('/purchase-orders/{purchaseOrder}/receive', [InventoryPurchaseOrderController::class, 'receive'])->name('purchase-orders.receive');
-        Route::get('/approvers', [InventoryController::class, 'approvers'])->name('approvers');
-        Route::put('/approvers', [InventoryController::class, 'updateApprovers'])->name('approvers.update');
+        Route::get('/settings', [InventorySettingsController::class, 'edit'])->name('settings.edit');
+        Route::put('/settings', [InventorySettingsController::class, 'update'])->name('settings.update');
+        Route::put('/settings/approvers', [InventorySettingsController::class, 'updateApprovers'])->name('settings.approvers.update');
+        Route::put('/settings/evaluation-committee', [InventorySettingsController::class, 'updateEvaluationCommittee'])->name('settings.evaluation-committee.update');
+        Route::get('/approvers', fn () => redirect()->route('inventory.settings.edit', ['tab' => 'approvers']))->name('approvers');
+        Route::put('/approvers', [InventorySettingsController::class, 'updateApprovers'])->name('approvers.update');
         Route::get('/transfers', [InventoryStockTransferController::class, 'index'])->name('transfers.index');
         Route::get('/transfers/create', [InventoryStockTransferController::class, 'create'])->name('transfers.create');
         Route::post('/transfers', [InventoryStockTransferController::class, 'store'])->name('transfers.store');

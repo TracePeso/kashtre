@@ -112,7 +112,7 @@
                                     Submit for approval
                                 </button>
                             </form>
-                            <p class="text-xs text-gray-500 mt-2">Approvers are set under Inventory → Goods receive note approvers.</p>
+                            <p class="text-xs text-gray-500 mt-2">Approvers are set under Inventory → Settings → Approvers.</p>
                         @endif
                     @else
                         <ul class="space-y-3">

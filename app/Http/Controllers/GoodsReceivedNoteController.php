@@ -114,12 +114,16 @@ class GoodsReceivedNoteController extends Controller
             $prefillStoreId = $inventoryOrder->store_id;
         }
 
+        $fulfillmentService = app(\App\Services\Inventory\InventoryPurchaseOrderFulfillmentService::class);
+        $receivableLpos = $fulfillmentService->receivablePurchaseOrders($businessId);
+
         return view('inventory.receive.create', array_merge($this->grnFormOptions($businessId), [
             'inventoryOrder' => $inventoryOrder,
             'purchaseOrder' => $purchaseOrder,
             'prefillLines' => $prefillLines,
             'prefillStoreId' => $prefillStoreId,
             'prefillSupplierId' => $prefillSupplierId,
+            'receivableLpos' => $receivableLpos,
         ]));
     }
 

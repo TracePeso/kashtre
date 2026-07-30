@@ -182,7 +182,7 @@ class InventoryStockTransferService
 
         if ($approvers->isEmpty()) {
             throw ValidationException::withMessages([
-                'approvers' => 'No goods receive note approvers are configured. Set them under Inventory → Goods receive note approvers.',
+                'approvers' => 'No goods receive note approvers are configured. Set them under Inventory → Settings → Approvers.',
             ]);
         }
 

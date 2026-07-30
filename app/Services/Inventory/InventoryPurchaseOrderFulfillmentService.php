@@ -81,6 +81,8 @@ class InventoryPurchaseOrderFulfillmentService
                 : 1.0;
 
             $duomQty = max(0.0001, round($remaining / $conversion, 4));
+            $unitPriceSuom = (float) $line->unit_price;
+            $lineTotal = round($remaining * $unitPriceSuom, 2);
 
             $lines[] = [
                 'inventory_order_line_id' => $line->inventory_order_line_id,
@@ -94,10 +96,39 @@ class InventoryPurchaseOrderFulfillmentService
                 'conversion' => $conversion,
                 'remaining_suom' => $remaining,
                 'ordered_suom' => (float) $line->quantity_suom,
+                'total_amount' => $lineTotal,
+                'purchase_price' => $duomQty > 0 ? round($lineTotal / $duomQty, 4) : 0,
             ];
         }
 
         return $lines;
+    }
+
+    /**
+     * Issued LPOs with remaining quantities available for GRN receiving.
+     *
+     * @return \Illuminate\Support\Collection<int, InventoryPurchaseOrder>
+     */
+    public function receivablePurchaseOrders(int $businessId): \Illuminate\Support\Collection
+    {
+        return InventoryPurchaseOrder::query()
+            ->where('business_id', $businessId)
+            ->whereIn('status', [
+                InventoryPurchaseOrder::STATUS_ISSUED,
+                InventoryPurchaseOrder::STATUS_PARTIALLY_RECEIVED,
+            ])
+            ->with([
+                'supplier:id,name',
+                'store:id,name,parent_id',
+                'inventoryOrder:id,order_number',
+                'lines.item.itemUnit',
+                'lines.item.orderUnit',
+            ])
+            ->orderByDesc('issued_at')
+            ->orderByDesc('id')
+            ->get()
+            ->filter(fn (InventoryPurchaseOrder $po) => $this->prefillGrnLines($po) !== [])
+            ->values();
     }
 
     public function refreshPurchaseOrderStatus(InventoryPurchaseOrder $po): void

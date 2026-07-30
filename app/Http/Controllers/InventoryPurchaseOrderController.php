@@ -9,6 +9,7 @@ use App\Models\InventorySupplierQuotation;
 use App\Services\Inventory\InventoryProcurementPdfService;
 use App\Services\Inventory\InventoryPurchaseOrderFulfillmentService;
 use App\Services\Inventory\InventoryPurchaseOrderService;
+use App\Services\Inventory\InventoryRfqAwardService;
 use App\Support\InventoryBusinessContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -21,6 +22,7 @@ class InventoryPurchaseOrderController extends Controller
         private readonly InventoryPurchaseOrderService $service,
         private readonly InventoryProcurementPdfService $pdfService,
         private readonly InventoryPurchaseOrderFulfillmentService $fulfillmentService,
+        private readonly InventoryRfqAwardService $awardService,
     ) {
         $this->middleware($this->inventoryMiddleware(...));
     }
@@ -105,6 +107,37 @@ class InventoryPurchaseOrderController extends Controller
         return redirect()
             ->route('inventory.purchase-orders.show', $po)
             ->with('success', 'Draft LPO created. Review and issue to notify finance, approvers, and the supplier.');
+    }
+
+    /**
+     * Create LPOs from per-item supplier selections (supports partial quantities).
+     */
+    public function generateFromAwards(InventoryOrder $order)
+    {
+        if ((int) $order->business_id !== (int) InventoryBusinessContext::effectiveBusinessId()) {
+            abort(403);
+        }
+
+        try {
+            $result = $this->awardService->createLposFromAwards($order, Auth::user());
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return redirect()
+                ->route('inventory.orders.quotations.compare', $order)
+                ->withErrors($e->errors());
+        }
+
+        $created = $result['created'];
+        $errors = $result['errors'];
+
+        if ($created < 1) {
+            return redirect()
+                ->route('inventory.orders.quotations.compare', $order)
+                ->withErrors(['status' => $errors[0] ?? 'Save supplier selections per item before generating LPOs.']);
+        }
+
+        return redirect()
+            ->route('inventory.orders.show', $order)
+            ->with('success', "Generated {$created} LPO(s) from item selections. Review and issue each LPO.".($errors !== [] ? ' Some skipped: '.implode(' ', $errors) : ''));
     }
 
     /**

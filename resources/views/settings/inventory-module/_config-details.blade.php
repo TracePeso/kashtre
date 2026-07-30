@@ -97,7 +97,7 @@
   <section class="border border-gray-200 rounded-lg overflow-hidden">
     <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
       <h4 class="text-sm font-semibold text-gray-900">Goods receive note &amp; RFQ approvers</h4>
-      <p class="text-xs text-gray-500 mt-0.5">Same approval matrix the organisation sees under Inventory → Goods receive note approvers.</p>
+      <p class="text-xs text-gray-500 mt-0.5">Same approval matrix the organisation sees under Inventory → Settings → Approvers.</p>
     </div>
     <div class="px-4 py-4">
       @if($config->approvers->count() > 0)
@@ -123,8 +123,8 @@
 
   <section class="border border-gray-200 rounded-lg overflow-hidden">
     <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
-      <h4 class="text-sm font-semibold text-gray-900">LPO email notifications</h4>
-      <p class="text-xs text-gray-500 mt-0.5">Managed by the organisation on their Goods receive note approvers page.</p>
+      <h4 class="text-sm font-semibold text-gray-900">Email notifications</h4>
+      <p class="text-xs text-gray-500 mt-0.5">Managed by the organisation on their Inventory settings page.</p>
     </div>
     <dl class="px-4 py-4 space-y-4 text-sm">
       <div>
@@ -146,6 +146,47 @@
         <dd class="mt-1 font-medium text-gray-900">
           {{ ($config->lpo_email_copy_to_approvers ?? true) ? 'Yes' : 'No' }}
         </dd>
+      </div>
+      <div>
+        <dt class="text-gray-500">Notify approvers on order submitted</dt>
+        <dd class="mt-1 font-medium text-gray-900">{{ ($config->notify_approvers_on_order_submitted ?? true) ? 'Enabled' : 'Disabled' }}</dd>
+      </div>
+      <div>
+        <dt class="text-gray-500">Notify finance on order submitted</dt>
+        <dd class="mt-1 font-medium text-gray-900">{{ ($config->notify_finance_on_order_submitted ?? true) ? 'Enabled' : 'Disabled' }}</dd>
+      </div>
+      <div>
+        <dt class="text-gray-500">Notify next approver after each step</dt>
+        <dd class="mt-1 font-medium text-gray-900">{{ ($config->notify_next_approver_on_approval ?? true) ? 'Enabled' : 'Disabled' }}</dd>
+      </div>
+      <div>
+        <dt class="text-gray-500">Notify on full approval</dt>
+        <dd class="mt-1 font-medium text-gray-900">{{ ($config->notify_on_order_fully_approved ?? true) ? 'Enabled' : 'Disabled' }}</dd>
+      </div>
+      <div>
+        <dt class="text-gray-500">Email RFQ to suppliers on approval</dt>
+        <dd class="mt-1 font-medium text-gray-900">{{ ($config->notify_suppliers_on_rfq_approved ?? true) ? 'Enabled' : 'Disabled' }}</dd>
+      </div>
+      <div>
+        <dt class="text-gray-500">LPO emails</dt>
+        <dd class="mt-1 font-medium text-gray-900">{{ ($config->notify_on_lpo_issued ?? true) ? 'Enabled' : 'Disabled' }}</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section class="border border-gray-200 rounded-lg overflow-hidden">
+    <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
+      <h4 class="text-sm font-semibold text-gray-900">Evaluation committee</h4>
+      <p class="text-xs text-gray-500 mt-0.5">Managed by the organisation on their Inventory settings page.</p>
+    </div>
+    <dl class="px-4 py-4 space-y-4 text-sm">
+      <div>
+        <dt class="text-gray-500">Required on external orders</dt>
+        <dd class="mt-1 font-medium text-gray-900">{{ ($config->evaluation_committee_required ?? false) ? 'Yes' : 'No (optional)' }}</dd>
+      </div>
+      <div>
+        <dt class="text-gray-500">Default committee size</dt>
+        <dd class="mt-1 font-medium text-gray-900">{{ $config->evaluationCommitteeMembers?->count() ?? 0 }} member(s)</dd>
       </div>
     </dl>
   </section>
