@@ -75,6 +75,7 @@ class User extends Authenticatable
      * @var array<string, string>
      */
     protected $casts = [
+        'security_questions_enabled_at' => 'datetime',
         'email_verified_at' => 'datetime',
         'service_points' => 'array',
         'permissions' => 'array',
@@ -148,6 +149,17 @@ class User extends Authenticatable
     public function contractorProfile()
     {
         return $this->hasOne(ContractorProfile::class);
+    }
+
+    public function securityQuestions()
+    {
+        return $this->hasMany(UserSecurityQuestion::class);
+    }
+
+    public function hasSecurityQuestionsConfigured(): bool
+    {
+        return $this->security_questions_enabled_at !== null
+            && $this->securityQuestions()->count() >= (int) config('security_questions.required_count', 3);
     }
 
     /**
