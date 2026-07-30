@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\RequiresInventoryModule;
 use App\Models\InventoryOrder;
 use App\Models\InventorySupplierQuotation;
 use App\Models\Supplier;
+use App\Services\Inventory\InventoryEvaluationCommitteeService;
 use App\Services\Inventory\InventoryRfqAwardService;
 use App\Services\Inventory\InventorySupplierQuotationService;
 use App\Support\InventoryBusinessContext;
@@ -20,6 +21,7 @@ class InventorySupplierQuotationController extends Controller
     public function __construct(
         private readonly InventorySupplierQuotationService $service,
         private readonly InventoryRfqAwardService $awardService,
+        private readonly InventoryEvaluationCommitteeService $committeeService,
     ) {
         $this->middleware($this->inventoryMiddleware(...));
     }
@@ -64,29 +66,61 @@ class InventorySupplierQuotationController extends Controller
             'supplierQuotations.lines',
             'purchaseOrders.supplier',
             'invitedSuppliers',
-            'rfqLineAwards.supplier',
             'supplier',
-            'committeeMembers.user',
+            'rfqLineAwards.supplier',
         ]);
 
         $this->service->ensurePrimarySupplierInvited($order);
 
+        $hasSupplierQuotations = $order->supplierQuotations->contains(
+            fn ($quotation) => $quotation->lines->isNotEmpty()
+        );
+
+        $showLpoWorkflow = $order->canManageSupplierQuotations() && $hasSupplierQuotations;
+
+        $showSupplierSelection = $showLpoWorkflow;
+
+        $showEvaluationCommittee = $showLpoWorkflow
+            && $this->committeeService->businessHasConfiguredCommittee((int) $order->business_id);
+
+        if ($showEvaluationCommittee) {
+            $this->committeeService->ensureCommitteeBeforeLpo($order, Auth::user());
+            $order->load('committeeMembers.user');
+        }
+
         $sheet = $this->service->comparisonSheet($order);
+        $acceptedWithoutLpoCount = collect($sheet['suppliers'])->filter(
+            fn (array $sup): bool => ($sup['is_accepted'] ?? false) && ! ($sup['has_lpo'] ?? false)
+        )->count();
+        $computationForm = $showSupplierSelection
+            ? $this->buildComputationFormData($order, $sheet, $this->awardService->awardFormData($order))
+            : null;
         $availableSuppliers = Supplier::query()
             ->where('business_id', $order->business_id)
             ->with(['industry:id,name', 'subCategory:id,name'])
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'supplier_industry_id', 'supplier_sub_category_id']);
+            ->get(['id', 'name', 'email', 'linked_business_id', 'supplier_industry_id', 'supplier_sub_category_id']);
+
+        $hasSavedAllocations = $order->rfqLineAwards->isNotEmpty();
+        $editAllocation = request()->boolean('edit_allocation');
+        $showAllocationForm = $showSupplierSelection && (! $hasSavedAllocations || $editAllocation);
 
         return view('inventory.orders.quotations-compare', [
             'order' => $order,
             'sheet' => $sheet,
-            'awardForm' => $this->awardService->awardFormData($order),
             'availableSuppliers' => $availableSuppliers,
             'supplierCatalog' => SupplierCategorySelection::catalogFromSuppliers($availableSuppliers),
             'supplierIndustries' => SupplierCategorySelection::industryOptionsForBusiness((int) $order->business_id),
             'supplierSubCategoriesByIndustry' => SupplierCategorySelection::subCategoryOptionsByIndustryForBusiness((int) $order->business_id),
             'rfqSuppliers' => $this->service->suppliersForRfq($order->fresh(['invitedSuppliers', 'supplierQuotations.lines', 'lines', 'supplier'])),
+            'showLpoWorkflow' => $showLpoWorkflow,
+            'showSupplierSelection' => $showSupplierSelection,
+            'computationForm' => $computationForm,
+            'showEvaluationCommittee' => $showEvaluationCommittee,
+            'acceptedWithoutLpoCount' => $acceptedWithoutLpoCount,
+            'hasSavedAllocations' => $hasSavedAllocations,
+            'editAllocation' => $editAllocation,
+            'showAllocationForm' => $showAllocationForm,
         ]);
     }
 
@@ -100,9 +134,8 @@ class InventorySupplierQuotationController extends Controller
             'notes' => 'nullable|string|max:2000',
             'lines' => 'required|array|min:1',
             'lines.*.inventory_order_line_id' => 'required|exists:inventory_order_lines,id',
-            'lines.*.quoted_quantity_suom' => 'required|numeric|min:0',
+            'lines.*.quoted_quantity_suom' => 'nullable|numeric|min:0',
             'lines.*.unit_price' => 'required|numeric|min:0',
-            'lines.*.comments' => 'nullable|string|max:2000',
         ]);
 
         try {
@@ -167,23 +200,51 @@ class InventorySupplierQuotationController extends Controller
     {
         $this->authorizeOrder($order);
 
+        $awards = collect($request->input('awards', []))
+            ->filter(function (array $row): bool {
+                return ! empty($row['supplier_id'])
+                    && (float) ($row['awarded_quantity_suom'] ?? 0) > 0;
+            })
+            ->map(fn (array $row): array => [
+                'inventory_order_line_id' => $row['inventory_order_line_id'],
+                'supplier_id' => $row['supplier_id'],
+                'awarded_quantity_suom' => $row['awarded_quantity_suom'],
+                'unit_price' => $row['unit_price'] ?? 0,
+            ])
+            ->values()
+            ->all();
+
+        if ($awards === []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'awards' => 'Pick a supplier and enter a quantity for at least one item under “Your allocation”, then save again.',
+            ]);
+        }
+
+        $request->merge(['awards' => $awards]);
+
         $validated = $request->validate([
             'awards' => 'nullable|array',
             'awards.*.inventory_order_line_id' => 'required|exists:inventory_order_lines,id',
             'awards.*.supplier_id' => 'required|exists:suppliers,id',
-            'awards.*.awarded_quantity_suom' => 'required|numeric|min:0',
-            'awards.*.unit_price' => 'required|numeric|min:0',
+            'awards.*.awarded_quantity_suom' => 'required|numeric|min:0.01',
+            'awards.*.unit_price' => 'nullable|numeric|min:0',
+            'line_comments' => 'nullable|array',
+            'line_comments.*.inventory_order_line_id' => 'required|exists:inventory_order_lines,id',
+            'line_comments.*.quotation_analysis_comment' => 'nullable|string|max:2000',
         ]);
 
         try {
             $this->awardService->saveAwards($order, $validated['awards'] ?? []);
+            if (! empty($validated['line_comments'])) {
+                $this->service->saveLineComments($order, $validated['line_comments']);
+            }
         } catch (\Illuminate\Validation\ValidationException $e) {
             return back()->withInput()->withErrors($e->errors());
         }
 
         return redirect()
             ->route('inventory.orders.quotations.compare', $order)
-            ->with('success', 'Supplier selections saved per item. Generate LPOs when ready.');
+            ->with('success', 'Allocation and comments saved. Generate LPOs when ready.');
     }
 
     public function saveLineComments(Request $request, InventoryOrder $order)
@@ -205,6 +266,33 @@ class InventorySupplierQuotationController extends Controller
         return redirect()
             ->route('inventory.orders.quotations.compare', $order)
             ->with('success', 'Item comments saved.');
+    }
+
+    private function buildComputationFormData(InventoryOrder $order, array $sheet, array $awardForm): array
+    {
+        $commentsByLineId = $order->lines->keyBy('id');
+        $sheetLinesById = collect($sheet['lines'])->keyBy('order_line_id');
+
+        $awardForm['lines'] = collect($awardForm['lines'])->map(function (array $line) use ($sheetLinesById, $commentsByLineId) {
+            $sheetLine = $sheetLinesById->get($line['order_line_id'], []);
+            $orderLine = $commentsByLineId->get($line['order_line_id']);
+
+            return array_merge($line, [
+                'quotes' => $sheetLine['quotes'] ?? [],
+                'best_supplier_id' => $sheetLine['best_supplier_id'] ?? null,
+                'fulfillment_label' => $sheetLine['fulfillment_label'] ?? 'Unallocated',
+                'analysis_comment' => $orderLine?->quotation_analysis_comment,
+            ]);
+        })->values()->all();
+
+        $awardForm['sheet_suppliers'] = collect($sheet['suppliers'])->map(fn (array $sup) => [
+            'supplier_id' => $sup['supplier_id'],
+            'supplier_name' => $sup['supplier_name'],
+            'status_label' => $sup['status_label'],
+            'total_amount' => $sup['total_amount'],
+        ])->values()->all();
+
+        return $awardForm;
     }
 
     private function authorizeOrder(InventoryOrder $order): void

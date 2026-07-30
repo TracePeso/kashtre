@@ -7,7 +7,7 @@
             <div>
                 <p class="text-sm font-medium text-gray-900">Committee requirement</p>
                 <p class="text-xs text-gray-500 mt-0.5">
-                    By default, appointing an evaluation committee is optional. Enable this to require at least one committee member before external purchase requests can be submitted for approval.
+                    Optional. When members are listed here, they are shown on quotation analysis (before LPOs are issued) for external RFQs.
                 </p>
             </div>
             <label class="inline-flex items-start gap-3 text-sm text-gray-700">
@@ -16,18 +16,18 @@
                        @checked(old('evaluation_committee_required', $config->evaluation_committee_required ?? false))
                        class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
                 <span>
-                    <span class="font-medium text-gray-900">Require evaluation committee on external orders</span>
+                    <span class="font-medium text-gray-900">Require evaluation committee before LPOs</span>
                     <span class="block text-xs text-gray-500 mt-0.5">
-                        When enabled, every external purchase request must have committee members appointed (from defaults or per order) before submission.
+                        When enabled, the settings roster must be configured and is attached to the order before LPOs can be generated.
                     </span>
                 </span>
             </label>
         </div>
 
         <div>
-            <p class="text-sm font-medium text-gray-900">Default committee members</p>
+            <p class="text-sm font-medium text-gray-900">Committee members</p>
             <p class="text-xs text-gray-500 mt-0.5">
-                Optional roster pre-filled when creating external orders. Members can still be changed per order.
+                Leave empty to skip evaluation committee on orders. Add members to show the roster at quotation analysis.
             </p>
         </div>
 
@@ -71,12 +71,7 @@
         </ul>
     @else
         <p class="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-md px-4 py-3">
-            No default evaluation committee configured.
-            @if($config->evaluation_committee_required ?? false)
-                Committee members must still be appointed on each external order before submission.
-            @else
-                Committee appointment is optional for external orders.
-            @endif
+            No evaluation committee configured. Add members above to show them at quotation analysis before LPOs are issued.
         </p>
     @endif
     <p class="mt-4 text-xs text-gray-500">

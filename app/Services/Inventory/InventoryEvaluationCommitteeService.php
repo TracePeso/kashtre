@@ -39,6 +39,10 @@ class InventoryEvaluationCommitteeService
             return;
         }
 
+        if (! $this->businessHasConfiguredCommittee((int) $order->business_id)) {
+            return;
+        }
+
         $config = InventoryModuleConfig::query()
             ->forBusiness((int) $order->business_id)
             ->active()
@@ -59,6 +63,32 @@ class InventoryEvaluationCommitteeService
             ->all();
 
         $this->syncOrderMembers($order, $inputs, $actor);
+    }
+
+    public function businessHasConfiguredCommittee(int $businessId): bool
+    {
+        return InventoryModuleConfig::query()
+            ->forBusiness($businessId)
+            ->active()
+            ->whereHas('evaluationCommitteeMembers')
+            ->exists();
+    }
+
+    /**
+     * Attach the settings roster to the order when entering quotation analysis / before LPOs.
+     */
+    public function ensureCommitteeBeforeLpo(InventoryOrder $order, User $actor): void
+    {
+        if (! $order->isExternal() || ! $this->businessHasConfiguredCommittee((int) $order->business_id)) {
+            return;
+        }
+
+        $order->loadMissing('committeeMembers');
+
+        if ($order->committeeMembers->isEmpty()) {
+            $this->applyDefaultsToOrder($order, $actor);
+            $order->load('committeeMembers');
+        }
     }
 
     /**
@@ -87,33 +117,6 @@ class InventoryEvaluationCommitteeService
                 ]);
             }
         });
-    }
-
-    public function ensureOrderCommittee(InventoryOrder $order, User $actor): void
-    {
-        if (! $order->isExternal()) {
-            return;
-        }
-
-        $config = InventoryModuleConfig::query()
-            ->forBusiness((int) $order->business_id)
-            ->active()
-            ->first();
-
-        $order->loadMissing('committeeMembers');
-
-        if ($order->committeeMembers->isEmpty()) {
-            $this->applyDefaultsToOrder($order, $actor);
-            $order->load('committeeMembers');
-        }
-
-        if ($order->committeeMembers->isNotEmpty() || ! ($config?->evaluationCommitteeRequired() ?? false)) {
-            return;
-        }
-
-        throw ValidationException::withMessages([
-            'committee' => 'Appoint at least one evaluation committee member before submitting this purchase request. Your organisation requires an evaluation committee on external orders — configure defaults under Inventory → Settings → Evaluation committee, or appoint members on this order.',
-        ]);
     }
 
     public function isRequiredForBusiness(int $businessId): bool

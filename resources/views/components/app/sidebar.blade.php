@@ -162,6 +162,16 @@
                                 </a>
                             </li>
                             <li>
+                                <a href="{{ route('inventory.incoming-rfqs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.incoming-rfqs*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Incoming RFQs
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.supplied-quotations.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.supplied-quotations*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Supplied quotations
+                                </a>
+                            </li>
+                            <li>
                                 <a href="{{ route('inventory.purchase-orders.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.purchase-orders*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
                                     LPOs
                                 </a>

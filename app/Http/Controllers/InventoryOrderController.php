@@ -12,7 +12,6 @@ use App\Models\Store;
 use App\Models\SubGroup;
 use App\Models\Supplier;
 use App\Models\User;
-use App\Services\Inventory\InventoryEvaluationCommitteeService;
 use App\Services\Inventory\InventoryOrderApprovalService;
 use App\Services\Inventory\InventoryOrderFulfillmentService;
 use App\Services\Inventory\InventoryOrderService;
@@ -34,7 +33,6 @@ class InventoryOrderController extends Controller
         private readonly InventoryOrderFulfillmentService $fulfillmentService,
         private readonly InventoryProcurementPdfService $pdfService,
         private readonly InventoryStockTransferService $transferService,
-        private readonly InventoryEvaluationCommitteeService $committeeService,
     ) {
         $this->middleware($this->inventoryMiddleware(...));
     }
@@ -61,16 +59,7 @@ class InventoryOrderController extends Controller
         $moduleConfig = InventoryModuleConfig::query()
             ->forBusiness($businessId)
             ->active()
-            ->with('evaluationCommitteeMembers')
             ->first();
-
-        $businessUsers = User::query()
-            ->where('business_id', $businessId)
-            ->where('status', 'active')
-            ->orderBy('name')
-            ->get(['id', 'name', 'email']);
-
-        $defaultChair = $moduleConfig?->evaluationCommitteeMembers?->firstWhere('role', 'chair');
 
         return view('inventory.orders.create', [
             'stores' => Store::optionsForSelect($businessId),
@@ -100,10 +89,6 @@ class InventoryOrderController extends Controller
                 ->orderBy('name')
                 ->pluck('name', 'id'),
             'moduleConfig' => $moduleConfig,
-            'businessUsers' => $businessUsers,
-            'defaultCommitteeMemberIds' => $moduleConfig?->evaluationCommitteeMembers?->pluck('user_id')->map(fn ($id) => (int) $id)->all() ?? [],
-            'defaultCommitteeChairId' => $defaultChair?->user_id,
-            'evaluationCommitteeRequired' => $moduleConfig?->evaluationCommitteeRequired() ?? false,
         ]);
     }
 
@@ -137,9 +122,6 @@ class InventoryOrderController extends Controller
             'notes' => 'nullable|string|max:2000',
             'item_ids' => 'nullable|array',
             'item_ids.*' => 'integer|exists:items,id',
-            'committee_members' => 'nullable|array',
-            'committee_members.*' => 'integer|exists:users,id',
-            'committee_chair_user_id' => 'nullable|integer|exists:users,id',
         ]);
 
         $orderingApproach = $validated['ordering_approach']
@@ -259,25 +241,6 @@ class InventoryOrderController extends Controller
             $validated['order_type'] === InventoryOrder::TYPE_INTERNAL ? (int) $validated['source_store_id'] : null,
         );
 
-        if ($order->isExternal()) {
-            try {
-                $memberInputs = $this->committeeService->memberInputsFromRequest(
-                    $validated['committee_members'] ?? [],
-                    isset($validated['committee_chair_user_id']) ? (int) $validated['committee_chair_user_id'] : null,
-                );
-
-                if ($memberInputs !== []) {
-                    $this->committeeService->syncOrderMembers($order, $memberInputs, Auth::user());
-                } else {
-                    $this->committeeService->applyDefaultsToOrder($order, Auth::user());
-                }
-            } catch (\Illuminate\Validation\ValidationException $e) {
-                $order->delete();
-
-                return back()->withInput()->withErrors($e->errors());
-            }
-        }
-
         $redirect = redirect()->route('inventory.orders.show', $order);
 
         if ($order->lines()->count() === 0) {
@@ -338,24 +301,7 @@ class InventoryOrderController extends Controller
             'purchaseOrders.lines',
             'stockTransfers',
             'invitedSuppliers',
-            'committeeMembers.user',
         ]);
-
-        $businessUsers = User::query()
-            ->where('business_id', $order->business_id)
-            ->where('status', 'active')
-            ->orderBy('name')
-            ->get(['id', 'name', 'email']);
-
-        $committeeChair = $order->committeeMembers->firstWhere('role', 'chair');
-        $canManageCommittee = $order->isDraft()
-            && $order->isExternal()
-            && ! InventoryBusinessContext::isAdminBrowsing();
-        $moduleConfig = InventoryModuleConfig::query()
-            ->forBusiness((int) $order->business_id)
-            ->active()
-            ->first();
-        $evaluationCommitteeRequired = $moduleConfig?->evaluationCommitteeRequired() ?? false;
 
         $emptyOrderReason = $order->lines->isEmpty()
             ? app(InventoryOrderService::class)->explainEmptyOrder($order)
@@ -369,44 +315,7 @@ class InventoryOrderController extends Controller
             'emptyOrderReason',
             'canApprove',
             'receiptOptions',
-            'businessUsers',
-            'committeeChair',
-            'canManageCommittee',
-            'evaluationCommitteeRequired',
         ));
-    }
-
-    public function saveCommittee(Request $request, InventoryOrder $order)
-    {
-        $this->authorizeOrder($order);
-        InventoryBusinessContext::assertWritable();
-
-        if (! $order->isDraft() || ! $order->isExternal()) {
-            return back()->withErrors(['committee' => 'Committee can only be updated on draft external orders.']);
-        }
-
-        $validated = $request->validate([
-            'committee_members' => 'nullable|array',
-            'committee_members.*' => 'integer|exists:users,id',
-            'committee_chair_user_id' => 'nullable|integer|exists:users,id',
-        ]);
-
-        try {
-            $this->committeeService->syncOrderMembers(
-                $order,
-                $this->committeeService->memberInputsFromRequest(
-                    $validated['committee_members'] ?? [],
-                    isset($validated['committee_chair_user_id']) ? (int) $validated['committee_chair_user_id'] : null,
-                ),
-                Auth::user(),
-            );
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return back()->withInput()->withErrors($e->errors());
-        }
-
-        return redirect()
-            ->route('inventory.orders.show', [$order, 'tab' => 'committee'])
-            ->with('success', 'Evaluation committee saved.');
     }
 
     public function submit(InventoryOrder $order)

@@ -6,9 +6,6 @@
     $documentSubtitle = $order->order_number.' · '.$order->statusLabel();
     $generatedAt = $generatedAt ?? now();
     $showReferencePricing = $order->isDraft() || $order->isPendingApproval();
-    $usesPackagingUnits = $order->lines->contains(
-        fn ($line) => $line->item?->usesPackagingUnits() ?? false
-    );
     $documentTotal = (float) $order->lines->sum('line_total');
 @endphp
 @extends('layouts.pdf')
@@ -53,16 +50,9 @@
                 <th class="col-item">Item</th>
                 <th class="col-code">Code</th>
                 <th class="col-packaging">Packaging</th>
-                <th class="col-qty text-right">
-                    Qty
-                    @if($usesPackagingUnits)
-                        <span style="font-weight: normal; text-transform: none;">(order unit)</span>
-                    @else
-                        <span style="font-weight: normal; text-transform: none;">(sale unit)</span>
-                    @endif
-                </th>
-                <th class="col-price text-right">Unit price (UGX)</th>
-                <th class="col-amount text-right">Amount (UGX)</th>
+                <th class="col-qty text-right">Units</th>
+                <th class="col-price text-right">Price</th>
+                <th class="col-amount text-right">Total</th>
             </tr>
         </thead>
         <tbody>

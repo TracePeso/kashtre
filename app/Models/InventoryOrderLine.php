@@ -65,4 +65,33 @@ class InventoryOrderLine extends Model
     {
         return $this->belongsTo(Supplier::class);
     }
+
+    /**
+     * RFQ / quotation quantity in the same unit shown to suppliers
+     * (order/pack units when the item uses packaging, otherwise sale units).
+     */
+    public function rfqQuantity(): float
+    {
+        $item = $this->item;
+
+        if ($item?->usesPackagingUnits()) {
+            $ouom = (float) ($this->order_quantity_ouom ?? 0);
+            if ($ouom > 0) {
+                return $ouom;
+            }
+
+            $suom = (float) ($this->order_quantity_suom ?? 0);
+            $perPack = (float) ($item->suom_per_ouom ?? 0);
+            if ($suom > 0 && $perPack > 0) {
+                return round($suom / $perPack, 4);
+            }
+        }
+
+        $suom = (float) ($this->order_quantity_suom ?? 0);
+        if ($suom > 0) {
+            return $suom;
+        }
+
+        return max(0, (float) ($this->suggested_quantity_suom ?? 0));
+    }
 }

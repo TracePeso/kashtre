@@ -6,7 +6,7 @@
             <div>
                 <a href="{{ route('inventory.orders.show', $order) }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to {{ $order->order_number }}</a>
                 <h2 class="mt-2 text-2xl font-bold text-gray-900">Quotation analysis</h2>
-                <p class="mt-1 text-sm text-gray-500">Compare supplier quotes, allocate each item to one or more suppliers (partial quantities allowed), then generate LPOs.</p>
+                <p class="mt-1 text-sm text-gray-500">Invite suppliers, record quotations, then compare prices and allocate each item on the computation sheet.</p>
             </div>
             <div class="flex flex-wrap gap-2">
                 @if($order->purchaseOrders->isNotEmpty())
@@ -15,12 +15,6 @@
                         View all LPOs ({{ $order->purchaseOrders->count() }})
                     </a>
                 @endif
-                <form action="{{ route('inventory.orders.purchase-orders.generate-awards', $order) }}" method="POST">
-                    @csrf
-                    <button type="submit" class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
-                        Generate LPOs from selections
-                    </button>
-                </form>
             </div>
         </div>
 
@@ -33,24 +27,12 @@
             </div>
         @endif
 
-        @if($order->committeeMembers->isNotEmpty())
-            <section class="bg-white shadow sm:rounded-lg overflow-hidden border border-slate-200">
-                <div class="px-5 py-4 border-b border-gray-200 bg-slate-50/80">
-                    <h3 class="text-sm font-semibold text-gray-900">Evaluation committee</h3>
-                    <p class="text-xs text-gray-500 mt-0.5">Appointed to evaluate supplier quotations for this purchase order.</p>
-                </div>
-                <div class="px-5 py-4">
-                    @include('inventory.partials.order-committee-display', ['order' => $order])
-                </div>
-            </section>
-        @endif
-
         @if($order->purchaseOrders->isNotEmpty())
             <section class="bg-white shadow sm:rounded-lg overflow-hidden border border-indigo-100">
                 <div class="px-5 py-4 border-b border-indigo-100 bg-indigo-50/60 flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <h3 class="text-sm font-semibold text-gray-900">LPOs for this RFQ</h3>
-                        <p class="text-xs text-gray-500 mt-0.5">Open an LPO to review, issue (email supplier), or receive goods.</p>
+                        <p class="text-xs text-gray-500 mt-0.5">Open an LPO to review and issue (email supplier).</p>
                     </div>
                     <a href="{{ route('inventory.purchase-orders.index') }}" class="text-sm font-medium text-indigo-700 hover:text-indigo-900">All purchase orders →</a>
                 </div>
@@ -84,190 +66,127 @@
                     @include('inventory.partials.rfq-download-button', ['order' => $order, 'variant' => 'compact'])
                 </div>
             </div>
-            <div class="px-5 py-4" x-data="supplierCategoryFilterMixin(
-                @js($supplierCatalog),
-                @js($supplierIndustries),
-                @js($supplierSubCategoriesByIndustry)
-            )">
-                @include('partials.inventory.supplier-category-filter-fields', ['class' => 'mb-4'])
-
-                <form action="{{ route('inventory.orders.rfq-suppliers.invite', $order) }}" method="POST" class="space-y-3">
-                    @csrf
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-                        @foreach($availableSuppliers as $supplier)
-                            @php
-                                $already = $rfqSuppliers->contains(fn ($row) => (int) $row['supplier_id'] === (int) $supplier->id);
-                            @endphp
-                            <label class="flex items-start gap-2 text-sm text-gray-800"
-                                   x-show="supplierMatchesCategoryFilter(@js($supplier->supplier_industry_id), @js($supplier->supplier_sub_category_id))"
-                                   x-cloak>
-                                <input type="checkbox" name="supplier_ids[]" value="{{ $supplier->id }}"
-                                       @checked($already)
-                                       class="mt-1 rounded border-gray-300 text-blue-600">
-                                <span>
-                                    {{ $supplier->name }}
-                                    <span class="block text-xs text-gray-500">
-                                        {{ $supplier->email ?: 'No email — download RFQ to share' }}
-                                        @if($supplier->industry?->name || $supplier->subCategory?->name)
-                                            · {{ $supplier->industry?->name ?? '—' }} / {{ $supplier->subCategory?->name ?? '—' }}
-                                        @endif
-                                    </span>
-                                </span>
-                            </label>
-                        @endforeach
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2">
-                        <button type="submit" class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">Save invited suppliers</button>
-                    </div>
-                </form>
-            </div>
-        </section>
-
-        <section class="bg-white shadow sm:rounded-lg overflow-hidden">
-            <div class="px-5 py-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <h3 class="text-sm font-semibold text-gray-900">Computation sheet</h3>
-                    <p class="text-xs text-gray-500">Lowest price highlighted. Green ring = selected for that item. Partial allocations show in Allocated.</p>
-                </div>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
-                    <thead class="bg-gray-50 border-b border-gray-200">
-                        <tr>
-                            <th class="px-3 py-2 text-left font-medium text-gray-600">Item</th>
-                            <th class="px-3 py-2 text-right font-medium text-gray-600">RFQ qty</th>
-                            <th class="px-3 py-2 text-right font-medium text-gray-600">Allocated</th>
-                            <th class="px-3 py-2 text-left font-medium text-gray-600">Fulfillment</th>
-                            @foreach($sheet['suppliers'] as $sup)
-                                <th class="px-3 py-2 text-right font-medium text-gray-600">
-                                    {{ $sup['supplier_name'] }}
-                                    <span class="block text-[10px] font-normal text-gray-400">{{ $sup['status_label'] }}</span>
-                                </th>
-                            @endforeach
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        @forelse($sheet['lines'] as $row)
-                            <tr>
-                                <td class="px-3 py-2">
-                                    <div class="font-medium text-gray-900">{{ $row['item_name'] }}</div>
-                                    @if($row['item_code'])
-                                        <div class="text-xs text-gray-500">{{ $row['item_code'] }}</div>
-                                    @endif
-                                    @if(! empty($row['analysis_comment']))
-                                        <p class="mt-1 text-xs text-slate-600 italic" title="{{ $row['analysis_comment'] }}">
-                                            {{ \Illuminate\Support\Str::limit($row['analysis_comment'], 80) }}
+            @php
+                $hasInvitedSuppliers = $rfqSuppliers->isNotEmpty();
+                $canEditInvites = $order->canEditRfqSuppliers();
+                $showInviteEditor = ! $hasInvitedSuppliers || $errors->has('supplier_ids');
+            @endphp
+            <div class="px-5 py-4" x-data="{
+                editingInvites: @js($showInviteEditor),
+                ...supplierCategoryFilterMixin(
+                    @js($supplierCatalog),
+                    @js($supplierIndustries),
+                    @js($supplierSubCategoriesByIndustry)
+                ),
+            }">
+                @if($hasInvitedSuppliers)
+                    <div x-show="!editingInvites" x-cloak class="space-y-3">
+                        <ul class="divide-y divide-gray-100 rounded-md border border-gray-200">
+                            @foreach($rfqSuppliers as $row)
+                                <li class="px-4 py-3 flex flex-wrap items-start justify-between gap-2">
+                                    <div>
+                                        <p class="text-sm font-medium text-gray-900">{{ $row['supplier_name'] }}</p>
+                                        <p class="text-xs text-gray-500">
+                                            {{ $row['email'] ?: 'No email — download RFQ to share' }}
+                                            @if(! empty($row['is_kashtre_entity']))
+                                                · <span class="text-indigo-700">Kashtre entity — responds in Incoming RFQs</span>
+                                            @endif
                                         </p>
-                                    @endif
-                                </td>
-                                <td class="px-3 py-2 text-right tabular-nums">{{ number_format($row['rfq_qty'], 0) }}</td>
-                                <td class="px-3 py-2 text-right tabular-nums font-medium {{ $row['awarded_total'] > 0 ? 'text-indigo-700' : 'text-gray-400' }}">
-                                    {{ number_format($row['awarded_total'], 0) }}
-                                </td>
-                                <td class="px-3 py-2">
-                                    @if($row['awarded_total'] <= 0)
-                                        <span class="text-xs text-gray-400">Unallocated</span>
-                                    @elseif($row['remaining_qty'] > 0.0001)
-                                        <span class="text-xs font-medium text-amber-700">Partial</span>
-                                        <span class="block text-[10px] text-gray-500">{{ number_format($row['remaining_qty'], 0) }} remaining</span>
-                                    @else
-                                        <span class="text-xs font-medium text-emerald-700">Full</span>
-                                    @endif
-                                </td>
-                                @foreach($sheet['suppliers'] as $sup)
-                                    @php($q = $row['quotes'][$sup['supplier_id']] ?? null)
-                                    <td @class([
-                                        'px-3 py-2 text-right tabular-nums',
-                                        'bg-emerald-50 font-semibold text-emerald-900' => $q && $sup['supplier_id'] === $row['best_supplier_id'] && ! ($q['is_awarded'] ?? false),
-                                        'ring-2 ring-inset ring-indigo-400 bg-indigo-50 font-semibold text-indigo-900' => $q && ($q['is_awarded'] ?? false),
-                                    ])>
-                                        @if($q && $q['unit_price'] !== null)
-                                            {{ number_format($q['unit_price'], 2) }}
-                                            <span class="block text-[10px] text-gray-500 font-normal">quote {{ number_format($q['quoted_qty'] ?? 0, 0) }}</span>
-                                            @if(($q['is_awarded'] ?? false) && ($q['awarded_qty'] ?? null) !== null)
-                                                <span class="block text-[10px] font-medium text-indigo-700">award {{ number_format($q['awarded_qty'], 0) }}</span>
-                                            @endif
-                                            @if(! empty($q['comments']))
-                                                <span class="block text-[10px] text-gray-500 font-normal italic" title="{{ $q['comments'] }}">{{ \Illuminate\Support\Str::limit($q['comments'], 40) }}</span>
-                                            @endif
-                                        @else
-                                            —
-                                        @endif
-                                    </td>
+                                    </div>
+                                    <span class="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">Invited</span>
+                                </li>
+                            @endforeach
+                        </ul>
+                        @if($canEditInvites)
+                            <button type="button" @click="editingInvites = true"
+                                    class="text-sm font-medium text-blue-600 hover:text-blue-800">
+                                Change invited suppliers
+                            </button>
+                        @endif
+                    </div>
+                @endif
+
+                @if($canEditInvites)
+                    <div x-show="editingInvites" x-cloak
+                         @class(['space-y-3', 'mt-4' => $hasInvitedSuppliers])>
+                        @include('partials.inventory.supplier-category-filter-fields', ['class' => 'mb-4'])
+
+                        <form action="{{ route('inventory.orders.rfq-suppliers.invite', $order) }}" method="POST" class="space-y-3">
+                            @csrf
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                                @foreach($availableSuppliers as $supplier)
+                                    @php
+                                        $already = $rfqSuppliers->contains(
+                                            fn ($rfqRow) => (int) $rfqRow['supplier_id'] === (int) $supplier->id
+                                        );
+                                    @endphp
+                                    <label class="flex items-start gap-2 text-sm text-gray-800"
+                                           x-show="supplierMatchesCategoryFilter(@js($supplier->supplier_industry_id), @js($supplier->supplier_sub_category_id))"
+                                           x-cloak>
+                                        <input type="checkbox" name="supplier_ids[]" value="{{ $supplier->id }}"
+                                               @checked($already)
+                                               class="mt-1 rounded border-gray-300 text-blue-600">
+                                        <span>
+                                            {{ $supplier->name }}
+                                            <span class="block text-xs text-gray-500">
+                                                {{ $supplier->email ?: 'No email — download RFQ to share' }}
+                                                @if($supplier->isKashtreEntitySupplier())
+                                                    · <span class="text-indigo-700">Kashtre entity — responds in Incoming RFQs</span>
+                                                @endif
+                                                @if($supplier->industry && ($supplier->industry->name || ($supplier->subCategory && $supplier->subCategory->name)))
+                                                    · {{ $supplier->industry->name ?? '—' }} / {{ $supplier->subCategory->name ?? '—' }}
+                                                @endif
+                                            </span>
+                                        </span>
+                                    </label>
                                 @endforeach
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="{{ 4 + count($sheet['suppliers']) }}" class="px-3 py-6 text-center text-gray-500">No RFQ lines.</td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                    @if(count($sheet['suppliers']) > 0)
-                        <tfoot class="border-t border-gray-200 bg-slate-50">
-                            <tr>
-                                <td class="px-3 py-2 font-medium" colspan="4">Quoted total</td>
-                                @foreach($sheet['suppliers'] as $sup)
-                                    <td class="px-3 py-2 text-right font-mono font-semibold tabular-nums">
-                                        UGX {{ number_format($sup['total_amount'], 2) }}
-                                    </td>
-                                @endforeach
-                            </tr>
-                            <tr>
-                                <td class="px-3 py-2 font-medium" colspan="4">Actions</td>
-                                @foreach($sheet['suppliers'] as $sup)
-                                    <td class="px-3 py-2 text-right space-y-1">
-                                        @if($sup['has_lpo'])
-                                            <span class="text-xs text-gray-500">LPO exists</span>
-                                        @elseif($sup['is_accepted'])
-                                            <form action="{{ route('inventory.quotations.purchase-order', $sup['quotation_id']) }}" method="POST" class="inline">
-                                                @csrf
-                                                <button class="text-xs font-medium text-indigo-700 hover:underline">Generate LPO</button>
-                                            </form>
-                                        @elseif($sup['can_accept'])
-                                            <form action="{{ route('inventory.quotations.accept', $sup['quotation_id']) }}" method="POST" class="inline">
-                                                @csrf
-                                                <button class="text-xs font-medium text-green-700 hover:underline">Accept</button>
-                                            </form>
-                                            <form action="{{ route('inventory.quotations.reject', $sup['quotation_id']) }}" method="POST" class="inline">
-                                                @csrf
-                                                <button class="text-xs font-medium text-red-600 hover:underline">Reject</button>
-                                            </form>
-                                        @endif
-                                    </td>
-                                @endforeach
-                            </tr>
-                        </tfoot>
-                    @endif
-                </table>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button type="submit" class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">
+                                    {{ $hasInvitedSuppliers ? 'Update invited suppliers' : 'Save invited suppliers' }}
+                                </button>
+                                @if($hasInvitedSuppliers)
+                                    <button type="button" @click="editingInvites = false"
+                                            class="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                                        Cancel
+                                    </button>
+                                @endif
+                            </div>
+                        </form>
+                    </div>
+                @elseif(! $hasInvitedSuppliers)
+                    <p class="text-sm text-gray-500">No suppliers invited yet. Invites cannot be changed at this stage.</p>
+                @endif
             </div>
-            @if(count($sheet['suppliers']) < 1)
-                <p class="px-5 py-4 text-sm text-gray-500">No quotations recorded yet. Invite suppliers, then enter each quote below.</p>
-            @endif
         </section>
-
-        @include('inventory.partials.rfq-item-comments', ['order' => $order])
-
-        @include('inventory.partials.rfq-item-awards', ['order' => $order, 'awardForm' => $awardForm])
 
         <section class="bg-white shadow sm:rounded-lg overflow-hidden">
             <div class="px-5 py-4 border-b border-gray-200">
                 <h3 class="text-sm font-semibold text-gray-900">Record a supplier quotation</h3>
+                <p class="text-xs text-gray-500 mt-0.5">Enter quoted quantities and purchase prices from each supplier.</p>
             </div>
             <div class="px-5 py-4 space-y-4">
                 @forelse($rfqSuppliers as $row)
-                    @php($quotation = $row['quotation'] ?? null)
+                    @php
+                        $quotation = $row['quotation'] ?? null;
+                    @endphp
                     <div class="border border-gray-200 rounded-lg p-4">
                         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
                             <div>
                                 <p class="text-sm font-semibold text-gray-900">{{ $row['supplier_name'] }}</p>
-                                <p class="text-xs text-gray-500">{{ $row['email'] ?: 'No email on file' }}</p>
+                                <p class="text-xs text-gray-500">
+                                    {{ $row['email'] ?: 'No email on file' }}
+                                    @if(! empty($row['is_kashtre_entity']))
+                                        · <span class="text-indigo-700">Kashtre entity — can submit via Incoming RFQs</span>
+                                    @endif
+                                </p>
                             </div>
                             @if($quotation)
                                 <span class="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-800">{{ $quotation->statusLabel() }}</span>
                             @endif
                         </div>
                         @if($quotation && $quotation->isAccepted())
-                            <p class="text-sm text-gray-600">Accepted — use Generate LPO above.</p>
+                            <p class="text-sm text-gray-600">Quotation accepted — generate an LPO in the next section below.</p>
                         @else
                             <form action="{{ route('inventory.orders.quotations.store', $order) }}" method="POST" class="space-y-3">
                                 @csrf
@@ -275,11 +194,11 @@
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700">Supplier reference</label>
-                                        <input type="text" name="reference_number" value="{{ $quotation?->reference_number }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                                        <input type="text" name="reference_number" value="{{ $quotation ? $quotation->reference_number : '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700">Notes</label>
-                                        <input type="text" name="notes" value="{{ $quotation?->notes }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
+                                        <input type="text" name="notes" value="{{ $quotation ? $quotation->notes : '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm">
                                     </div>
                                 </div>
                                 <div class="overflow-x-auto">
@@ -290,31 +209,38 @@
                                                 <th class="py-1 pr-2 text-right">RFQ qty</th>
                                                 <th class="py-1 pr-2 text-right">Quoted qty</th>
                                                 <th class="py-1 pr-2 text-right">Purchase price</th>
-                                                <th class="py-1 pr-2">Comments</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             @foreach($order->lines as $index => $line)
-                                                @php($existing = $quotation?->lines?->firstWhere('inventory_order_line_id', $line->id))
+                                                @php
+                                                    $existing = $quotation && $quotation->lines
+                                                        ? $quotation->lines->firstWhere('inventory_order_line_id', $line->id)
+                                                        : null;
+                                                    $rfqQty = (float) $line->rfqQuantity();
+                                                    $existingQty = $existing ? (float) $existing->quoted_quantity_suom : null;
+                                                    if ($existingQty !== null && $existingQty > 0) {
+                                                        $defaultQuotedQty = $existingQty;
+                                                    } elseif ($rfqQty > 0) {
+                                                        $defaultQuotedQty = $rfqQty;
+                                                    } else {
+                                                        $defaultQuotedQty = null;
+                                                    }
+                                                    $qtyDecimals = $line->item?->usesPackagingUnits() ? 2 : 0;
+                                                @endphp
                                                 <tr>
-                                                    <td class="py-1 pr-2">{{ $line->item?->name }}</td>
-                                                    <td class="py-1 pr-2 text-right tabular-nums">{{ number_format((float) $line->order_quantity_suom, 0) }}</td>
+                                                    <td class="py-1 pr-2">{{ $line->item ? $line->item->name : '' }}</td>
+                                                    <td class="py-1 pr-2 text-right tabular-nums">{{ number_format($rfqQty, $qtyDecimals) }}</td>
                                                     <td class="py-1 pr-2">
                                                         <input type="hidden" name="lines[{{ $index }}][inventory_order_line_id]" value="{{ $line->id }}">
-                                                        <input type="number" step="1" min="0" name="lines[{{ $index }}][quoted_quantity_suom]"
-                                                               value="{{ number_format((float) ($existing->quoted_quantity_suom ?? $line->order_quantity_suom), 0, '.', '') }}"
+                                                        <input type="number" step="{{ $qtyDecimals > 0 ? '0.01' : '1' }}" min="0" name="lines[{{ $index }}][quoted_quantity_suom]"
+                                                               value="{{ $defaultQuotedQty !== null ? number_format($defaultQuotedQty, $qtyDecimals, '.', '') : '' }}"
                                                                class="w-24 rounded border-gray-300 text-right text-sm">
                                                     </td>
                                                     <td class="py-1">
                                                         <input type="number" step="0.01" min="0" name="lines[{{ $index }}][unit_price]"
                                                                value="{{ number_format((float) ($existing->unit_price ?? 0), 2, '.', '') }}"
                                                                class="w-28 rounded border-gray-300 text-right text-sm">
-                                                    </td>
-                                                    <td class="py-1 pr-2">
-                                                        <input type="text" name="lines[{{ $index }}][comments]"
-                                                               value="{{ $existing->comments ?? '' }}"
-                                                               placeholder="Supplier note on this item"
-                                                               class="w-full min-w-[10rem] rounded border-gray-300 text-sm">
                                                     </td>
                                                 </tr>
                                             @endforeach
@@ -332,6 +258,24 @@
                 @endforelse
             </div>
         </section>
+
+        @include('inventory.partials.rfq-computation-sheet', [
+            'order' => $order,
+            'sheet' => $sheet,
+            'computationForm' => $computationForm ?? null,
+            'showSupplierSelection' => $showSupplierSelection ?? false,
+            'hasSavedAllocations' => $hasSavedAllocations ?? false,
+            'showAllocationForm' => $showAllocationForm ?? ($showSupplierSelection ?? false),
+        ])
+
+        @if(($showLpoWorkflow ?? false) && ! ($showSupplierSelection ?? false))
+            @include('inventory.partials.rfq-lpo-workflow', [
+                'order' => $order,
+                'sheet' => $sheet,
+                'showEvaluationCommittee' => $showEvaluationCommittee ?? false,
+                'acceptedWithoutLpoCount' => $acceptedWithoutLpoCount ?? 0,
+            ])
+        @endif
     </div>
 </div>
 </x-app-layout>

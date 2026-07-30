@@ -26,16 +26,25 @@ class InventoryRfqAwardService
             ]);
         }
 
-        $order->loadMissing(['lines', 'supplierQuotations.lines', 'invitedSuppliers']);
+        $order->loadMissing(['lines.item', 'supplierQuotations.lines', 'invitedSuppliers']);
 
         $normalized = collect($awardInputs)
-            ->map(function (array $input) {
+            ->map(function (array $input) use ($order) {
                 $qty = max(0, (float) ($input['awarded_quantity_suom'] ?? 0));
+                $supplierId = (int) ($input['supplier_id'] ?? 0);
+                $lineId = (int) ($input['inventory_order_line_id'] ?? 0);
                 $unitPrice = max(0, (float) ($input['unit_price'] ?? 0));
 
+                if ($unitPrice <= 0 && $supplierId > 0 && $lineId > 0) {
+                    $quoteLine = $this->findQuotationLine($order, $lineId, $supplierId);
+                    if ($quoteLine) {
+                        $unitPrice = (float) $quoteLine->unit_price;
+                    }
+                }
+
                 return [
-                    'inventory_order_line_id' => (int) ($input['inventory_order_line_id'] ?? 0),
-                    'supplier_id' => (int) ($input['supplier_id'] ?? 0),
+                    'inventory_order_line_id' => $lineId,
+                    'supplier_id' => $supplierId,
                     'awarded_quantity_suom' => $qty,
                     'unit_price' => $unitPrice,
                     'line_total' => round($qty * $unitPrice, 2),
@@ -77,22 +86,15 @@ class InventoryRfqAwardService
             }
             $seen[$key] = true;
 
-            $quoteLine = $this->findQuotationLine($order, $row['inventory_order_line_id'], $row['supplier_id']);
-            if ($quoteLine && $row['awarded_quantity_suom'] > (float) $quoteLine->quoted_quantity_suom + 0.0001) {
-                throw ValidationException::withMessages([
-                    "awards.{$index}.awarded_quantity_suom" => 'Award quantity cannot exceed the supplier quoted quantity for this item.',
-                ]);
-            }
-
             $perLineTotals[$row['inventory_order_line_id']] = ($perLineTotals[$row['inventory_order_line_id']] ?? 0)
                 + $row['awarded_quantity_suom'];
         }
 
         foreach ($perLineTotals as $orderLineId => $awardedTotal) {
             $orderLine = $order->lines->firstWhere('id', $orderLineId);
-            $rfqQty = (float) ($orderLine?->order_quantity_suom ?? 0);
+            $rfqQty = (float) ($orderLine?->rfqQuantity() ?? 0);
 
-            if ($awardedTotal > $rfqQty + 0.0001) {
+            if ($rfqQty > 0 && $awardedTotal > $rfqQty + 0.0001) {
                 throw ValidationException::withMessages([
                     'awards' => sprintf(
                         'Total awarded quantity for %s cannot exceed the RFQ quantity (%s).',
@@ -168,8 +170,16 @@ class InventoryRfqAwardService
 
         $awardsByLine = $order->rfqLineAwards->groupBy('inventory_order_line_id');
 
-        $lines = $order->lines->map(function ($orderLine) use ($awardsByLine) {
-            $rfqQty = (float) $orderLine->order_quantity_suom;
+        $supplierNames = $order->supplierQuotations
+            ->filter(fn (InventorySupplierQuotation $q) => in_array($q->status, [
+                InventorySupplierQuotation::STATUS_RECEIVED,
+                InventorySupplierQuotation::STATUS_ACCEPTED,
+            ], true))
+            ->mapWithKeys(fn (InventorySupplierQuotation $q) => [(int) $q->supplier_id => $q->supplier?->name ?? '—'])
+            ->all();
+
+        $lines = $order->lines->map(function ($orderLine) use ($awardsByLine, $quoteLookup, $supplierNames) {
+            $rfqQty = (float) $orderLine->rfqQuantity();
             $awards = ($awardsByLine[$orderLine->id] ?? collect())->map(fn (InventoryRfqLineAward $award) => [
                 'supplier_id' => (int) $award->supplier_id,
                 'supplier_name' => $award->supplier?->name ?? '—',
@@ -177,6 +187,11 @@ class InventoryRfqAwardService
                 'unit_price' => (float) $award->unit_price,
                 'line_total' => (float) $award->line_total,
             ])->values()->all();
+
+            if ($awards === []) {
+                $awards = $this->suggestedAwardsForLine((int) $orderLine->id, $rfqQty, $quoteLookup, $supplierNames);
+            }
+
             $awardedTotal = (float) collect($awards)->sum('awarded_quantity_suom');
 
             return [
@@ -184,7 +199,7 @@ class InventoryRfqAwardService
                 'item_name' => $orderLine->item?->name ?? '—',
                 'item_code' => $orderLine->item?->code,
                 'rfq_qty' => $rfqQty,
-                'analysis_comment' => $orderLine->quotation_analysis_comment,
+                'qty_decimals' => $orderLine->item?->usesPackagingUnits() ? 2 : 0,
                 'awarded_total' => $awardedTotal,
                 'remaining_qty' => max(0, $rfqQty - $awardedTotal),
                 'is_fully_allocated' => $awardedTotal >= $rfqQty - 0.0001,
@@ -210,6 +225,95 @@ class InventoryRfqAwardService
             'lines' => $lines,
             'suppliers' => $suppliers,
             'quote_lookup' => $quoteLookup,
+        ];
+    }
+
+    /**
+     * @return array{
+     *     lpo_count: int,
+     *     grand_total: float,
+     *     suppliers: list<array<string, mixed>>
+     * }
+     */
+    public function previewLposFromAwards(InventoryOrder $order): array
+    {
+        if (! $order->canManageSupplierQuotations()) {
+            throw ValidationException::withMessages([
+                'status' => 'LPOs can only be generated after the RFQ is approved.',
+            ]);
+        }
+
+        $order->loadMissing([
+            'rfqLineAwards.supplier',
+            'rfqLineAwards.inventoryOrderLine.item',
+            'lines.item',
+            'supplierQuotations',
+            'purchaseOrders.supplier',
+            'store',
+        ]);
+
+        if ($order->rfqLineAwards->isEmpty()) {
+            throw ValidationException::withMessages([
+                'awards' => 'Save supplier selections per item before generating LPOs.',
+            ]);
+        }
+
+        $awardsBySupplier = $order->rfqLineAwards->groupBy('supplier_id');
+        $suppliers = [];
+        $lpoCount = 0;
+        $grandTotal = 0.0;
+
+        foreach ($awardsBySupplier as $supplierId => $awards) {
+            $supplierId = (int) $supplierId;
+            $supplier = $awards->first()->supplier;
+            $quotation = $order->supplierQuotations->firstWhere('supplier_id', $supplierId);
+
+            $existingPo = $order->purchaseOrders
+                ->first(fn (InventoryPurchaseOrder $po) => (int) $po->supplier_id === $supplierId
+                    && $po->status !== InventoryPurchaseOrder::STATUS_CANCELLED);
+
+            $lines = $awards->map(function (InventoryRfqLineAward $award) {
+                $orderLine = $award->inventoryOrderLine;
+                $qtyDecimals = $orderLine?->item?->usesPackagingUnits() ? 2 : 0;
+
+                return [
+                    'item_name' => $orderLine?->item?->name ?? '—',
+                    'item_code' => $orderLine?->item?->code,
+                    'quantity' => (float) $award->awarded_quantity_suom,
+                    'qty_decimals' => $qtyDecimals,
+                    'unit_price' => (float) $award->unit_price,
+                    'line_total' => round((float) $award->line_total, 2),
+                ];
+            })->values()->all();
+
+            $totalAmount = round(collect($lines)->sum('line_total'), 2);
+            $willCreate = $existingPo === null;
+
+            if ($willCreate) {
+                $lpoCount++;
+                $grandTotal += $totalAmount;
+            }
+
+            $suppliers[] = [
+                'supplier_id' => $supplierId,
+                'supplier_name' => $supplier?->name ?? '—',
+                'supplier_email' => $supplier?->email,
+                'quotation_reference' => $quotation?->reference_number,
+                'will_create' => $willCreate,
+                'existing_po_number' => $existingPo?->po_number,
+                'existing_po_id' => $existingPo?->id,
+                'total_amount' => $totalAmount,
+                'lines' => $lines,
+            ];
+        }
+
+        usort($suppliers, fn (array $a, array $b) => strcmp($a['supplier_name'], $b['supplier_name']));
+
+        return [
+            'lpo_count' => $lpoCount,
+            'grand_total' => round($grandTotal, 2),
+            'store_name' => $order->store?->name ?? '—',
+            'suppliers' => $suppliers,
         ];
     }
 
@@ -317,6 +421,69 @@ class InventoryRfqAwardService
 
             return $po;
         });
+    }
+
+    /**
+     * Pre-fill allocation from the lowest unit price per item.
+     *
+     * @param  array<int, array{quoted_qty: float, unit_price: float, line_total: float}>  $quoteLookup
+     * @param  array<int, string>  $supplierNames
+     * @return list<array{supplier_id: int, supplier_name: string, awarded_quantity_suom: float, unit_price: float, line_total: float}>
+     */
+    private function suggestedAwardsForLine(
+        int $orderLineId,
+        float $rfqQty,
+        array $quoteLookup,
+        array $supplierNames
+    ): array {
+        $lineQuotes = $quoteLookup[$orderLineId] ?? [];
+
+        $bestSupplierId = null;
+        $bestQuote = null;
+
+        foreach ($lineQuotes as $supplierId => $quote) {
+            $quotedQty = (float) ($quote['quoted_qty'] ?? 0);
+            $unitPrice = (float) ($quote['unit_price'] ?? 0);
+
+            if ($unitPrice <= 0) {
+                continue;
+            }
+
+            if ($quotedQty <= 0 && $rfqQty <= 0) {
+                continue;
+            }
+
+            if ($bestQuote === null || $unitPrice < (float) $bestQuote['unit_price']) {
+                $bestSupplierId = (int) $supplierId;
+                $bestQuote = $quote;
+            }
+        }
+
+        if ($bestQuote === null || $bestSupplierId === null) {
+            return [];
+        }
+
+        $awardQty = (float) ($bestQuote['quoted_qty'] ?? 0);
+        if ($awardQty <= 0) {
+            $awardQty = $rfqQty;
+        }
+        if ($rfqQty > 0 && $awardQty > 0) {
+            $awardQty = min($awardQty, $rfqQty);
+        }
+
+        if ($awardQty <= 0) {
+            return [];
+        }
+
+        $unitPrice = (float) $bestQuote['unit_price'];
+
+        return [[
+            'supplier_id' => $bestSupplierId,
+            'supplier_name' => $supplierNames[$bestSupplierId] ?? '—',
+            'awarded_quantity_suom' => $awardQty,
+            'unit_price' => $unitPrice,
+            'line_total' => round($awardQty * $unitPrice, 2),
+        ]];
     }
 
     private function findQuotationLine(

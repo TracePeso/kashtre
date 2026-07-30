@@ -27,11 +27,6 @@
                             Issue LPO & email copies
                         </button>
                     </form>
-                @elseif($po->canReceiveGoods())
-                    <a href="{{ route('inventory.purchase-orders.receive', $po) }}"
-                       class="inline-flex items-center px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                        Receive goods
-                    </a>
                 @endif
             </div>
         </div>

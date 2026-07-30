@@ -2,7 +2,7 @@
     <div class="px-5 py-4 border-b border-gray-200 bg-slate-50/80">
         <h3 class="text-sm font-semibold text-gray-900">Item comments</h3>
         <p class="text-xs text-gray-500 mt-0.5">
-            Internal procurement notes for each RFQ line — visible on this analysis page and the computation sheet.
+            Internal notes for each RFQ line after supplier quotations are in — use these before generating LPOs.
         </p>
     </div>
 

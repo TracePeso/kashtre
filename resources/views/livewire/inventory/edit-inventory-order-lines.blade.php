@@ -189,7 +189,7 @@
             @if($order->isDraft())
                 · Edit order quantities, then submit for approval
             @elseif($order->canReceiveGoods())
-                · Use <strong>Receive goods</strong> to record deliveries against this order
+                · Receive goods from <strong>Inventory → Receive Goods</strong> by selecting the LPO
             @endif
             ·
             <a href="{{ route('inventory.orders.calculations', $order) }}" class="font-medium text-indigo-600 hover:text-indigo-800">

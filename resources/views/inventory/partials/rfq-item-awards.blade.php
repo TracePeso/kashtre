@@ -23,7 +23,6 @@
                     <div>
                         <p class="text-sm font-semibold text-gray-900" x-text="line.item_name"></p>
                         <p class="text-xs text-gray-500" x-show="line.item_code" x-text="line.item_code"></p>
-                        <p class="text-xs text-slate-600 italic mt-1" x-show="line.analysis_comment" x-text="line.analysis_comment"></p>
                     </div>
                     <div class="text-right text-xs text-gray-600 space-y-0.5">
                         <p>RFQ qty: <span class="font-semibold tabular-nums" x-text="formatQty(line.rfq_qty)"></span></p>
@@ -111,7 +110,7 @@
                     class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-white bg-violet-600 hover:bg-violet-700">
                 Save supplier selections
             </button>
-            <p class="text-xs text-gray-500">Then use <strong>Generate LPOs from selections</strong> above to create one LPO per supplier.</p>
+            <p class="text-xs text-gray-500">Then click <strong>Generate LPOs from selections</strong> at the top of the page to create one LPO per supplier.</p>
         </div>
     </form>
 </section>

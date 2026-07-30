@@ -77,6 +77,11 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
         return $table
             ->query($query)
             ->columns([
+                TextColumn::make('created_at')
+                    ->label('Date')
+                    ->dateTime('M d, Y g:i A')
+                    ->sortable(),
+
                 TextColumn::make('order_number')
                     ->label('Order #')
                     ->searchable()
@@ -123,19 +128,11 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
                 TextColumn::make('lines_count')
                     ->label('Lines')
                     ->alignEnd(),
-
-                TextColumn::make('created_at')
-                    ->label('Created')
-                    ->dateTime('M d, Y')
-                    ->sortable(),
             ])
             ->actions([
                 Action::make('view')
                     ->label('Open')
                     ->url(fn (InventoryOrder $record): string => route('inventory.orders.show', $record)),
-                Action::make('calculations')
-                    ->label('View calculation')
-                    ->url(fn (InventoryOrder $record): string => route('inventory.orders.calculations', $record)),
                 Action::make('download_rfq')
                     ->label('Download PDF')
                     ->icon('heroicon-o-arrow-down-tray')

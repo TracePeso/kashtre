@@ -28,9 +28,9 @@
             <tr>
                 <th>Item</th>
                 <th>Code</th>
-                <th class="text-right">Quantity (sale units)</th>
-                <th class="text-right">Purchase price</th>
-                <th class="text-right">Line total</th>
+                <th class="text-right">Units</th>
+                <th class="text-right">Price</th>
+                <th class="text-right">Total</th>
             </tr>
         </thead>
         <tbody>

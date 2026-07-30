@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\RequiresInventoryModule;
 use App\Models\InventoryOrder;
 use App\Models\InventoryPurchaseOrder;
 use App\Models\InventorySupplierQuotation;
+use App\Services\Inventory\InventoryEvaluationCommitteeService;
 use App\Services\Inventory\InventoryProcurementPdfService;
 use App\Services\Inventory\InventoryPurchaseOrderFulfillmentService;
 use App\Services\Inventory\InventoryPurchaseOrderService;
@@ -23,6 +24,7 @@ class InventoryPurchaseOrderController extends Controller
         private readonly InventoryProcurementPdfService $pdfService,
         private readonly InventoryPurchaseOrderFulfillmentService $fulfillmentService,
         private readonly InventoryRfqAwardService $awardService,
+        private readonly InventoryEvaluationCommitteeService $committeeService,
     ) {
         $this->middleware($this->inventoryMiddleware(...));
     }
@@ -110,6 +112,31 @@ class InventoryPurchaseOrderController extends Controller
     }
 
     /**
+     * Preview draft LPOs that will be created from saved item allocations.
+     */
+    public function previewFromAwards(InventoryOrder $order)
+    {
+        if ((int) $order->business_id !== (int) InventoryBusinessContext::effectiveBusinessId()) {
+            abort(403);
+        }
+
+        $order->load(['store', 'lines.item']);
+
+        try {
+            $preview = $this->awardService->previewLposFromAwards($order);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return redirect()
+                ->route('inventory.orders.quotations.compare', $order)
+                ->withErrors($e->errors());
+        }
+
+        return view('inventory.orders.lpo-preview-awards', [
+            'order' => $order,
+            'preview' => $preview,
+        ]);
+    }
+
+    /**
      * Create LPOs from per-item supplier selections (supports partial quantities).
      */
     public function generateFromAwards(InventoryOrder $order)
@@ -119,6 +146,7 @@ class InventoryPurchaseOrderController extends Controller
         }
 
         try {
+            $this->committeeService->ensureCommitteeBeforeLpo($order, Auth::user());
             $result = $this->awardService->createLposFromAwards($order, Auth::user());
         } catch (\Illuminate\Validation\ValidationException $e) {
             return redirect()
@@ -147,6 +175,14 @@ class InventoryPurchaseOrderController extends Controller
     {
         if ((int) $order->business_id !== (int) InventoryBusinessContext::effectiveBusinessId()) {
             abort(403);
+        }
+
+        try {
+            $this->committeeService->ensureCommitteeBeforeLpo($order, Auth::user());
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return redirect()
+                ->route('inventory.orders.quotations.compare', $order)
+                ->withErrors($e->errors());
         }
 
         $order->load('supplierQuotations.purchaseOrder');

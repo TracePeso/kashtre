@@ -1,6 +1,6 @@
 @php
-    $fyMonth = (int) old('financial_year_start_month', $business?->financial_year_start_month ?? 1);
-    $fyDay = (int) old('financial_year_start_day', $business?->financial_year_start_day ?? 1);
+    $fyMonth = old('financial_year_start_month', $business?->financial_year_start_month);
+    $fyDay = old('financial_year_start_day', $business?->financial_year_start_day);
     $monthId = ($idPrefix ?? '').'financial_year_start_month';
     $dayId = ($idPrefix ?? '').'financial_year_start_day';
 @endphp
@@ -12,8 +12,9 @@
         </label>
         <select name="financial_year_start_month" id="{{ $monthId }}" required
                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+            <option value="" @selected($fyMonth === null || $fyMonth === '')>Select month</option>
             @foreach(range(1, 12) as $month)
-                <option value="{{ $month }}" @selected($fyMonth === $month)>
+                <option value="{{ $month }}" @selected((int) $fyMonth === $month)>
                     {{ \Carbon\Carbon::create(null, $month, 1)->format('F') }}
                 </option>
             @endforeach
@@ -28,7 +29,8 @@
             Financial year starts (day) <span class="text-red-500">*</span>
         </label>
         <input type="number" name="financial_year_start_day" id="{{ $dayId }}"
-               min="1" max="31" required value="{{ $fyDay }}"
+               min="1" max="31" required value="{{ $fyDay !== null && $fyDay !== '' ? (int) $fyDay : '' }}"
+               placeholder="Day"
                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
         @error('financial_year_start_day')
             <p class="mt-1 text-sm text-red-600">{{ $message }}</p>

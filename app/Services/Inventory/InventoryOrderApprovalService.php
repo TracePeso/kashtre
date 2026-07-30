@@ -14,7 +14,6 @@ class InventoryOrderApprovalService
 {
     public function __construct(
         private readonly InventoryProcurementNotificationService $notifications,
-        private readonly InventoryEvaluationCommitteeService $committeeService,
     ) {}
 
     public function submit(InventoryOrder $order, User $user): InventoryOrder
@@ -59,8 +58,6 @@ class InventoryOrderApprovalService
                 'approvers' => 'No inventory approvers are configured. Set them under Inventory → Settings → Approvers.',
             ]);
         }
-
-        $this->committeeService->ensureOrderCommittee($order, $user);
 
         $firstApprovalOrder = (int) $approvers->min('approval_order');
 

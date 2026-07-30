@@ -16,8 +16,6 @@
     $safetyDays = (float) old('safety_stock_days', $defaultSafetyDays);
     $bufferDays = (float) old('buffer_stock_days', $defaultBufferDays);
     $notificationDays = (float) old('notification_to_order_days', $defaultNotificationDays);
-    $oldCommitteeIds = collect(old('committee_members', $defaultCommitteeMemberIds ?? []))->map(fn ($id) => (int) $id)->values();
-    $oldCommitteeChairId = old('committee_chair_user_id', $defaultCommitteeChairId ?? null);
 @endphp
 <div class="min-h-screen bg-gray-50 py-6" x-data="{
     orderApproach: '{{ $initialOrderApproach }}',
@@ -137,7 +135,7 @@
             <a href="{{ route('inventory.orders.index') }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to orders</a>
             <h2 class="mt-2 text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">New order</h2>
             <p class="mt-1 text-sm text-gray-500">
-                Complete the form below to generate a draft order. You can review line quantities, committee, and approvals on the order page after it is created.
+                Complete the form below to generate a draft order. You can review line quantities and approvals on the order page after it is created.
             </p>
             <p class="mt-2">
                 <a href="{{ route('inventory.orders.how-it-works') }}"
@@ -506,27 +504,6 @@
                 <textarea name="notes" id="notes" rows="3"
                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">{{ old('notes') }}</textarea>
             </div>
-            </section>
-
-            <section x-show="orderType === 'external'" x-cloak class="space-y-4 border-t border-gray-200 pt-8">
-                <div>
-                    <h3 class="text-base font-semibold text-gray-900">Evaluation committee</h3>
-                    <p class="text-sm text-gray-500 mt-0.5">
-                        @if($evaluationCommitteeRequired ?? false)
-                            Pre-appoint members who will evaluate supplier quotations after approval. Required before submission for your organisation.
-                        @else
-                            Optionally pre-appoint members who will evaluate supplier quotations after approval. Defaults come from Inventory → Settings.
-                        @endif
-                    </p>
-                </div>
-                <div class="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4">
-                    @include('inventory.partials.committee-member-fields', [
-                        'businessUsers' => $businessUsers ?? collect(),
-                        'selectedMemberIds' => $oldCommitteeIds->all(),
-                        'chairUserId' => $oldCommitteeChairId,
-                        'required' => $evaluationCommitteeRequired ?? false,
-                    ])
-                </div>
             </section>
 
             <div class="flex flex-wrap justify-between gap-3 pt-6 border-t border-gray-200">

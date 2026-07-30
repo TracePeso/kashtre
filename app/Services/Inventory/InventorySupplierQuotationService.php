@@ -34,6 +34,7 @@ class InventorySupplierQuotationService
                 'supplier_id' => (int) $supplier->id,
                 'supplier_name' => $supplier->name,
                 'email' => $supplier->email,
+                'is_kashtre_entity' => $supplier->isKashtreEntitySupplier(),
                 'lines_count' => $order->lines->count(),
                 'quotation' => $quotation,
             ];
@@ -200,7 +201,7 @@ class InventorySupplierQuotationService
                     'quoted_quantity_suom' => $qty,
                     'unit_price' => $unitPrice,
                     'line_total' => $lineTotal,
-                    'comments' => filled($input['comments'] ?? null) ? trim((string) $input['comments']) : null,
+                    'comments' => null,
                 ]);
             }
 
@@ -263,7 +264,7 @@ class InventorySupplierQuotationService
             $bestSupplierId = null;
             $lineAwards = $awardsByLine[$orderLine->id] ?? collect();
             $awardedTotal = (float) $lineAwards->sum('awarded_quantity_suom');
-            $rfqQty = (float) $orderLine->order_quantity_suom;
+            $rfqQty = (float) $orderLine->rfqQuantity();
 
             foreach ($quotations as $quotation) {
                 $qLine = $quotation->lines->firstWhere('inventory_order_line_id', $orderLine->id);
@@ -276,7 +277,6 @@ class InventorySupplierQuotationService
                     'unit_price' => $unitPrice,
                     'quoted_qty' => $qty,
                     'line_total' => $lineTotal,
-                    'comments' => $qLine?->comments,
                     'is_awarded' => $award !== null,
                     'awarded_qty' => $award ? (float) $award->awarded_quantity_suom : null,
                 ];
@@ -292,7 +292,6 @@ class InventorySupplierQuotationService
                 'item_name' => $orderLine->item?->name ?? '—',
                 'item_code' => $orderLine->item?->code,
                 'rfq_qty' => $rfqQty,
-                'analysis_comment' => $orderLine->quotation_analysis_comment,
                 'awarded_total' => $awardedTotal,
                 'remaining_qty' => max(0, $rfqQty - $awardedTotal),
                 'fulfillment_label' => $this->fulfillmentLabel($awardedTotal, $rfqQty),
@@ -384,6 +383,20 @@ class InventorySupplierQuotationService
         if (! $order->canManageSupplierQuotations()) {
             throw ValidationException::withMessages([
                 'status' => 'Item comments can only be saved after the RFQ is approved.',
+            ]);
+        }
+
+        if ($order->purchaseOrders()->exists()) {
+            throw ValidationException::withMessages([
+                'status' => 'Item comments can only be added before LPOs are generated.',
+            ]);
+        }
+
+        $hasQuotations = $order->supplierQuotations()->whereHas('lines')->exists();
+
+        if (! $hasQuotations) {
+            throw ValidationException::withMessages([
+                'status' => 'Record supplier quotations before adding item comments.',
             ]);
         }
 

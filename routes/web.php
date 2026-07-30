@@ -70,6 +70,8 @@ use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\InventorySettingsController;
 use App\Http\Controllers\InventoryDailyConsumptionController;
 use App\Http\Controllers\InventoryOrderController;
+use App\Http\Controllers\InventoryIncomingRfqController;
+use App\Http\Controllers\InventorySuppliedQuotationController;
 use App\Http\Controllers\InventoryPurchaseOrderController;
 use App\Http\Controllers\InventorySupplierQuotationController;
 use App\Http\Controllers\InventoryStockTransferController;
@@ -334,13 +336,18 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
             ->name('consumption.day')
             ->where('date', '[0-9]{4}-[0-9]{2}-[0-9]{2}');
         Route::get('/orders', [InventoryOrderController::class, 'index'])->name('orders.index');
+        Route::get('/incoming-rfqs', [InventoryIncomingRfqController::class, 'index'])->name('incoming-rfqs.index');
+        Route::get('/incoming-rfqs/{invitation}', [InventoryIncomingRfqController::class, 'show'])->name('incoming-rfqs.show');
+        Route::get('/incoming-rfqs/{invitation}/pdf', [InventoryIncomingRfqController::class, 'pdf'])->name('incoming-rfqs.pdf');
+        Route::post('/incoming-rfqs/{invitation}/quotation', [InventoryIncomingRfqController::class, 'storeQuotation'])->name('incoming-rfqs.quotation.store');
+        Route::get('/supplied-quotations', [InventorySuppliedQuotationController::class, 'index'])->name('supplied-quotations.index');
+        Route::get('/supplied-quotations/{quotation}', [InventorySuppliedQuotationController::class, 'show'])->name('supplied-quotations.show');
         Route::get('/orders/how-it-works', [InventoryOrderController::class, 'howItWorks'])->name('orders.how-it-works');
         Route::get('/orders/create', [InventoryOrderController::class, 'create'])->name('orders.create');
         Route::post('/orders', [InventoryOrderController::class, 'store'])->name('orders.store');
         Route::get('/orders/{order}', [InventoryOrderController::class, 'show'])->name('orders.show');
         Route::get('/orders/{order}/calculations', [InventoryOrderController::class, 'calculations'])->name('orders.calculations');
         Route::post('/orders/{order}/submit', [InventoryOrderController::class, 'submit'])->name('orders.submit');
-        Route::put('/orders/{order}/committee', [InventoryOrderController::class, 'saveCommittee'])->name('orders.committee.update');
         Route::post('/orders/{order}/approve', [InventoryOrderController::class, 'approve'])->name('orders.approve');
         Route::post('/orders/{order}/reject', [InventoryOrderController::class, 'reject'])->name('orders.reject');
         Route::post('/orders/{order}/create-transfer', [InventoryOrderController::class, 'createTransfer'])->name('orders.create-transfer');
@@ -353,6 +360,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::post('/orders/{order}/quotations/awards', [InventorySupplierQuotationController::class, 'saveAwards'])->name('orders.quotations.awards.store');
         Route::post('/orders/{order}/quotations/line-comments', [InventorySupplierQuotationController::class, 'saveLineComments'])->name('orders.quotations.line-comments.store');
         Route::post('/orders/{order}/purchase-orders/generate-accepted', [InventoryPurchaseOrderController::class, 'generateAccepted'])->name('orders.purchase-orders.generate-accepted');
+        Route::get('/orders/{order}/purchase-orders/preview-awards', [InventoryPurchaseOrderController::class, 'previewFromAwards'])->name('orders.purchase-orders.preview-awards');
         Route::post('/orders/{order}/purchase-orders/generate-awards', [InventoryPurchaseOrderController::class, 'generateFromAwards'])->name('orders.purchase-orders.generate-awards');
         Route::post('/quotations/{quotation}/accept', [InventorySupplierQuotationController::class, 'accept'])->name('quotations.accept');
         Route::post('/quotations/{quotation}/reject', [InventorySupplierQuotationController::class, 'reject'])->name('quotations.reject');

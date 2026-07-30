@@ -306,6 +306,20 @@ class InventoryOrder extends Model
         return $this->isRfqApproved() && $this->isExternal();
     }
 
+    public function canEditRfqSuppliers(): bool
+    {
+        if (! $this->isExternal()) {
+            return false;
+        }
+
+        return ! in_array($this->status, [
+            self::STATUS_PO_ISSUED,
+            self::STATUS_PARTIALLY_RECEIVED,
+            self::STATUS_FULFILLED,
+            self::STATUS_REJECTED,
+        ], true);
+    }
+
     public function hasRfqDocument(): bool
     {
         return $this->storedRfqDocumentExists();
