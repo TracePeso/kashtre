@@ -45,6 +45,11 @@
                             <input type="text" name="generic_name" id="generic_name" value="{{ old('generic_name', $item->generic_name) }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="e.g. Paracetamol">
                         </div>
 
+                        <div>
+                            <label for="strength" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Strength</label>
+                            <input type="text" name="strength" id="strength" value="{{ old('strength', $item->strength) }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="e.g. 500mg">
+                        </div>
+
                         <!-- Type -->
                         <div>
                             <label for="type" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type <span class="text-red-500">*</span></label>

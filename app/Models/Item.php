@@ -18,6 +18,7 @@ class Item extends Model
     protected $fillable = [
         'name',
         'generic_name',
+        'strength',
         'category',
         'code',
         'type',

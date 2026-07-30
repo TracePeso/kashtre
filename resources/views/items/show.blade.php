@@ -32,6 +32,11 @@
                         </div>
 
                         <div>
+                            <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">Strength</label>
+                            <p class="mt-1 text-sm text-gray-900 dark:text-white">{{ $item->strength ?: '—' }}</p>
+                        </div>
+
+                        <div>
                             <label class="block text-sm font-medium text-gray-500 dark:text-gray-400">Category</label>
                             <p class="mt-1 text-sm text-gray-900 dark:text-white">{{ $item->category ?: '—' }}</p>
                         </div>

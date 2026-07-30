@@ -44,6 +44,10 @@ class Items extends Component implements HasForms, HasTable
                     ->label('Generic Name')
                     ->searchable()
                     ->toggleable(),
+                TextColumn::make('strength')
+                    ->label('Strength')
+                    ->searchable()
+                    ->toggleable(),
                 TextColumn::make('category')
                     ->label('Category')
                     ->searchable()
