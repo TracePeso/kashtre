@@ -15,7 +15,7 @@
     <div class="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8">
         <div class="md:flex md:items-start md:justify-between gap-4">
             <div class="flex-1 min-w-0">
-                <a href="{{ route('inventory.orders.index') }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to order goods</a>
+                <a href="{{ route('inventory.orders.index') }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to orders</a>
                 <div class="mt-2 flex flex-wrap items-center gap-3">
                     <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">{{ $order->order_number }}</h2>
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">{{ $order->documentLabel() }}</span>
@@ -127,7 +127,7 @@
                     <strong>Draft internal order.</strong> Review quantities for stock needed at <strong>{{ $order->store?->name }}</strong> from <strong>{{ $order->sourceStore?->name }}</strong>, then <strong>Submit for approval</strong>. After approval, fulfill via a stock transfer — no supplier quotation is required.
                 @else
                     <strong>Purchase request.</strong>
-                    Review quantities@if($evaluationCommitteeRequired ?? false), appoint the evaluation committee@endif, then <strong>Submit for approval</strong>. After approval it becomes an RFQ and suppliers can be invited.
+                    Review quantities{{ ($evaluationCommitteeRequired ?? false) ? ', appoint the evaluation committee' : '' }}, then <strong>Submit for approval</strong>. After approval it becomes an RFQ and suppliers can be invited.
                 @endif
             </div>
         @endif
@@ -216,9 +216,47 @@
             $budgetUsedDisplayPct = $budgetUsedPct !== null && $budgetCapEnforced
                 ? min(100, $budgetUsedPct)
                 : $budgetUsedPct;
+
+            $orderTabs = [
+                'overview' => 'Overview',
+                'items' => 'Line items',
+            ];
+            $hasProcurementTab = false;
+            if ($order->isExternal()) {
+                $orderTabs['committee'] = 'Committee';
+                $hasProcurementTab = $order->canDownloadRfqPdf()
+                    || $order->canManageSupplierQuotations()
+                    || $order->purchaseOrders->isNotEmpty();
+                if ($hasProcurementTab) {
+                    $orderTabs['procurement'] = 'Procurement';
+                }
+            }
+            $defaultOrderTab = request()->query('tab', 'overview');
+            if (! array_key_exists($defaultOrderTab, $orderTabs)) {
+                $defaultOrderTab = 'overview';
+            }
         @endphp
 
-        <div class="mt-6 bg-white shadow sm:rounded-lg overflow-hidden">
+        <div class="mt-6" x-data="{ tab: @js($defaultOrderTab) }">
+            <div class="bg-white shadow sm:rounded-lg overflow-hidden">
+                <nav class="border-b border-gray-200 overflow-x-auto" aria-label="Order sections">
+                    <div class="-mb-px flex min-w-max">
+                        @foreach($orderTabs as $key => $label)
+                            <button type="button"
+                                    @click="tab = @js($key)"
+                                    :class="tab === @js($key)
+                                        ? 'border-blue-500 text-blue-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'"
+                                    class="px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap">
+                                {{ $label }}
+                            </button>
+                        @endforeach
+                    </div>
+                </nav>
+            </div>
+
+            <div x-show="tab === 'overview'" x-cloak class="mt-6 space-y-6">
+        <div class="bg-white shadow sm:rounded-lg overflow-hidden">
             <div class="px-4 py-3 sm:px-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
                 <h3 class="text-sm font-semibold text-gray-900">Order summary</h3>
                 <p class="text-xs text-gray-500">
@@ -331,117 +369,6 @@
             @endif
         </div>
 
-        @if($order->isExternal())
-            <div class="mt-6">
-                @include('inventory.partials.order-committee-form', [
-                    'order' => $order,
-                    'businessUsers' => $businessUsers ?? collect(),
-                    'committeeChair' => $committeeChair ?? null,
-                    'canManageCommittee' => $canManageCommittee ?? false,
-                    'evaluationCommitteeRequired' => $evaluationCommitteeRequired ?? false,
-                ])
-            </div>
-        @endif
-
-        @if($order->isExternal() && $order->canDownloadRfqPdf() && $order->isDraft())
-            <div class="mt-4 bg-white shadow sm:rounded-lg p-4 sm:p-6">
-                <h3 class="text-sm font-semibold text-gray-900">Purchase request document</h3>
-                <p class="text-xs text-gray-500 mt-0.5">Download the current purchase request PDF. It is regenerated when you refresh items or submit for approval.</p>
-                <div class="mt-3">
-                    @include('inventory.partials.rfq-download-button', ['order' => $order, 'variant' => 'primary'])
-                </div>
-            </div>
-        @endif
-
-        @if($order->canManageSupplierQuotations())
-            <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <h3 class="text-sm font-semibold text-gray-900">Quotation analysis &amp; supplier selection</h3>
-                        <p class="text-xs text-gray-500 mt-0.5">
-                            Invite suppliers, record quotes, allocate each RFQ line to one or more suppliers, then generate LPOs.
-                        </p>
-                    </div>
-                    <a href="{{ route('inventory.orders.quotations.compare', $order) }}"
-                       class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium text-white bg-violet-600 hover:bg-violet-700">
-                        Open quotation analysis
-                    </a>
-                </div>
-                @if($order->invitedSuppliers->isNotEmpty() || $order->supplierQuotations->isNotEmpty())
-                    <ul class="mt-4 divide-y divide-gray-100 border border-gray-200 rounded-lg text-sm">
-                        @foreach($order->invitedSuppliers as $supplier)
-                            @php
-                                $q = $order->supplierQuotations->firstWhere('supplier_id', $supplier->id);
-                            @endphp
-                            <li class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
-                                <span class="font-medium text-gray-900">{{ $supplier->name }}</span>
-                                <span class="text-xs text-gray-500">
-                                    @if($q)
-                                        {{ $q->statusLabel() }}
-                                        @if($q->purchaseOrder)
-                                            · {{ $q->purchaseOrder->po_number }}
-                                        @endif
-                                    @else
-                                        Invited — awaiting quotation
-                                    @endif
-                                </span>
-                            </li>
-                        @endforeach
-                    </ul>
-                @endif
-            </div>
-        @endif
-
-        @if($order->purchaseOrders->isNotEmpty())
-            <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6 border border-indigo-100">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <h3 class="text-sm font-semibold text-gray-900">Local purchase orders</h3>
-                        <p class="text-xs text-gray-500 mt-0.5">Open an LPO to issue it to the supplier, then receive goods against it.</p>
-                    </div>
-                    <a href="{{ route('inventory.purchase-orders.index') }}" class="text-sm font-medium text-indigo-700 hover:text-indigo-900">All LPOs →</a>
-                </div>
-                <ul class="mt-3 divide-y divide-gray-100 border border-gray-200 rounded-lg">
-                    @foreach($order->purchaseOrders as $po)
-                        <li class="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                                <a href="{{ route('inventory.purchase-orders.show', $po) }}" class="text-sm font-medium text-blue-600 hover:text-blue-800">{{ $po->po_number }}</a>
-                                <p class="text-xs text-gray-500">{{ $po->supplier?->name }} · {{ $po->statusLabel() }}</p>
-                            </div>
-                            <div class="flex items-center gap-3">
-                                <p class="text-sm font-semibold text-gray-900">UGX {{ number_format((float) $po->total_amount, 2) }}</p>
-                                <a href="{{ route('inventory.purchase-orders.show', $po) }}" class="text-xs font-medium text-indigo-700 hover:underline">Open</a>
-                            </div>
-                        </li>
-                    @endforeach
-                </ul>
-            </div>
-        @endif
-
-        <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6 w-full min-w-0">
-            <div class="mb-4">
-                <h3 class="text-sm font-semibold text-gray-900">
-                    @if($order->isInternal())
-                        Order line items
-                    @elseif($order->isDraft() || $order->isPendingApproval())
-                        Purchase request line items
-                    @else
-                        RFQ line items
-                    @endif
-                </h3>
-                <p class="text-xs text-gray-500 mt-0.5">
-                    @if($order->isDraft())
-                        Use search and filters to find items. Paginated for large orders.
-                    @elseif($order->isInternal())
-                        Ordered vs received in sale units. Received totals accumulate when linked stock transfers are confirmed at the destination.
-                    @else
-                        Ordered vs received in sale units. Received totals update when linked goods receive notes are approved.
-                    @endif
-                </p>
-            </div>
-            @livewire('inventory.edit-inventory-order-lines', ['order' => $order], key('order-'.$order->id))
-        </div>
-
         @php
             $hasSidebar = (! $order->isDraft() && $order->approvals->isNotEmpty())
                 || $canApprove
@@ -450,7 +377,7 @@
         @endphp
 
         @if($hasSidebar)
-            <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
+            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
                 @if(!$order->isDraft())
                 <div class="bg-white shadow sm:rounded-lg p-6">
                     <h3 class="text-sm font-semibold text-gray-900 mb-4">Order approval</h3>
@@ -522,6 +449,125 @@
                 @endif
             </div>
         @endif
+            </div>
+
+            <div x-show="tab === 'items'" x-cloak class="mt-6">
+        <div class="bg-white shadow sm:rounded-lg p-4 sm:p-6 w-full min-w-0">
+            <div class="mb-4">
+                <h3 class="text-sm font-semibold text-gray-900">
+                    @if($order->isInternal())
+                        Order line items
+                    @elseif($order->isDraft() || $order->isPendingApproval())
+                        Purchase request line items
+                    @else
+                        RFQ line items
+                    @endif
+                </h3>
+                <p class="text-xs text-gray-500 mt-0.5">
+                    @if($order->isDraft())
+                        Use search and filters to find items. Paginated for large orders.
+                    @elseif($order->isInternal())
+                        Ordered vs received in sale units. Received totals accumulate when linked stock transfers are confirmed at the destination.
+                    @else
+                        Ordered vs received in sale units. Received totals update when linked goods receive notes are approved.
+                    @endif
+                </p>
+            </div>
+            @livewire('inventory.edit-inventory-order-lines', ['order' => $order], key('order-'.$order->id))
+        </div>
+            </div>
+
+            @if($order->isExternal())
+            <div x-show="tab === 'committee'" x-cloak class="mt-6">
+                @include('inventory.partials.order-committee-form', [
+                    'order' => $order,
+                    'businessUsers' => $businessUsers ?? collect(),
+                    'committeeChair' => $committeeChair ?? null,
+                    'canManageCommittee' => $canManageCommittee ?? false,
+                    'evaluationCommitteeRequired' => $evaluationCommitteeRequired ?? false,
+                ])
+            </div>
+            @endif
+
+            @if($order->isExternal() && $hasProcurementTab)
+            <div x-show="tab === 'procurement'" x-cloak class="mt-6 space-y-6">
+                @if($order->canDownloadRfqPdf() && $order->isDraft())
+                    <div class="bg-white shadow sm:rounded-lg p-4 sm:p-6">
+                        <h3 class="text-sm font-semibold text-gray-900">Purchase request document</h3>
+                        <p class="text-xs text-gray-500 mt-0.5">Download the current purchase request PDF. It is regenerated when you refresh items or submit for approval.</p>
+                        <div class="mt-3">
+                            @include('inventory.partials.rfq-download-button', ['order' => $order, 'variant' => 'primary'])
+                        </div>
+                    </div>
+                @endif
+
+                @if($order->canManageSupplierQuotations())
+                    <div class="bg-white shadow sm:rounded-lg p-4 sm:p-6">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-semibold text-gray-900">Quotation analysis &amp; supplier selection</h3>
+                                <p class="text-xs text-gray-500 mt-0.5">
+                                    Invite suppliers, record quotes, allocate each RFQ line to one or more suppliers, then generate LPOs.
+                                </p>
+                            </div>
+                            <a href="{{ route('inventory.orders.quotations.compare', $order) }}"
+                               class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium text-white bg-violet-600 hover:bg-violet-700">
+                                Open quotation analysis
+                            </a>
+                        </div>
+                        @if($order->invitedSuppliers->isNotEmpty() || $order->supplierQuotations->isNotEmpty())
+                            <ul class="mt-4 divide-y divide-gray-100 border border-gray-200 rounded-lg text-sm">
+                                @foreach($order->invitedSuppliers as $supplier)
+                                    @php
+                                        $q = $order->supplierQuotations->firstWhere('supplier_id', $supplier->id);
+                                    @endphp
+                                    <li class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                                        <span class="font-medium text-gray-900">{{ $supplier->name }}</span>
+                                        <span class="text-xs text-gray-500">
+                                            @if($q)
+                                                {{ $q->statusLabel() }}
+                                                @if($q->purchaseOrder)
+                                                    · {{ $q->purchaseOrder->po_number }}
+                                                @endif
+                                            @else
+                                                Invited — awaiting quotation
+                                            @endif
+                                        </span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+                    </div>
+                @endif
+
+                @if($order->purchaseOrders->isNotEmpty())
+                    <div class="bg-white shadow sm:rounded-lg p-4 sm:p-6 border border-indigo-100">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-semibold text-gray-900">Local purchase orders</h3>
+                                <p class="text-xs text-gray-500 mt-0.5">Open an LPO to issue it to the supplier, then receive goods against it.</p>
+                            </div>
+                            <a href="{{ route('inventory.purchase-orders.index') }}" class="text-sm font-medium text-indigo-700 hover:text-indigo-900">All LPOs →</a>
+                        </div>
+                        <ul class="mt-3 divide-y divide-gray-100 border border-gray-200 rounded-lg">
+                            @foreach($order->purchaseOrders as $po)
+                                <li class="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                        <a href="{{ route('inventory.purchase-orders.show', $po) }}" class="text-sm font-medium text-blue-600 hover:text-blue-800">{{ $po->po_number }}</a>
+                                        <p class="text-xs text-gray-500">{{ $po->supplier?->name }} · {{ $po->statusLabel() }}</p>
+                                    </div>
+                                    <div class="flex items-center gap-3">
+                                        <p class="text-sm font-semibold text-gray-900">UGX {{ number_format((float) $po->total_amount, 2) }}</p>
+                                        <a href="{{ route('inventory.purchase-orders.show', $po) }}" class="text-xs font-medium text-indigo-700 hover:underline">Open</a>
+                                    </div>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
+            </div>
+            @endif
+        </div>
     </div>
 
     @if($order->isDraft())

@@ -158,7 +158,7 @@
                             </li>
                             <li>
                                 <a href="{{ route('inventory.orders.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.orders*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
-                                    Make an order
+                                    Orders
                                 </a>
                             </li>
                             <li>

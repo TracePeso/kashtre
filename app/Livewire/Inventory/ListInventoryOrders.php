@@ -27,7 +27,7 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
 
     public function mount(string $statusFilter = 'all'): void
     {
-        if (! in_array($statusFilter, ['all', 'draft', 'pending_approval', 'approved', 'po_issued', 'fulfilled', 'rejected'], true)) {
+        if (! in_array($statusFilter, ['all', 'draft', 'running', 'completed', 'rejected'], true)) {
             $statusFilter = 'all';
         }
 
@@ -61,7 +61,16 @@ class ListInventoryOrders extends Component implements HasForms, HasTable
             ->withCount('lines')
             ->latest('created_at');
 
-        if ($this->statusFilter !== 'all') {
+        if ($this->statusFilter === 'running') {
+            $query->whereIn('status', [
+                InventoryOrder::STATUS_PENDING_APPROVAL,
+                InventoryOrder::STATUS_APPROVED,
+                InventoryOrder::STATUS_PO_ISSUED,
+                InventoryOrder::STATUS_PARTIALLY_RECEIVED,
+            ]);
+        } elseif ($this->statusFilter === 'completed') {
+            $query->where('status', InventoryOrder::STATUS_FULFILLED);
+        } elseif ($this->statusFilter !== 'all') {
             $query->where('status', $this->statusFilter);
         }
 

@@ -125,41 +125,19 @@
         if (this.orderType === 'external') {
             this.sourceStoreId = '';
         }
-        if (this.orderType === 'internal' && this.activeTab === 'review') {
-            this.activeTab = 'rules';
-        }
     },
     onSourceStoreChange() {
         if (this.receivingStoreId && ! this.canOrderBetween(this.sourceStoreId, this.receivingStoreId)) {
             this.receivingStoreId = '';
         }
     },
-    activeTab: 'setup',
-    tabs() {
-        return this.orderType === 'external'
-            ? ['setup', 'items', 'rules', 'review']
-            : ['setup', 'items', 'rules'];
-    },
-    tabIndex() {
-        return this.tabs().indexOf(this.activeTab);
-    },
-    goNext() {
-        const tabs = this.tabs();
-        const idx = this.tabIndex();
-        if (idx < tabs.length - 1) this.activeTab = tabs[idx + 1];
-    },
-    goPrev() {
-        const tabs = this.tabs();
-        const idx = this.tabIndex();
-        if (idx > 0) this.activeTab = tabs[idx - 1];
-    },
 }">
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex-1 min-w-0">
-            <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">Make an order</h2>
+            <a href="{{ route('inventory.orders.index') }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to orders</a>
+            <h2 class="mt-2 text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">New order</h2>
             <p class="mt-1 text-sm text-gray-500">
-                Suggested quantities use your stock position and <strong>auto-calculated consumption rates</strong> (15-day usage).
-                Filter by category or group to focus on essential items.
+                Complete the form below to generate a draft order. You can review line quantities, committee, and approvals on the order page after it is created.
             </p>
             <p class="mt-2">
                 <a href="{{ route('inventory.orders.how-it-works') }}"
@@ -176,24 +154,7 @@
             @csrf
             <input type="hidden" name="ordering_approach" :value="orderApproach">
 
-            <div class="px-6 pt-5 border-b border-gray-200">
-                <nav class="-mb-px flex flex-wrap gap-1" aria-label="Order form steps">
-                    <button type="button" @click="activeTab = 'setup'"
-                            :class="activeTab === 'setup' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
-                            class="px-4 py-3 text-sm font-medium border-b-2">1. Type &amp; stores</button>
-                    <button type="button" @click="activeTab = 'items'"
-                            :class="activeTab === 'items' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
-                            class="px-4 py-3 text-sm font-medium border-b-2">2. Items</button>
-                    <button type="button" @click="activeTab = 'rules'"
-                            :class="activeTab === 'rules' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
-                            class="px-4 py-3 text-sm font-medium border-b-2">3. Ordering rules</button>
-                    <button type="button" x-show="orderType === 'external'" @click="activeTab = 'review'"
-                            :class="activeTab === 'review' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
-                            class="px-4 py-3 text-sm font-medium border-b-2">4. Committee &amp; review</button>
-                </nav>
-            </div>
-
-            <div class="p-6 space-y-6">
+            <div class="p-6 space-y-8">
             @if ($errors->any())
                 <div class="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
                     <p class="font-medium">Could not generate this order:</p>
@@ -205,7 +166,11 @@
                 </div>
             @endif
 
-            <div x-show="activeTab === 'setup'" x-cloak class="space-y-6">
+            <section class="space-y-4">
+                <div>
+                    <h3 class="text-base font-semibold text-gray-900">Order type &amp; stores</h3>
+                    <p class="mt-0.5 text-sm text-gray-500">Choose external purchase or internal store transfer, then select stores.</p>
+                </div>
             <div class="border border-gray-200 rounded-lg p-4 space-y-4">
                 <div>
                     <p class="text-sm font-medium text-gray-900">Order type</p>
@@ -280,9 +245,13 @@
                     <p class="text-xs text-gray-500">Internal orders follow the same parent/child store rules as stock transfers. No supplier is required.</p>
                 </div>
             </template>
-            </div>
+            </section>
 
-            <div x-show="activeTab === 'items'" x-cloak class="space-y-6">
+            <section class="space-y-4 border-t border-gray-200 pt-8">
+                <div>
+                    <h3 class="text-base font-semibold text-gray-900">Item scope</h3>
+                    <p class="mt-0.5 text-sm text-gray-500">Optional filters and specific items. Leave blank to include all stocked goods at the receiving store.</p>
+                </div>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                     <label for="importance_filter" class="block text-sm font-medium text-gray-700">Category</label>
@@ -367,9 +336,13 @@
                     @error('item_ids.*')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
             </div>
-            </div>
+            </section>
 
-            <div x-show="activeTab === 'rules'" x-cloak class="space-y-6">
+            <section class="space-y-4 border-t border-gray-200 pt-8">
+                <div>
+                    <h3 class="text-base font-semibold text-gray-900">Ordering rules</h3>
+                    <p class="mt-0.5 text-sm text-gray-500">Period or budget, peak adjustments, and stock-day settings.</p>
+                </div>
             <div class="border border-gray-200 rounded-lg p-4 space-y-4">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -533,49 +506,35 @@
                 <textarea name="notes" id="notes" rows="3"
                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">{{ old('notes') }}</textarea>
             </div>
-            </div>
+            </section>
 
-            <div x-show="activeTab === 'review' && orderType === 'external'" x-cloak class="space-y-6">
-                <div class="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4">
-                    <h3 class="text-sm font-semibold text-gray-900">Evaluation committee</h3>
-                    <p class="text-xs text-gray-500 mt-1">
+            <section x-show="orderType === 'external'" x-cloak class="space-y-4 border-t border-gray-200 pt-8">
+                <div>
+                    <h3 class="text-base font-semibold text-gray-900">Evaluation committee</h3>
+                    <p class="text-sm text-gray-500 mt-0.5">
                         @if($evaluationCommitteeRequired ?? false)
                             Pre-appoint members who will evaluate supplier quotations after approval. Required before submission for your organisation.
                         @else
                             Optionally pre-appoint members who will evaluate supplier quotations after approval. Defaults come from Inventory → Settings.
                         @endif
                     </p>
-                    <div class="mt-4">
-                        @include('inventory.partials.committee-member-fields', [
-                            'businessUsers' => $businessUsers ?? collect(),
-                            'selectedMemberIds' => $oldCommitteeIds->all(),
-                            'chairUserId' => $oldCommitteeChairId,
-                            'required' => $evaluationCommitteeRequired ?? false,
-                        ])
-                    </div>
                 </div>
-                <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                    <p class="font-medium text-gray-900">Ready to generate</p>
-                    <p class="mt-1">After generating, review line quantities on the order page, adjust the committee if needed, then submit for approval.</p>
+                <div class="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4">
+                    @include('inventory.partials.committee-member-fields', [
+                        'businessUsers' => $businessUsers ?? collect(),
+                        'selectedMemberIds' => $oldCommitteeIds->all(),
+                        'chairUserId' => $oldCommitteeChairId,
+                        'required' => $evaluationCommitteeRequired ?? false,
+                    ])
                 </div>
-            </div>
+            </section>
 
-            <div class="flex flex-wrap justify-between gap-3 pt-4 border-t border-gray-200">
+            <div class="flex flex-wrap justify-between gap-3 pt-6 border-t border-gray-200">
                 <a href="{{ route('inventory.orders.index') }}" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</a>
-                <div class="flex flex-wrap gap-2">
-                    <button type="button" x-show="tabIndex() > 0" @click="goPrev()"
-                            class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                        Previous
-                    </button>
-                    <button type="button" x-show="tabIndex() < tabs().length - 1" @click="goNext()"
-                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-600 hover:bg-slate-700">
-                        Next
-                    </button>
-                    <button type="submit" x-show="orderType === 'internal' ? activeTab === 'rules' : activeTab === 'review'"
-                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                        Generate order
-                    </button>
-                </div>
+                <button type="submit"
+                        class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                    Generate order
+                </button>
             </div>
             </div>
         </form>

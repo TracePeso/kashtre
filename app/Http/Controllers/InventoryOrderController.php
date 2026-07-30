@@ -42,7 +42,7 @@ class InventoryOrderController extends Controller
     public function index(Request $request)
     {
         $status = $request->query('status', 'all');
-        if (! in_array($status, ['all', 'draft', 'pending_approval', 'approved', 'po_issued', 'fulfilled', 'rejected'], true)) {
+        if (! in_array($status, ['all', 'draft', 'running', 'completed', 'rejected'], true)) {
             $status = 'all';
         }
 

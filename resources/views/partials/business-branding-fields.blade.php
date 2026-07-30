@@ -90,7 +90,10 @@
 
         <div class="md:col-span-2">
             <label for="{{ $logoId }}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Logo @if($logoRequired)<span class="text-red-500">*</span>@endif
+                Logo
+                @if ($logoRequired)
+                    <span class="text-red-500">*</span>
+                @endif
             </label>
 
             @if($showLogoPreview && $branding?->hasLogo())
@@ -107,7 +110,7 @@
                 name="logo"
                 id="{{ $logoId }}"
                 accept="image/*"
-                @if($logoRequired) required @endif
+                @required($logoRequired)
                 class="mt-1 block w-full text-gray-700 dark:text-gray-300"
             >
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">PNG, JPG, GIF, or SVG. Max 2 MB.</p>

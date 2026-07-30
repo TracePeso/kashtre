@@ -3,10 +3,8 @@
     $statusTabs = [
         'all' => 'All orders',
         'draft' => 'Draft',
-        'pending_approval' => 'Pending approval',
-        'approved' => 'Approved',
-        'po_issued' => 'LPO issued',
-        'fulfilled' => 'Fulfilled',
+        'running' => 'In progress',
+        'completed' => 'Completed',
         'rejected' => 'Rejected',
     ];
     $currentStatus = $status ?? request()->query('status', 'all');
@@ -15,8 +13,8 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="md:flex md:items-center md:justify-between">
             <div class="flex-1 min-w-0">
-                <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">Make an order</h2>
-                <p class="mt-1 text-sm text-gray-500">Create purchase requests and internal store orders. Track approval, quotations, and LPOs.</p>
+                <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">Orders</h2>
+                <p class="mt-1 text-sm text-gray-500">Purchase requests, internal store orders, quotations, and LPOs.</p>
                 <p class="mt-2">
                     <a href="{{ route('inventory.orders.how-it-works') }}" class="text-sm font-medium text-blue-600 hover:text-blue-800">How ordering works &rarr;</a>
                 </p>
