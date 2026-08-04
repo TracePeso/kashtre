@@ -50,6 +50,7 @@ return [
     ],
 
     'hr_module' => [
+        'url'     => env('HR_MODULE_URL', 'http://localhost:8001'),
         'api_key' => env('HR_MODULE_API_KEY'),
     ],
 

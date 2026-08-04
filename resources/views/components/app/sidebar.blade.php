@@ -267,6 +267,39 @@
                     </li>
                     @endif
 
+                    <!-- HR Module -->
+                    @if($hrModuleEnabled && count(array_intersect(['View HR Staff', 'View HR Setup', 'View HR Approvals', 'Add HR Staff', 'Edit HR Staff'], (array) $permissions)) > 0)
+                    <li>
+                        <button @click="openGroup === 'hr' ? openGroup = '' : openGroup = 'hr'"
+                                :class="openGroup === 'hr' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'"
+                                class="flex items-center justify-between w-full text-left pl-4 pr-3 py-2 rounded-md">
+                            <span class="flex items-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                </svg>
+                                <span class="ml-3 text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">HR Module</span>
+                            </span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100" :class="{ 'rotate-180': openGroup === 'hr' }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        <ul x-show="openGroup === 'hr'" x-collapse class="mt-1 space-y-1 pl-10">
+                            @if(in_array('View HR Staff', (array) $permissions) || in_array('Add HR Staff', (array) $permissions))
+                            <li><a href="{{ $hrModuleUrl }}/hr/employees" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Employees</a></li>
+                            @endif
+                            @if(in_array('View HR Staff', (array) $permissions))
+                            <li><a href="{{ $hrModuleUrl }}/hr/attendance" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Attendance</a></li>
+                            @endif
+                            @if(in_array('View HR Approvals', (array) $permissions))
+                            <li><a href="{{ $hrModuleUrl }}/hr/leave" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Leave Requests</a></li>
+                            @endif
+                            @if(in_array('View HR Setup', (array) $permissions))
+                            <li><a href="{{ $hrModuleUrl }}/hr/settings" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>HR Settings</a></li>
+                            @endif
+                        </ul>
+                    </li>
+                    @endif
+
                     <!-- Businesses Group -->
                     @if(in_array('View Business', (array) $permissions))
                     <li>

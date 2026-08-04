@@ -114,4 +114,5 @@ YO_PAYMENTS_TEST_URL=https://paymentsdev1.yo.co.ug/yopaytest/task.php
 
 YO_PAYMENTS_USERNAME="100589248779"
 YO_PAYMENTS_PASSWORD="bVXo-BDBw-KF5x-JSAS-9tm0-jORW-rYqX-7EGn"
+HR_MODULE_URL=http://localhost:8001
 HR_MODULE_API_KEY=kashtre-hr-secret-2026

@@ -130,6 +130,9 @@ class AppServiceProvider extends ServiceProvider
             }
         }
 
+        $hrModuleUrl     = rtrim(config('services.hr_module.url', ''), '/');
+        $hrModuleEnabled = $hrModuleUrl !== '' && config('services.hr_module.api_key') !== null;
+
         return [
             'business' => $user?->business,
             'businessBranding' => BusinessBranding::for($user?->business),
@@ -143,6 +146,8 @@ class AppServiceProvider extends ServiceProvider
             'globalActiveEmergency' => (bool) $activeEmergencyAlert,
             'activeEmergencyAlert' => $activeEmergencyAlert,
             'cashTraySettings' => KashtreCashTraySetting::resolved(),
+            'hrModuleUrl' => $hrModuleUrl,
+            'hrModuleEnabled' => $hrModuleEnabled,
         ];
     }
 }
