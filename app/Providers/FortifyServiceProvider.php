@@ -24,7 +24,7 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(TwoFactorChallengeViewResponse::class, AppTwoFactorChallengeViewResponse::class);
+        //
     }
 
     /**
@@ -36,6 +36,12 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::updateUserProfileInformationUsing(UpdateUserProfileInformation::class);
         Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
+
+        // Jetstream's boot() calls Fortify::viewPrefix('auth.'), which binds a
+        // SimpleViewResponse and would otherwise wipe security-question data.
+        // Re-bind after that by registering in boot (app providers boot after
+        // package providers).
+        $this->app->singleton(TwoFactorChallengeViewResponse::class, AppTwoFactorChallengeViewResponse::class);
 
         RateLimiter::for('login', function (Request $request) {
             $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
