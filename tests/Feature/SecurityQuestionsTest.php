@@ -41,6 +41,43 @@ class SecurityQuestionsTest extends TestCase
         $this->assertTrue($user->hasSecurityQuestionsConfigured());
     }
 
+    public function test_two_factor_challenge_shows_security_questions_when_primary(): void
+    {
+        if (! Features::canManageTwoFactorAuthentication()) {
+            $this->markTestSkipped('Two factor authentication is not enabled.');
+        }
+
+        $user = User::factory()->create([
+            'two_factor_secret' => encrypt('secret'),
+            'two_factor_confirmed_at' => now(),
+            'primary_two_factor_method' => 'security_questions',
+        ]);
+
+        app(SecurityQuestionService::class)->storeForUser($user, [
+            ['question_key' => 'first_school', 'answer' => 'Green Valley'],
+            ['question_key' => 'first_pet', 'answer' => 'Rex'],
+            ['question_key' => 'birth_city', 'answer' => 'Kampala'],
+        ]);
+
+        $user->refresh();
+
+        $this->assertSame('security', $user->loginChallengeDefaultMode());
+
+        $response = $this->withSession([
+            'login.id' => $user->id,
+            'login.remember' => false,
+        ])->get(route('two-factor.login'));
+
+        $response->assertOk();
+        $response->assertSee('Answer your security questions to finish signing in.', false);
+        $response->assertSee('name="security_answers[', false);
+        $response->assertSee(route('two-factor.security-questions'), false);
+        $response->assertSee(__('Use an authentication code'), false);
+        $response->assertSee(__('Use a recovery code'), false);
+        $response->assertSee(route('two-factor.login', ['mode' => 'code']), false);
+        $response->assertSee(route('two-factor.login', ['mode' => 'recovery']), false);
+    }
+
     public function test_security_question_login_completes_two_factor_challenge(): void
     {
         if (! Features::canManageTwoFactorAuthentication()) {
@@ -99,14 +136,14 @@ class SecurityQuestionsTest extends TestCase
         $response = $this->withSession([
             'login.id' => $user->id,
             'login.security_question_keys' => $challengeKeys,
-        ])->from(route('two-factor.login'))->post(route('two-factor.security-questions'), [
+        ])->from(route('two-factor.login', ['mode' => 'security']))->post(route('two-factor.security-questions'), [
             'security_answers' => [
                 'first_school' => 'Wrong',
                 'first_pet' => 'Wrong',
             ],
         ]);
 
-        $response->assertRedirect(route('two-factor.login'));
+        $response->assertRedirect(route('two-factor.login', ['mode' => 'security']));
         $response->assertSessionHasErrors('security_answers');
         $this->assertGuest();
     }

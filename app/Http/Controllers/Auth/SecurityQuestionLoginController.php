@@ -62,7 +62,7 @@ class SecurityQuestionLoginController extends Controller
 
             throw ValidationException::withMessages([
                 'security_answers' => [__('The provided security question answers were incorrect.')],
-            ]);
+            ])->redirectTo(route('two-factor.login', ['mode' => 'security']));
         }
 
         $remember = $request->session()->pull('login.remember', false);
