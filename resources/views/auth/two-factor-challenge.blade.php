@@ -38,6 +38,10 @@
     >
         @csrf
 
+        @if (in_array($challengeMode, ['code', 'recovery'], true))
+            <input type="hidden" name="challenge_mode" value="{{ $challengeMode }}">
+        @endif
+
         @if ($challengeMode === 'code')
             <div>
                 <x-label for="code" value="{{ __('Code') }}" />
@@ -45,10 +49,12 @@
                     id="code"
                     type="text"
                     inputmode="numeric"
+                    pattern="[0-9 ]*"
                     name="code"
                     autofocus
                     autocomplete="one-time-code"
                     class="form-input w-full mt-1"
+                    placeholder="{{ __('6-digit code') }}"
                 />
             </div>
         @elseif ($challengeMode === 'recovery')
@@ -61,6 +67,7 @@
                     autofocus
                     autocomplete="one-time-code"
                     class="form-input w-full mt-1"
+                    placeholder="{{ __('Recovery code') }}"
                 />
             </div>
         @elseif ($challengeMode === 'security')
