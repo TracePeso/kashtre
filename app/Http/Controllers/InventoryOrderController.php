@@ -179,7 +179,8 @@ class InventoryOrderController extends Controller
                 return back()
                     ->withInput()
                     ->withErrors([
-                        'source_store_id' => 'Internal orders can only be placed between a store and its parent distribution store (or between two root stores). Child stores cannot order directly from sibling stores.',
+                        'source_store_id' => $sourceStore->transferDenialReason($receivingStore)
+                            ?? 'Internal orders can only be placed between a store and its parent distribution store (or between Distribution hubs). End Stores cannot order directly from other End Stores.',
                     ]);
             }
         } elseif (! empty($validated['supplier_id'])) {

@@ -78,6 +78,29 @@
                             <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5 leading-none">Age</p>
                             <p class="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-tight tabular-nums">{{ $client->age !== null && $client->age !== '' ? $client->age . ' years' : 'N/A' }}</p>
                         </div>
+                        @if(($clientSpaces ?? collect())->isNotEmpty())
+                        <div class="bg-indigo-50 border border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700 px-2.5 py-2 rounded-md min-w-[12rem] flex-1 sm:flex-none sm:max-w-xs">
+                            <label for="client-space-select" class="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase tracking-wide mb-0.5 leading-none block">Client Space</label>
+                            <select id="client-space-select"
+                                    class="mt-0.5 w-full text-sm font-semibold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 border-0 focus:ring-2 focus:ring-indigo-500 rounded py-0.5 px-0">
+                                <option value="">Select space…</option>
+                                @foreach($clientSpaces as $space)
+                                    @php
+                                        $assignment = $space->storeAssignment;
+                                        $routeLabel = $assignment?->store?->name
+                                            ? ' → '.$assignment->store->name
+                                            : '';
+                                        $strategyLabel = $assignment
+                                            ? ' ('.($assignment->fulfillment_strategy === 'BATCH_AND_STAGE' ? 'Inpatient' : 'Outpatient').')'
+                                            : '';
+                                    @endphp
+                                    <option value="{{ $space->id }}" @selected($clientSpaces->count() === 1)>
+                                        {{ $space->name }}{{ $routeLabel }}{{ $strategyLabel }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+                        @endif
                         <button type="button"
                                 @click="expanded = !expanded"
                                 :aria-expanded="expanded"
@@ -2200,6 +2223,9 @@
                     client_id: {{ $client->id }},
                     business_id: {{ auth()->user()->business_id }},
                     branch_id: {{ auth()->user()->currentBranch->id ?? 'null' }},
+                    client_space_id: document.getElementById('client-space-select')?.value
+                        ? parseInt(document.getElementById('client-space-select').value, 10)
+                        : null,
                     created_by: {{ auth()->id() }},
                     client_name: '{{ $client->name }}',
                     client_phone: '{{ $client->phone_number }}',

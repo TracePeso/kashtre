@@ -18,7 +18,7 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <a href="{{ route('inventory.transfers.index') }}" class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to transfers</a>
         <h2 class="mt-4 text-2xl font-bold text-gray-900">Make a transfer request</h2>
-        <p class="mt-1 text-sm text-gray-500">Request stock between a store and its parent distribution store. Each transfer is submitted for approval before stock moves.</p>
+        <p class="mt-1 text-sm text-gray-500">Request stock along the store hierarchy. End Stores cannot transfer directly to other End Stores — use a Distribution hub (or transfer to a Satellite under the same End Store).</p>
 
         <div class="mt-4 rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">
             <p class="font-medium text-gray-900">How transfers work</p>
@@ -66,9 +66,7 @@
                     </p>
                 </div>
                 <div class="md:col-span-2" x-show="fromStoreId && toStoreId && !storesAreSame() && !transferIsAllowed()" x-cloak>
-                    <p class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-4 py-3">
-                        Child stores cannot transfer stock directly to other child stores. Move stock through the parent distribution store first.
-                    </p>
+                    <p class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-4 py-3" x-text="transferDenialMessage()"></p>
                 </div>
                 <div class="md:col-span-2" x-show="storesAreSame()" x-cloak>
                     <p class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-4 py-3">
@@ -82,74 +80,131 @@
             </div>
 
             <div class="bg-white shadow sm:rounded-lg p-6">
-                <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-3 mb-4">
-                    <h3 class="text-lg font-medium text-gray-900">Items to transfer</h3>
-                    <div class="flex flex-wrap gap-2">
-                        <button type="button" @click="loadStockedItems()"
-                                :disabled="!fromStoreId || !toStoreId || storesAreSame() || !transferIsAllowed()"
-                                class="inline-flex items-center px-3 py-1.5 border border-blue-200 rounded-md text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed">
-                            Load stocked items
-                        </button>
-                        <button type="button" @click="addLine()"
-                                :disabled="!fromStoreId || !toStoreId || storesAreSame() || !transferIsAllowed()"
-                                class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                            + Add line
-                        </button>
+                <div class="flex items-center justify-between border-b border-gray-200 pb-3 mb-4">
+                    <h3 class="text-lg font-medium text-gray-900">Line items</h3>
+                </div>
+
+                <template x-if="!fromStoreId || !toStoreId || storesAreSame() || !transferIsAllowed()">
+                    <p class="text-sm text-gray-500 py-6 text-center">Select valid dispatch and receiving stores, then add items below.</p>
+                </template>
+
+                <div x-show="fromStoreId && toStoreId && !storesAreSame() && transferIsAllowed()" x-cloak>
+                    {{-- Summary of added lines (like receive goods) --}}
+                    <div x-show="lines.length > 0" x-cloak
+                         class="mb-6 rounded-lg border border-blue-200 bg-blue-50/60 overflow-hidden">
+                        <div class="px-4 py-3 border-b border-blue-200/80 flex flex-wrap items-center justify-between gap-2">
+                            <h4 class="text-sm font-semibold text-blue-900">
+                                Summary
+                                <span class="font-normal text-blue-700" x-text="'(' + lines.length + ' item' + (lines.length === 1 ? '' : 's') + ')'"></span>
+                            </h4>
+                            <p class="text-sm text-blue-800">
+                                <span x-text="stockedCount()"></span> item(s) with stock at dispatch
+                            </p>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full text-sm">
+                                <thead class="bg-blue-100/50 text-xs tracking-wide text-blue-800">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left font-medium">#</th>
+                                        <th class="px-4 py-2 text-left font-medium">Item</th>
+                                        <th class="px-4 py-2 text-left font-medium">Sale unit</th>
+                                        <th class="px-4 py-2 text-right font-medium">System stock</th>
+                                        <th class="px-4 py-2 text-right font-medium">Qty to transfer</th>
+                                        <th class="px-4 py-2 text-right font-medium">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-blue-100 bg-white/80">
+                                    <template x-for="(line, index) in lines" :key="'summary-' + index + '-' + line.item_id">
+                                        <tr class="hover:bg-blue-50/50" :class="editingIndex === index ? 'ring-2 ring-inset ring-blue-400' : ''">
+                                            <td class="px-4 py-2 text-gray-500 tabular-nums" x-text="index + 1"></td>
+                                            <td class="px-4 py-2">
+                                                <div class="font-medium text-gray-900" x-text="itemName(line)"></div>
+                                                <div class="text-xs text-gray-500" x-text="itemCode(line)"></div>
+                                            </td>
+                                            <td class="px-4 py-2 text-gray-700" x-text="itemSuom(line) || '—'"></td>
+                                            <td class="px-4 py-2 text-right tabular-nums text-gray-500" x-text="systemQty(line)"></td>
+                                            <td class="px-4 py-2 text-right tabular-nums font-medium text-gray-900" x-text="line.quantity_suom"></td>
+                                            <td class="px-4 py-2 text-right whitespace-nowrap">
+                                                <button type="button" @click="editLine(index)"
+                                                        class="text-xs font-medium text-blue-600 hover:text-blue-800">Edit</button>
+                                                <span class="text-gray-300 mx-1">|</span>
+                                                <button type="button" @click="removeLine(index)"
+                                                        class="text-xs font-medium text-red-600 hover:text-red-800">Delete</button>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <p x-show="lines.length === 0" class="mb-4 text-sm text-gray-500 text-center py-2">No items yet. Add an item below.</p>
+
+                    {{-- Single add/edit draft (like receive goods) --}}
+                    <div class="border border-gray-200 rounded-lg bg-gray-50/50 overflow-hidden">
+                        <div class="px-4 py-3 border-b border-gray-200 bg-white flex flex-wrap items-center justify-between gap-2">
+                            <h4 class="text-sm font-semibold text-gray-900" x-text="editingIndex !== null ? 'Edit item' : 'Add item'"></h4>
+                            <button type="button" x-show="editingIndex !== null" @click="cancelEdit()" x-cloak
+                                    class="text-xs font-medium text-gray-600 hover:text-gray-800">Cancel edit</button>
+                        </div>
+                        <div class="px-4 py-4 space-y-3 bg-white">
+                            <p class="text-xs text-gray-500" x-show="stockedCount() === 0">
+                                No goods with system stock at the dispatch store. Receive goods into that store first, then transfer to the End Store.
+                            </p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+                                <div class="sm:col-span-2 lg:col-span-6">
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Item <span class="text-red-500">*</span></label>
+                                    <select x-model="draftLine.item_id" @change="onDraftItemChange()"
+                                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500"
+                                            :disabled="stockedCount() === 0">
+                                        <option value="">Select item</option>
+                                        <template x-for="row in dispatchStock()" :key="'draft-' + row.item_id">
+                                            <option :value="String(row.item_id)"
+                                                    :disabled="isItemTaken(row.item_id)"
+                                                    x-text="stockItemLabel(row)"></option>
+                                        </template>
+                                    </select>
+                                </div>
+                                <div class="lg:col-span-2">
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Sale unit</label>
+                                    <div class="flex h-[38px] items-center rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800">
+                                        <span x-text="draftSuom() || '—'"></span>
+                                    </div>
+                                </div>
+                                <div class="lg:col-span-2">
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">System stock</label>
+                                    <div class="flex h-[38px] items-center justify-end rounded-md border border-gray-200 bg-gray-50 px-3 text-sm tabular-nums text-gray-800">
+                                        <span x-text="draftSystemQty()"></span>
+                                    </div>
+                                </div>
+                                <div class="lg:col-span-2">
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Qty to transfer <span class="text-red-500">*</span></label>
+                                    <input type="number" step="1" min="1" :max="draftMaxQty()"
+                                           x-model="draftLine.quantity_suom"
+                                           class="block w-full rounded-md border-gray-300 shadow-sm text-sm text-right focus:border-blue-500 focus:ring-blue-500"
+                                           :disabled="!draftLine.item_id">
+                                </div>
+                            </div>
+
+                            <div x-show="draftError" x-cloak class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800" x-text="draftError"></div>
+
+                            <div class="flex justify-end pt-1">
+                                <button type="button" @click="saveDraftLine()"
+                                        :disabled="stockedCount() === 0"
+                                        class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <span x-text="editingIndex !== null ? 'Update item' : 'Add item'"></span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <p class="text-xs text-gray-500 mb-4" x-show="fromStoreId && toStoreId && transferIsAllowed() && !storesAreSame()">
-                    <span x-text="stockedCount()"></span> item(s) with system stock at the dispatch store.
-                    Select items from the dropdown — only goods stocked at the dispatch store are listed.
-                </p>
-
-                <template x-if="!fromStoreId || !toStoreId || storesAreSame() || !transferIsAllowed()">
-                    <p class="text-sm text-gray-500 py-8 text-center">Select valid dispatch and receiving stores, then add transfer lines.</p>
+                <template x-for="(line, index) in lines" :key="'post-' + index + '-' + line.item_id">
+                    <div class="hidden" aria-hidden="true">
+                        <input type="hidden" :name="'lines[' + index + '][item_id]'" :value="line.item_id">
+                        <input type="hidden" :name="'lines[' + index + '][quantity_suom]'" :value="line.quantity_suom">
+                    </div>
                 </template>
-
-                <div class="overflow-x-auto" x-show="fromStoreId && toStoreId && !storesAreSame() && transferIsAllowed() && lines.length > 0">
-                    <table class="min-w-full divide-y divide-gray-200 text-sm">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-3 py-2 text-left font-medium text-gray-600 w-[45%]">Item</th>
-                                <th class="px-3 py-2 text-left font-medium text-gray-600 w-[12%]">Sale unit</th>
-                                <th class="px-3 py-2 text-right font-medium text-gray-600 w-[12%]">System stock</th>
-                                <th class="px-3 py-2 text-right font-medium text-gray-600 w-[18%]">Qty to transfer</th>
-                                <th class="px-3 py-2 w-[8%]"></th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100 bg-white">
-                            <template x-for="(line, index) in lines" :key="index">
-                                <tr>
-                                    <td class="px-3 py-2 align-top">
-                                        <select :name="'lines[' + index + '][item_id]'" x-model="line.item_id"
-                                                @change="onItemChange(line, index)" required
-                                                class="transfer-item-select block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
-                                            <option value="">Select item</option>
-                                            <template x-for="row in dispatchStock()" :key="row.item_id + '-' + index + '-' + takenItemsKey()">
-                                                <option :value="String(row.item_id)"
-                                                        :disabled="isItemTakenByOtherLine(row.item_id, index)"
-                                                        :class="isItemTakenByOtherLine(row.item_id, index) ? 'text-gray-400' : ''"
-                                                        x-text="itemLabel(row, index)"></option>
-                                            </template>
-                                        </select>
-                                    </td>
-                                    <td class="px-3 py-2 align-middle text-gray-600" x-text="itemSuom(line) || '—'"></td>
-                                    <td class="px-3 py-2 align-middle text-right tabular-nums text-gray-500" x-text="systemQty(line)"></td>
-                                    <td class="px-3 py-2 align-top">
-                                        <input type="number" step="1" min="1"
-                                               :max="maxQty(line)"
-                                               :name="'lines[' + index + '][quantity_suom]'" x-model="line.quantity_suom" required
-                                               class="block w-full rounded-md border-gray-300 shadow-sm text-sm text-right focus:border-blue-500 focus:ring-blue-500">
-                                    </td>
-                                    <td class="px-3 py-2 align-middle text-right">
-                                        <button type="button" @click="removeLine(index)" class="text-sm text-red-600 hover:text-red-800 font-medium">Remove</button>
-                                    </td>
-                                </tr>
-                            </template>
-                        </tbody>
-                    </table>
-                </div>
             </div>
 
             <div class="flex justify-end gap-3">
@@ -170,13 +225,15 @@ function transferCreateForm(items, stockByStore, storesList, initialFrom, initia
 
     const normalizeLines = (rows) => {
         if (!rows || rows.length === 0) {
-            return [blankLine()];
+            return [];
         }
 
-        return rows.map(row => ({
-            item_id: String(row.item_id ?? ''),
-            quantity_suom: String(row.quantity_suom ?? ''),
-        }));
+        return rows
+            .filter(row => row.item_id && parseFloat(row.quantity_suom) > 0)
+            .map(row => ({
+                item_id: String(row.item_id ?? ''),
+                quantity_suom: String(row.quantity_suom ?? ''),
+            }));
     };
 
     return {
@@ -186,6 +243,9 @@ function transferCreateForm(items, stockByStore, storesList, initialFrom, initia
         fromStoreId: initialFrom ? String(initialFrom) : '',
         toStoreId: initialTo ? String(initialTo) : '',
         lines: normalizeLines(initialLines),
+        draftLine: blankLine(),
+        editingIndex: null,
+        draftError: '',
         storeById(id) {
             const key = String(id);
             return this.storesList.find(store => String(store.id) === key) || null;
@@ -202,6 +262,13 @@ function transferCreateForm(items, stockByStore, storesList, initialFrom, initia
                 return false;
             }
 
+            const fromType = from.distribution_type || 'end_store';
+            const toType = to.distribution_type || 'end_store';
+
+            if (fromType === 'end_store' && toType === 'end_store') {
+                return false;
+            }
+
             if (from.parent_id !== null && Number(from.parent_id) === Number(to.id)) {
                 return true;
             }
@@ -210,11 +277,27 @@ function transferCreateForm(items, stockByStore, storesList, initialFrom, initia
                 return true;
             }
 
-            if ((from.parent_id === null || from.parent_id === '') && (to.parent_id === null || to.parent_id === '')) {
+            const fromIsRoot = from.parent_id === null || from.parent_id === '';
+            const toIsRoot = to.parent_id === null || to.parent_id === '';
+            if (fromIsRoot && toIsRoot
+                && fromType === 'interim_distribution'
+                && toType === 'interim_distribution') {
                 return true;
             }
 
             return false;
+        },
+        transferDenialMessage() {
+            const from = this.storeById(this.fromStoreId);
+            const to = this.storeById(this.toStoreId);
+            if (!from || !to) {
+                return 'This store pair is not allowed for stock transfer.';
+            }
+            if ((from.distribution_type || 'end_store') === 'end_store'
+                && (to.distribution_type || 'end_store') === 'end_store') {
+                return 'End Stores cannot transfer stock directly to other End Stores. Move stock through a Distribution store first (or to a Satellite under the same End Store).';
+            }
+            return 'Stock can only move between a store and its parent/child in the hierarchy (or between Distribution hubs).';
         },
         availableToStores() {
             if (!this.fromStoreId) {
@@ -233,6 +316,7 @@ function transferCreateForm(items, stockByStore, storesList, initialFrom, initia
             if (this.storesAreSame() || (this.toStoreId && !this.transferIsAllowed())) {
                 this.toStoreId = '';
             }
+            this.resetDraft();
             this.pruneInvalidLines();
         },
         onToStoreChange() {
@@ -248,77 +332,125 @@ function transferCreateForm(items, stockByStore, storesList, initialFrom, initia
         stockedCount() {
             return this.dispatchStock().length;
         },
-        addLine() {
-            this.lines.push(blankLine());
+        stockRow(itemId) {
+            return this.dispatchStock().find(r => String(r.item_id) === String(itemId)) || null;
         },
-        removeLine(index) {
-            this.lines.splice(index, 1);
+        catalogItem(itemId) {
+            return this.items.find(i => String(i.id) === String(itemId)) || null;
         },
-        loadStockedItems() {
-            const stocked = this.dispatchStock();
-            if (stocked.length === 0) {
-                alert('No items with system stock at the dispatch store.');
-                return;
-            }
-
-            const existing = new Set(this.lines.map(l => String(l.item_id)).filter(Boolean));
-            let added = 0;
-
-            stocked.forEach(row => {
-                const id = String(row.item_id);
-                if (existing.has(id)) return;
-                this.lines.push({ item_id: id, quantity_suom: '' });
-                existing.add(id);
-                added++;
-            });
-
-            if (added === 0) {
-                this.lines = stocked.map(row => ({
-                    item_id: String(row.item_id),
-                    quantity_suom: '',
-                }));
-            }
-        },
-        pruneInvalidLines() {
-            const validIds = new Set(this.dispatchStock().map(r => String(r.item_id)));
-            this.lines = this.lines.filter(line => !line.item_id || validIds.has(String(line.item_id)));
-            if (this.lines.length === 0) {
-                this.lines = [blankLine()];
-            }
-        },
-        isItemTakenByOtherLine(itemId, currentIndex) {
+        isItemTaken(itemId) {
             const id = String(itemId);
             if (!id) return false;
-            return this.lines.some((line, i) => i !== currentIndex && String(line.item_id) === id);
+            return this.lines.some((line, i) => {
+                if (this.editingIndex !== null && i === this.editingIndex) {
+                    return false;
+                }
+                return String(line.item_id) === id;
+            });
         },
-        takenItemsKey() {
-            return this.lines.map(line => String(line.item_id || '')).join('|');
+        stockItemLabel(row) {
+            const label = row.name + (row.code ? ' (' + row.code + ')' : '') + ' — stock ' + Number(row.system_qty).toLocaleString();
+            return this.isItemTaken(row.item_id) ? label + ' — already added' : label;
         },
-        isItemTaken(itemId, currentIndex) {
-            return this.isItemTakenByOtherLine(itemId, currentIndex);
+        itemName(line) {
+            return this.stockRow(line.item_id)?.name || this.catalogItem(line.item_id)?.name || '—';
         },
-        itemLabel(row, currentIndex) {
-            const label = row.name + (row.code ? ' (' + row.code + ')' : '');
-            return this.isItemTakenByOtherLine(row.item_id, currentIndex) ? label + ' — already added' : label;
-        },
-        onItemChange(line, index) {
-            if (line.item_id && this.isItemTakenByOtherLine(line.item_id, index)) {
-                line.item_id = '';
-            }
+        itemCode(line) {
+            return this.stockRow(line.item_id)?.code || this.catalogItem(line.item_id)?.code || '';
         },
         itemSuom(line) {
-            const row = this.dispatchStock().find(r => String(r.item_id) === String(line.item_id));
-            return row?.suom || this.items.find(i => String(i.id) === String(line.item_id))?.suom || '';
+            return this.stockRow(line.item_id)?.suom || this.catalogItem(line.item_id)?.suom || '';
         },
         systemQty(line) {
-            if (!line.item_id) return '—';
-            const row = this.dispatchStock().find(r => String(r.item_id) === String(line.item_id));
+            const row = this.stockRow(line.item_id);
             if (!row) return '—';
             return Number(row.system_qty).toLocaleString(undefined, { maximumFractionDigits: 0 });
         },
-        maxQty(line) {
-            const row = this.dispatchStock().find(r => String(r.item_id) === String(line.item_id));
+        draftSuom() {
+            return this.itemSuom(this.draftLine);
+        },
+        draftSystemQty() {
+            if (!this.draftLine.item_id) return '—';
+            return this.systemQty(this.draftLine);
+        },
+        draftMaxQty() {
+            const row = this.stockRow(this.draftLine.item_id);
             return row ? row.system_qty : undefined;
+        },
+        onDraftItemChange() {
+            this.draftError = '';
+            if (this.draftLine.item_id && this.isItemTaken(this.draftLine.item_id)) {
+                this.draftError = 'That item is already on this transfer.';
+                this.draftLine.item_id = '';
+            }
+        },
+        resetDraft() {
+            this.draftLine = blankLine();
+            this.editingIndex = null;
+            this.draftError = '';
+        },
+        cancelEdit() {
+            this.resetDraft();
+        },
+        editLine(index) {
+            const line = this.lines[index];
+            if (!line) return;
+            this.editingIndex = index;
+            this.draftLine = {
+                item_id: String(line.item_id),
+                quantity_suom: String(line.quantity_suom),
+            };
+            this.draftError = '';
+        },
+        removeLine(index) {
+            this.lines.splice(index, 1);
+            if (this.editingIndex === index) {
+                this.resetDraft();
+            } else if (this.editingIndex !== null && this.editingIndex > index) {
+                this.editingIndex -= 1;
+            }
+        },
+        saveDraftLine() {
+            this.draftError = '';
+
+            if (!this.draftLine.item_id) {
+                this.draftError = 'Select an item.';
+                return;
+            }
+
+            if (this.isItemTaken(this.draftLine.item_id)) {
+                this.draftError = 'That item is already on this transfer.';
+                return;
+            }
+
+            const qty = parseFloat(this.draftLine.quantity_suom);
+            if (!qty || qty <= 0) {
+                this.draftError = 'Enter a quantity greater than zero.';
+                return;
+            }
+
+            const max = this.draftMaxQty();
+            if (max !== undefined && qty > Number(max)) {
+                this.draftError = 'Quantity cannot exceed system stock (' + Number(max).toLocaleString() + ').';
+                return;
+            }
+
+            const saved = {
+                item_id: String(this.draftLine.item_id),
+                quantity_suom: String(qty),
+            };
+
+            if (this.editingIndex !== null) {
+                this.lines.splice(this.editingIndex, 1, saved);
+            } else {
+                this.lines.push(saved);
+            }
+
+            this.resetDraft();
+        },
+        pruneInvalidLines() {
+            const validIds = new Set(this.dispatchStock().map(r => String(r.item_id)));
+            this.lines = this.lines.filter(line => validIds.has(String(line.item_id)));
         },
         canSubmit() {
             if (!this.fromStoreId || !this.toStoreId || this.storesAreSame() || !this.transferIsAllowed()) return false;
@@ -332,7 +464,7 @@ function transferCreateForm(items, stockByStore, storesList, initialFrom, initia
             }
             if (!this.transferIsAllowed()) {
                 event.preventDefault();
-                alert('Child stores cannot transfer stock directly to other child stores. Move stock through the parent distribution store first.');
+                alert(this.transferDenialMessage());
                 return;
             }
             if (!this.canSubmit()) {
@@ -343,10 +475,4 @@ function transferCreateForm(items, stockByStore, storesList, initialFrom, initia
     };
 }
 </script>
-<style>
-    .transfer-item-select option:disabled {
-        color: #9ca3af;
-        background-color: #f3f4f6;
-    }
-</style>
 </x-app-layout>

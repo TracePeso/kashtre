@@ -96,8 +96,23 @@ class HrIntegrationController extends Controller
     {
         $query = ClientSpace::query()
             ->where('business_id', '!=', 1)
-            ->select('id', 'uuid', 'name', 'description', 'business_id', 'branch_id')
-            ->with('branch:id,name');
+            ->select(
+                'id',
+                'uuid',
+                'name',
+                'description',
+                'business_id',
+                'branch_id',
+                'space_head_id',
+                'deputy_space_head_id',
+                'alternate_space_head_id'
+            )
+            ->with([
+                'branch:id,name',
+                'spaceHead:id,name',
+                'deputySpaceHead:id,name',
+                'alternateSpaceHead:id,name',
+            ]);
 
         if ($request->has('business_id')) {
             $query->where('business_id', $request->business_id);

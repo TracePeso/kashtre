@@ -2,6 +2,7 @@
 
 namespace App\Services\Inventory;
 
+use App\Models\InventoryFulfillmentLine;
 use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
 use App\Models\Item;
@@ -22,6 +23,18 @@ class InventorySaleConsumptionService
         $item = $queue->item;
 
         if (! $item || $item->type !== 'good') {
+            return;
+        }
+
+        // End Store fulfillment owns physical stock for these goods (SRD).
+        // Service-point Completed must not deduct again / early.
+        if ($this->ownedByFulfillmentQueue($queue)) {
+            Log::info('Inventory auto-consumption skipped: End Store fulfillment owns this good', [
+                'queue_id' => $queue->id,
+                'invoice_id' => $queue->invoice_id,
+                'item_id' => $item->id,
+            ]);
+
             return;
         }
 
@@ -90,5 +103,19 @@ class InventorySaleConsumptionService
             ->value('store_id');
 
         return $stockStore ? (int) $stockStore : null;
+    }
+
+    private function ownedByFulfillmentQueue(ServiceDeliveryQueue $queue): bool
+    {
+        if (! $queue->invoice_id || ! $queue->item_id) {
+            return false;
+        }
+
+        return InventoryFulfillmentLine::query()
+            ->where('invoice_id', $queue->invoice_id)
+            ->where('item_id', $queue->item_id)
+            ->when($queue->client_id, fn ($q) => $q->where('client_id', $queue->client_id))
+            ->whereNotIn('status', [InventoryFulfillmentLine::STATUS_CANCELLED])
+            ->exists();
     }
 }

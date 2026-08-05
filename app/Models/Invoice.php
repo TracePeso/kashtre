@@ -18,6 +18,7 @@ class Invoice extends Model
         'client_id',
         'business_id',
         'branch_id',
+        'client_space_id',
         'created_by',
         'client_name',
         'client_phone',
@@ -83,6 +84,11 @@ class Invoice extends Model
     public function branch()
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function clientSpace()
+    {
+        return $this->belongsTo(ClientSpace::class);
     }
 
     public function createdBy()

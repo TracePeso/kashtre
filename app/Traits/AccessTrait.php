@@ -103,7 +103,16 @@ trait AccessTrait
 
     public static $inventoryModule = [
         "Inventory Module" => ['View Inventory Module', 'Add Inventory Module', 'Edit Inventory Module', 'Manage Inventory Module', 'Delete Inventory Module'],
-        "Inventory" => ['View Inventory', 'Add Inventory', 'Edit Inventory', 'Manage Inventory'],
+        "Inventory" => [
+            'View Inventory',
+            'Add Inventory',
+            'Edit Inventory',
+            'Manage Inventory',
+            'View End Store Queue',
+            'Dispense End Store Queue',
+            'View Approved Pool',
+            'Record Inventory Usage',
+        ],
     ];
 
     public static $adminAccess = [

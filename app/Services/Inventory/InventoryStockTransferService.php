@@ -60,9 +60,12 @@ class InventoryStockTransferService
 
         if (! $fromStore->canTransferStockTo($toStore)) {
             throw ValidationException::withMessages([
-                'to_store_id' => 'Child stores cannot transfer stock directly to other child stores. Move stock through the parent distribution store first.',
+                'to_store_id' => $fromStore->transferDenialReason($toStore)
+                    ?? 'This store pair is not allowed for stock transfer.',
             ]);
         }
+
+        app(InventoryCrashCartService::class)->assertAllowsStockIn($toStore);
 
         return DB::transaction(function () use ($businessId, $fromStoreId, $toStoreId, $lines, $user, $notes) {
             $transfer = StockTransfer::create([
@@ -480,7 +483,8 @@ class InventoryStockTransferService
 
         if (! $transfer->fromStore->canTransferStockTo($transfer->toStore)) {
             throw ValidationException::withMessages([
-                'to_store_id' => 'Child stores cannot transfer stock directly to other child stores. Move stock through the parent distribution store first.',
+                'to_store_id' => $transfer->fromStore->transferDenialReason($transfer->toStore)
+                    ?? 'This store pair is not allowed for stock transfer.',
             ]);
         }
     }

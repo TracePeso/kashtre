@@ -17,6 +17,7 @@ class InventoryMonthlyConsumptionService
             ->where('business_id', $businessId)
             ->where('store_id', $storeId)
             ->where('item_id', $itemId)
+            ->whereIn('source', InventoryDailyConsumption::demandSources())
             ->whereBetween('consumption_date', [$monthStart, $monthEnd])
             ->selectRaw('COALESCE(SUM(quantity_suom), 0) as total_quantity_suom')
             ->selectRaw('COUNT(DISTINCT consumption_date) as days_with_usage')

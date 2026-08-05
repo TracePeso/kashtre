@@ -29,7 +29,7 @@ class InventorySettingsController extends Controller
         $config->load(['approvers.user', 'evaluationCommitteeMembers.user']);
 
         $activeTab = $request->query('tab', 'notifications');
-        if (! in_array($activeTab, ['notifications', 'approvers', 'evaluation-committee'], true)) {
+        if (! in_array($activeTab, ['notifications', 'approvers', 'evaluation-committee', 'space-routing', 'capabilities'], true)) {
             $activeTab = 'notifications';
         }
 
@@ -90,6 +90,29 @@ class InventorySettingsController extends Controller
         return redirect()
             ->route('inventory.settings.edit', ['tab' => 'notifications'])
             ->with('success', 'Notification settings saved.');
+    }
+
+    public function updateCapabilities(Request $request)
+    {
+        InventoryBusinessContext::assertWritable();
+
+        if (! in_array('Edit Business Settings', Auth::user()->permissions ?? [])) {
+            abort(403, 'You do not have permission to update inventory settings.');
+        }
+
+        $config = $this->businessConfig();
+
+        $config->update([
+            'updated_by' => Auth::id(),
+            'enable_floor_stock_management' => $request->boolean('enable_floor_stock_management'),
+            'enable_crash_cart_management' => $request->boolean('enable_crash_cart_management'),
+            'enable_batch_lot_tracking' => $request->boolean('enable_batch_lot_tracking'),
+            'enable_serial_number_tracking' => $request->boolean('enable_serial_number_tracking'),
+        ]);
+
+        return redirect()
+            ->route('inventory.settings.edit', ['tab' => 'capabilities'])
+            ->with('success', 'Capability settings saved.');
     }
 
     public function updateApprovers(Request $request)

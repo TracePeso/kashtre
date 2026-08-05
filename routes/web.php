@@ -67,6 +67,9 @@ use App\Http\Controllers\InventoryModuleConfigController;
 use App\Http\Controllers\InventoryContextController;
 use App\Http\Controllers\GoodsReceivedNoteController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\InventoryFulfillmentController;
+use App\Http\Controllers\InventoryApprovedPoolController;
+use App\Http\Controllers\InventoryRecordUsageController;
 use App\Http\Controllers\InventorySettingsController;
 use App\Http\Controllers\InventoryDailyConsumptionController;
 use App\Http\Controllers\InventoryOrderController;
@@ -317,6 +320,9 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::post('/receive/{goodsReceivedNote}/reject', [GoodsReceivedNoteController::class, 'reject'])->name('receive.reject');
         Route::get('/monitor', [InventoryController::class, 'monitor'])->name('monitor');
         Route::get('/monitor/items/{item}/history', [InventoryController::class, 'stockHistory'])->name('monitor.history');
+        Route::get('/fulfillment', [InventoryFulfillmentController::class, 'index'])->name('fulfillment.index');
+        Route::get('/approved-pool', [InventoryApprovedPoolController::class, 'index'])->name('approved-pool.index');
+        Route::get('/usage', [InventoryRecordUsageController::class, 'index'])->name('usage.index');
         Route::get('/stock-counts', [InventoryStockCountController::class, 'index'])->name('stock-counts.index');
         Route::get('/stock-counts/create', [InventoryStockCountController::class, 'create'])->name('stock-counts.create');
         Route::post('/stock-counts', [InventoryStockCountController::class, 'store'])->name('stock-counts.store');
@@ -374,6 +380,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::put('/settings', [InventorySettingsController::class, 'update'])->name('settings.update');
         Route::put('/settings/approvers', [InventorySettingsController::class, 'updateApprovers'])->name('settings.approvers.update');
         Route::put('/settings/evaluation-committee', [InventorySettingsController::class, 'updateEvaluationCommittee'])->name('settings.evaluation-committee.update');
+        Route::put('/settings/capabilities', [InventorySettingsController::class, 'updateCapabilities'])->name('settings.capabilities.update');
         Route::get('/approvers', fn () => redirect()->route('inventory.settings.edit', ['tab' => 'approvers']))->name('approvers');
         Route::put('/approvers', [InventorySettingsController::class, 'updateApprovers'])->name('approvers.update');
         Route::get('/transfers', [InventoryStockTransferController::class, 'index'])->name('transfers.index');

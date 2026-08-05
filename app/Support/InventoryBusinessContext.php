@@ -110,4 +110,29 @@ class InventoryBusinessContext
             abort(403, 'This action is read-only while browsing another organisation\'s inventory.');
         }
     }
+
+    public static function config(): ?InventoryModuleConfig
+    {
+        return self::moduleConfig();
+    }
+
+    public static function floorStockEnabled(): bool
+    {
+        return self::moduleConfig()?->floorStockEnabled() ?? true;
+    }
+
+    public static function crashCartEnabled(): bool
+    {
+        return self::moduleConfig()?->crashCartEnabled() ?? false;
+    }
+
+    public static function batchLotTrackingEnabled(): bool
+    {
+        return self::moduleConfig()?->batchLotTrackingEnabled() ?? false;
+    }
+
+    public static function serialNumberTrackingEnabled(): bool
+    {
+        return self::moduleConfig()?->serialNumberTrackingEnabled() ?? false;
+    }
 }

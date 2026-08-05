@@ -814,6 +814,7 @@ class InventoryOrderService
             ->where('business_id', $businessId)
             ->where('store_id', $storeId)
             ->where('item_id', $itemId)
+            ->whereIn('source', InventoryDailyConsumption::demandSources())
             ->whereDate('consumption_date', '>=', $from->toDateString())
             ->whereDate('consumption_date', '<=', $to->toDateString())
             ->pluck('quantity_suom', 'consumption_date')

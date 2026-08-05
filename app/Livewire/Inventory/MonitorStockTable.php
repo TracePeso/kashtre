@@ -91,13 +91,6 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->state(fn (Item $record): float => (float) $this->mForItem($record, 'current_m'))
                     ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
 
-                TextColumn::make('in_transit_suom')
-                    ->label('In transit')
-                    ->alignEnd()
-                    ->state(fn (Item $record): float => (float) ($record->stock_quantity_in_transit_suom ?? 0))
-                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0))
-                    ->color(fn ($state) => (float) $state > 0 ? 'warning' : null),
-
                 TextColumn::make('physical_stock_as')
                     ->label('Physical count (AS)')
                     ->alignEnd()
