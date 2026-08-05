@@ -9,6 +9,7 @@
                 Outpatient dispense, inpatient stage/release, and STAT alerts for paid goods at End Stores.
             </p>
         </div>
+        
 
         <div class="mt-4 bg-white border border-gray-200 shadow-sm sm:rounded-lg p-6">
             @if(! $hasEndStores)
