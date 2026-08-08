@@ -64,6 +64,7 @@ class InventoryStockTransferController extends Controller
                     'id' => $store->id,
                     'label' => $store->selectLabel(),
                     'parent_id' => $store->parent_id,
+                    'distribution_type' => $store->distribution_type ?? Store::DISTRIBUTION_END,
                 ])
                 ->values(),
             'items' => $items,
@@ -93,7 +94,8 @@ class InventoryStockTransferController extends Controller
             return back()
                 ->withInput()
                 ->withErrors([
-                    'to_store_id' => 'Child stores cannot transfer stock directly to other child stores. Move stock through the parent distribution store first.',
+                    'to_store_id' => $fromStore->transferDenialReason($toStore)
+                        ?? 'This store pair is not allowed for stock transfer.',
                 ]);
         }
 

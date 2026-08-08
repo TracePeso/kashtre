@@ -67,6 +67,9 @@ use App\Http\Controllers\InventoryModuleConfigController;
 use App\Http\Controllers\InventoryContextController;
 use App\Http\Controllers\GoodsReceivedNoteController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\InventoryFulfillmentController;
+use App\Http\Controllers\InventoryApprovedPoolController;
+use App\Http\Controllers\InventoryRecordUsageController;
 use App\Http\Controllers\InventorySettingsController;
 use App\Http\Controllers\InventoryDailyConsumptionController;
 use App\Http\Controllers\InventoryOrderController;
@@ -85,6 +88,8 @@ use App\Http\Controllers\BankScheduleController;
 use App\Http\Controllers\WithdrawalSettingController;
 use App\Http\Controllers\BusinessWithdrawalSettingController;
 use App\Http\Controllers\CashTraySettingsController;
+use App\Http\Controllers\ClinicalModuleSettingsController;
+use App\Http\Controllers\HrModuleSettingsController;
 use App\Http\Controllers\WithdrawalRequestController;
 use App\Http\Controllers\BusinessSettingsController;
 use App\Http\Controllers\BroadcastAuthController;
@@ -159,6 +164,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Route::get('/json-data-feed', [DataFeedController::class, 'getDataFeed'])->name('json_data_feed');
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/hr-module/open', [\App\Http\Controllers\HrSsoController::class, 'redirect'])->name('hr-module.open');
     Route::post('/dashboard/yo-payment-test', [DashboardController::class, 'testYoPayment'])->name('dashboard.yo-payment-test');
     Route::post('/dashboard/testing-environment-reset', [DashboardController::class, 'clearTestingEnvironment'])
         ->name('dashboard.testing-environment-reset')
@@ -259,6 +265,10 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         ->name('settings.vendor-service-charge-defaults.update');
     Route::get('/settings/kashtre', [CashTraySettingsController::class, 'edit'])->name('settings.kashtre.edit');
     Route::put('/settings/kashtre', [CashTraySettingsController::class, 'update'])->name('settings.kashtre.update');
+    Route::get('/settings/hr-module', [HrModuleSettingsController::class, 'edit'])->name('settings.hr-module.edit');
+    Route::put('/settings/hr-module', [HrModuleSettingsController::class, 'update'])->name('settings.hr-module.update');
+    Route::get('/settings/clinical-module', [ClinicalModuleSettingsController::class, 'edit'])->name('settings.clinical-module.edit');
+    Route::put('/settings/clinical-module', [ClinicalModuleSettingsController::class, 'update'])->name('settings.clinical-module.update');
 
     // Insurance Companies routes (redirect index to settings)
     Route::get('/insurance-companies', function() {
@@ -317,6 +327,9 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::post('/receive/{goodsReceivedNote}/reject', [GoodsReceivedNoteController::class, 'reject'])->name('receive.reject');
         Route::get('/monitor', [InventoryController::class, 'monitor'])->name('monitor');
         Route::get('/monitor/items/{item}/history', [InventoryController::class, 'stockHistory'])->name('monitor.history');
+        Route::get('/fulfillment', [InventoryFulfillmentController::class, 'index'])->name('fulfillment.index');
+        Route::get('/approved-pool', [InventoryApprovedPoolController::class, 'index'])->name('approved-pool.index');
+        Route::get('/usage', [InventoryRecordUsageController::class, 'index'])->name('usage.index');
         Route::get('/stock-counts', [InventoryStockCountController::class, 'index'])->name('stock-counts.index');
         Route::get('/stock-counts/create', [InventoryStockCountController::class, 'create'])->name('stock-counts.create');
         Route::post('/stock-counts', [InventoryStockCountController::class, 'store'])->name('stock-counts.store');
@@ -374,6 +387,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::put('/settings', [InventorySettingsController::class, 'update'])->name('settings.update');
         Route::put('/settings/approvers', [InventorySettingsController::class, 'updateApprovers'])->name('settings.approvers.update');
         Route::put('/settings/evaluation-committee', [InventorySettingsController::class, 'updateEvaluationCommittee'])->name('settings.evaluation-committee.update');
+        Route::put('/settings/capabilities', [InventorySettingsController::class, 'updateCapabilities'])->name('settings.capabilities.update');
         Route::get('/approvers', fn () => redirect()->route('inventory.settings.edit', ['tab' => 'approvers']))->name('approvers');
         Route::put('/approvers', [InventorySettingsController::class, 'updateApprovers'])->name('approvers.update');
         Route::get('/transfers', [InventoryStockTransferController::class, 'index'])->name('transfers.index');
@@ -408,8 +422,8 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     })->name('bank-schedules.index');
     Route::resource("bank-schedules", BankScheduleController::class)->only(['show']);
     
-    // API route for fetching branches by business
-    Route::get('/api/branches', function (Request $request) {
+    // AJAX helper for fetching branches by business (session auth)
+    Route::get('/ajax/branches', function (Request $request) {
         $businessId = $request->query('business_id');
         if (!$businessId) {
             return response()->json([], 400);
@@ -418,7 +432,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
             ->orderBy('name')
             ->get(['id', 'name']);
         return response()->json($branches);
-    })->name('api.branches');
+    })->name('ajax.branches');
     
     // Credit Note Workflow Settings (Kashtre only)
     Route::get('credit-note-workflows/bulk-upload', [CreditNoteWorkflowBulkUploadController::class, 'index'])->name('credit-note-workflows.bulk-upload.index');

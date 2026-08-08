@@ -22,7 +22,13 @@ use App\Models\InventoryPurchaseOrder;
 use App\Models\InventorySupplierQuotation;
 use App\Models\GoodsReceivedNote;
 use App\Models\StockTransfer;
+use App\Observers\ClientClinicalEncounterObserver;
 use App\Observers\ModelActivityObserver;
+use App\Observers\UserHrSyncObserver;
+use App\Models\Client;
+use Dedoc\Scramble\Scramble;
+use Dedoc\Scramble\Support\Generator\OpenApi;
+use Dedoc\Scramble\Support\Generator\SecurityScheme;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -45,6 +51,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Scramble::configure()
+            ->withDocumentTransformers(function (OpenApi $openApi): void {
+                $openApi->components->addSecurityScheme(
+                    'bearer',
+                    SecurityScheme::http('bearer')
+                );
+            });
+
         // View::composer('*', function ($view) {
         //     $view->with('business', Auth::check() ? Auth::user()->business : null);
         // });
@@ -72,6 +86,8 @@ class AppServiceProvider extends ServiceProvider
 
          // Register observers
          User::observe(ModelActivityObserver::class);
+         User::observe(UserHrSyncObserver::class);
+         Client::observe(ClientClinicalEncounterObserver::class);
          Business::observe(ModelActivityObserver::class);
          Transaction::observe(ModelActivityObserver::class);
          InventoryOrder::observe(ModelActivityObserver::class);

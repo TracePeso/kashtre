@@ -31,11 +31,32 @@ class TwoFactorChallengeViewResponse implements TwoFactorChallengeViewResponseCo
             }
         }
 
+        $challengeMode = $this->resolveChallengeMode(
+            $request->query('mode'),
+            $defaultChallengeMode,
+            $canUseSecurityQuestions,
+        );
+
         return view('auth.two-factor-challenge', [
             'canUseSecurityQuestions' => $canUseSecurityQuestions,
             'challengeQuestions' => $challengeQuestions,
-            'defaultChallengeMode' => $defaultChallengeMode,
+            'challengeMode' => $challengeMode,
         ]);
+    }
+
+    private function resolveChallengeMode(mixed $requested, string $default, bool $canUseSecurityQuestions): string
+    {
+        $mode = is_string($requested) ? $requested : $default;
+
+        if (! in_array($mode, ['code', 'recovery', 'security'], true)) {
+            $mode = $default;
+        }
+
+        if ($mode === 'security' && ! $canUseSecurityQuestions) {
+            return 'code';
+        }
+
+        return $mode;
     }
 
     /**

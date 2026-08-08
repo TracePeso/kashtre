@@ -49,17 +49,19 @@ class PrimaryTwoFactorMethodForm extends Component
         ])->save();
 
         $this->dispatch('saved');
+        $this->dispatch('primary-two-factor-method-updated');
     }
 
     public function render()
     {
         /** @var \App\Models\User $user */
-        $user = Auth::user();
+        $user = Auth::user()->fresh();
 
         return view('profile.primary-two-factor-method-form', [
             'authenticatorEnabled' => $user->hasAuthenticatorConfigured(),
             'securityQuestionsEnabled' => $user->hasSecurityQuestionsConfigured(),
-            'currentPrimary' => $user->effectivePrimaryTwoFactorMethod(),
+            'currentPrimary' => $user->primary_two_factor_method
+                ?: $user->effectivePrimaryTwoFactorMethod(),
         ]);
     }
 }

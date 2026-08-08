@@ -147,6 +147,21 @@
                                 </a>
                             </li>
                             <li>
+                                <a href="{{ route('inventory.fulfillment.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.fulfillment*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    End Store Console
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.approved-pool.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.approved-pool*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Approved Pool
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.usage.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.usage*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Record Usage
+                                </a>
+                            </li>
+                            <li>
                                 <a href="{{ route('inventory.stock-counts.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.stock-counts*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
                                     Stock Counts
                                 </a>
@@ -815,6 +830,18 @@
                                 <a href="{{ route('settings.kashtre.edit') }}"
                                    class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
                                     Kashtre Settings
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('settings.hr-module.edit') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    HR Module Settings
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('settings.clinical-module.edit') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    Clinical Module Settings
                                 </a>
                             </li>
                             @endif

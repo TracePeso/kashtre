@@ -28,6 +28,10 @@ class InventoryModuleConfig extends Model
         'notify_suppliers_on_rfq_approved',
         'notify_on_lpo_issued',
         'evaluation_committee_required',
+        'enable_floor_stock_management',
+        'enable_crash_cart_management',
+        'enable_batch_lot_tracking',
+        'enable_serial_number_tracking',
         'created_by',
         'updated_by',
     ];
@@ -48,6 +52,10 @@ class InventoryModuleConfig extends Model
         'notify_suppliers_on_rfq_approved' => 'boolean',
         'notify_on_lpo_issued' => 'boolean',
         'evaluation_committee_required' => 'boolean',
+        'enable_floor_stock_management' => 'boolean',
+        'enable_crash_cart_management' => 'boolean',
+        'enable_batch_lot_tracking' => 'boolean',
+        'enable_serial_number_tracking' => 'boolean',
     ];
 
     /**
@@ -155,5 +163,25 @@ class InventoryModuleConfig extends Model
     public function evaluationCommitteeRequired(): bool
     {
         return (bool) ($this->evaluation_committee_required ?? false);
+    }
+
+    public function floorStockEnabled(): bool
+    {
+        return (bool) ($this->enable_floor_stock_management ?? true);
+    }
+
+    public function crashCartEnabled(): bool
+    {
+        return (bool) ($this->enable_crash_cart_management ?? false);
+    }
+
+    public function batchLotTrackingEnabled(): bool
+    {
+        return (bool) ($this->enable_batch_lot_tracking ?? false);
+    }
+
+    public function serialNumberTrackingEnabled(): bool
+    {
+        return (bool) ($this->enable_serial_number_tracking ?? false);
     }
 }

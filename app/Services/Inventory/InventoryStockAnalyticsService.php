@@ -56,6 +56,7 @@ class InventoryStockAnalyticsService
             ->where('business_id', $businessId)
             ->where('store_id', $storeId)
             ->where('item_id', $itemId)
+            ->whereIn('source', InventoryDailyConsumption::demandSources())
             ->whereDate('consumption_date', '>=', $from)
             ->sum('quantity_suom');
 

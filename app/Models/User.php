@@ -49,6 +49,9 @@ class User extends Authenticatable
         'phone',
         'nin',
         'birth_date',
+        'hire_date',
+        'employment_type',
+        'employee_code',
         'marital_status',
         'profile_photo_path',
         'email_verified_at',
@@ -90,6 +93,7 @@ class User extends Authenticatable
         'total_balance' => 'decimal:2',
         'current_balance' => 'decimal:2',
         'birth_date' => 'date',
+        'hire_date' => 'date',
     ];
 
     /**

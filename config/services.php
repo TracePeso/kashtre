@@ -50,8 +50,18 @@ return [
     ],
 
     'hr_module' => [
-        'url'     => env('HR_MODULE_URL', 'http://localhost:8001'),
+        // Prefer Settings → HR Module Settings (superadmin UI). Env values seed defaults only.
         'api_key' => env('HR_MODULE_API_KEY'),
+        'url' => rtrim((string) env('HR_MODULE_URL', ''), '/'),
+        'sync_enabled' => (bool) env('HR_MODULE_SYNC_ENABLED', true),
+    ],
+
+    'clinical_module' => [
+        // Prefer Settings → Clinical Module Settings (superadmin UI). Env seeds defaults only.
+        'url' => rtrim((string) env('CLINICAL_MODULE_URL', ''), '/'),
+        'service_key' => env('CLINICAL_MODULE_SERVICE_KEY'),
+        'inbound_api_key' => env('CLINICAL_MODULE_INBOUND_API_KEY'),
+        'encounter_webhook_enabled' => (bool) env('CLINICAL_MODULE_ENCOUNTER_WEBHOOK_ENABLED', true),
     ],
 
     'vendor' => [

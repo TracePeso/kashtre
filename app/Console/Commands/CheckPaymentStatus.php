@@ -468,6 +468,16 @@ class CheckPaymentStatus extends Command
             return 0;
         }
 
+        try {
+            app(\App\Services\Inventory\InventoryFulfillmentIngestService::class)
+                ->ingestFromInvoice($invoice, is_array($items) ? $items : []);
+        } catch (\Throwable $e) {
+            Log::error('Inventory fulfillment ingest failed (CheckPaymentStatus)', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         foreach ($items as $index => $item) {
             $itemId = $item['id'] ?? $item['item_id'] ?? null;
             

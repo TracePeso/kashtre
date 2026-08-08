@@ -11,8 +11,13 @@ class InventoryDailyConsumption extends Model
     use HasFactory;
 
     public const SOURCE_MANUAL = 'manual';
+
     public const SOURCE_SALE = 'sale';
+
     public const SOURCE_ISSUE = 'issue';
+
+    /** Expired wastage — stock ↓ but excluded from moving-average / reorder demand. */
+    public const SOURCE_WASTAGE_EXPIRED = 'wastage_expired';
 
     protected $fillable = [
         'business_id',
@@ -29,6 +34,25 @@ class InventoryDailyConsumption extends Model
         'consumption_date' => 'date',
         'quantity_suom' => 'decimal:4',
     ];
+
+    /**
+     * Sources that feed demand / moving-average maths.
+     *
+     * @return list<string>
+     */
+    public static function demandSources(): array
+    {
+        return [
+            self::SOURCE_MANUAL,
+            self::SOURCE_SALE,
+            self::SOURCE_ISSUE,
+        ];
+    }
+
+    public function isExcludedFromDemand(): bool
+    {
+        return $this->source === self::SOURCE_WASTAGE_EXPIRED;
+    }
 
     public function business(): BelongsTo
     {
@@ -56,6 +80,7 @@ class InventoryDailyConsumption extends Model
             self::SOURCE_SALE => 'POS / Sale',
             self::SOURCE_ISSUE => 'Issue',
             self::SOURCE_MANUAL => 'Manual entry',
+            self::SOURCE_WASTAGE_EXPIRED => 'Wastage (expired)',
             default => ucfirst(str_replace('_', ' ', $this->source)),
         };
     }

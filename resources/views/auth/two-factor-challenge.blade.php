@@ -1,117 +1,137 @@
 <x-authentication-layout>
+    @php
+        $canUseSecurityQuestions = (bool) ($canUseSecurityQuestions ?? false);
+        $challengeQuestions = $challengeQuestions ?? [];
+        $challengeMode = $challengeMode ?? 'code';
+        if (! in_array($challengeMode, ['code', 'recovery', 'security'], true)) {
+            $challengeMode = 'code';
+        }
+        if ($challengeMode === 'security' && ! $canUseSecurityQuestions) {
+            $challengeMode = 'code';
+        }
+
+        $switchTo = fn (string $mode) => route('two-factor.login', ['mode' => $mode]);
+    @endphp
+
     <h1 class="text-3xl text-gray-800 dark:text-gray-100 font-bold mb-6">{{ __('Confirm access') }}</h1>
-    <div
-        x-data="{ mode: @js($defaultChallengeMode ?? 'code') }"
-        x-init="
-            $nextTick(() => {
-                if (mode === 'security') {
-                    const first = document.querySelector('[id^=security_answer_]');
-                    if (first) first.focus();
-                } else if ($refs.code) {
-                    $refs.code.focus();
-                }
-            })
-        "
-    >
-        <div class="mb-4" x-show="mode === 'code'">
+
+    @if ($challengeMode === 'code')
+        <p class="mb-4 text-sm text-gray-600 dark:text-gray-400">
             {{ __('Please confirm access to your account by entering the authentication code provided by your authenticator application.') }}
-        </div>
-
-        <div class="mb-4" x-show="mode === 'recovery'">
+        </p>
+    @elseif ($challengeMode === 'recovery')
+        <p class="mb-4 text-sm text-gray-600 dark:text-gray-400">
             {{ __('Please confirm access to your account by entering one of your emergency recovery codes.') }}
-        </div>
+        </p>
+    @elseif ($challengeMode === 'security')
+        <p class="mb-4 text-sm text-gray-600 dark:text-gray-400">
+            {{ __('Answer your security questions to finish signing in.') }}
+        </p>
+    @endif
 
-        @if ($canUseSecurityQuestions ?? false)
-            <div class="mb-4" x-show="mode === 'security'" x-cloak>
-                {{ __('Answer your security questions to sign in when you cannot use your authenticator app.') }}
+    <x-validation-errors class="mb-4" />
+
+    <form
+        method="POST"
+        action="{{ $challengeMode === 'security' ? route('two-factor.security-questions') : route('two-factor.login') }}"
+        class="space-y-6"
+    >
+        @csrf
+
+        @if (in_array($challengeMode, ['code', 'recovery'], true))
+            <input type="hidden" name="challenge_mode" value="{{ $challengeMode }}">
+        @endif
+
+        @if ($challengeMode === 'code')
+            <div>
+                <x-label for="code" value="{{ __('Code') }}" />
+                <input
+                    id="code"
+                    type="text"
+                    inputmode="numeric"
+                    pattern="[0-9 ]*"
+                    name="code"
+                    autofocus
+                    autocomplete="one-time-code"
+                    class="form-input w-full mt-1"
+                    placeholder="{{ __('6-digit code') }}"
+                />
+            </div>
+        @elseif ($challengeMode === 'recovery')
+            <div>
+                <x-label for="recovery_code" value="{{ __('Recovery Code') }}" />
+                <input
+                    id="recovery_code"
+                    type="text"
+                    name="recovery_code"
+                    autofocus
+                    autocomplete="one-time-code"
+                    class="form-input w-full mt-1"
+                    placeholder="{{ __('Recovery code') }}"
+                />
+            </div>
+        @elseif ($challengeMode === 'security')
+            <div class="space-y-5">
+                @forelse ($challengeQuestions as $question)
+                    <div>
+                        <x-label
+                            for="security_answer_{{ $question['key'] }}"
+                            value="{{ $question['label'] }}"
+                        />
+                        <input
+                            id="security_answer_{{ $question['key'] }}"
+                            type="password"
+                            name="security_answers[{{ $question['key'] }}]"
+                            autocomplete="off"
+                            @if ($loop->first) autofocus @endif
+                            class="form-input block w-full mt-1"
+                            placeholder="{{ __('Your answer') }}"
+                        />
+                    </div>
+                @empty
+                    <p class="text-sm text-red-600">
+                        {{ __('Security questions are enabled, but no challenge questions could be loaded. Please contact support or use your authenticator app.') }}
+                    </p>
+                @endforelse
             </div>
         @endif
 
-        <x-validation-errors class="mb-4" />
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pt-1">
+            <div class="flex flex-col gap-2 text-sm">
+                @if ($challengeMode === 'code')
+                    <a href="{{ $switchTo('recovery') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
+                        {{ __('Use a recovery code') }}
+                    </a>
 
-        <form
-            method="POST"
-            action="{{ ($canUseSecurityQuestions ?? false) ? '#' : route('two-factor.login') }}"
-            x-bind:action="mode === 'security' ? '{{ route('two-factor.security-questions') }}' : '{{ route('two-factor.login') }}'"
-        >
-            @csrf
-            <div class="space-y-4">
-                <div x-show="mode === 'code'">
-                    <x-label for="code" value="{{ __('Code') }}" />
-                    <x-input id="code" type="text" inputmode="numeric" name="code" x-ref="code" autocomplete="one-time-code" />
-                </div>
+                    @if ($canUseSecurityQuestions)
+                        <a href="{{ $switchTo('security') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
+                            {{ __('Use security questions') }}
+                        </a>
+                    @endif
+                @elseif ($challengeMode === 'recovery')
+                    <a href="{{ $switchTo('code') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
+                        {{ __('Use an authentication code') }}
+                    </a>
 
-                <div x-show="mode === 'recovery'">
-                    <x-label for="recovery_code" value="{{ __('Recovery Code') }}" />
-                    <x-input id="recovery_code" type="text" name="recovery_code" x-ref="recovery_code" autocomplete="one-time-code" />
-                </div>
+                    @if ($canUseSecurityQuestions)
+                        <a href="{{ $switchTo('security') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
+                            {{ __('Use security questions') }}
+                        </a>
+                    @endif
+                @elseif ($challengeMode === 'security')
+                    <a href="{{ $switchTo('code') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
+                        {{ __('Use an authentication code') }}
+                    </a>
 
-                @if ($canUseSecurityQuestions ?? false)
-                    <div x-show="mode === 'security'" x-cloak class="space-y-4">
-                        @foreach ($challengeQuestions ?? [] as $question)
-                            <div>
-                                <x-label for="security_answer_{{ $question['key'] }}" value="{{ $question['label'] }}" />
-                                <x-input
-                                    id="security_answer_{{ $question['key'] }}"
-                                    type="password"
-                                    name="security_answers[{{ $question['key'] }}]"
-                                    x-ref="security_answer_{{ $question['key'] }}"
-                                    autocomplete="off"
-                                />
-                            </div>
-                        @endforeach
-                    </div>
+                    <a href="{{ $switchTo('recovery') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
+                        {{ __('Use a recovery code') }}
+                    </a>
                 @endif
             </div>
 
-            <div class="flex flex-col gap-3 mt-6 sm:flex-row sm:items-center sm:justify-between">
-                <div class="flex flex-col gap-2 text-sm">
-                    <button
-                        type="button"
-                        class="text-left underline hover:no-underline"
-                        x-show="mode === 'code'"
-                        x-on:click="
-                            mode = 'recovery';
-                            $nextTick(() => { $refs.recovery_code.focus() })
-                        "
-                    >
-                        {{ __('Use a recovery code') }}
-                    </button>
-
-                    @if ($canUseSecurityQuestions ?? false)
-                        <button
-                            type="button"
-                            class="text-left underline hover:no-underline"
-                            x-show="mode === 'code'"
-                            x-on:click="
-                                mode = 'security';
-                                $nextTick(() => {
-                                    const first = document.querySelector('[id^=security_answer_]');
-                                    if (first) first.focus();
-                                })
-                            "
-                        >
-                            {{ __('Use security questions') }}
-                        </button>
-                    @endif
-
-                    <button
-                        type="button"
-                        class="text-left text-gray-600 hover:text-gray-900 underline cursor-pointer"
-                        x-show="mode !== 'code'"
-                        x-on:click="
-                            mode = 'code';
-                            $nextTick(() => { $refs.code.focus() })
-                        "
-                    >
-                        {{ __('Use an authentication code') }}
-                    </button>
-                </div>
-
-                <x-button class="sm:ml-4">
-                    {{ __('Log in') }}
-                </x-button>
-            </div>
-        </form>
-    </div>
+            <x-button class="w-full sm:w-auto justify-center sm:ml-4">
+                {{ __('Log in') }}
+            </x-button>
+        </div>
+    </form>
 </x-authentication-layout>
