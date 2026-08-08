@@ -799,6 +799,18 @@
                                     Kashtre Settings
                                 </a>
                             </li>
+                            <li>
+                                <a href="{{ route('settings.hr-module.edit') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    HR Module Settings
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('settings.clinical-module.edit') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    Clinical Module Settings
+                                </a>
+                            </li>
                             @endif
 
                             @if(in_array('View Sub Groups', $permissions))

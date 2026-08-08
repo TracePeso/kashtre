@@ -66,7 +66,27 @@ Route::post('/policies/verify/{insuranceCompanyId}', [\App\Http\Controllers\Clie
 
 
 
-// HR Module Integration API
+// Clinical Module Integration API (X-Service-Key or X-API-Key)
+Route::middleware('clinical.api')->group(function () {
+    Route::get('/catalogue/items', [\App\Http\Controllers\API\ClinicalIntegrationController::class, 'catalogueItems']);
+    Route::get('/clients/{id}', [\App\Http\Controllers\API\ClinicalIntegrationController::class, 'clientShow']);
+    Route::get('/queues', [\App\Http\Controllers\API\ClinicalIntegrationController::class, 'queues']);
+    Route::post('/events', [\App\Http\Controllers\API\ClinicalIntegrationController::class, 'events']);
+});
+
+// HR Module Integration API (X-API-Key or X-HR-API-Key)
+Route::middleware('hr.api')->group(function () {
+    Route::get('/businesses', [\App\Http\Controllers\API\HrIntegrationController::class, 'businesses']);
+    Route::get('/branches', [\App\Http\Controllers\API\HrIntegrationController::class, 'branches']);
+    Route::get('/departments', [\App\Http\Controllers\API\HrIntegrationController::class, 'departments']);
+    Route::get('/qualifications', [\App\Http\Controllers\API\HrIntegrationController::class, 'qualifications']);
+    Route::get('/staff-categories', [\App\Http\Controllers\API\HrIntegrationController::class, 'staffCategories']);
+    Route::get('/client-spaces', [\App\Http\Controllers\API\HrIntegrationController::class, 'clientSpaces']);
+    Route::get('/users', [\App\Http\Controllers\API\HrIntegrationController::class, 'users']);
+    Route::get('/users/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'userShow']);
+});
+
+// Backwards-compatible HR aliases under /api/hr/*
 Route::prefix('hr')->middleware('hr.api')->group(function () {
     Route::get('/staff', [\App\Http\Controllers\API\HrIntegrationController::class, 'staff']);
     Route::get('/staff/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'staffShow']);
@@ -78,11 +98,34 @@ Route::prefix('hr')->middleware('hr.api')->group(function () {
     Route::get('/qualifications', [\App\Http\Controllers\API\HrIntegrationController::class, 'qualifications']);
     Route::get('/staff-categories', [\App\Http\Controllers\API\HrIntegrationController::class, 'staffCategories']);
     Route::get('/client-spaces', [\App\Http\Controllers\API\HrIntegrationController::class, 'clientSpaces']);
+    Route::get('/users', [\App\Http\Controllers\API\HrIntegrationController::class, 'users']);
+    Route::get('/users/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'userShow']);
 });
 
 Route::prefix('v1')->group(function () {
     include_once __DIR__ . '/custom/airtel_routes.php';
     include_once __DIR__ . '/custom/mtn_routes.php';
+
+    // Auth (Sanctum token) — same email/password as web login
+    Route::post('/auth/login', [\App\Http\Controllers\API\AuthController::class, 'login']);
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/auth/logout', [\App\Http\Controllers\API\AuthController::class, 'logout']);
+        Route::get('/auth/me', [\App\Http\Controllers\API\AuthController::class, 'me']);
+
+        Route::get('/users', [\App\Http\Controllers\API\UserController::class, 'index']);
+        Route::get('/users/{uuid}', [\App\Http\Controllers\API\UserController::class, 'show']);
+
+        Route::get('/items', [\App\Http\Controllers\API\ItemController::class, 'list']);
+        Route::get('/items/{uuid}', [\App\Http\Controllers\API\ItemController::class, 'show']);
+
+        Route::get('/businesses', [\App\Http\Controllers\API\BusinessController::class, 'index']);
+        Route::get('/businesses/{uuid}', [\App\Http\Controllers\API\BusinessController::class, 'show']);
+        Route::get('/businesses/{business}/branches', [\App\Http\Controllers\API\BusinessController::class, 'branches']);
+
+        Route::get('/branches', [\App\Http\Controllers\API\BranchController::class, 'index']);
+        Route::get('/branches/{uuid}', [\App\Http\Controllers\API\BranchController::class, 'show']);
+    });
 
     // Invoice API routes for third-party vendors
     Route::get('/invoices/insurance-company/{insuranceCompanyId}', [\App\Http\Controllers\API\InvoiceController::class, 'getInvoicesForInsuranceCompany']);
