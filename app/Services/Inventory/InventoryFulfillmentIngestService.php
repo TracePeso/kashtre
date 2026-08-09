@@ -78,7 +78,7 @@ class InventoryFulfillmentIngestService
                 continue;
             }
 
-            $priority = $this->detectPriority($item, $itemModel);
+            $priority = $this->detectPriority($item, $itemModel, (int) $invoice->business_id);
             $line = $this->upsertLine($invoice, $itemModel, $assignment, $quantity, $priority, $item);
 
             if ($line->wasRecentlyCreated) {
@@ -140,7 +140,7 @@ class InventoryFulfillmentIngestService
     /**
      * @param  array<string, mixed>  $itemPayload
      */
-    protected function detectPriority(array $itemPayload, Item $item): string
+    protected function detectPriority(array $itemPayload, Item $item, int $businessId): string
     {
         $haystack = Str::upper(implode(' ', array_filter([
             (string) ($itemPayload['name'] ?? ''),
@@ -150,12 +150,17 @@ class InventoryFulfillmentIngestService
             (string) $item->name,
         ])));
 
-        if (str_contains($haystack, 'STAT')) {
-            return InventoryFulfillmentLine::PRIORITY_STAT;
-        }
+        $keywords = InventoryModuleConfig::query()
+            ->where('business_id', $businessId)
+            ->first()
+            ?->statPriorityKeywords() ?? ['STAT', 'URGENT'];
 
-        if (str_contains($haystack, 'URGENT')) {
-            return InventoryFulfillmentLine::PRIORITY_URGENT;
+        foreach ($keywords as $word) {
+            if ($word !== '' && str_contains($haystack, $word)) {
+                return ($word === 'STAT' || str_starts_with($word, 'STAT'))
+                    ? InventoryFulfillmentLine::PRIORITY_STAT
+                    : InventoryFulfillmentLine::PRIORITY_URGENT;
+            }
         }
 
         $explicit = Str::lower((string) ($itemPayload['priority'] ?? 'normal'));

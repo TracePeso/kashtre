@@ -21,6 +21,10 @@ class InventoryInternalReplenishmentController extends Controller
 
     public function create()
     {
+        if (! InventoryBusinessContext::internalOrderingEnabled()) {
+            abort(403, 'Internal ordering is disabled for this organisation.');
+        }
+
         $businessId = InventoryBusinessContext::effectiveBusinessId();
         $stores = Store::query()
             ->where('business_id', $businessId)
@@ -33,6 +37,10 @@ class InventoryInternalReplenishmentController extends Controller
 
     public function store(Request $request, InventoryInternalReplenishmentService $service)
     {
+        if (! InventoryBusinessContext::internalOrderingEnabled()) {
+            abort(403, 'Internal ordering is disabled for this organisation.');
+        }
+
         $validated = $request->validate([
             'child_store_id' => ['required', 'integer'],
             'forecast_basis' => ['required', 'in:consumption,demand'],

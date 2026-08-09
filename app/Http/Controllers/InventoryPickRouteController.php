@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\RequiresInventoryModule;
+use App\Models\ClientSpace;
 use App\Models\InventoryFulfillmentLine;
 use App\Models\Store;
 use App\Services\Inventory\InventoryPickRouteService;
@@ -27,6 +28,21 @@ class InventoryPickRouteController extends Controller
         return view('inventory.fulfillment.pick-route', [
             'route' => $route,
             'line' => $fulfillmentLine,
+        ]);
+    }
+
+    public function ward(Store $store, ClientSpace $clientSpace, InventoryPickRouteService $routes)
+    {
+        $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
+        abort_unless((int) $store->business_id === $businessId, 404);
+        abort_unless((int) $clientSpace->business_id === $businessId, 404);
+        abort_unless($store->isEndStore(), 404);
+
+        $route = $routes->forWardRun($store, (int) $clientSpace->id);
+
+        return view('inventory.fulfillment.pick-route', [
+            'route' => $route,
+            'line' => null,
         ]);
     }
 }

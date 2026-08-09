@@ -177,6 +177,11 @@
                                 </a>
                             </li>
                             <li>
+                                <a href="{{ route('inventory.escrow.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.escrow*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Expired Escrow
+                                </a>
+                            </li>
+                            <li>
                                 <a href="{{ route('inventory.consumption.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.consumption*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
                                     Consumption
                                 </a>

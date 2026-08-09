@@ -28,6 +28,8 @@ class Kernel extends ConsoleKernel
         
         $schedule->command('inventory:process-main-outbox')->everyMinute();
 
+        $schedule->command('inventory:verify-forensic-audit --all')->dailyAt('02:15');
+
         // Expire visit IDs at midnight, extend for clients with pending/in-progress items
         $schedule->command('visits:expire')->dailyAt('00:00');
         

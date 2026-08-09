@@ -65,6 +65,41 @@
         </div>
     @endif
 
+    @if($order->isDraft())
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3">
+            <div class="min-w-0">
+                <p class="text-sm font-medium text-gray-900">Line edit mode</p>
+                <p class="text-xs text-gray-600 mt-0.5">
+                    @if($editMode === 'days')
+                        Days Mode: edit coverage days; quantity recalculates as MA × days − on hand.
+                    @else
+                        Quantity Mode: edit order quantities directly.
+                    @endif
+                </p>
+            </div>
+            <div class="inline-flex shrink-0 rounded-md border border-gray-200 bg-gray-50 p-0.5" role="group" aria-label="Edit mode">
+                <button type="button"
+                        wire:click="setEditMode('quantity')"
+                        @class([
+                            'px-2.5 py-1 text-xs font-medium rounded transition',
+                            'bg-indigo-600 text-white' => $editMode === 'quantity',
+                            'text-gray-600 hover:text-gray-900' => $editMode !== 'quantity',
+                        ])>
+                    Quantity Mode
+                </button>
+                <button type="button"
+                        wire:click="setEditMode('days')"
+                        @class([
+                            'px-2.5 py-1 text-xs font-medium rounded transition',
+                            'bg-indigo-600 text-white' => $editMode === 'days',
+                            'text-gray-600 hover:text-gray-900' => $editMode !== 'days',
+                        ])>
+                    Days Mode
+                </button>
+            </div>
+        </div>
+    @endif
+
     @if($showBudgetCapNotice || $capAdjustmentComparison)
         <div class="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
             <div class="flex flex-wrap items-start justify-between gap-2">

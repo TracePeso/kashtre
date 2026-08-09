@@ -4,12 +4,14 @@ namespace App\Livewire\Inventory;
 
 use App\Models\ClientSpaceStoreAssignment;
 use App\Models\InventoryFulfillmentLine;
+use App\Models\InventoryModuleConfig;
 use App\Models\Store;
 use App\Services\Inventory\InventoryFulfillmentDispenseService;
 use App\Services\Inventory\InventoryFulfillmentStageService;
 use App\Services\Inventory\InventoryHandoffTokenService;
 use App\Support\InventoryBusinessContext;
 use Filament\Forms\Components\CheckboxList;
+use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -269,7 +271,30 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->size('sm')
                     ->icon('heroicon-o-check-circle')
                     ->color('success')
-                    ->requiresConfirmation()
+                    ->form(function (InventoryFulfillmentLine $record): array {
+                        $config = InventoryModuleConfig::query()
+                            ->where('business_id', $record->business_id)
+                            ->first();
+
+                        $fields = [];
+
+                        if ($config?->batchLotTrackingEnabled()) {
+                            $fields[] = TextInput::make('batch_lot')
+                                ->label('Batch / lot')
+                                ->required()
+                                ->maxLength(100);
+                        }
+
+                        if ($config?->serialNumberTrackingEnabled()) {
+                            $fields[] = TagsInput::make('serials')
+                                ->label('Serial numbers')
+                                ->required()
+                                ->placeholder('Type a serial and press Enter')
+                                ->helperText('Enter one serial per unit dispensed.');
+                        }
+
+                        return $fields;
+                    })
                     ->modalHeading('Complete dispense')
                     ->modalDescription(fn (InventoryFulfillmentLine $record): string => sprintf(
                         'Dispense %s × %s from %s? Stock will leave this End Store, the Approved Pool will be updated, and the Main Module ticket will close.',
@@ -279,10 +304,13 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ))
                     ->modalSubmitActionLabel('Confirm dispense')
                     ->visible(fn (InventoryFulfillmentLine $record) => $record->isOutpatient() && $record->isOpen() && ! $record->isStaged())
-                    ->action(function (InventoryFulfillmentLine $record) {
+                    ->action(function (InventoryFulfillmentLine $record, array $data) {
                         try {
                             $updated = app(InventoryFulfillmentDispenseService::class)
-                                ->complete($record, Auth::user());
+                                ->complete($record, Auth::user(), null, [
+                                    'batch_lot' => $data['batch_lot'] ?? null,
+                                    'serials' => $data['serials'] ?? [],
+                                ]);
 
                             $record->fill($updated->getAttributes());
                             $record->syncOriginal();
@@ -321,8 +349,9 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                         TextInput::make('tote_barcode')
                             ->label('Tote barcode')
                             ->placeholder('Scan or type tote barcode')
+                            ->required()
                             ->maxLength(100)
-                            ->helperText('Optional physical tote ID for ward delivery.'),
+                            ->helperText('Required physical tote ID for ward delivery (SRD §4.4).'),
                     ])
                     ->modalHeading('Stage for collection')
                     ->modalDescription(fn (InventoryFulfillmentLine $record): string => sprintf(
@@ -334,12 +363,19 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                         && ($record->isStageable() || $record->isStaged()))
                     ->action(function (InventoryFulfillmentLine $record, array $data) {
                         try {
+                            $tote = trim((string) ($data['tote_barcode'] ?? ''));
+                            if ($tote === '') {
+                                throw ValidationException::withMessages([
+                                    'tote_barcode' => 'Tote barcode is required before staging.',
+                                ]);
+                            }
+
                             $result = app(InventoryFulfillmentStageService::class)
                                 ->stageBasket(
                                     $record,
                                     Auth::user(),
                                     true,
-                                    isset($data['tote_barcode']) ? (string) $data['tote_barcode'] : null
+                                    $tote
                                 );
 
                             $this->lastHandoffRef = $result['token']->uuid;
@@ -380,6 +416,21 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->url(fn (InventoryFulfillmentLine $record): string => route('inventory.fulfillment.pick-route', $record))
                     ->openUrlInNewTab()
                     ->visible(fn (InventoryFulfillmentLine $record) => $record->isInpatient() && $record->isOpen()),
+
+                Action::make('wardPickRoute')
+                    ->label('Ward pick')
+                    ->button()
+                    ->size('sm')
+                    ->icon('heroicon-o-building-office-2')
+                    ->color('gray')
+                    ->url(fn (InventoryFulfillmentLine $record): string => route('inventory.fulfillment.ward-pick-route', [
+                        'store' => $record->store_id,
+                        'client_space' => $record->client_space_id,
+                    ]))
+                    ->openUrlInNewTab()
+                    ->visible(fn (InventoryFulfillmentLine $record) => $record->isInpatient()
+                        && $record->isOpen()
+                        && $record->client_space_id),
 
                 Action::make('releaseHandoff')
                     ->label('Release')

@@ -29,6 +29,9 @@ class InventoryOrder extends Model
     public const TYPE_EXTERNAL = 'external';
     public const TYPE_INTERNAL = 'internal';
 
+    public const FORECAST_CONSUMPTION = 'consumption';
+    public const FORECAST_DEMAND = 'demand';
+
     protected $fillable = [
         'business_id',
         'store_id',
@@ -42,6 +45,7 @@ class InventoryOrder extends Model
         'subgroup_id',
         'item_ids',
         'budget_mode',
+        'forecast_basis',
         'budget_value',
         'budget_cap_enforced',
         'initial_order_total',
@@ -79,6 +83,11 @@ class InventoryOrder extends Model
         'submitted_at' => 'datetime',
         'approved_at' => 'datetime',
     ];
+
+    public function usesDemandForecast(): bool
+    {
+        return ($this->forecast_basis ?? self::FORECAST_CONSUMPTION) === self::FORECAST_DEMAND;
+    }
 
     public function business(): BelongsTo
     {

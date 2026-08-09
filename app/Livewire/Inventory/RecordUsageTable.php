@@ -3,6 +3,7 @@
 namespace App\Livewire\Inventory;
 
 use App\Models\Client;
+use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
 use App\Models\InventoryUsageEvent;
 use App\Models\Item;
@@ -68,7 +69,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                                 'item_id' => (int) $data['item_id'],
                                 'store_id' => isset($data['store_id']) ? (int) $data['store_id'] : null,
                                 'quantity' => $data['quantity'],
-                                'notes' => $data['notes'] ?? null,
+                                'notes' => $this->composeUsageNotes($data),
                                 'occurred_at' => $data['occurred_at'] ?? now(),
                             ], Auth::user());
 
@@ -121,12 +122,12 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                         default => 'gray',
                     }),
                 Tables\Columns\TextColumn::make('client.name')
-                    ->label('Client')
+                    ->label(fn (): string => inventory_label('client'))
                     ->placeholder('—')
                     ->searchable()
                     ->wrap(),
                 Tables\Columns\TextColumn::make('item.name')
-                    ->label('Item')
+                    ->label(fn (): string => inventory_label('item'))
                     ->searchable()
                     ->wrap()
                     ->description(fn (InventoryUsageEvent $record): ?string => $record->item?->strength
@@ -171,7 +172,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     ->description(fn (InventoryUsageEvent $record): ?string => $record->invoice?->invoice_number)
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('store.name')
-                    ->label('Store')
+                    ->label(fn (): string => inventory_label('store'))
                     ->placeholder('—')
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('recordedBy.name')
@@ -194,14 +195,14 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     ->label('Bill Main Module')
                     ->boolean(),
                 Tables\Filters\SelectFilter::make('client_id')
-                    ->label('Client')
+                    ->label(fn (): string => inventory_label('client'))
                     ->relationship('client', 'name')
                     ->searchable()
                     ->preload(),
             ])
             ->paginated([10, 25, 50])
             ->emptyStateHeading('No usage recorded yet')
-            ->emptyStateDescription('Record patient usage (Approved Pool first, then floor stock) or administrative usage from store stock.')
+            ->emptyStateDescription(fn (): string => 'Record '.strtolower(inventory_label('client')).' usage (Approved Pool first, then floor stock) or administrative usage from '.strtolower(inventory_label('store')).' stock.')
             ->emptyStateIcon('heroicon-o-clipboard-document-check');
     }
 
@@ -278,7 +279,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     $set('quantity', null);
                 }),
             Select::make('client_id')
-                ->label('Client')
+                ->label(fn (): string => inventory_label('client'))
                 ->options(
                     Client::query()
                         ->where('business_id', $businessId)
@@ -303,7 +304,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     $set('item_id', null);
                 }),
             Select::make('store_id')
-                ->label('Store')
+                ->label(fn (): string => inventory_label('store'))
                 ->options(fn (Get $get) => $get('context') === InventoryUsageEvent::CONTEXT_CRASH_CART
                     ? $crashCartStoreOptions
                     : $floorStoreOptions)
@@ -311,10 +312,10 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                 ->live()
                 ->helperText(function (Get $get): string {
                     return match ($get('context')) {
-                        InventoryUsageEvent::CONTEXT_PATIENT => 'Select a store to use floor stock. Leave empty to use Approved Pool only.',
-                        InventoryUsageEvent::CONTEXT_CRASH_CART => 'Crash cart satellites. Recording usage on a Ready cart will Deploy it automatically.',
+                        InventoryUsageEvent::CONTEXT_PATIENT => 'Select a '.strtolower(inventory_label('store')).' to use floor stock. Leave empty to use Approved Pool only.',
+                        InventoryUsageEvent::CONTEXT_CRASH_CART => 'Only Reconciling crash carts. Deploy → emergency (no docs) → Start reconcile → record usage here.',
                         InventoryUsageEvent::CONTEXT_WASTAGE_EXPIRED => 'Expired wastage reduces stock but is excluded from reorder averages.',
-                        default => 'Only items with stock at this store will be listed.',
+                        default => 'Only items with stock at this '.strtolower(inventory_label('store')).' will be listed.',
                     };
                 })
                 ->required(fn (Get $get): bool => in_array($get('context'), $stockContexts, true))
@@ -327,7 +328,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     $set('quantity', null);
                 }),
             Select::make('item_id')
-                ->label('Item')
+                ->label(fn (): string => inventory_label('item'))
                 ->options(function (Get $get) use ($businessId, $floorStockEnabled) {
                     $storeId = $floorStockEnabled && $get('store_id') ? (int) $get('store_id') : null;
 
@@ -451,11 +452,36 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                 ->default(now())
                 ->seconds(false)
                 ->required(),
+            Select::make('admin_purpose')
+                ->label('Administrative purpose')
+                ->options(fn (): array => InventoryModuleConfig::query()
+                    ->where('business_id', $businessId)
+                    ->first()
+                    ?->adminUsagePurposeOptions() ?? InventoryModuleConfig::defaultAdminUsagePurposes())
+                ->searchable()
+                ->required()
+                ->visible(fn (Get $get): bool => $get('context') === InventoryUsageEvent::CONTEXT_ADMINISTRATIVE),
             Textarea::make('notes')
                 ->label('Notes')
                 ->rows(2)
                 ->maxLength(500),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function composeUsageNotes(array $data): ?string
+    {
+        $parts = [];
+        if (! blank($data['admin_purpose'] ?? null)) {
+            $parts[] = 'Purpose: '.$data['admin_purpose'];
+        }
+        if (! blank($data['notes'] ?? null)) {
+            $parts[] = (string) $data['notes'];
+        }
+
+        return $parts !== [] ? implode(' · ', $parts) : null;
     }
 
     public function render(): View

@@ -5,7 +5,12 @@
                 <div>
                     <h1 class="text-xl font-semibold text-gray-900">Pick route sheet</h1>
                     <p class="text-sm text-gray-600 mt-1">
-                        {{ $route['store']?->name ?? 'End Store' }} · Basket {{ $route['basket_key'] }}
+                        {{ $route['store']?->name ?? 'End Store' }}
+                        @if(($route['scope'] ?? 'basket') === 'ward')
+                            · Ward run: {{ $route['client_space']?->name ?? inventory_label('client_space') }}
+                        @else
+                            · Basket {{ $route['basket_key'] }}
+                        @endif
                     </p>
                 </div>
                 <button type="button" onclick="window.print()"

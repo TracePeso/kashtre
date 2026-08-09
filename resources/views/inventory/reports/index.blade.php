@@ -11,6 +11,7 @@
                 ['route' => 'inventory.reports.shrinkage', 'title' => 'Shrinkage'],
                 ['route' => 'inventory.reports.demand', 'title' => 'Demand Forecast'],
                 ['route' => 'inventory.reports.aging', 'title' => 'Stock Aging'],
+                ['route' => 'inventory.reports.classification', 'title' => 'Classification (A-01)'],
             ] as $report)
                 <a href="{{ route($report['route']) }}"
                    class="block bg-white shadow sm:rounded-lg p-5 hover:ring-2 hover:ring-blue-200 transition">

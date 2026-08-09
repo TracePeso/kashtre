@@ -42,11 +42,11 @@ class InventoryForensicAuditLog extends Model
         });
 
         static::updating(function () {
-            throw new \RuntimeException('Inventory forensic audit logs are immutable.');
+            return false;
         });
 
         static::deleting(function () {
-            throw new \RuntimeException('Inventory forensic audit logs are immutable.');
+            return false;
         });
     }
 }

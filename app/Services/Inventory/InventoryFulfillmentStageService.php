@@ -40,6 +40,13 @@ class InventoryFulfillmentStageService
             ]);
         }
 
+        $tote = $toteBarcode !== null ? trim($toteBarcode) : '';
+        if ($tote === '') {
+            throw ValidationException::withMessages([
+                'tote_barcode' => 'Tote barcode is required before staging (SRD §4.4).',
+            ]);
+        }
+
         $lines = $entireBasket
             ? $this->basketLines($seedLine)
             : collect([$seedLine])->filter(fn (InventoryFulfillmentLine $line) => $line->isStageable() || $line->isStaged());
@@ -54,7 +61,7 @@ class InventoryFulfillmentStageService
             ]);
         }
 
-        $result = DB::transaction(function () use ($seedLine, $user, $toStage, $stageable, $toteBarcode) {
+        $result = DB::transaction(function () use ($seedLine, $user, $toStage, $stageable, $tote) {
             $now = now();
 
             // Expire any prior unused sessions for this basket at this store.
@@ -70,7 +77,7 @@ class InventoryFulfillmentStageService
                 'store_id' => $seedLine->store_id,
                 'client_space_id' => $seedLine->client_space_id,
                 'basket_key' => (string) $seedLine->basket_key,
-                'tote_barcode' => $toteBarcode ? trim($toteBarcode) : null,
+                'tote_barcode' => $tote,
                 'code_hash' => null,
                 'expires_at' => $now->copy()->addMinutes(InventoryHandoffToken::DEFAULT_TTL_MINUTES),
                 'created_by' => $user->id,

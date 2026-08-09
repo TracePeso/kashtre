@@ -122,6 +122,7 @@ class InventoryOrderController extends Controller
             'notes' => 'nullable|string|max:2000',
             'item_ids' => 'nullable|array',
             'item_ids.*' => 'integer|exists:items,id',
+            'forecast_basis' => 'nullable|in:consumption,demand',
         ]);
 
         $orderingApproach = $validated['ordering_approach']
@@ -170,6 +171,14 @@ class InventoryOrderController extends Controller
             ->firstOrFail();
 
         if ($validated['order_type'] === InventoryOrder::TYPE_INTERNAL) {
+            if (! InventoryBusinessContext::internalOrderingEnabled()) {
+                return back()
+                    ->withInput()
+                    ->withErrors([
+                        'order_type' => 'Internal ordering is disabled for this organisation.',
+                    ]);
+            }
+
             $sourceStore = Store::query()
                 ->where('business_id', $businessId)
                 ->whereKey($validated['source_store_id'])
@@ -240,6 +249,7 @@ class InventoryOrderController extends Controller
             null, // External RFQs have no header supplier — selection happens at quotation analysis.
             $validated['order_type'],
             $validated['order_type'] === InventoryOrder::TYPE_INTERNAL ? (int) $validated['source_store_id'] : null,
+            $validated['forecast_basis'] ?? InventoryOrder::FORECAST_CONSUMPTION,
         );
 
         $redirect = redirect()->route('inventory.orders.show', $order);

@@ -7,7 +7,7 @@
             <div>
                 <p class="text-sm font-semibold text-sky-900">Staged — waiting on Clinical handoff</p>
                 <p class="mt-0.5 text-sm text-sky-800">
-                    {{ $lastHandoffBasket ?? 'Client' }} — ward was notified.
+                    {{ $lastHandoffBasket ?? inventory_label('client') }} — ward was notified.
                     Ask the nurse for their Clinical 5-digit code, then use <span class="font-medium">Release</span>.
                 </p>
                 <p class="mt-1 font-mono text-xs text-sky-700">Ref: {{ $lastHandoffRef }}</p>

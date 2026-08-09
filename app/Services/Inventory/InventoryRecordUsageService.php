@@ -20,7 +20,6 @@ class InventoryRecordUsageService
         private readonly InventoryMainModuleSyncService $mainModule,
         private readonly InventoryForensicAuditService $audit,
         private readonly InventoryExpiredEscrowService $escrow,
-        private readonly InventoryInternalReplenishmentService $replenishment,
     ) {}
 
     /**
@@ -152,12 +151,8 @@ class InventoryRecordUsageService
         }
 
         if ($context === InventoryUsageEvent::CONTEXT_CRASH_CART) {
+            // Outbox signal only — IR draft is created once on Seal Ready (SRD §6 step 4–5).
             $this->mainModule->enqueueCrashCartReplenishment($event);
-            try {
-                $this->replenishment->seedFromCrashCartUsage($event, $user);
-            } catch (\Throwable $e) {
-                report($e);
-            }
         }
 
         return collect([$event]);
@@ -292,6 +287,24 @@ class InventoryRecordUsageService
             $remaining = round($remaining - $take, 4);
         }
 
+        $poolRemainingAfter = (float) $poolLines->sum(fn ($line) => (float) $line->quantity_remaining);
+
+        $this->audit->record(
+            $businessId,
+            'PATIENT_USAGE_APPROVED_POOL',
+            $user->id,
+            null,
+            $itemId,
+            round($poolRemainingAfter + $quantity, 4),
+            $poolRemainingAfter,
+            $clientId,
+            [
+                'quantity' => $quantity,
+                'pool_allocations' => $allocations,
+                'resolution' => InventoryUsageEvent::RESOLUTION_APPROVED_POOL,
+            ]
+        );
+
         return InventoryUsageEvent::create([
             'business_id' => $businessId,
             'context' => InventoryUsageEvent::CONTEXT_PATIENT,
@@ -351,13 +364,23 @@ class InventoryRecordUsageService
                 ]);
             }
 
-            // First usage on a Ready cart implies it has been taken into use → Deploy.
+            // SRD §6: Deploy first (no docs); Record Usage only while Reconciling.
             if ($store->crash_cart_status === Store::CRASH_CART_READY) {
-                $store->update([
-                    'crash_cart_status' => Store::CRASH_CART_DEPLOYED,
-                    'crash_cart_deployed_at' => now(),
+                throw ValidationException::withMessages([
+                    'store_id' => 'Deploy this crash cart before recording usage. Use Crash Carts → Deploy, then Start reconcile.',
                 ]);
-                $store->refresh();
+            }
+
+            if ($store->crash_cart_status === Store::CRASH_CART_DEPLOYED) {
+                throw ValidationException::withMessages([
+                    'store_id' => 'Crash cart is deployed for emergency use — no inventory documentation yet. Start reconcile first.',
+                ]);
+            }
+
+            if ($store->crash_cart_status !== Store::CRASH_CART_RECONCILING) {
+                throw ValidationException::withMessages([
+                    'store_id' => 'Crash cart must be in Reconciling status to record usage.',
+                ]);
             }
         } elseif (! in_array($store->distribution_type, [
             Store::DISTRIBUTION_END,

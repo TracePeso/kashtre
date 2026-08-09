@@ -8,10 +8,13 @@ use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
 use App\Models\Item;
 use App\Models\Store;
+use App\Services\Inventory\InventoryExpiredEscrowService;
 use App\Services\Inventory\InventoryStockAgingService;
 use App\Services\Inventory\InventoryStockCountShrinkageService;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
+use Filament\Notifications\Notification;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
@@ -20,6 +23,7 @@ use Illuminate\Contracts\Pagination\Paginator;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 
 class InventoryStockMonitor extends Component implements HasForms, HasTable
@@ -48,7 +52,11 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
         $requestedView = request()->query('view');
 
         if ($requestedView === self::VIEW_NETWORK) {
-            $this->stockView = self::VIEW_NETWORK;
+            if (! \App\Support\InventoryBusinessContext::multiStoreNetworkEnabled()) {
+                $this->stockView = self::VIEW_LOCAL;
+            } else {
+                $this->stockView = self::VIEW_NETWORK;
+            }
         }
 
         $businessId = (int) \App\Support\InventoryBusinessContext::effectiveBusinessId();
@@ -60,6 +68,12 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
     public function setStockView(string $view): void
     {
         if (! in_array($view, [self::VIEW_LOCAL, self::VIEW_NETWORK], true) || $this->stockView === $view) {
+            return;
+        }
+
+        if ($view === self::VIEW_NETWORK && ! \App\Support\InventoryBusinessContext::multiStoreNetworkEnabled()) {
+            session()->flash('error', 'Multi-store network view is disabled for this organisation.');
+
             return;
         }
 
@@ -221,12 +235,54 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
                     ->alignEnd()
                     ->state(fn (Item $record): float => (float) $this->mForItem($record, 'valuation'))
                     ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2)),
+
+                TextColumn::make('expired_escrow')
+                    ->label('Expired escrow')
+                    ->alignEnd()
+                    ->state(fn (Item $record): float => (float) ($record->stock_expired_quantity_suom ?? 0))
+                    ->formatStateUsing(fn ($state): string => number_format((float) $state, 0))
+                    ->color(fn ($state): ?string => (float) $state > 0 ? 'warning' : null),
             ])
             ->actions([
                 Action::make('history')
                     ->label('History')
                     ->icon('heroicon-o-clock')
                     ->url(fn (Item $record): string => route('inventory.monitor.history', $record)),
+                Action::make('writeOffEscrow')
+                    ->label('Write off escrow')
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    ->visible(fn (Item $record): bool => (float) ($record->stock_expired_quantity_suom ?? 0) > 0
+                        && ! \App\Support\InventoryBusinessContext::isAdminBrowsing())
+                    ->form(fn (Item $record): array => [
+                        TextInput::make('quantity')
+                            ->label('Quantity to write off')
+                            ->numeric()
+                            ->required()
+                            ->minValue(0.0001)
+                            ->maxValue((float) ($record->stock_expired_quantity_suom ?? 0))
+                            ->default((float) ($record->stock_expired_quantity_suom ?? 0)),
+                    ])
+                    ->action(function (Item $record, array $data) {
+                        \App\Support\InventoryBusinessContext::assertWritable();
+
+                        try {
+                            app(InventoryExpiredEscrowService::class)->writeOffEscrow(
+                                (int) $record->business_id,
+                                (int) $record->stock_store_id,
+                                (int) $record->id,
+                                (float) ($data['quantity'] ?? 0),
+                                Auth::user()
+                            );
+                            Notification::make()->title('Expired escrow written off')->success()->send();
+                            $this->resetTable();
+                        } catch (ValidationException $e) {
+                            Notification::make()
+                                ->title(collect($e->errors())->flatten()->first() ?? 'Could not write off escrow')
+                                ->danger()
+                                ->send();
+                        }
+                    }),
             ])
             ->defaultSort('name')
             ->striped()

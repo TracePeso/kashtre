@@ -84,6 +84,7 @@ use App\Http\Controllers\InventoryStockTransferController;
 use App\Http\Controllers\InventoryGoodsReturnController;
 use App\Http\Controllers\InventoryReportsController;
 use App\Http\Controllers\InventoryStockCountController;
+use App\Http\Controllers\InventoryEscrowController;
 use App\Http\Controllers\ServicePointCallerController;
 use App\Http\Controllers\CallingController;
 use App\Http\Controllers\EmergencyController;
@@ -332,9 +333,13 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/monitor/items/{item}/history', [InventoryController::class, 'stockHistory'])->name('monitor.history');
         Route::get('/fulfillment', [InventoryFulfillmentController::class, 'index'])->name('fulfillment.index');
         Route::get('/fulfillment/{fulfillmentLine}/pick-route', [InventoryPickRouteController::class, 'show'])->name('fulfillment.pick-route');
+        Route::get('/fulfillment/ward-pick/{store}/{client_space}', [InventoryPickRouteController::class, 'ward'])->name('fulfillment.ward-pick-route');
         Route::get('/approved-pool', [InventoryApprovedPoolController::class, 'index'])->name('approved-pool.index');
         Route::get('/usage', [InventoryRecordUsageController::class, 'index'])->name('usage.index');
         Route::get('/crash-carts', [InventoryCrashCartController::class, 'index'])->name('crash-carts.index');
+        Route::post('/crash-carts/{store}/deploy', [InventoryCrashCartController::class, 'deploy'])->name('crash-carts.deploy');
+        Route::post('/crash-carts/{store}/reconcile', [InventoryCrashCartController::class, 'reconcile'])->name('crash-carts.reconcile');
+        Route::post('/crash-carts/{store}/ready', [InventoryCrashCartController::class, 'ready'])->name('crash-carts.ready');
         Route::get('/replenishment/create', [InventoryInternalReplenishmentController::class, 'create'])->name('replenishment.create');
         Route::post('/replenishment', [InventoryInternalReplenishmentController::class, 'store'])->name('replenishment.store');
         Route::get('/stock-counts', [InventoryStockCountController::class, 'index'])->name('stock-counts.index');
@@ -344,6 +349,8 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::post('/stock-counts/{stockCount}/submit', [InventoryStockCountController::class, 'submit'])->name('stock-counts.submit');
         Route::post('/stock-counts/{stockCount}/approve', [InventoryStockCountController::class, 'approve'])->name('stock-counts.approve');
         Route::post('/stock-counts/{stockCount}/reject', [InventoryStockCountController::class, 'reject'])->name('stock-counts.reject');
+        Route::get('/escrow', [InventoryEscrowController::class, 'index'])->name('escrow.index');
+        Route::post('/escrow/write-off', [InventoryEscrowController::class, 'writeOff'])->name('escrow.write-off');
         Route::get('/consumption', [InventoryDailyConsumptionController::class, 'index'])->name('consumption.index');
         Route::get('/consumption/export/excel', [InventoryDailyConsumptionController::class, 'exportExcel'])
             ->name('consumption.export.excel');
@@ -416,6 +423,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/reports/valuation', [InventoryReportsController::class, 'valuation'])->name('reports.valuation');
         Route::get('/reports/shrinkage', [InventoryReportsController::class, 'shrinkage'])->name('reports.shrinkage');
         Route::get('/reports/demand', [InventoryReportsController::class, 'demand'])->name('reports.demand');
+        Route::get('/reports/classification', [InventoryReportsController::class, 'classification'])->name('reports.classification');
         Route::get('/network', [InventoryController::class, 'network'])->name('network');
     });
     

@@ -666,6 +666,17 @@ class InvoiceController extends Controller
                 throw new \RuntimeException('Could not allocate a unique invoice number after repeated attempts.');
             }
 
+            // SRD A-02 — capture demand intent as soon as invoice items exist (before payment / stock fulfillment).
+            try {
+                app(\App\Services\Inventory\InventoryDemandLedgerService::class)
+                    ->recordFromInvoice($invoice, $itemsCollection->toArray());
+            } catch (\Throwable $e) {
+                Log::warning('Inventory demand ledger early capture failed', [
+                    'invoice_id' => $invoice->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             Log::info('Invoice created successfully', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,

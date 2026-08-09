@@ -40,6 +40,16 @@ class InventoryDemandLedgerService
                 continue;
             }
 
+            // Idempotent per invoice+item so early (pre-payment) capture and payment ingest do not double-count.
+            $exists = InventoryDemandLedger::query()
+                ->where('invoice_id', $invoice->id)
+                ->where('item_id', $model->id)
+                ->exists();
+
+            if ($exists) {
+                continue;
+            }
+
             InventoryDemandLedger::query()->create([
                 'business_id' => $invoice->business_id,
                 'item_id' => $model->id,

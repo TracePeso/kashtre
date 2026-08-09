@@ -16,6 +16,8 @@ class InventoryPickRouteService
      * @return array{
      *     store: Store,
      *     basket_key: string,
+     *     scope: string,
+     *     client_space: ?\App\Models\ClientSpace,
      *     lines: list<array{item_id:int,item_name:string,quantity:float,location_layer_3:?string,location_layer_2:?string,location_layer_1:?string}>
      * }
      */
@@ -37,6 +39,59 @@ class InventoryPickRouteService
             ])
             ->get();
 
+        return $this->buildRoute($seed->store, $open, [
+            'scope' => 'basket',
+            'basket_key' => (string) $seed->basket_key,
+            'client_space' => null,
+        ]);
+    }
+
+    /**
+     * Ward collection run: sum SKUs across all patient baskets in a Client Space reservoir (SRD §4.4).
+     *
+     * @return array{
+     *     store: Store,
+     *     basket_key: string,
+     *     scope: string,
+     *     client_space: ?\App\Models\ClientSpace,
+     *     lines: list<array{item_id:int,item_name:string,quantity:float,location_layer_3:?string,location_layer_2:?string,location_layer_1:?string}>
+     * }
+     */
+    public function forWardRun(Store $store, int $clientSpaceId): array
+    {
+        $store->loadMissing([]);
+
+        $open = InventoryFulfillmentLine::query()
+            ->with(['item:id,name,code', 'clientSpace:id,name'])
+            ->where('business_id', $store->business_id)
+            ->where('store_id', $store->id)
+            ->where('client_space_id', $clientSpaceId)
+            ->where('fulfillment_strategy', ClientSpaceStoreAssignment::STRATEGY_BATCH_AND_STAGE)
+            ->whereIn('status', [
+                InventoryFulfillmentLine::STATUS_PENDING,
+                InventoryFulfillmentLine::STATUS_PICKING,
+                InventoryFulfillmentLine::STATUS_PARTIAL,
+                InventoryFulfillmentLine::STATUS_STAGED,
+            ])
+            ->get();
+
+        $space = $open->first()?->clientSpace
+            ?? \App\Models\ClientSpace::query()->find($clientSpaceId);
+
+        return $this->buildRoute($store, $open, [
+            'scope' => 'ward',
+            'basket_key' => 'ward-'.$clientSpaceId,
+            'client_space' => $space,
+        ]);
+    }
+
+    /**
+     * @param  Collection<int, InventoryFulfillmentLine>  $open
+     * @param  array{scope:string,basket_key:string,client_space:?\App\Models\ClientSpace}  $meta
+     * @return array<string, mixed>
+     */
+    protected function buildRoute(Store $store, Collection $open, array $meta): array
+    {
         $bySku = [];
         foreach ($open as $line) {
             $remaining = max(0, (float) $line->quantity - (float) $line->quantity_fulfilled);
@@ -55,9 +110,9 @@ class InventoryPickRouteService
         }
 
         $locations = InventoryStockLevel::query()
-            ->where('business_id', $seed->business_id)
-            ->where('store_id', $seed->store_id)
-            ->whereIn('item_id', array_keys($bySku))
+            ->where('business_id', $store->business_id)
+            ->where('store_id', $store->id)
+            ->whereIn('item_id', array_keys($bySku) ?: [0])
             ->get(['item_id', 'location_layer_3', 'location_layer_2', 'location_layer_1'])
             ->keyBy('item_id');
 
@@ -80,10 +135,12 @@ class InventoryPickRouteService
         ])->values()->all();
 
         return [
-            'store' => $seed->store,
-            'basket_key' => (string) $seed->basket_key,
+            'store' => $store,
+            'basket_key' => $meta['basket_key'],
+            'scope' => $meta['scope'],
+            'client_space' => $meta['client_space'],
             'lines' => $rows,
-            'labels' => $seed->store?->locationLayerLabels() ?? Store::defaultLocationLabels($seed->store?->distribution_type),
+            'labels' => $store->locationLayerLabels() ?? Store::defaultLocationLabels($store->distribution_type),
         ];
     }
 }

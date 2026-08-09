@@ -30,6 +30,15 @@ class ServiceDeliveryQueueController extends Controller
                 ], 403);
             }
 
+            // SRD §2.2 — goods are Pending → Completed only (no In Progress).
+            $serviceDeliveryQueue->loadMissing('item');
+            if (($serviceDeliveryQueue->item?->type ?? null) === 'good') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Goods cannot move to In Progress. Dispense them from the End Store queue; status becomes Completed when dispense finishes.',
+                ], 422);
+            }
+
             // Log the action before processing money transfers
             Log::info("=== MARKING ITEM AS IN PROGRESS ===", [
                 'service_delivery_queue_id' => $serviceDeliveryQueue->id,

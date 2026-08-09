@@ -335,22 +335,9 @@ class InventoryMainModuleSyncService
 
     protected function processCrashCartReplenishment(InventoryMainModuleOutbox $row): void
     {
-        Log::info('Crash cart replenishment required', $row->payload ?? []);
-
-        $payload = $row->payload ?? [];
-        $storeId = (int) ($payload['store_id'] ?? 0);
-        $itemId = (int) ($payload['item_id'] ?? 0);
-        if ($storeId <= 0 || $itemId <= 0) {
-            return;
-        }
-
-        $event = InventoryUsageEvent::query()->find($row->aggregate_id);
-        $user = $event?->recordedBy;
-        if (! $event || ! $user) {
-            return;
-        }
-
-        app(InventoryInternalReplenishmentService::class)->seedFromCrashCartUsage($event, $user);
+        // Audit / Main Module signal only. Physical IR draft is created on Seal Ready
+        // via InventoryCrashCartService::markReady (avoids duplicate drafts per usage line).
+        Log::info('Crash cart replenishment signal acknowledged', $row->payload ?? []);
     }
 
     /**

@@ -24,7 +24,8 @@ class InventoryOrderService
     public const AUTO_CONSUMPTION_RATE_DAYS = 15;
 
     public function __construct(
-        private readonly InventoryStockAnalyticsService $analytics
+        private readonly InventoryStockAnalyticsService $analytics,
+        private readonly InventoryDaysOfStockService $daysOfStock,
     ) {}
 
     public function generateOrderNumber(int $businessId, string $orderType = InventoryOrder::TYPE_EXTERNAL): string
@@ -59,10 +60,15 @@ class InventoryOrderService
         ?int $supplierId = null,
         string $orderType = InventoryOrder::TYPE_EXTERNAL,
         ?int $sourceStoreId = null,
+        string $forecastBasis = InventoryOrder::FORECAST_CONSUMPTION,
     ): InventoryOrder {
         $normalizedItemIds = $this->normalizeItemIds($itemIds);
+        $forecastBasis = in_array($forecastBasis, [
+            InventoryOrder::FORECAST_CONSUMPTION,
+            InventoryOrder::FORECAST_DEMAND,
+        ], true) ? $forecastBasis : InventoryOrder::FORECAST_CONSUMPTION;
 
-        return DB::transaction(function () use ($businessId, $storeId, $user, $importanceFilter, $budgetMode, $budgetValue, $periodOfOrderDays, $notes, $groupId, $subgroupId, $peakPeriodPercent, $peakConsumptionIncreasePercent, $safetyStockDays, $bufferStockDays, $notificationToOrderDays, $normalizedItemIds, $supplierId, $orderType, $sourceStoreId) {
+        return DB::transaction(function () use ($businessId, $storeId, $user, $importanceFilter, $budgetMode, $budgetValue, $periodOfOrderDays, $notes, $groupId, $subgroupId, $peakPeriodPercent, $peakConsumptionIncreasePercent, $safetyStockDays, $bufferStockDays, $notificationToOrderDays, $normalizedItemIds, $supplierId, $orderType, $sourceStoreId, $forecastBasis) {
             $config = InventoryModuleConfig::query()
                 ->forBusiness($businessId)
                 ->active()
@@ -88,6 +94,7 @@ class InventoryOrderService
                 'subgroup_id' => $subgroupId,
                 'item_ids' => $normalizedItemIds,
                 'budget_mode' => $budgetMode,
+                'forecast_basis' => $forecastBasis,
                 'budget_value' => $budgetValue,
                 'moving_average_days' => in_array($budgetMode, [
                     InventoryOrder::BUDGET_MODE_DAYS,
@@ -172,7 +179,9 @@ class InventoryOrderService
 
         $periodDays = $this->periodDaysForCalculation($order, $config);
         $peakIncrease = max(0, (float) ($order->peak_consumption_increase_percent ?? 0));
-        $maWindowDays = $this->analytics->graduatedMaWindowDays($periodDays);
+        $maWindowDays = $order->usesDemandForecast()
+            ? $this->daysOfStock->forecastWindowDays($periodDays)
+            : $this->analytics->graduatedMaWindowDays($periodDays);
 
         if ((int) ($order->moving_average_days ?? 0) !== $maWindowDays) {
             $order->update(['moving_average_days' => $maWindowDays]);
@@ -185,16 +194,16 @@ class InventoryOrderService
                 continue;
             }
 
-            // V / AA — always the 15-day rate used for stock days N = M ÷ (V or AA).
-            $vDaily = $this->analytics->excelDailyUsageSuom($stock, $config);
-            // Period AF rate — graduated V/W/X/Y/Z from BA6; used only for order qty.
-            $periodRate = $this->analytics->periodOrderDailyRate($stock, $config, $periodDays);
+            // V / AA — 15-day rate used for stock days N = M ÷ (V or AA); demand uses demand ledger.
+            $vDaily = $this->dailyUsageForOrder($order, $stock, $config, 15);
+            // Period AF rate — graduated / windowed from BA6; used only for order qty.
+            $periodRate = $this->periodRateForOrder($order, $stock, $config, $periodDays);
 
             if ($periodRate <= 0 && ! $this->shouldKeepSelectedItem($order, $item)) {
                 continue;
             }
 
-            $baseSuggested = $this->analytics->suggestedOrderQtyPeriod($stock, $config, $periodDays, $order);
+            $baseSuggested = $this->suggestedQtyPeriodForOrder($order, $stock, $config, $periodDays);
 
             if ($baseSuggested <= 0 && ! $this->shouldKeepSelectedItem($order, $item)) {
                 continue;
@@ -202,7 +211,7 @@ class InventoryOrderService
 
             $arStock = $this->analytics->systemStockArSuom($stock, $config);
             $currentStock = $this->analytics->currentStockLevelSuom($stock);
-            $stockDays = $this->analytics->stockDaysReport($stock, $config);
+            $stockDays = $this->stockDaysForOrder($order, $stock, $config);
             $daysLeft = $this->analytics->daysLeftToOrder($stock, $config, $order);
             $unitPrice = $this->analytics->purchasePricePerSuom($stock, $item);
 
@@ -324,14 +333,14 @@ class InventoryOrderService
                 continue;
             }
 
-            $dailyAvg = $this->analytics->excelDailyUsageSuom($stock, $config);
+            $dailyAvg = $this->dailyUsageForOrder($order, $stock, $config, 15);
             $explicitlySelected = $this->shouldKeepSelectedItem($order, $item);
 
             if ($dailyAvg <= 0 && ! $explicitlySelected) {
                 continue;
             }
 
-            $stockDays = $this->analytics->stockDaysReport($stock, $config);
+            $stockDays = $this->stockDaysForOrder($order, $stock, $config);
 
             // Overstocked: skip unless the user picked this item (keep selection count).
             if (! $explicitlySelected && $stockDays !== null && $stockDays > 366) {
@@ -1210,6 +1219,141 @@ class InventoryOrderService
             'adjusted_count' => $adjustedCount,
             'comparison' => $comparison,
         ];
+    }
+
+    /**
+     * Days Mode (SRD §7.5): order_qty = MA × days − on_hand.
+     *
+     * @return array{
+     *     line: InventoryOrderLine,
+     *     redistributed: bool,
+     *     adjusted_count: int,
+     *     comparison: ?array
+     * }
+     */
+    public function applyLineDaysUpdate(
+        InventoryOrderLine $line,
+        float $orderDays,
+        bool $redistributeWhenCapped = true
+    ): array {
+        $line->loadMissing(['order', 'item']);
+        $order = $line->order;
+        $orderDays = max(0, $orderDays);
+
+        $basis = $order->usesDemandForecast()
+            ? InventoryDaysOfStockService::FORECAST_DEMAND
+            : InventoryDaysOfStockService::FORECAST_CONSUMPTION;
+
+        $window = $this->daysOfStock->forecastWindowDays($orderDays > 0 ? $orderDays : 15);
+        $ma = $this->daysOfStock->movingAverageDaily(
+            (int) $order->business_id,
+            (int) $order->store_id,
+            (int) $line->item_id,
+            $window,
+            $basis
+        );
+
+        $onHand = (float) (InventoryStockLevel::query()
+            ->where('business_id', $order->business_id)
+            ->where('store_id', $order->store_id)
+            ->where('item_id', $line->item_id)
+            ->where(function ($q) {
+                $q->whereNull('stock_zone')->orWhere('stock_zone', 'active');
+            })
+            ->value('quantity_suom') ?? $line->current_stock_suom ?? 0);
+
+        $qty = max(0, round(($ma * $orderDays) - $onHand, 4));
+
+        $result = $this->applyLineQuantityUpdate($line, $qty, null, $redistributeWhenCapped);
+        $result['line']->update(['order_days' => $orderDays]);
+        $result['line'] = $result['line']->fresh('item');
+
+        return $result;
+    }
+
+    /**
+     * Daily usage for an order line using consumption MA or demand ledger MA.
+     */
+    private function dailyUsageForOrder(
+        InventoryOrder $order,
+        InventoryStockLevel $stock,
+        ?InventoryModuleConfig $config,
+        int $windowDays = 15
+    ): float {
+        if ($order->usesDemandForecast()) {
+            $ma = $this->daysOfStock->movingAverageDaily(
+                (int) $order->business_id,
+                (int) $order->store_id,
+                (int) $stock->item_id,
+                $windowDays,
+                InventoryDaysOfStockService::FORECAST_DEMAND
+            );
+
+            if ($ma > 0) {
+                return $ma;
+            }
+
+            return (float) ($config?->fixed_daily_average_suom ?? 0);
+        }
+
+        return $this->analytics->excelDailyUsageSuom($stock, $config);
+    }
+
+    private function periodRateForOrder(
+        InventoryOrder $order,
+        InventoryStockLevel $stock,
+        ?InventoryModuleConfig $config,
+        float $periodDays
+    ): float {
+        if ($order->usesDemandForecast()) {
+            return $this->dailyUsageForOrder(
+                $order,
+                $stock,
+                $config,
+                $this->daysOfStock->forecastWindowDays($periodDays)
+            );
+        }
+
+        return $this->analytics->periodOrderDailyRate($stock, $config, $periodDays);
+    }
+
+    private function stockDaysForOrder(
+        InventoryOrder $order,
+        InventoryStockLevel $stock,
+        ?InventoryModuleConfig $config
+    ): ?float {
+        $usage = $this->dailyUsageForOrder($order, $stock, $config, 15);
+
+        if ($usage <= 0) {
+            return null;
+        }
+
+        return round($this->analytics->currentStockLevelSuom($stock) / $usage, 1);
+    }
+
+    private function suggestedQtyPeriodForOrder(
+        InventoryOrder $order,
+        InventoryStockLevel $stock,
+        ?InventoryModuleConfig $config,
+        float $periodDays
+    ): float {
+        if (! $order->usesDemandForecast()) {
+            return $this->analytics->suggestedOrderQtyPeriod($stock, $config, $periodDays, $order);
+        }
+
+        $stockDays = $this->stockDaysForOrder($order, $stock, $config) ?? 0;
+        $coverage = $periodDays
+            + $this->analytics->safetyStockDays($stock, $config, $order)
+            + $this->analytics->bufferStockDays($stock, $config, $order)
+            - $stockDays;
+
+        if ($coverage <= 0) {
+            return 0.0;
+        }
+
+        $rate = $this->periodRateForOrder($order, $stock, $config, $periodDays);
+
+        return max(0, round($coverage * $rate, 4));
     }
 
     /**

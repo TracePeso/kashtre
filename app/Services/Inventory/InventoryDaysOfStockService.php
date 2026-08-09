@@ -57,6 +57,11 @@ class InventoryDaysOfStockService
         return $windowDays > 0 ? round($total / $windowDays, 4) : 0.0;
     }
 
+    /**
+     * Current stock days (SRD §7.3): always on-hand ÷ 15-day MA.
+     * $coverageHint is accepted for call-site compatibility but ignored for display —
+     * use forecastWindowDays() only when sizing order-generation windows.
+     */
     public function currentStockDays(int $businessId, int $storeId, int $itemId, ?float $coverageHint = null): ?float
     {
         $onHand = (float) (InventoryStockLevel::query()
@@ -68,8 +73,9 @@ class InventoryDaysOfStockService
             })
             ->value('quantity_suom') ?? 0);
 
-        $window = $this->forecastWindowDays($coverageHint ?? 15);
-        $ma = $this->movingAverageDaily($businessId, $storeId, $itemId, $window);
+        unset($coverageHint);
+
+        $ma = $this->movingAverageDaily($businessId, $storeId, $itemId, 15);
 
         if ($ma <= 0) {
             return null;

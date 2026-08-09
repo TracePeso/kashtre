@@ -67,6 +67,9 @@ class InventoryInternalReplenishmentService
                 'order_number' => 'INT-'.now()->format('YmdHis').'-'.$child->id,
                 'status' => InventoryOrder::STATUS_DRAFT,
                 'budget_mode' => InventoryOrder::BUDGET_MODE_DAYS,
+                'forecast_basis' => $basis === InventoryDaysOfStockService::FORECAST_DEMAND
+                    ? InventoryOrder::FORECAST_DEMAND
+                    : InventoryOrder::FORECAST_CONSUMPTION,
                 'budget_value' => $coverage,
                 'moving_average_days' => $this->daysOfStock->forecastWindowDays($coverage),
                 'period_of_order_days' => $coverage,
