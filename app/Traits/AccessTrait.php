@@ -183,6 +183,55 @@ trait AccessTrait
         "Package Sales" => ['View Package Sales', 'Edit Package Sales', 'Add Package Sales', 'View Package Sales History', 'Export Package Sales'],
     ];
 
+    public static $imagingModule = [
+        "Imaging Orders" => ['View Imaging Orders', 'Add Imaging Orders'],
+        "Imaging Studies" => ['View Imaging Studies', 'Progress Imaging Studies'],
+        "Imaging Reports" => ['Report Imaging Studies', 'Verify Imaging Reports'],
+        "Peer Review" => ['View Peer Review Cases', 'Complete Peer Review Cases'],
+        "Critical Findings" => ['Receive Critical Imaging Alerts'],
+        "My Imaging Queue" => ['View My Imaging Queue', 'Claim Imaging Studies', 'Release Imaging Studies', 'Transfer Imaging Studies'],
+        "Imaging Audit Log" => ['View Imaging Audit Log'],
+        "Imaging Analytics" => ['View Imaging Analytics'],
+        "Contrast Vials" => ['View Contrast Vials', 'Manage Contrast Vials'],
+        "Consumption Exceptions" => ['View Consumption Exceptions', 'Resolve Consumption Exceptions'],
+        "Imaging Settings" => [
+            'View Imaging Protocols', 'Manage Imaging Protocols',
+            'View Imaging Readiness Checks', 'Manage Imaging Readiness Checks',
+            'View Imaging Critical Findings', 'Manage Imaging Critical Findings',
+            'View Imaging Module', 'Manage Imaging Module',
+            'View Imaging Service Point Configs', 'Manage Imaging Service Point Configs',
+            'View Imaging Modalities', 'Manage Imaging Modalities',
+            'View Imaging Workflow Steps', 'Manage Imaging Workflow Steps',
+        ],
+    ];
+
+
+    public static $clinicalModule = [
+        "Clinical Observations" => ['View Clinical Observations', 'Add Clinical Observations'],
+        "Ward Census" => ['View Ward Census', 'Manage Ward Census', 'Add Overflow Beds'],
+        "Care Assignments" => ['View Care Assignments', 'Manage Care Assignments'],
+        "Clinical Work Orders" => ['View Clinical Work Orders', 'Add Clinical Work Orders'],
+        "Clinical Process Registry" => ['View Clinical Process Registry', 'Progress Clinical Process Registry'],
+        // Rollout gap fix: clinical_process_steps.required_role ('WARD_NURSE',
+        // 'CONSULTANT') and the Claim Patient doctor/nurse choice were stored
+        // but never checked against anything. This app has no reliable
+        // "job role" concept (Title/Qualification are free-text, admin-typed,
+        // no canonical codes) — the only real, enforced access-control
+        // primitive here is User.permissions, so role gating is modeled the
+        // same way as everything else in this trait, not as string-matching
+        // against free text.
+        "Clinical Role Gates" => ['Act As Ward Nurse (Clinical)', 'Act As Consultant (Clinical)'],
+        "Medication Orders" => ['View Medication Orders', 'Prescribe Medication Orders', 'Override CDSS Safety Block'],
+        "Medication Administration" => ['View MAR', 'Administer MAR Doses'],
+        "Break Glass" => ['Trigger Break Glass Override'],
+        "Clinical Settings" => [
+            'View Clinical Dictionaries', 'Manage Clinical Dictionaries',
+            'View Clinical Module', 'Manage Clinical Module',
+        ],
+        "Clinical Diagnoses" => ['View Clinical Diagnoses', 'Add Clinical Diagnoses'],
+        "Clinical Interoperability" => ['Export FHIR Bundle'],
+        "Clinical Audit" => ['View Clinical Audit Trail'],
+    ];
 
     public static function spreadArrayKeys($assocArray)
     {
@@ -231,7 +280,9 @@ trait AccessTrait
                 static::$bulkUpload,
                 static::$finance,
                 static::$packageTracking,
-                static::$packageSales
+                static::$packageSales,
+                static::$imagingModule,
+                static::$clinicalModule
             )
         );
         return $roles;
@@ -268,6 +319,8 @@ trait AccessTrait
         "Finance" => self::$finance,
         "Package Tracking" => self::$packageTracking,
         "Package Sales" => self::$packageSales,
+        "Imaging" => self::$imagingModule,
+        "Clinical" => self::$clinicalModule,
     ];
 
     if (!empty($exclude)) {

@@ -134,6 +134,7 @@ class InventoryConsumptionQueryService
             InventoryDailyConsumption::SOURCE_SALE => 'POS / Sale',
             InventoryDailyConsumption::SOURCE_MANUAL => 'Manual entry',
             InventoryDailyConsumption::SOURCE_ISSUE => 'Issue',
+            InventoryDailyConsumption::SOURCE_IMAGING => 'Imaging Procedure',
         ];
     }
 

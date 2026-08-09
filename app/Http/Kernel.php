@@ -71,5 +71,8 @@ class Kernel extends HttpKernel
         'cashier' => \App\Http\Middleware\EnsureCashier::class,
         'hr.api' => \App\Http\Middleware\VerifyHrApiKey::class,
         'clinical.api' => \App\Http\Middleware\VerifyClinicalApiKey::class,
+        'imaging.api' => \App\Http\Middleware\VerifyImagingApiKey::class,
+        'clinical.ztna' => \App\Http\Middleware\ZtnaContextMiddleware::class,
+        'clinical.service' => \App\Http\Middleware\VerifyClinicalServiceKey::class,
     ];
 }

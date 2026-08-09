@@ -8,12 +8,14 @@ use Tests\TestCase;
 class ExampleTest extends TestCase
 {
     /**
-     * A basic test example.
+     * '/' redirects unauthenticated visitors to '/login' (see
+     * Route::redirect('/', 'login') in routes/web.php) — it was never
+     * meant to return 200 directly.
      */
-    public function test_the_application_returns_a_successful_response(): void
+    public function test_the_application_redirects_to_login(): void
     {
         $response = $this->get('/');
 
-        $response->assertOk();
+        $response->assertRedirect('/login');
     }
 }

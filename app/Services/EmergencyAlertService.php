@@ -23,6 +23,8 @@ class EmergencyAlertService
             ->where('is_active', true)
             ->first();
 
+        $justExpired = false;
+
         if ($alert) {
             if (!$this->hasExpired($alert, $config)) {
                 return $alert;
@@ -34,6 +36,7 @@ class EmergencyAlertService
                 'is_active'   => false,
                 'resolved_at' => now(),
             ]);
+            $justExpired = true;
         }
 
         $next = EmergencyAlert::where('business_id', $businessId)
@@ -55,12 +58,21 @@ class EmergencyAlertService
             return $next;
         }
 
-        $hasQueued = EmergencyAlert::where('business_id', $businessId)
-            ->whereNull('resolved_at')
-            ->exists();
+        // Only tell the calling service to stand down when an alert we
+        // manage here just went from active to expired in this same call —
+        // this method is called from a shared view composer on every
+        // authenticated page load (AppServiceProvider), so firing this
+        // synchronous HTTP call unconditionally whenever nothing is queued
+        // (the common, "nothing happening" case) meant every single page
+        // view paid its full network timeout for no reason.
+        if ($justExpired) {
+            $hasQueued = EmergencyAlert::where('business_id', $businessId)
+                ->whereNull('resolved_at')
+                ->exists();
 
-        if (!$hasQueued) {
-            app(CallingServiceClient::class)->resolveEmergency($businessId);
+            if (!$hasQueued) {
+                app(CallingServiceClient::class)->resolveEmergency($businessId);
+            }
         }
 
         return null;
