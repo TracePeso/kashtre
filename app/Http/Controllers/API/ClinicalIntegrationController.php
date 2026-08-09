@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Models\InventoryHandoffToken;
 use App\Services\ClinicalModuleIntegrationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -76,5 +77,28 @@ class ClinicalIntegrationController extends Controller
         return response()->json([
             'data' => $response,
         ], 201);
+    }
+
+    /**
+     * GET /api/pharmacy/totes/{ref} — staged tote checklist for Clinical ward Collect Medications.
+     */
+    public function toteShow(Request $request, string $ref): JsonResponse
+    {
+        $token = InventoryHandoffToken::query()
+            ->where('uuid', $ref)
+            ->first();
+
+        if (! $token) {
+            return response()->json(['message' => 'Tote / handoff session not found.'], 404);
+        }
+
+        $businessId = $this->clinical->resolveBusinessId($this->clinical->tenantIdFromRequest($request));
+        if ($businessId !== null && (int) $token->business_id !== (int) $businessId) {
+            return response()->json(['message' => 'Tote / handoff session not found.'], 404);
+        }
+
+        return response()->json([
+            'data' => $this->clinical->toteChecklistPayload($token),
+        ]);
     }
 }

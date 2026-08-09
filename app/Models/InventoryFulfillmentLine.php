@@ -49,11 +49,14 @@ class InventoryFulfillmentLine extends Model
         'queued_at',
         'acknowledged_at',
         'staged_at',
+        'handoff_token_id',
         'completed_at',
         'acknowledged_by',
         'completed_by',
         'notes',
         'metadata',
+        'dispense_serials',
+        'dispense_batch_lot',
     ];
 
     protected $casts = [
@@ -64,6 +67,7 @@ class InventoryFulfillmentLine extends Model
         'staged_at' => 'datetime',
         'completed_at' => 'datetime',
         'metadata' => 'array',
+        'dispense_serials' => 'array',
     ];
 
     protected static function booted(): void
@@ -198,6 +202,11 @@ class InventoryFulfillmentLine extends Model
     public function serviceDeliveryQueue(): BelongsTo
     {
         return $this->belongsTo(ServiceDeliveryQueue::class);
+    }
+
+    public function handoffToken(): BelongsTo
+    {
+        return $this->belongsTo(InventoryHandoffToken::class, 'handoff_token_id');
     }
 
     public function acknowledgedBy(): BelongsTo

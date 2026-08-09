@@ -41,6 +41,9 @@ class Store extends Model
         'parent_id',
         'name',
         'description',
+        'location_layer_labels',
+        'reorder_level_days',
+        'max_stock_days',
         'distribution_type',
         'is_crash_cart',
         'crash_cart_status',
@@ -54,6 +57,9 @@ class Store extends Model
         'is_crash_cart' => 'boolean',
         'crash_cart_sealed_at' => 'datetime',
         'crash_cart_deployed_at' => 'datetime',
+        'location_layer_labels' => 'array',
+        'reorder_level_days' => 'decimal:2',
+        'max_stock_days' => 'decimal:2',
     ];
 
     protected static function booted(): void
@@ -107,6 +113,33 @@ class Store extends Model
     public function isRoot(): bool
     {
         return $this->parent_id === null;
+    }
+
+    /**
+     * @return array{layer_3: string, layer_2: string, layer_1: string}
+     */
+    public function locationLayerLabels(): array
+    {
+        $defaults = self::defaultLocationLabels($this->distribution_type);
+        $custom = is_array($this->location_layer_labels) ? $this->location_layer_labels : [];
+
+        return [
+            'layer_3' => (string) ($custom['layer_3'] ?? $defaults['layer_3']),
+            'layer_2' => (string) ($custom['layer_2'] ?? $defaults['layer_2']),
+            'layer_1' => (string) ($custom['layer_1'] ?? $defaults['layer_1']),
+        ];
+    }
+
+    /**
+     * @return array{layer_3: string, layer_2: string, layer_1: string}
+     */
+    public static function defaultLocationLabels(?string $distributionType): array
+    {
+        if ($distributionType === self::DISTRIBUTION_END || $distributionType === self::DISTRIBUTION_SATELLITE) {
+            return ['layer_3' => 'Wall', 'layer_2' => 'Cabinet', 'layer_1' => 'Bin'];
+        }
+
+        return ['layer_3' => 'Aisle', 'layer_2' => 'Rack', 'layer_1' => 'Pallet'];
     }
 
     /** @deprecated Use isRoot() */

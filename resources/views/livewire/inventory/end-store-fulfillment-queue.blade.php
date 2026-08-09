@@ -2,24 +2,43 @@
     class="space-y-4"
     @if($this->unacknowledgedStatCount() > 0) wire:poll.15s @endif
 >
-    @if($lastHandoffCode)
-        <div class="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+    @if($lastHandoffRef)
+        <div class="rounded-lg border border-sky-300 bg-sky-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
             <div>
-                <p class="text-sm font-semibold text-amber-900">Handoff code</p>
-                <p class="mt-0.5 text-sm text-amber-800">
-                    {{ $lastHandoffBasket ?? 'Client' }} —
-                    <span class="font-mono text-base font-bold tracking-widest">{{ $lastHandoffCode }}</span>
+                <p class="text-sm font-semibold text-sky-900">Staged — waiting on Clinical handoff</p>
+                <p class="mt-0.5 text-sm text-sky-800">
+                    {{ $lastHandoffBasket ?? 'Client' }} — ward was notified.
+                    Ask the nurse for their Clinical 5-digit code, then use <span class="font-medium">Release</span>.
                 </p>
+                <p class="mt-1 font-mono text-xs text-sky-700">Ref: {{ $lastHandoffRef }}</p>
             </div>
-            <button type="button" wire:click="clearLastHandoffCode"
-                    class="text-sm font-medium text-amber-900 underline hover:no-underline">
+            <button type="button" wire:click="clearLastHandoffBanner"
+                    class="text-sm font-medium text-sky-900 underline hover:no-underline">
                 Dismiss
             </button>
         </div>
     @endif
 
     @if($this->unacknowledgedStatCount() > 0)
-        <div class="rounded-lg border-2 border-red-500 bg-red-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3 animate-pulse">
+        <div class="rounded-lg border-2 border-red-500 bg-red-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3 animate-pulse"
+             x-data="{
+                play() {
+                    try {
+                        const Ctx = window.AudioContext || window.webkitAudioContext;
+                        if (!Ctx) return;
+                        const ctx = new Ctx();
+                        const o = ctx.createOscillator();
+                        const g = ctx.createGain();
+                        o.type = 'square';
+                        o.frequency.value = 880;
+                        g.gain.value = 0.05;
+                        o.connect(g); g.connect(ctx.destination);
+                        o.start();
+                        setTimeout(() => { o.stop(); ctx.close(); }, 180);
+                    } catch (e) {}
+                }
+             }"
+             x-init="play(); setInterval(() => play(), 60000)">
             <div>
                 <p class="text-sm font-bold uppercase tracking-wide text-red-800">STAT alert</p>
                 <p class="mt-0.5 text-sm text-red-700">

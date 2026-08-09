@@ -23,6 +23,7 @@ use App\Models\InventorySupplierQuotation;
 use App\Models\GoodsReceivedNote;
 use App\Models\StockTransfer;
 use App\Observers\ClientClinicalEncounterObserver;
+use App\Observers\ClientInventoryVisitObserver;
 use App\Observers\ModelActivityObserver;
 use App\Observers\UserHrSyncObserver;
 use App\Models\Client;
@@ -88,6 +89,7 @@ class AppServiceProvider extends ServiceProvider
          User::observe(ModelActivityObserver::class);
          User::observe(UserHrSyncObserver::class);
          Client::observe(ClientClinicalEncounterObserver::class);
+         Client::observe(ClientInventoryVisitObserver::class);
          Business::observe(ModelActivityObserver::class);
          Transaction::observe(ModelActivityObserver::class);
          InventoryOrder::observe(ModelActivityObserver::class);

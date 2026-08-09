@@ -32,6 +32,8 @@ class InventoryModuleConfig extends Model
         'enable_crash_cart_management',
         'enable_batch_lot_tracking',
         'enable_serial_number_tracking',
+        'label_dictionary',
+        'visit_reactivation_lookback_days',
         'created_by',
         'updated_by',
     ];
@@ -56,6 +58,8 @@ class InventoryModuleConfig extends Model
         'enable_crash_cart_management' => 'boolean',
         'enable_batch_lot_tracking' => 'boolean',
         'enable_serial_number_tracking' => 'boolean',
+        'label_dictionary' => 'array',
+        'visit_reactivation_lookback_days' => 'integer',
     ];
 
     /**

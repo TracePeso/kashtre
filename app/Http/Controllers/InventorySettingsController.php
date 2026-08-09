@@ -108,6 +108,14 @@ class InventorySettingsController extends Controller
             'enable_crash_cart_management' => $request->boolean('enable_crash_cart_management'),
             'enable_batch_lot_tracking' => $request->boolean('enable_batch_lot_tracking'),
             'enable_serial_number_tracking' => $request->boolean('enable_serial_number_tracking'),
+            'visit_reactivation_lookback_days' => max(1, (int) $request->input('visit_reactivation_lookback_days', 30)),
+            'label_dictionary' => [
+                'client' => trim((string) $request->input('label_client', '')),
+                'client_space' => trim((string) $request->input('label_client_space', '')),
+                'item' => trim((string) $request->input('label_item', '')),
+                'store' => trim((string) $request->input('label_store', '')),
+                'usage_record' => trim((string) $request->input('label_usage_record', '')),
+            ],
         ]);
 
         return redirect()

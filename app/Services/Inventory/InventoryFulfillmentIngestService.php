@@ -12,6 +12,10 @@ use Illuminate\Support\Str;
 
 class InventoryFulfillmentIngestService
 {
+    public function __construct(
+        private readonly InventoryDemandLedgerService $demandLedger,
+    ) {}
+
     /**
      * Stamp paid goods onto the mapped End Store fulfillment queue (SRD §4.1).
      *
@@ -24,6 +28,11 @@ class InventoryFulfillmentIngestService
         $skipped = 0;
         $lines = [];
 
+        $payloadItems = $items !== [] ? $items : (is_array($invoice->items) ? $invoice->items : []);
+
+        // Dual-stream demand: always capture intent before stock / routing decisions (SRD A-02).
+        $this->demandLedger->recordFromInvoice($invoice, $payloadItems);
+
         if (! InventoryModuleConfig::query()
             ->where('business_id', $invoice->business_id)
             ->where('is_active', true)
@@ -31,7 +40,6 @@ class InventoryFulfillmentIngestService
             return compact('created', 'skipped', 'lines');
         }
 
-        $payloadItems = $items !== [] ? $items : (is_array($invoice->items) ? $invoice->items : []);
         $assignment = $this->resolveAssignment($invoice, $explicitClientSpaceId);
 
         if (! $assignment) {

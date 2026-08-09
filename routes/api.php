@@ -72,6 +72,7 @@ Route::middleware('clinical.api')->group(function () {
     Route::get('/clients/{id}', [\App\Http\Controllers\API\ClinicalIntegrationController::class, 'clientShow']);
     Route::get('/queues', [\App\Http\Controllers\API\ClinicalIntegrationController::class, 'queues']);
     Route::post('/events', [\App\Http\Controllers\API\ClinicalIntegrationController::class, 'events']);
+    Route::get('/pharmacy/totes/{ref}', [\App\Http\Controllers\API\ClinicalIntegrationController::class, 'toteShow']);
 });
 
 // HR Module Integration API (X-API-Key or X-HR-API-Key)

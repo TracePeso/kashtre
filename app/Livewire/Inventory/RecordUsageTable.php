@@ -43,6 +43,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                 'item:id,name,strength',
                 'store:id,name',
                 'recordedBy:id,name',
+                'invoice:id,invoice_number',
             ])
             ->where('business_id', $businessId)
             ->orderByDesc('occurred_at')
@@ -149,6 +150,26 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     ->falseIcon('heroicon-o-minus')
                     ->trueColor('warning')
                     ->falseColor('gray'),
+                Tables\Columns\TextColumn::make('main_billing_status')
+                    ->label('Billing')
+                    ->badge()
+                    ->placeholder('—')
+                    ->formatStateUsing(fn (?string $state): string => match ($state) {
+                        'pending' => 'Pending',
+                        'completed' => 'Invoiced',
+                        'failed' => 'Failed',
+                        'skipped' => 'Skipped',
+                        default => $state ? ucfirst($state) : '—',
+                    })
+                    ->color(fn (?string $state): string => match ($state) {
+                        'completed' => 'success',
+                        'pending' => 'warning',
+                        'failed' => 'danger',
+                        'skipped' => 'gray',
+                        default => 'gray',
+                    })
+                    ->description(fn (InventoryUsageEvent $record): ?string => $record->invoice?->invoice_number)
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('store.name')
                     ->label('Store')
                     ->placeholder('—')
@@ -266,8 +287,17 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                         ->all()
                 )
                 ->searchable()
-                ->required(fn (Get $get): bool => $get('context') === InventoryUsageEvent::CONTEXT_PATIENT)
-                ->visible(fn (Get $get): bool => $get('context') === InventoryUsageEvent::CONTEXT_PATIENT)
+                ->required(fn (Get $get): bool => in_array($get('context'), [
+                    InventoryUsageEvent::CONTEXT_PATIENT,
+                    InventoryUsageEvent::CONTEXT_CRASH_CART,
+                ], true))
+                ->visible(fn (Get $get): bool => in_array($get('context'), [
+                    InventoryUsageEvent::CONTEXT_PATIENT,
+                    InventoryUsageEvent::CONTEXT_CRASH_CART,
+                ], true))
+                ->helperText(fn (Get $get): ?string => $get('context') === InventoryUsageEvent::CONTEXT_CRASH_CART
+                    ? 'Required so Main Module can create the postpaid billing packet.'
+                    : null)
                 ->live()
                 ->afterStateUpdated(function (callable $set) {
                     $set('item_id', null);

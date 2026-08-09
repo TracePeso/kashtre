@@ -152,6 +152,16 @@
                                 </a>
                             </li>
                             <li>
+                                <a href="{{ route('inventory.crash-carts.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.crash-carts*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Crash Carts
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.replenishment.create') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.replenishment*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Internal Replenishment
+                                </a>
+                            </li>
+                            <li>
                                 <a href="{{ route('inventory.approved-pool.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.approved-pool*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
                                     Approved Pool
                                 </a>
