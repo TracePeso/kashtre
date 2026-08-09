@@ -231,6 +231,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/imaging-modalities', [\App\Http\Controllers\ImagingModalityController::class, 'index'])->name('imaging-modalities.index');
     Route::get('/imaging-workflow-steps', [\App\Http\Controllers\ImagingWorkflowStepController::class, 'index'])->name('imaging-workflow-steps.index');
     Route::get('/contrast-vials', [\App\Http\Controllers\ContrastVialController::class, 'index'])->name('contrast-vials.index');
+
+    // Clinical Module (Chunk 2) — bedside charting MVP.
+    Route::get('/clinical/ward-census', [\App\Http\Controllers\ClinicalWardCensusController::class, 'index'])->name('clinical.ward-census.index');
+    Route::get('/clinical/patients/{clientId}/observations', [\App\Http\Controllers\ClinicalObservationsController::class, 'show'])->middleware('clinical.ztna')->name('clinical.observations.show');
+    Route::get('/clinical/patients/{clientId}/fhir-export', [\App\Http\Controllers\ClinicalFhirExportController::class, 'show'])->name('clinical.fhir-export');
+    Route::get('/clinical/my-tasks', [\App\Http\Controllers\ClinicalMyTasksController::class, 'index'])->name('clinical.my-tasks.index');
     Route::resource("service-queues", ServiceQueueController::class)->except(['create', 'store']);
     
     // Additional service queue routes

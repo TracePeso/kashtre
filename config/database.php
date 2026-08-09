@@ -64,6 +64,35 @@ return [
             ]) : [],
         ],
 
+        // Clinical Module's own connection (Chunk 0 of the Clinical Module
+        // build). Defaults to the same physical database as 'mysql' so
+        // nothing changes today — only the CLINICAL_DB_* env vars need to
+        // change when the module is later moved to its own database/server.
+        // Rule: Clinical models/migrations on this connection never declare
+        // ->foreign() against Imaging/Inventory/core tables and never join
+        // across connections — only plain indexed logical key columns
+        // (business_id, branch_id, client_id, imaging_study_id, ...).
+        'clinical' => [
+            'driver' => 'mysql',
+            'url' => env('CLINICAL_DATABASE_URL'),
+            'host' => env('CLINICAL_DB_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('CLINICAL_DB_PORT', env('DB_PORT', '3306')),
+            'database' => env('CLINICAL_DB_DATABASE', env('DB_DATABASE', 'forge')),
+            'username' => env('CLINICAL_DB_USERNAME', env('DB_USERNAME', 'forge')),
+            'password' => env('CLINICAL_DB_PASSWORD', env('DB_PASSWORD', '')),
+            'unix_socket' => env('DB_SOCKET', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                PDO::MYSQL_ATTR_INIT_COMMAND => "SET time_zone='+03:00'",
+            ]) : [],
+        ],
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DATABASE_URL'),

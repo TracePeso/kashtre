@@ -350,6 +350,29 @@
                     </li>
                     @endif
 
+                    <!-- Clinical Group -->
+                    @if(in_array('View Ward Census', $permissions) || in_array('View Clinical Process Registry', $permissions) || in_array('View Clinical Audit Trail', $permissions))
+                    <li>
+                        <button @click="openGroup === 'clinical' ? openGroup = '' : openGroup = 'clinical'" :class="openGroup === 'clinical' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'" class="flex items-center justify-between w-full text-left pl-4 pr-3 py-2 rounded-md">
+                            <span class="flex items-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20l7.682-7.318a4.5 4.5 0 00-6.364-6.364L12 7.5l-1.318-1.182a4.5 4.5 0 00-6.364 0z"></path>
+                                </svg>
+                                <span class="ml-3">Clinical</span>
+                            </span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200" :class="{ 'rotate-180': openGroup === 'clinical' }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        <ul x-show="openGroup === 'clinical'" x-collapse class="mt-1 space-y-1 pl-10">
+                            @if(in_array('View Ward Census', $permissions))
+                            <li><a href="{{ route('clinical.ward-census.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Ward Census</a></li>
+                            <li><a href="{{ route('clinical.my-tasks.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>My Patient Tasks</a></li>
+                            @endif
+                        </ul>
+                    </li>
+                    @endif
+
                     <!-- Items Group -->
                     @if(in_array('View Items', $permissions))
                     <li>

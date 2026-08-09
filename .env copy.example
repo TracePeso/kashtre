@@ -121,3 +121,56 @@ CLINICAL_MODULE_URL=https://clinical.example.com
 CLINICAL_MODULE_SERVICE_KEY=
 CLINICAL_MODULE_INBOUND_API_KEY=
 CLINICAL_MODULE_ENCOUNTER_WEBHOOK_ENABLED=true
+IMAGING_MODULE_API_KEY=
+
+# Clinical Module (Chunk 0) — cross-module dispatch transport.
+# local = in-process calls (default, correct while everything runs in this
+# one app). http = real network calls, once a module moves to its own
+# server — module_endpoints below are only consulted in http mode.
+DISPATCH_DRIVER=local
+IMAGING_MODULE_URL=
+INVENTORY_MODULE_URL=
+INVENTORY_MODULE_API_KEY=
+LIMS_MODULE_URL=
+LIMS_MODULE_SECRET=
+
+# Clinical Module's own DB connection. Leave unset to share the main
+# database (default) until the module is split onto its own DB/server.
+CLINICAL_DB_HOST=
+CLINICAL_DB_PORT=
+CLINICAL_DB_DATABASE=
+CLINICAL_DB_USERNAME=
+CLINICAL_DB_PASSWORD=
+
+# Clinical Module (Chunk 8) — Shared AI Services Gateway. Leave both blank
+# (the default) until the Gateway actually exists — AiGatewayClientService
+# treats an empty URL as "gracefully unavailable," not an error.
+AI_GATEWAY_URL=
+AI_GATEWAY_API_KEY=
+
+# ---------------------------------------------------------------------------
+# Clinical Module split — Main -> CLINICAL_ORCHESTRATOR (API Integration Guide)
+# ---------------------------------------------------------------------------
+# CLINICAL_DRIVER selects what every App\Contracts\Clinical\* gateway resolves
+# to. Keep 'local' until the Clinical service is running and reachable; then
+# set 'api' and fill in the URL + service key it issued this module.
+CLINICAL_DRIVER=local
+CLINICAL_MODULE_URL=
+CLINICAL_SERVICE_KEY=
+CLINICAL_TIMEOUT=10
+CLINICAL_RETRY_TIMES=2
+CLINICAL_RETRY_SLEEP_MS=250
+
+# §4 Tenancy. Every clinical record is tenant-scoped. Omitting X-Tenant-Id
+# falls back to DEFAULT, which is only correct for a single-facility install.
+CLINICAL_DEFAULT_TENANT=DEFAULT
+
+# §3.2 Identity transport: 'headers' (interim X-User-Id/-Name/-Roles) or 'jwt'.
+# Cut over to 'jwt' at the same moment Clinical sets IDENTITY_JWT_REQUIRED=true
+# — after that, sending identity headers is refused 401, not ignored.
+CLINICAL_IDENTITY_TRANSPORT=headers
+
+# §12/§14 Inbound. The key(s) the Clinical service presents to us when it
+# POSTs events to /api/v1/events or calls the catalogue lookup. Comma-separated
+# to allow rotation. Generate with: php -r "echo bin2hex(random_bytes(24));"
+CLINICAL_INBOUND_SERVICE_KEYS=

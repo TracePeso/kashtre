@@ -2,12 +2,15 @@
 
 namespace App\Observers;
 
+use App\Contracts\ModuleDispatcher;
 use App\Models\ImagingModuleConfig;
 use App\Models\ImagingReport;
 use App\Models\ImagingStudy;
 use App\Models\PeerReviewCase;
 use App\Models\User;
 use App\Notifications\ImagingCriticalFindingNotification;
+use App\Services\Clinical\Facts\ImagingCriticalFindingFact;
+use App\Services\Clinical\Facts\ImagingReportValidatedFact;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
@@ -51,6 +54,17 @@ class ImagingReportObserver
     {
         $this->safeTransition($study, 'markVerified');
         $this->rollPeerReview($report, $study);
+
+        app(ModuleDispatcher::class)->dispatch(new ImagingReportValidatedFact(
+            businessId: $study->business_id,
+            branchId: $study->branch_id,
+            clientId: $study->client_id,
+            visitId: $study->visit_id,
+            imagingOrderId: $study->imaging_order_id,
+            protocolCode: $study->protocol_code,
+            structuredDataPayload: $report->structured_data_payload ?? [],
+            verifiedByUserId: $report->verified_by_user_id,
+        ));
     }
 
     private function safeTransition($study, string $method): void
@@ -87,6 +101,17 @@ class ImagingReportObserver
         foreach ($recipients as $recipient) {
             $recipient->notify(new ImagingCriticalFindingNotification($report));
         }
+
+        app(ModuleDispatcher::class)->dispatch(new ImagingCriticalFindingFact(
+            businessId: $study->business_id,
+            branchId: $study->branch_id,
+            clientId: $study->client_id,
+            visitId: $study->visit_id,
+            imagingOrderId: $study->imaging_order_id,
+            protocolCode: $study->protocol_code,
+            findingCode: $report->critical_finding_code ?? 'UNSPECIFIED',
+            reportingRadiologistId: $report->author_user_id,
+        ));
     }
 
     private function rollPeerReview(ImagingReport $report, ImagingStudy $study): void

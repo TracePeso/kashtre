@@ -206,6 +206,33 @@ trait AccessTrait
     ];
 
 
+    public static $clinicalModule = [
+        "Clinical Observations" => ['View Clinical Observations', 'Add Clinical Observations'],
+        "Ward Census" => ['View Ward Census', 'Manage Ward Census', 'Add Overflow Beds'],
+        "Care Assignments" => ['View Care Assignments', 'Manage Care Assignments'],
+        "Clinical Work Orders" => ['View Clinical Work Orders', 'Add Clinical Work Orders'],
+        "Clinical Process Registry" => ['View Clinical Process Registry', 'Progress Clinical Process Registry'],
+        // Rollout gap fix: clinical_process_steps.required_role ('WARD_NURSE',
+        // 'CONSULTANT') and the Claim Patient doctor/nurse choice were stored
+        // but never checked against anything. This app has no reliable
+        // "job role" concept (Title/Qualification are free-text, admin-typed,
+        // no canonical codes) — the only real, enforced access-control
+        // primitive here is User.permissions, so role gating is modeled the
+        // same way as everything else in this trait, not as string-matching
+        // against free text.
+        "Clinical Role Gates" => ['Act As Ward Nurse (Clinical)', 'Act As Consultant (Clinical)'],
+        "Medication Orders" => ['View Medication Orders', 'Prescribe Medication Orders', 'Override CDSS Safety Block'],
+        "Medication Administration" => ['View MAR', 'Administer MAR Doses'],
+        "Break Glass" => ['Trigger Break Glass Override'],
+        "Clinical Settings" => [
+            'View Clinical Dictionaries', 'Manage Clinical Dictionaries',
+            'View Clinical Module', 'Manage Clinical Module',
+        ],
+        "Clinical Diagnoses" => ['View Clinical Diagnoses', 'Add Clinical Diagnoses'],
+        "Clinical Interoperability" => ['Export FHIR Bundle'],
+        "Clinical Audit" => ['View Clinical Audit Trail'],
+    ];
+
     public static function spreadArrayKeys($assocArray)
     {
         $result = [];
@@ -254,7 +281,8 @@ trait AccessTrait
                 static::$finance,
                 static::$packageTracking,
                 static::$packageSales,
-                static::$imagingModule
+                static::$imagingModule,
+                static::$clinicalModule
             )
         );
         return $roles;
@@ -292,6 +320,7 @@ trait AccessTrait
         "Package Tracking" => self::$packageTracking,
         "Package Sales" => self::$packageSales,
         "Imaging" => self::$imagingModule,
+        "Clinical" => self::$clinicalModule,
     ];
 
     if (!empty($exclude)) {
