@@ -20,6 +20,7 @@ class InventoryDailyConsumption extends Model
 
     /** Expired wastage — stock ↓ but excluded from moving-average / reorder demand. */
     public const SOURCE_WASTAGE_EXPIRED = 'wastage_expired';
+    public const SOURCE_IMAGING = 'imaging';
 
     protected $fillable = [
         'business_id',

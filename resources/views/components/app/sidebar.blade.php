@@ -870,6 +870,32 @@
                             <li><a href="{{ route('imaging-workflow-steps.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Workflow Steps</a></li>
                             @endif
                             @endif
+                            {{-- Imaging settings, kept clustered together rather than
+                                 interleaved alphabetically with the rest of Settings. --}}
+                            @if(in_array('View Imaging Protocols', $permissions) || in_array('View Imaging Readiness Checks', $permissions) || in_array('View Imaging Critical Findings', $permissions) || in_array('View Imaging Module', $permissions) || in_array('View Imaging Service Point Configs', $permissions) || in_array('View Imaging Modalities', $permissions) || in_array('View Imaging Workflow Steps', $permissions))
+                            <li class="pt-2 pb-1 pl-0 text-xs font-semibold text-gray-400 uppercase tracking-wide">Imaging</li>
+                            @if(in_array('View Imaging Protocols', $permissions))
+                            <li><a href="{{ route('imaging-protocols.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Protocols</a></li>
+                            @endif
+                            @if(in_array('View Imaging Readiness Checks', $permissions))
+                            <li><a href="{{ route('imaging-readiness-check-types.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Readiness Checks</a></li>
+                            @endif
+                            @if(in_array('View Imaging Critical Findings', $permissions))
+                            <li><a href="{{ route('imaging-critical-finding-types.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Critical Findings</a></li>
+                            @endif
+                            @if(in_array('View Imaging Module', $permissions))
+                            <li><a href="{{ route('imaging-module-configs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Module</a></li>
+                            @endif
+                            @if(in_array('View Imaging Service Point Configs', $permissions))
+                            <li><a href="{{ route('imaging-service-point-configs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Rooms</a></li>
+                            @endif
+                            @if(in_array('View Imaging Modalities', $permissions))
+                            <li><a href="{{ route('imaging-modalities.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Modalities</a></li>
+                            @endif
+                            @if(in_array('View Imaging Workflow Steps', $permissions))
+                            <li><a href="{{ route('imaging-workflow-steps.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Workflow Steps</a></li>
+                            @endif
+                            @endif
 
                             @if(in_array('View Insurance Companies', $permissions))
                             <li><a href="{{ route('settings.index', ['tab' => 'insurance-companies']) }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Third Party Vendors</a></li>

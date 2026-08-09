@@ -62,6 +62,13 @@ class AppServiceProvider extends ServiceProvider
         // Orthanc isn't reachable in a given environment.
         $this->app->bind(\App\Contracts\DicomWorklistBroker::class, \App\Services\Imaging\OrthancDicomWorklistBroker::class);
         $this->app->bind(\App\Contracts\PacsClient::class, \App\Services\Imaging\OrthancPacsClient::class);
+
+        // Pillars 1.1/7/8: real Orthanc-backed implementations — no caller
+        // (BroadcastModalityWorklist, ImagingStudyController) changes.
+        // Revert to LoggingDicomWorklistBroker/StubPacsClient here if
+        // Orthanc isn't reachable in a given environment.
+        $this->app->bind(\App\Contracts\DicomWorklistBroker::class, \App\Services\Imaging\OrthancDicomWorklistBroker::class);
+        $this->app->bind(\App\Contracts\PacsClient::class, \App\Services\Imaging\OrthancPacsClient::class);
     }
 
     /**
@@ -113,6 +120,19 @@ class AppServiceProvider extends ServiceProvider
          InventorySupplierQuotation::observe(ModelActivityObserver::class);
          GoodsReceivedNote::observe(ModelActivityObserver::class);
          StockTransfer::observe(ModelActivityObserver::class);
+         ImagingReport::observe(ImagingReportObserver::class);
+
+         // Pillar 19: Security & Audit Trail — generic CRUD coverage for
+         // every patient-care-relevant Imaging model. Non-mutation actions
+         // (View Study, Open Images, Export Images) go through
+         // ImagingAuditService instead, since there's no model event for those.
+         ImagingOrder::observe(ModelActivityObserver::class);
+         ImagingStudy::observe(ModelActivityObserver::class);
+         ImagingReport::observe(ModelActivityObserver::class);
+         PeerReviewCase::observe(ModelActivityObserver::class);
+         ContrastAdministration::observe(ModelActivityObserver::class);
+         RecoveryRecord::observe(ModelActivityObserver::class);
+         RadiationExposureLog::observe(ModelActivityObserver::class);
          ImagingReport::observe(ImagingReportObserver::class);
 
          // Pillar 19: Security & Audit Trail — generic CRUD coverage for

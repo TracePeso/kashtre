@@ -73,6 +73,13 @@ Route::post('/policies/verify/{insuranceCompanyId}', [\App\Http\Controllers\Clie
 Route::post('/orthanc/stable-study', [\App\Http\Controllers\OrthancWebhookController::class, 'stableStudy'])
     ->middleware('throttle:120,1');
 
+// Orthanc PACS integration — Lua OnStableStudy callback (pacs integration
+// files/stable-study.lua). Gated by the shared secret inside the
+// controller, not route middleware — Orthanc and Laravel share localhost
+// in this environment.
+Route::post('/orthanc/stable-study', [\App\Http\Controllers\OrthancWebhookController::class, 'stableStudy'])
+    ->middleware('throttle:120,1');
+
 // Clinical-to-LIMS ICD's inbound webhook — the real endpoint a genuinely
 // separate LIMS calls back into. HMAC-verified inside the controller
 // (same pattern as the Orthanc webhook above: the signature check IS the
@@ -138,6 +145,7 @@ Route::prefix('hr')->middleware('hr.api')->group(function () {
     Route::get('/qualifications', [\App\Http\Controllers\API\HrIntegrationController::class, 'qualifications']);
     Route::get('/staff-categories', [\App\Http\Controllers\API\HrIntegrationController::class, 'staffCategories']);
     Route::get('/client-spaces', [\App\Http\Controllers\API\HrIntegrationController::class, 'clientSpaces']);
+
     
     
     Route::get('/users', [\App\Http\Controllers\API\HrIntegrationController::class, 'users']);
@@ -165,6 +173,8 @@ Route::prefix('v1/imaging')->middleware('imaging.api')->group(function () {
     Route::post('/facts/{factType}', [\App\Http\Controllers\API\Imaging\ImagingFactsController::class, 'handle']);
 });
 
+
+
 // RIS Amendment v2.6, Chunk 8 — Imaging Workflow Engine Integration API,
 // for the eventual Clinical Module (same shared-secret idiom as the HR
 // group above). Every endpoint is a thin wrapper over Chunks 1-6's
@@ -179,11 +189,22 @@ Route::prefix('v1/imaging')->middleware('imaging.api')->group(function () {
     Route::post('/studies/{study}/complete-step', [\App\Http\Controllers\API\Imaging\StudyController::class, 'completeStep']);
     Route::get('/consumption-exceptions', [\App\Http\Controllers\API\Imaging\ConsumptionExceptionController::class, 'index']);
     Route::post('/consumption-exceptions/{consumptionException}/resolve', [\App\Http\Controllers\API\Imaging\ConsumptionExceptionController::class, 'resolve']);
+});
 
-    // Clinical Module — the real endpoint HttpModuleDispatcher posts to
-    // (DISPATCH_DRIVER=http) instead of the in-process local driver, once
-    // Imaging moves off this box. See ImagingFactsController.
-    Route::post('/facts/{factType}', [\App\Http\Controllers\API\Imaging\ImagingFactsController::class, 'handle']);
+// RIS Amendment v2.6, Chunk 8 — Imaging Workflow Engine Integration API,
+// for the eventual Clinical Module (same shared-secret idiom as the HR
+// group above). Every endpoint is a thin wrapper over Chunks 1-6's
+// services/models — no logic lives here that doesn't already exist for
+// the web UI.
+Route::prefix('v1/imaging')->middleware('imaging.api')->group(function () {
+    Route::get('/workflow-steps', [\App\Http\Controllers\API\Imaging\WorkflowStepController::class, 'index']);
+    Route::get('/workflow-steps/{workflowStep}/users', [\App\Http\Controllers\API\Imaging\WorkflowStepController::class, 'users']);
+    Route::get('/workflow-steps/{workflowStep}/queue', [\App\Http\Controllers\API\Imaging\WorkflowStepController::class, 'queue']);
+    Route::get('/protocol-workflows', [\App\Http\Controllers\API\Imaging\ProtocolWorkflowController::class, 'index']);
+    Route::post('/studies/{study}/claim', [\App\Http\Controllers\API\Imaging\StudyController::class, 'claim']);
+    Route::post('/studies/{study}/complete-step', [\App\Http\Controllers\API\Imaging\StudyController::class, 'completeStep']);
+    Route::get('/consumption-exceptions', [\App\Http\Controllers\API\Imaging\ConsumptionExceptionController::class, 'index']);
+    Route::post('/consumption-exceptions/{consumptionException}/resolve', [\App\Http\Controllers\API\Imaging\ConsumptionExceptionController::class, 'resolve']);
 });
 
 Route::prefix('v1')->group(function () {
