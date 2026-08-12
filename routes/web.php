@@ -336,6 +336,9 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/fulfillment/ward-pick/{store}/{client_space}', [InventoryPickRouteController::class, 'ward'])->name('fulfillment.ward-pick-route');
         Route::get('/approved-pool', [InventoryApprovedPoolController::class, 'index'])->name('approved-pool.index');
         Route::get('/usage', [InventoryRecordUsageController::class, 'index'])->name('usage.index');
+        Route::get('/usage/{usageEvent}', [InventoryRecordUsageController::class, 'show'])->name('usage.show');
+        Route::post('/usage/{usageEvent}/retry-billing', [InventoryRecordUsageController::class, 'retryBilling'])->name('usage.retry-billing');
+        Route::post('/usage/{usageEvent}/collect-payment', [InventoryRecordUsageController::class, 'collectPayment'])->name('usage.collect-payment');
         Route::get('/crash-carts', [InventoryCrashCartController::class, 'index'])->name('crash-carts.index');
         Route::post('/crash-carts/{store}/deploy', [InventoryCrashCartController::class, 'deploy'])->name('crash-carts.deploy');
         Route::post('/crash-carts/{store}/reconcile', [InventoryCrashCartController::class, 'reconcile'])->name('crash-carts.reconcile');

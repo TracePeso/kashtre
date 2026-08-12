@@ -141,14 +141,7 @@
                 <div class="px-6 py-5 border-b border-gray-200 bg-gray-50/50">
                     <h3 class="text-lg font-medium text-gray-900">Client Space → End Store routing</h3>
                     <p class="mt-1 text-sm text-gray-500">
-                        When payment confirms for goods, the inventory queue stamps each line with the End Store mapped to that Client Space.
-                        Choose outpatient (immediate pick) or inpatient (batch &amp; stage) strategy per space.
-                    </p>
-                    <p class="mt-2 text-sm text-gray-600">
-                        Each Client Space can have <strong>one</strong> End Store. After the first mapping, use
-                        <span class="font-medium">Assign End Store</span> in the table header (top right) for more spaces,
-                        or <span class="font-medium">Edit</span> on a row to change the store / strategy.
-                        Create additional Client Spaces under <a href="{{ route('client-spaces.index') }}" class="text-blue-600 hover:underline">Manage Client Spaces</a> first if the button is disabled.
+                        Map each Client Space to an End Store and set the fulfillment strategy.
                     </p>
                 </div>
 

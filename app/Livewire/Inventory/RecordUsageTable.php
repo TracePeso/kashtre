@@ -20,6 +20,7 @@ use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Get;
 use Filament\Notifications\Notification;
 use Filament\Tables;
+use Filament\Tables\Actions\Action;
 use Filament\Tables\Actions\CreateAction;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
@@ -200,6 +201,12 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     ->searchable()
                     ->preload(),
             ])
+            ->actions([
+                Action::make('view')
+                    ->label('View')
+                    ->icon('heroicon-o-eye')
+                    ->url(fn (InventoryUsageEvent $record): string => route('inventory.usage.show', $record)),
+            ])
             ->paginated([10, 25, 50])
             ->emptyStateHeading('No usage recorded yet')
             ->emptyStateDescription(fn (): string => 'Record '.strtolower(inventory_label('client')).' usage (Approved Pool first, then floor stock) or administrative usage from '.strtolower(inventory_label('store')).' stock.')
@@ -270,6 +277,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
             Select::make('context')
                 ->label('Context')
                 ->options($contextOptions)
+                ->placeholder('Select usage context')
                 ->required()
                 ->live()
                 ->default(InventoryUsageEvent::CONTEXT_PATIENT)
@@ -280,14 +288,25 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                 }),
             Select::make('client_id')
                 ->label(fn (): string => inventory_label('client'))
-                ->options(
-                    Client::query()
+                ->options(function () use ($businessId): array {
+                    $clients = Client::query()
                         ->where('business_id', $businessId)
                         ->orderBy('name')
-                        ->pluck('name', 'id')
-                        ->all()
-                )
+                        ->get(['id', 'name', 'client_id']);
+
+                    return $clients->mapWithKeys(function (Client $client) {
+                        $name = trim((string) ($client->name ?? ''));
+                        $clientCode = (string) ($client->client_id ?? '');
+
+                        return [
+                            $client->id => $name !== ''
+                                ? sprintf('%s [%s]', $name, $clientCode)
+                                : sprintf('Client [%s]', $clientCode),
+                        ];
+                    })->all();
+                })
                 ->searchable()
+                ->placeholder('Search by name or client ID')
                 ->required(fn (Get $get): bool => in_array($get('context'), [
                     InventoryUsageEvent::CONTEXT_PATIENT,
                     InventoryUsageEvent::CONTEXT_CRASH_CART,
@@ -309,6 +328,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     ? $crashCartStoreOptions
                     : $floorStoreOptions)
                 ->searchable()
+                ->placeholder('Select '.strtolower(inventory_label('store')))
                 ->live()
                 ->helperText(function (Get $get): string {
                     return match ($get('context')) {
@@ -388,6 +408,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     return [];
                 })
                 ->searchable()
+                ->placeholder('Select '.strtolower(inventory_label('item')))
                 ->required()
                 ->live()
                 ->disabled(function (Get $get) use ($floorStockEnabled, $stockContexts): bool {
@@ -417,6 +438,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
             TextInput::make('quantity')
                 ->label('Quantity')
                 ->numeric()
+                ->placeholder('e.g. 1')
                 ->required()
                 ->minValue(0.01)
                 ->live()
@@ -449,6 +471,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                 }),
             DateTimePicker::make('occurred_at')
                 ->label('When')
+                ->placeholder('Select date and time')
                 ->default(now())
                 ->seconds(false)
                 ->required(),
@@ -459,10 +482,12 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     ->first()
                     ?->adminUsagePurposeOptions() ?? InventoryModuleConfig::defaultAdminUsagePurposes())
                 ->searchable()
+                ->placeholder('Select purpose (e.g. Cleaning)')
                 ->required()
                 ->visible(fn (Get $get): bool => $get('context') === InventoryUsageEvent::CONTEXT_ADMINISTRATIVE),
             Textarea::make('notes')
                 ->label('Notes')
+                ->placeholder('Optional — e.g. bedside administration, spill, expired batch removed')
                 ->rows(2)
                 ->maxLength(500),
         ];

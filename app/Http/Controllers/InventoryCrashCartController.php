@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\RequiresInventoryModule;
+use App\Models\InventoryUsageEvent;
 use App\Models\Store;
 use App\Services\Inventory\InventoryCrashCartService;
 use App\Support\InventoryBusinessContext;
@@ -29,7 +30,24 @@ class InventoryCrashCartController extends Controller
             ->where('business_id', $businessId)
             ->where('is_crash_cart', true)
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->each(function (Store $cart): void {
+                if ($cart->crash_cart_status !== Store::CRASH_CART_RECONCILING) {
+                    return;
+                }
+
+                $usageQuery = InventoryUsageEvent::query()
+                    ->where('business_id', $cart->business_id)
+                    ->where('store_id', $cart->id)
+                    ->where('context', InventoryUsageEvent::CONTEXT_CRASH_CART);
+
+                if ($cart->crash_cart_deployed_at) {
+                    $usageQuery->where('occurred_at', '>=', $cart->crash_cart_deployed_at);
+                }
+
+                $cart->setAttribute('reconciliation_usage_count', (int) $usageQuery->count());
+                $cart->setAttribute('reconciliation_usage_qty', (float) $usageQuery->sum('quantity'));
+            });
 
         return view('inventory.crash-carts.index', [
             'carts' => $carts,
@@ -59,7 +77,7 @@ class InventoryCrashCartController extends Controller
             return back()->withErrors($e->errors());
         }
 
-        return back()->with('status', 'Crash cart is reconciling. Record emergency usage, then seal to Ready.');
+        return back()->with('status', 'Reconciliation started. Record emergency usage, then complete reconciliation to return the cart to service.');
     }
 
     public function ready(Request $request, Store $store, InventoryCrashCartService $crashCarts): RedirectResponse
@@ -83,8 +101,8 @@ class InventoryCrashCartController extends Controller
         }
 
         $message = $result['order']
-            ? 'Cart sealed Ready. Replenishment draft #'.($result['order']->order_number ?? $result['order']->id).' created.'
-            : 'Cart sealed Ready. No replenishment ticket was needed.';
+            ? 'Crash cart returned to service. Replenishment draft #'.($result['order']->order_number ?? $result['order']->id).' created.'
+            : 'Crash cart returned to service. No replenishment order was required.';
 
         return back()->with('status', $message);
     }

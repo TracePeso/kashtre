@@ -281,6 +281,7 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                         if ($config?->batchLotTrackingEnabled()) {
                             $fields[] = TextInput::make('batch_lot')
                                 ->label('Batch / lot')
+                                ->placeholder('Enter batch or lot number')
                                 ->required()
                                 ->maxLength(100);
                         }

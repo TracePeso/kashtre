@@ -5,6 +5,7 @@ namespace App\Services\Inventory;
 use App\Jobs\BillInventoryUsageToMain;
 use App\Jobs\ProcessInventoryMainModuleOutbox;
 use App\Models\BranchItemPrice;
+use App\Models\Client;
 use App\Models\InventoryFulfillmentLine;
 use App\Models\InventoryMainModuleOutbox;
 use App\Models\InventoryUsageEvent;
@@ -14,6 +15,7 @@ use App\Models\ServiceDeliveryQueue;
 use App\Models\User;
 use App\Services\Inventory\InventoryInternalReplenishmentService;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -78,7 +80,7 @@ class InventoryMainModuleSyncService
                 return Invoice::query()->findOrFail($locked->invoice_id);
             }
 
-            $client = $event->client;
+            $client = $event->client->fresh();
             $item = $event->item;
             $qty = (float) $event->quantity;
             $branchId = (int) ($client->branch_id ?: 0);
@@ -123,7 +125,7 @@ class InventoryMainModuleSyncService
                 'client_name' => $client->name,
                 'client_phone' => $client->phone_number,
                 'payment_phone' => $client->phone_number,
-                'visit_id' => $client->visit_id,
+                'visit_id' => $this->resolveVisitIdForBilling($client),
                 'items' => [$line],
                 'subtotal' => $lineTotal,
                 'package_adjustment' => 0,
@@ -383,5 +385,34 @@ class InventoryMainModuleSyncService
         }
 
         return round((float) ($item->default_price ?? 0), 2);
+    }
+
+    protected function resolveVisitIdForBilling(Client $client): string
+    {
+        $client->loadMissing(['business', 'branch']);
+
+        $needsNewVisitId = empty($client->visit_id)
+            || empty($client->visit_expires_at)
+            || Carbon::parse($client->visit_expires_at)->isPast();
+
+        if ($needsNewVisitId) {
+            $reason = empty($client->visit_id) ? 'no_visit_id' : 'expired';
+            $client->issueNewVisitId();
+            $client->refresh();
+
+            if (empty($client->visit_id)) {
+                throw ValidationException::withMessages([
+                    'visit_id' => 'Could not assign a visit ID for this client. Check branch assignment.',
+                ]);
+            }
+
+            Log::info('Generated visit_id for inventory usage billing', [
+                'client_id' => $client->id,
+                'visit_id' => $client->visit_id,
+                'reason' => $reason,
+            ]);
+        }
+
+        return (string) $client->visit_id;
     }
 }

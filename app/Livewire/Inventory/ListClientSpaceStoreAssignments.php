@@ -108,7 +108,7 @@ class ListClientSpaceStoreAssignments extends Component implements HasForms, Has
                     ->form($this->formSchema($businessId))
                     ->disabled(fn (): bool => $this->clientSpaceOptions($businessId) === [])
                     ->tooltip(fn (): ?string => $this->clientSpaceOptions($businessId) === []
-                        ? 'Every Client Space already has an End Store. Create another Client Space, or Edit / Delete an existing row.'
+                        ? 'All Client Spaces are already mapped. Create another Client Space, or update an existing mapping.'
                         : null)
                     ->mutateFormDataUsing(function (array $data) use ($businessId): array {
                         $data['business_id'] = $businessId;
@@ -152,6 +152,7 @@ class ListClientSpaceStoreAssignments extends Component implements HasForms, Has
             Select::make('client_space_id')
                 ->label('Client Space')
                 ->options(fn () => $this->clientSpaceOptions($businessId, $record?->client_space_id))
+                ->placeholder('Select Client Space')
                 ->required()
                 ->searchable()
                 ->disabled($record !== null)
@@ -162,12 +163,14 @@ class ListClientSpaceStoreAssignments extends Component implements HasForms, Has
             Select::make('store_id')
                 ->label('End Store')
                 ->options(fn () => $this->endStoreOptions($businessId))
+                ->placeholder('Select End Store')
                 ->required()
                 ->searchable()
                 ->helperText('Only End Stores appear here. Create them under Manage Stores first.'),
             Select::make('fulfillment_strategy')
                 ->label('Fulfillment strategy')
                 ->options(ClientSpaceStoreAssignment::strategyOptions())
+                ->placeholder('Select fulfillment strategy')
                 ->required()
                 ->default(ClientSpaceStoreAssignment::STRATEGY_DISCRETE_IMMEDIATE)
                 ->native(false)

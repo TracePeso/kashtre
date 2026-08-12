@@ -178,12 +178,15 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                         return [
                             TextInput::make('location_layer_3')
                                 ->label($labels['layer_3'])
+                                ->placeholder('e.g. Aisle or zone')
                                 ->default($level->location_layer_3),
                             TextInput::make('location_layer_2')
                                 ->label($labels['layer_2'])
+                                ->placeholder('e.g. Shelf or bin')
                                 ->default($level->location_layer_2),
                             TextInput::make('location_layer_1')
                                 ->label($labels['layer_1'])
+                                ->placeholder('e.g. Row or slot')
                                 ->default($level->location_layer_1),
                         ];
                     })

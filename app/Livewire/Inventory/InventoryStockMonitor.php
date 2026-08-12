@@ -258,6 +258,7 @@ class InventoryStockMonitor extends Component implements HasForms, HasTable
                         TextInput::make('quantity')
                             ->label('Quantity to write off')
                             ->numeric()
+                            ->placeholder('Enter quantity to write off')
                             ->required()
                             ->minValue(0.0001)
                             ->maxValue((float) ($record->stock_expired_quantity_suom ?? 0))
