@@ -4,7 +4,7 @@
         @include('inventory.partials.subnav')
 
         <div class="mt-4">
-            <h1 class="text-xl font-semibold text-gray-900 tracking-tight">End Store console</h1>
+            <h1 class="text-xl font-semibold text-gray-900 tracking-tight">EndStore</h1>
             <p class="mt-1 text-sm text-gray-500">
                 Outpatient dispense, inpatient stage/release, and STAT alerts for paid goods at End Stores.
             </p>

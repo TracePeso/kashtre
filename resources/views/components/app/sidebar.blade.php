@@ -148,7 +148,7 @@
                             </li>
                             <li>
                                 <a href="{{ route('inventory.fulfillment.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.fulfillment*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
-                                    End Store Console
+                                    EndStore
                                 </a>
                             </li>
                             <li>

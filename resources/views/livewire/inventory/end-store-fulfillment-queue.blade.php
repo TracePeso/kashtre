@@ -75,7 +75,7 @@
     </div>
 
     <div class="border-b border-gray-200">
-        <nav class="-mb-px flex flex-wrap gap-1" aria-label="End Store console tabs">
+        <nav class="-mb-px flex flex-wrap gap-1" aria-label="EndStore tabs">
             @foreach([
                 'all' => 'All',
                 'outpatient' => 'Outpatient',

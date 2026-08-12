@@ -106,6 +106,10 @@ class ListClientSpaceStoreAssignments extends Component implements HasForms, Has
                     ->modalHeading('Assign Client Space → End Store')
                     ->modalDescription('Maps a Client Space (ward / clinic) to the End Store that receives its paid inventory queue lines (SRD §4.1).')
                     ->form($this->formSchema($businessId))
+                    ->disabled(fn (): bool => $this->clientSpaceOptions($businessId) === [])
+                    ->tooltip(fn (): ?string => $this->clientSpaceOptions($businessId) === []
+                        ? 'Every Client Space already has an End Store. Create another Client Space, or Edit / Delete an existing row.'
+                        : null)
                     ->mutateFormDataUsing(function (array $data) use ($businessId): array {
                         $data['business_id'] = $businessId;
                         $data['is_active'] = (bool) ($data['is_active'] ?? true);
