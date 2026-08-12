@@ -43,7 +43,7 @@ class InventoryFulfillmentStageService
         $tote = $toteBarcode !== null ? trim($toteBarcode) : '';
         if ($tote === '') {
             throw ValidationException::withMessages([
-                'tote_barcode' => 'Tote barcode is required before staging (SRD §4.4).',
+                'tote_barcode' => 'Enter the tote barcode or ID on the physical bin before staging.',
             ]);
         }
 
@@ -61,7 +61,7 @@ class InventoryFulfillmentStageService
             ]);
         }
 
-        $result = DB::transaction(function () use ($seedLine, $user, $toStage, $stageable, $tote) {
+        $result = DB::transaction(function () use ($seedLine, $user, $toStage, $stageable, $alreadyStaged, $tote) {
             $now = now();
 
             // Expire any prior unused sessions for this basket at this store.

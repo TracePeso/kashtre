@@ -41,15 +41,18 @@
                             <td class="px-4 py-3 text-right tabular-nums">{{ number_format((float) $level->expired_quantity_suom, 2) }}</td>
                             <td class="px-4 py-3 text-right">
                                 @unless(\App\Support\InventoryBusinessContext::isAdminBrowsing())
-                                    <form method="POST" action="{{ route('inventory.escrow.write-off') }}" class="inline-flex items-center gap-2 justify-end">
+                                    <form method="POST"
+                                          action="{{ route('inventory.escrow.write-off') }}"
+                                          class="js-escrow-writeoff-form inline-flex items-center gap-2 justify-end"
+                                          data-item="{{ $level->item?->name ?? 'this item' }}"
+                                          data-store="{{ $level->store?->name ?? ($stores[$level->store_id] ?? 'this store') }}">
                                         @csrf
                                         <input type="hidden" name="store_id" value="{{ $level->store_id }}">
                                         <input type="hidden" name="item_id" value="{{ $level->item_id }}">
                                         <input type="number" step="0.0001" min="0.0001" max="{{ (float) $level->expired_quantity_suom }}"
                                                name="quantity" value="{{ (float) $level->expired_quantity_suom }}"
-                                               class="w-28 rounded-md border-gray-300 text-sm text-right">
-                                        <button type="submit" class="rounded-md bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-700"
-                                                onclick="return confirm('Write off this expired escrow quantity?')">
+                                               class="js-escrow-qty w-28 rounded-md border-gray-300 text-sm text-right">
+                                        <button type="submit" class="rounded-md bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-700">
                                             Write off
                                         </button>
                                     </form>
@@ -68,4 +71,52 @@
         </div>
     </div>
 </div>
+
+<script>
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    document.querySelectorAll('.js-escrow-writeoff-form').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+
+            const qtyInput = form.querySelector('.js-escrow-qty');
+            const qty = qtyInput ? qtyInput.value : '';
+            const item = form.dataset.item || 'this item';
+            const store = form.dataset.store || 'this store';
+
+            if (!qty || Number(qty) <= 0) {
+                Swal.fire({
+                    title: 'Quantity required',
+                    text: 'Enter a quantity greater than zero to write off.',
+                    icon: 'warning',
+                    confirmButtonColor: '#dc2626',
+                });
+                return;
+            }
+
+            Swal.fire({
+                title: 'Write off expired escrow?',
+                html: `This will permanently write off <strong>${escapeHtml(qty)}</strong> of <strong>${escapeHtml(item)}</strong> at <strong>${escapeHtml(store)}</strong>. This cannot be undone.`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, write off',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#6b7280',
+                reverseButtons: true,
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    form.submit();
+                }
+            });
+        });
+    });
+</script>
 </x-app-layout>

@@ -9,6 +9,7 @@ use App\Models\Store;
 use App\Services\Inventory\InventoryFulfillmentDispenseService;
 use App\Services\Inventory\InventoryFulfillmentStageService;
 use App\Services\Inventory\InventoryHandoffTokenService;
+use App\Services\ClinicalModuleIntegrationService;
 use App\Support\InventoryBusinessContext;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\TagsInput;
@@ -349,19 +350,19 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->form([
                         TextInput::make('tote_barcode')
                             ->label('Tote barcode')
-                            ->placeholder('Scan or type tote barcode')
+                            ->placeholder('e.g. TOTE-CHW-001 or scan label on tote')
                             ->required()
                             ->maxLength(100)
-                            ->helperText('Required physical tote ID for ward delivery (SRD §4.4).'),
+                            ->helperText('The barcode or ID on the physical tote or bin you put the picked items into — not the medicine batch number.'),
                     ])
                     ->modalHeading('Stage for collection')
                     ->modalDescription(fn (InventoryFulfillmentLine $record): string => sprintf(
-                        'Stage %s’s open inpatient lines. Clinical Module will alert the ward; the nurse receives the 5-digit code. Stock stays in the End Store until release.',
+                        'Confirm %s’s picked inpatient items are bagged in a labelled tote ready for the ward. Clinical will alert the ward; the nurse receives a 5-digit code for release. Stock stays at this End Store until release.',
                         $record->client?->name ?? 'this client'
                     ))
                     ->modalSubmitActionLabel('Stage')
                     ->visible(fn (InventoryFulfillmentLine $record) => $record->isInpatient()
-                        && ($record->isStageable() || $record->isStaged()))
+                        && $record->isStageable())
                     ->action(function (InventoryFulfillmentLine $record, array $data) {
                         try {
                             $tote = trim((string) ($data['tote_barcode'] ?? ''));
@@ -460,7 +461,15 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                             TextInput::make('code')
                                 ->label('Nurse handoff code (Clinical)')
                                 ->placeholder('5-digit code from ward nurse')
-                                ->helperText('Issued by Clinical Module after Collect Medications — not by Inventory.')
+                                ->helperText(function (): string {
+                                    $clinical = app(ClinicalModuleIntegrationService::class);
+                                    if ($clinical->handoffBypassEnabled()) {
+                                        return 'Clinical is not connected — for testing use bypass code '
+                                            .$clinical->handoffBypassCode().'.';
+                                    }
+
+                                    return 'Issued by Clinical Module after Collect Medications — not by Inventory.';
+                                })
                                 ->required()
                                 ->minLength(5)
                                 ->maxLength(5)
@@ -541,6 +550,59 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->after(fn () => $this->resetTable()),
 
                 ActionGroup::make([
+                    Action::make('changeTote')
+                        ->label('Change tote')
+                        ->icon('heroicon-o-archive-box')
+                        ->visible(fn (InventoryFulfillmentLine $record) => $record->isInpatient() && $record->isStaged())
+                        ->form([
+                            TextInput::make('tote_barcode')
+                                ->label('Tote barcode')
+                                ->placeholder('e.g. TOTE-CHW-001 or scan label on tote')
+                                ->required()
+                                ->maxLength(100)
+                                ->helperText('Updates the tote ID on this staged handoff.'),
+                        ])
+                        ->modalHeading('Change tote barcode')
+                        ->modalSubmitActionLabel('Update tote')
+                        ->action(function (InventoryFulfillmentLine $record, array $data) {
+                            try {
+                                $tote = trim((string) ($data['tote_barcode'] ?? ''));
+                                if ($tote === '') {
+                                    throw ValidationException::withMessages([
+                                        'tote_barcode' => 'Enter the tote barcode or ID on the physical bin before staging.',
+                                    ]);
+                                }
+
+                                $result = app(InventoryFulfillmentStageService::class)
+                                    ->stageBasket($record, Auth::user(), true, $tote);
+
+                                $this->lastHandoffRef = $result['token']->uuid;
+                                $this->lastHandoffBasket = $record->client?->name
+                                    ?? ('Basket '.$record->basket_key);
+
+                                Notification::make()
+                                    ->title('Tote updated')
+                                    ->body('Handoff ref: '.$result['token']->uuid)
+                                    ->success()
+                                    ->send();
+                            } catch (ValidationException $e) {
+                                Notification::make()
+                                    ->title('Cannot update tote')
+                                    ->body(collect($e->errors())->flatten()->first() ?? $e->getMessage())
+                                    ->danger()
+                                    ->persistent()
+                                    ->send();
+                            } catch (\Throwable $e) {
+                                report($e);
+                                Notification::make()
+                                    ->title('Update failed')
+                                    ->body($e->getMessage())
+                                    ->danger()
+                                    ->persistent()
+                                    ->send();
+                            }
+                        })
+                        ->after(fn () => $this->resetTable()),
                     Action::make('startPicking')
                         ->label('Start pick')
                         ->icon('heroicon-o-hand-raised')

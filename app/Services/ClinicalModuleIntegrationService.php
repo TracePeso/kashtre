@@ -408,18 +408,67 @@ class ClinicalModuleIntegrationService
     }
 
     /**
+     * Allow EndStore release without Clinical when outbound integration is not configured.
+     */
+    public function handoffBypassEnabled(): bool
+    {
+        if (! (bool) config('services.clinical_module.handoff_bypass_enabled', false)) {
+            return false;
+        }
+
+        return ! KashtreClinicalModuleSetting::resolved()->isConfiguredForOutbound();
+    }
+
+    public function handoffBypassCode(): string
+    {
+        $digits = preg_replace('/\D+/', '', (string) config('services.clinical_module.handoff_bypass_code', '00000')) ?? '';
+
+        return str_pad(substr($digits, 0, 5), 5, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * @return array{valid: bool, message: ?string, clinical_session_id: ?string}|null
+     */
+    public function tryHandoffBypass(string $code): ?array
+    {
+        if (! $this->handoffBypassEnabled()) {
+            return null;
+        }
+
+        $normalized = preg_replace('/\D+/', '', $code) ?? '';
+        if ($normalized !== $this->handoffBypassCode()) {
+            return null;
+        }
+
+        Log::info('Inventory handoff release accepted via bypass (Clinical Module not configured).');
+
+        return [
+            'valid' => true,
+            'message' => null,
+            'clinical_session_id' => 'inventory-bypass',
+        ];
+    }
+
+    /**
      * SRD §4.5 step 4 — validate nurse 5-digit code with Clinical Module.
      *
      * @return array{valid: bool, message: ?string, clinical_session_id: ?string}
      */
     public function validateHandoffCode(string $code, InventoryHandoffToken $token): array
     {
+        $bypass = $this->tryHandoffBypass($code);
+        if ($bypass !== null) {
+            return $bypass;
+        }
+
         $settings = KashtreClinicalModuleSetting::resolved();
 
         if (! $settings->isConfiguredForOutbound()) {
             return [
                 'valid' => false,
-                'message' => 'Clinical Module is not configured. Cannot validate handoff code.',
+                'message' => $this->handoffBypassEnabled()
+                    ? 'Enter the dev bypass code ('.$this->handoffBypassCode().') or configure Clinical Module.'
+                    : 'Clinical Module is not configured. Cannot validate handoff code.',
                 'clinical_session_id' => null,
             ];
         }
