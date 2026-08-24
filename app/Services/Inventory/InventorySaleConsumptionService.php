@@ -7,6 +7,7 @@ use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
 use App\Models\Item;
 use App\Models\ServiceDeliveryQueue;
+use App\Models\Store;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 
@@ -50,6 +51,19 @@ class InventorySaleConsumptionService
             Log::info('Inventory auto-consumption skipped: no store resolved', [
                 'queue_id' => $queue->id,
                 'item_id' => $item->id,
+            ]);
+
+            return;
+        }
+
+        // SRD §3 — only End Store may execute client sales / consumption.
+        $store = Store::query()->find($storeId);
+        if (! $store || ! $store->isEndStore()) {
+            Log::info('Inventory auto-consumption skipped: resolved store is not an End Store', [
+                'queue_id' => $queue->id,
+                'item_id' => $item->id,
+                'store_id' => $storeId,
+                'distribution_type' => $store?->distribution_type,
             ]);
 
             return;

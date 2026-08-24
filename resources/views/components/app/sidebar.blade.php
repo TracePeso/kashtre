@@ -148,7 +148,17 @@
                             </li>
                             <li>
                                 <a href="{{ route('inventory.fulfillment.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.fulfillment*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
-                                    End Store Console
+                                    EndStore
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.crash-carts.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.crash-carts*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Crash Carts
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.replenishment.create') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.replenishment*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Internal Replenishment
                                 </a>
                             </li>
                             <li>
@@ -164,6 +174,11 @@
                             <li>
                                 <a href="{{ route('inventory.stock-counts.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.stock-counts*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
                                     Stock Counts
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.escrow.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.escrow*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Expired Escrow
                                 </a>
                             </li>
                             <li>

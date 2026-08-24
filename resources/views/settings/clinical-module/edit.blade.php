@@ -60,7 +60,7 @@
                                 <input type="password" name="inbound_api_key" id="inbound_api_key" value="" autocomplete="new-password"
                                        placeholder="{{ filled($settings->inbound_api_key) ? '••••••••  (leave blank to keep)' : 'Key Clinical must send to Main' }}"
                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
-                                <p class="mt-1 text-xs text-gray-500">Required on <code class="text-xs">/api/catalogue/*</code>, <code class="text-xs">/api/clients/*</code>, <code class="text-xs">/api/queues</code>, <code class="text-xs">/api/events</code>.</p>
+                                <p class="mt-1 text-xs text-gray-500">Required on <code class="text-xs">/api/catalogue/*</code>, <code class="text-xs">/api/clients/*</code>, <code class="text-xs">/api/queues</code>, <code class="text-xs">/api/events</code>, <code class="text-xs">/api/pharmacy/totes/*</code>.</p>
                                 @error('inbound_api_key')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                             </div>
                         </div>
@@ -72,6 +72,16 @@
                                 <li><code>GET /api/clients/{uuid|client_id}?tenant_id=</code></li>
                                 <li><code>GET /api/queues?tenant_id=&amp;ward_code=</code></li>
                                 <li><code>POST /api/events</code> (infant registration)</li>
+                                <li><code>GET /api/pharmacy/totes/{handoff_ref}</code> (staged tote checklist)</li>
+                            </ul>
+                        </div>
+
+                        <div class="border-t border-gray-100 pt-5 text-sm text-gray-600">
+                            <p class="font-medium text-gray-900 mb-2">Outbound calls Main makes to Clinical</p>
+                            <ul class="list-disc list-inside space-y-1 text-xs">
+                                <li><code>POST {CLINICAL}/api/v1/clinical/encounters/created</code></li>
+                                <li><code>POST {CLINICAL}/api/v1/clinical/pharmacy/totes/staged</code> (ward ready alert + checklist)</li>
+                                <li><code>POST {CLINICAL}/api/v1/clinical/pharmacy/handoff/validate</code> (nurse 5-digit code)</li>
                             </ul>
                         </div>
                     </div>

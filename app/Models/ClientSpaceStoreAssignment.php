@@ -19,6 +19,7 @@ class ClientSpaceStoreAssignment extends Model
         'client_space_id',
         'store_id',
         'fulfillment_strategy',
+        'supports_approved_pool',
         'is_active',
     ];
 
@@ -26,6 +27,7 @@ class ClientSpaceStoreAssignment extends Model
         'business_id' => 'integer',
         'client_space_id' => 'integer',
         'store_id' => 'integer',
+        'supports_approved_pool' => 'boolean',
         'is_active' => 'boolean',
     ];
 
@@ -57,6 +59,14 @@ class ClientSpaceStoreAssignment extends Model
     {
         return self::strategyOptions()[$this->fulfillment_strategy]
             ?? $this->fulfillment_strategy;
+    }
+
+    /**
+     * When false, End Store dispense completes the ticket without adding Approved Pool balance.
+     */
+    public function supportsApprovedPool(): bool
+    {
+        return (bool) ($this->supports_approved_pool ?? true);
     }
 
     public function business(): BelongsTo

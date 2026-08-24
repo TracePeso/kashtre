@@ -42,4 +42,9 @@ class InventoryReportsController extends Controller
     {
         return view('inventory.reports.demand');
     }
+
+    public function classification()
+    {
+        return view('inventory.reports.classification');
+    }
 }

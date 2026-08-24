@@ -22,11 +22,19 @@ class InventoryStockCountController extends Controller
 
     public function index()
     {
+        if (! InventoryBusinessContext::automatedStockCountsEnabled()) {
+            abort(403, 'Automated stock counts are disabled for this organisation.');
+        }
+
         return view('inventory.stock-counts.index');
     }
 
     public function create()
     {
+        if (! InventoryBusinessContext::automatedStockCountsEnabled()) {
+            abort(403, 'Automated stock counts are disabled for this organisation.');
+        }
+
         $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
 
         return view('inventory.stock-counts.create', [
@@ -36,6 +44,10 @@ class InventoryStockCountController extends Controller
 
     public function store(Request $request)
     {
+        if (! InventoryBusinessContext::automatedStockCountsEnabled()) {
+            abort(403, 'Automated stock counts are disabled for this organisation.');
+        }
+
         $validated = $request->validate([
             'store_id' => 'required|exists:stores,id',
             'notes' => 'nullable|string|max:2000',
@@ -126,6 +138,10 @@ class InventoryStockCountController extends Controller
 
     private function authorizeStockCount(InventoryStockCount $stockCount): void
     {
+        if (! InventoryBusinessContext::automatedStockCountsEnabled()) {
+            abort(403, 'Automated stock counts are disabled for this organisation.');
+        }
+
         if ((int) $stockCount->business_id !== InventoryBusinessContext::effectiveBusinessId()) {
             abort(403);
         }

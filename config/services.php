@@ -62,6 +62,9 @@ return [
         'service_key' => env('CLINICAL_MODULE_SERVICE_KEY'),
         'inbound_api_key' => env('CLINICAL_MODULE_INBOUND_API_KEY'),
         'encounter_webhook_enabled' => (bool) env('CLINICAL_MODULE_ENCOUNTER_WEBHOOK_ENABLED', true),
+        // When Clinical outbound is not configured, allow a fixed 5-digit bypass for EndStore release.
+        'handoff_bypass_enabled' => (bool) env('INVENTORY_HANDOFF_BYPASS_ENABLED', true),
+        'handoff_bypass_code' => env('INVENTORY_HANDOFF_BYPASS_CODE', '00000'),
     ],
 
     'vendor' => [

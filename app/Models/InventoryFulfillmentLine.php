@@ -43,27 +43,33 @@ class InventoryFulfillmentLine extends Model
         'quantity',
         'quantity_fulfilled',
         'fulfillment_strategy',
+        'supports_approved_pool',
         'priority',
         'status',
         'basket_key',
         'queued_at',
         'acknowledged_at',
         'staged_at',
+        'handoff_token_id',
         'completed_at',
         'acknowledged_by',
         'completed_by',
         'notes',
         'metadata',
+        'dispense_serials',
+        'dispense_batch_lot',
     ];
 
     protected $casts = [
         'quantity' => 'decimal:2',
         'quantity_fulfilled' => 'decimal:2',
+        'supports_approved_pool' => 'boolean',
         'queued_at' => 'datetime',
         'acknowledged_at' => 'datetime',
         'staged_at' => 'datetime',
         'completed_at' => 'datetime',
         'metadata' => 'array',
+        'dispense_serials' => 'array',
     ];
 
     protected static function booted(): void
@@ -165,6 +171,14 @@ class InventoryFulfillmentLine extends Model
         return $this->status === self::STATUS_STAGED;
     }
 
+    /**
+     * When false, dispense completes Main Module / SDQ without creating Approved Pool balance.
+     */
+    public function supportsApprovedPool(): bool
+    {
+        return (bool) ($this->supports_approved_pool ?? true);
+    }
+
     public function business(): BelongsTo
     {
         return $this->belongsTo(Business::class);
@@ -198,6 +212,11 @@ class InventoryFulfillmentLine extends Model
     public function serviceDeliveryQueue(): BelongsTo
     {
         return $this->belongsTo(ServiceDeliveryQueue::class);
+    }
+
+    public function handoffToken(): BelongsTo
+    {
+        return $this->belongsTo(InventoryHandoffToken::class, 'handoff_token_id');
     }
 
     public function acknowledgedBy(): BelongsTo

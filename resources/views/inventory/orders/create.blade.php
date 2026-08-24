@@ -180,13 +180,28 @@
                                class="text-blue-600 border-gray-300 focus:ring-blue-500">
                         <span>External <span class="text-gray-500">(purchase)</span></span>
                     </label>
-                    <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                        <input type="radio" name="order_type" value="internal" x-model="orderType" @change="onOrderTypeChange()"
-                               class="text-blue-600 border-gray-300 focus:ring-blue-500">
-                        <span>Internal <span class="text-gray-500">(store to store)</span></span>
-                    </label>
+                    @if(\App\Support\InventoryBusinessContext::internalOrderingEnabled())
+                        <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                            <input type="radio" name="order_type" value="internal" x-model="orderType" @change="onOrderTypeChange()"
+                                   class="text-blue-600 border-gray-300 focus:ring-blue-500">
+                            <span>Internal <span class="text-gray-500">(store to store)</span></span>
+                        </label>
+                    @endif
                 </div>
                 @error('order_type')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
+            </div>
+
+            <div class="border border-gray-200 rounded-lg p-4 space-y-3">
+                <div>
+                    <label for="forecast_basis" class="block text-sm font-medium text-gray-900">Forecast basis</label>
+                    <p class="mt-0.5 text-xs text-gray-500">Consumption uses sold/used history. Demand uses the demand ledger (ordered intent before stock is filled).</p>
+                </div>
+                <select name="forecast_basis" id="forecast_basis"
+                        class="mt-1 block w-full max-w-xs rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    <option value="consumption" @selected(old('forecast_basis', 'consumption') === 'consumption')>Consumption</option>
+                    <option value="demand" @selected(old('forecast_basis') === 'demand')>Demand</option>
+                </select>
+                @error('forecast_basis')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
             </div>
 
             <template x-if="orderType === 'external'">

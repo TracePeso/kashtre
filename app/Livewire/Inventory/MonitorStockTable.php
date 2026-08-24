@@ -8,8 +8,10 @@ use App\Models\InventoryStockLevel;
 use App\Models\Item;
 use App\Models\Store;
 use App\Services\Inventory\InventoryStockAgingService;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
+use Filament\Notifications\Notification;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
@@ -165,6 +167,50 @@ class MonitorStockTable extends Component implements HasForms, HasTable
                     ->label('History')
                     ->icon('heroicon-o-clock')
                     ->url(fn (Item $record): string => route('inventory.monitor.history', $record)),
+                Action::make('editLocation')
+                    ->label('Location')
+                    ->icon('heroicon-o-map-pin')
+                    ->form(function (Item $record): array {
+                        $level = $this->stockLevel($record);
+                        $store = Store::query()->find($level->store_id);
+                        $labels = $store?->locationLayerLabels() ?? Store::defaultLocationLabels(null);
+
+                        return [
+                            TextInput::make('location_layer_3')
+                                ->label($labels['layer_3'])
+                                ->placeholder('e.g. Aisle or zone')
+                                ->default($level->location_layer_3),
+                            TextInput::make('location_layer_2')
+                                ->label($labels['layer_2'])
+                                ->placeholder('e.g. Shelf or bin')
+                                ->default($level->location_layer_2),
+                            TextInput::make('location_layer_1')
+                                ->label($labels['layer_1'])
+                                ->placeholder('e.g. Row or slot')
+                                ->default($level->location_layer_1),
+                        ];
+                    })
+                    ->action(function (Item $record, array $data) {
+                        $level = InventoryStockLevel::query()
+                            ->where('business_id', $record->business_id)
+                            ->where('store_id', $record->stock_store_id)
+                            ->where('item_id', $record->id)
+                            ->first();
+
+                        if (! $level) {
+                            Notification::make()->title('Stock row not found')->danger()->send();
+
+                            return;
+                        }
+
+                        $level->update([
+                            'location_layer_3' => $data['location_layer_3'] ?? null,
+                            'location_layer_2' => $data['location_layer_2'] ?? null,
+                            'location_layer_1' => $data['location_layer_1'] ?? null,
+                        ]);
+
+                        Notification::make()->title('Location saved')->success()->send();
+                    }),
             ])
             ->filters($this->storeId === null ? [
                 SelectFilter::make('store_id')

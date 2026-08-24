@@ -16,7 +16,10 @@ class InventoryHandoffToken extends Model
         'store_id',
         'client_space_id',
         'basket_key',
+        'tote_barcode',
         'code_hash',
+        'clinical_session_id',
+        'clinical_notified_at',
         'expires_at',
         'used_at',
         'created_by',
@@ -27,6 +30,7 @@ class InventoryHandoffToken extends Model
     protected $casts = [
         'expires_at' => 'datetime',
         'used_at' => 'datetime',
+        'clinical_notified_at' => 'datetime',
         'fulfillment_line_ids' => 'array',
     ];
 

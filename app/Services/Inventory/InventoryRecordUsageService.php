@@ -17,14 +17,18 @@ class InventoryRecordUsageService
 {
     public function __construct(
         private readonly InventoryStockAnalyticsService $analytics,
+        private readonly InventoryMainModuleSyncService $mainModule,
+        private readonly InventoryForensicAuditService $audit,
+        private readonly InventoryExpiredEscrowService $escrow,
     ) {}
 
     /**
      * Record bedside / floor usage (SRD §5.2).
      *
      * Patient: use Approved Pool first; any shortfall comes from selected floor stock
-     * (End / Satellite) and is flagged for Main Module billing.
-     * Administrative / crash cart / wastage: deduct physical stock only (no billing flag).
+     * (End / Satellite) and is billed to Main Module asynchronously.
+     * Crash cart with client_id: physical stock ↓ + Main Module billing + replenishment signal.
+     * Administrative / wastage: deduct physical stock only (no Main billing).
      * Expired wastage is excluded from moving-average demand maths.
      *
      * @param  array{
@@ -77,6 +81,7 @@ class InventoryRecordUsageService
                 'source' => InventoryDailyConsumption::SOURCE_MANUAL,
                 'require_crash_cart' => false,
                 'require_crash_capability' => false,
+                'bill' => false,
             ],
             InventoryUsageEvent::CONTEXT_CRASH_CART => [
                 'classification' => InventoryUsageEvent::CLASSIFICATION_CRASH_CART,
@@ -84,6 +89,7 @@ class InventoryRecordUsageService
                 'source' => InventoryDailyConsumption::SOURCE_MANUAL,
                 'require_crash_cart' => true,
                 'require_crash_capability' => true,
+                'bill' => true,
             ],
             InventoryUsageEvent::CONTEXT_WASTAGE_OPERATIONAL => [
                 'classification' => InventoryUsageEvent::CLASSIFICATION_WASTAGE_OPERATIONAL,
@@ -91,6 +97,7 @@ class InventoryRecordUsageService
                 'source' => InventoryDailyConsumption::SOURCE_MANUAL,
                 'require_crash_cart' => false,
                 'require_crash_capability' => false,
+                'bill' => false,
             ],
             InventoryUsageEvent::CONTEXT_WASTAGE_EXPIRED => [
                 'classification' => InventoryUsageEvent::CLASSIFICATION_WASTAGE_EXPIRED,
@@ -98,6 +105,7 @@ class InventoryRecordUsageService
                 'source' => InventoryDailyConsumption::SOURCE_WASTAGE_EXPIRED,
                 'require_crash_cart' => false,
                 'require_crash_capability' => false,
+                'bill' => false,
             ],
         ];
 
@@ -115,24 +123,39 @@ class InventoryRecordUsageService
 
         $this->assertFloorStockEnabled($businessId);
 
-        return collect([
-            $this->recordPhysicalStockUsage(
-                businessId: $businessId,
-                context: $context,
-                classification: $meta['classification'],
-                clientId: null,
-                storeId: $storeId,
-                itemId: $itemId,
-                quantity: $quantity,
-                billed: false,
-                notes: $notes,
-                occurredAt: $occurredAt,
-                user: $user,
-                consumptionLabel: $meta['label'],
-                consumptionSource: $meta['source'],
-                requireCrashCartStore: $meta['require_crash_cart'],
-            ),
-        ]);
+        if ($meta['bill'] && ! $clientId) {
+            throw ValidationException::withMessages([
+                'client_id' => 'Select the patient to bill for crash cart usage (Main Module postpaid packet).',
+            ]);
+        }
+
+        $event = $this->recordPhysicalStockUsage(
+            businessId: $businessId,
+            context: $context,
+            classification: $meta['classification'],
+            clientId: $meta['bill'] ? $clientId : null,
+            storeId: $storeId,
+            itemId: $itemId,
+            quantity: $quantity,
+            billed: (bool) $meta['bill'],
+            notes: $notes,
+            occurredAt: $occurredAt,
+            user: $user,
+            consumptionLabel: $meta['label'],
+            consumptionSource: $meta['source'],
+            requireCrashCartStore: $meta['require_crash_cart'],
+        );
+
+        if ($event->billed_main_module) {
+            $this->mainModule->dispatchUsageBilling($event);
+        }
+
+        if ($context === InventoryUsageEvent::CONTEXT_CRASH_CART) {
+            // Outbox signal only — IR draft is created once on Seal Ready (SRD §6 step 4–5).
+            $this->mainModule->enqueueCrashCartReplenishment($event);
+        }
+
+        return collect([$event]);
     }
 
     /**
@@ -206,7 +229,7 @@ class InventoryRecordUsageService
             }
 
             if ($fromFloor > 0) {
-                $events->push($this->recordPhysicalStockUsage(
+                $floorEvent = $this->recordPhysicalStockUsage(
                     businessId: $businessId,
                     context: InventoryUsageEvent::CONTEXT_PATIENT,
                     classification: InventoryUsageEvent::CLASSIFICATION_PATIENT,
@@ -219,7 +242,9 @@ class InventoryRecordUsageService
                     occurredAt: $occurredAt,
                     user: $user,
                     consumptionLabel: 'Patient floor usage'
-                ));
+                );
+                $events->push($floorEvent);
+                $this->mainModule->dispatchUsageBilling($floorEvent);
             }
 
             return $events;
@@ -261,6 +286,24 @@ class InventoryRecordUsageService
             ];
             $remaining = round($remaining - $take, 4);
         }
+
+        $poolRemainingAfter = (float) $poolLines->sum(fn ($line) => (float) $line->quantity_remaining);
+
+        $this->audit->record(
+            $businessId,
+            'PATIENT_USAGE_APPROVED_POOL',
+            $user->id,
+            null,
+            $itemId,
+            round($poolRemainingAfter + $quantity, 4),
+            $poolRemainingAfter,
+            $clientId,
+            [
+                'quantity' => $quantity,
+                'pool_allocations' => $allocations,
+                'resolution' => InventoryUsageEvent::RESOLUTION_APPROVED_POOL,
+            ]
+        );
 
         return InventoryUsageEvent::create([
             'business_id' => $businessId,
@@ -321,13 +364,23 @@ class InventoryRecordUsageService
                 ]);
             }
 
-            // First usage on a Ready cart implies it has been taken into use → Deploy.
+            // SRD §6: Deploy first (no docs); Record Usage only while Reconciling.
             if ($store->crash_cart_status === Store::CRASH_CART_READY) {
-                $store->update([
-                    'crash_cart_status' => Store::CRASH_CART_DEPLOYED,
-                    'crash_cart_deployed_at' => now(),
+                throw ValidationException::withMessages([
+                    'store_id' => 'Deploy this crash cart before recording usage. Use Crash Carts → Deploy, then Start reconcile.',
                 ]);
-                $store->refresh();
+            }
+
+            if ($store->crash_cart_status === Store::CRASH_CART_DEPLOYED) {
+                throw ValidationException::withMessages([
+                    'store_id' => 'Crash cart is deployed for emergency use — no inventory documentation yet. Start reconcile first.',
+                ]);
+            }
+
+            if ($store->crash_cart_status !== Store::CRASH_CART_RECONCILING) {
+                throw ValidationException::withMessages([
+                    'store_id' => 'Crash cart must be in Reconciling status to record usage.',
+                ]);
             }
         } elseif (! in_array($store->distribution_type, [
             Store::DISTRIBUTION_END,
@@ -351,17 +404,40 @@ class InventoryRecordUsageService
             ]);
         }
 
-        $this->analytics->recordConsumption(
+        if ($classification === InventoryUsageEvent::CLASSIFICATION_WASTAGE_EXPIRED) {
+            $this->escrow->moveToEscrow(
+                $businessId,
+                $storeId,
+                $itemId,
+                $quantity,
+                $user,
+                $notes
+            );
+        } else {
+            $this->analytics->recordConsumption(
+                $businessId,
+                $storeId,
+                $itemId,
+                now()->toDateString(),
+                $quantity,
+                $consumptionSource,
+                (int) $user->id,
+                $consumptionLabel.($notes ? ': '.$notes : ''),
+                $occurredAt instanceof \DateTimeInterface ? $occurredAt : now(),
+                null
+            );
+        }
+
+        $this->audit->record(
             $businessId,
+            $classification,
+            (int) $user->id,
             $storeId,
             $itemId,
-            now()->toDateString(),
-            $quantity,
-            $consumptionSource,
-            (int) $user->id,
-            $consumptionLabel.($notes ? ': '.$notes : ''),
-            $occurredAt instanceof \DateTimeInterface ? $occurredAt : now(),
-            null
+            $onHand,
+            max(0, $onHand - $quantity),
+            $clientId,
+            ['context' => $context]
         );
 
         return InventoryUsageEvent::create([
@@ -374,6 +450,7 @@ class InventoryRecordUsageService
             'quantity' => $quantity,
             'resolution' => InventoryUsageEvent::RESOLUTION_PHYSICAL_STOCK,
             'billed_main_module' => $billed,
+            'main_billing_status' => $billed ? 'pending' : null,
             'recorded_by' => $user->id,
             'occurred_at' => $occurredAt,
             'notes' => $notes,

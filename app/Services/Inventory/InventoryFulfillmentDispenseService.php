@@ -4,6 +4,7 @@ namespace App\Services\Inventory;
 
 use App\Models\InventoryDailyConsumption;
 use App\Models\InventoryFulfillmentLine;
+use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
 use App\Models\PatientApprovedPoolLine;
 use App\Models\ServiceDeliveryQueue;
@@ -15,13 +16,23 @@ class InventoryFulfillmentDispenseService
 {
     public function __construct(
         private readonly InventoryStockAnalyticsService $analytics,
+        private readonly InventoryMainModuleSyncService $mainModule,
+        private readonly InventoryForensicAuditService $audit,
     ) {}
 
     /**
      * End Store dispense complete (SRD §4 / §8.1):
-     * stock ↓ at stamped End Store, Approved Pool ↑, Main Module goods → Completed.
+     * stock ↓ at stamped End Store, Main Module goods → Completed.
+     * Approved Pool ↑ only when the line's Client Space routing supports it.
+     *
+     * @param  array{batch_lot?: string|null, serials?: list<string>|null}|null  $traceability
      */
-    public function complete(InventoryFulfillmentLine $line, User $user, ?float $quantity = null): InventoryFulfillmentLine
+    public function complete(
+        InventoryFulfillmentLine $line,
+        User $user,
+        ?float $quantity = null,
+        ?array $traceability = null
+    ): InventoryFulfillmentLine
     {
         $line->loadMissing(['store', 'item', 'client', 'invoice']);
 
@@ -35,6 +46,25 @@ class InventoryFulfillmentDispenseService
             throw ValidationException::withMessages([
                 'store_id' => 'Dispense is only allowed from an End Store.',
             ]);
+        }
+
+        $config = InventoryModuleConfig::query()
+            ->where('business_id', $line->business_id)
+            ->first();
+
+        if ($config?->enable_batch_lot_tracking && blank($traceability['batch_lot'] ?? null)) {
+            throw ValidationException::withMessages([
+                'batch_lot' => 'Batch / lot is required for this organisation.',
+            ]);
+        }
+
+        if ($config?->enable_serial_number_tracking) {
+            $serials = array_values(array_filter(array_map('strval', $traceability['serials'] ?? [])));
+            if ($serials === []) {
+                throw ValidationException::withMessages([
+                    'serials' => 'At least one serial number is required for this organisation.',
+                ]);
+            }
         }
 
         $already = (float) $line->quantity_fulfilled;
@@ -72,7 +102,7 @@ class InventoryFulfillmentDispenseService
             ]);
         }
 
-        return DB::transaction(function () use ($line, $user, $dispenseQty, $businessId, $storeId, $itemId, $already) {
+        return DB::transaction(function () use ($line, $user, $dispenseQty, $businessId, $storeId, $itemId, $already, $onHand, $traceability) {
             $this->analytics->recordConsumption(
                 $businessId,
                 $storeId,
@@ -84,6 +114,18 @@ class InventoryFulfillmentDispenseService
                 'End Store dispense: '.($line->item_name ?? 'item').' ('.$line->invoice?->invoice_number.')',
                 now(),
                 null
+            );
+
+            $this->audit->record(
+                $businessId,
+                'DISPENSE',
+                (int) $user->id,
+                $storeId,
+                $itemId,
+                $onHand,
+                max(0, $onHand - $dispenseQty),
+                $line->client_id,
+                ['fulfillment_line_id' => $line->id]
             );
 
             $newFulfilled = round($already + $dispenseQty, 4);
@@ -104,9 +146,15 @@ class InventoryFulfillmentDispenseService
             $meta['dispensed_by'] = $user->id;
             $meta['last_dispense_qty'] = $dispenseQty;
             $line->metadata = $meta;
+            if (! empty($traceability['batch_lot'])) {
+                $line->dispense_batch_lot = (string) $traceability['batch_lot'];
+            }
+            if (! empty($traceability['serials'])) {
+                $line->dispense_serials = array_values(array_filter(array_map('strval', $traceability['serials'])));
+            }
             $line->save();
 
-            if ($line->client_id) {
+            if ($line->client_id && $line->supportsApprovedPool()) {
                 PatientApprovedPoolLine::create([
                     'business_id' => $businessId,
                     'client_id' => $line->client_id,
@@ -119,6 +167,7 @@ class InventoryFulfillmentDispenseService
             }
 
             $this->syncMainModuleCompleted($line, $user);
+            $this->mainModule->enqueueFulfillmentCompleted($line->fresh(), $user);
 
             return $line->fresh(['store', 'item', 'client', 'invoice']);
         });

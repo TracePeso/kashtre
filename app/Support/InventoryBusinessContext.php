@@ -135,4 +135,19 @@ class InventoryBusinessContext
     {
         return self::moduleConfig()?->serialNumberTrackingEnabled() ?? false;
     }
+
+    public static function internalOrderingEnabled(): bool
+    {
+        return self::moduleConfig()?->internalOrderingEnabled() ?? true;
+    }
+
+    public static function automatedStockCountsEnabled(): bool
+    {
+        return self::moduleConfig()?->automatedStockCountsEnabled() ?? true;
+    }
+
+    public static function multiStoreNetworkEnabled(): bool
+    {
+        return self::moduleConfig()?->multiStoreNetworkEnabled() ?? true;
+    }
 }

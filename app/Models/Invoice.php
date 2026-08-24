@@ -268,4 +268,13 @@ class Invoice extends Model
         
         return $badges[$this->payment_status] ?? 'bg-gray-100 text-gray-800';
     }
+
+    public function isInventoryUsagePostpaid(): bool
+    {
+        $items = collect(is_array($this->items) ? $this->items : []);
+
+        return $items->contains(
+            fn ($item): bool => is_array($item) && ($item['source'] ?? null) === 'inventory_usage'
+        );
+    }
 }

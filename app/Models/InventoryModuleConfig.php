@@ -32,6 +32,13 @@ class InventoryModuleConfig extends Model
         'enable_crash_cart_management',
         'enable_batch_lot_tracking',
         'enable_serial_number_tracking',
+        'enable_internal_ordering',
+        'enable_automated_stock_counts',
+        'enable_multi_store_network',
+        'label_dictionary',
+        'visit_reactivation_lookback_days',
+        'admin_usage_purposes',
+        'stat_priority_keywords',
         'created_by',
         'updated_by',
     ];
@@ -56,6 +63,13 @@ class InventoryModuleConfig extends Model
         'enable_crash_cart_management' => 'boolean',
         'enable_batch_lot_tracking' => 'boolean',
         'enable_serial_number_tracking' => 'boolean',
+        'enable_internal_ordering' => 'boolean',
+        'enable_automated_stock_counts' => 'boolean',
+        'enable_multi_store_network' => 'boolean',
+        'label_dictionary' => 'array',
+        'visit_reactivation_lookback_days' => 'integer',
+        'admin_usage_purposes' => 'array',
+        'stat_priority_keywords' => 'array',
     ];
 
     /**
@@ -183,5 +197,70 @@ class InventoryModuleConfig extends Model
     public function serialNumberTrackingEnabled(): bool
     {
         return (bool) ($this->enable_serial_number_tracking ?? false);
+    }
+
+    public function internalOrderingEnabled(): bool
+    {
+        return (bool) ($this->enable_internal_ordering ?? true);
+    }
+
+    public function automatedStockCountsEnabled(): bool
+    {
+        return (bool) ($this->enable_automated_stock_counts ?? true);
+    }
+
+    public function multiStoreNetworkEnabled(): bool
+    {
+        return (bool) ($this->enable_multi_store_network ?? true);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function defaultAdminUsagePurposes(): array
+    {
+        return [
+            'Cleaning',
+            'Disinfection',
+            'Spill Management',
+            'Training',
+            'Ward Operations',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function adminUsagePurposeOptions(): array
+    {
+        $list = $this->admin_usage_purposes;
+        if (! is_array($list) || $list === []) {
+            $list = self::defaultAdminUsagePurposes();
+        }
+
+        $list = array_values(array_filter(array_map(
+            fn ($v) => trim((string) $v),
+            $list
+        ), fn ($v) => $v !== ''));
+
+        return array_combine($list, $list) ?: [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function statPriorityKeywords(): array
+    {
+        $list = $this->stat_priority_keywords;
+        if (! is_array($list) || $list === []) {
+            return ['STAT', 'URGENT'];
+        }
+
+        $normalized = array_values(array_filter(array_map(
+            fn ($v) => strtoupper(trim((string) $v)),
+            $list
+        ), fn ($v) => $v !== ''));
+
+        return $normalized !== [] ? $normalized : ['STAT', 'URGENT'];
     }
 }

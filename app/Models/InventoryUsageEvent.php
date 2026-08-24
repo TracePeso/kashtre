@@ -43,6 +43,10 @@ class InventoryUsageEvent extends Model
         'quantity',
         'resolution',
         'billed_main_module',
+        'invoice_id',
+        'main_billing_status',
+        'main_billing_error',
+        'main_billed_at',
         'recorded_by',
         'occurred_at',
         'notes',
@@ -53,6 +57,7 @@ class InventoryUsageEvent extends Model
         'quantity' => 'decimal:2',
         'billed_main_module' => 'boolean',
         'occurred_at' => 'datetime',
+        'main_billed_at' => 'datetime',
         'pool_allocations' => 'array',
     ];
 
@@ -136,6 +141,11 @@ class InventoryUsageEvent extends Model
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
+    }
+
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(Invoice::class);
     }
 
     public function recordedBy(): BelongsTo

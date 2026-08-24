@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\Business;
 use App\Models\Client;
 use App\Models\ClinicalInboundEvent;
+use App\Models\InventoryFulfillmentLine;
+use App\Models\InventoryHandoffToken;
 use App\Models\Item;
 use App\Models\KashtreClinicalModuleSetting;
 use App\Models\ServiceDeliveryQueue;
@@ -353,39 +355,288 @@ class ClinicalModuleIntegrationService
     }
 
     /**
-     * @param  array<string, mixed>  $body
+     * SRD §4.5 step 1 — notify Clinical ward that a tote is staged for nurse collection.
      */
-    public function postToClinical(string $path, array $body, ?string $tenantId = null): void
+    public function notifyToteStaged(InventoryHandoffToken $token): void
     {
         $settings = KashtreClinicalModuleSetting::resolved();
 
         if (! $settings->isConfiguredForOutbound()) {
+            Log::info('Clinical tote-staged alert skipped (Clinical Module not configured)', [
+                'handoff_ref' => $token->uuid,
+            ]);
+
             return;
+        }
+
+        $token->loadMissing([
+            'store:id,uuid,name',
+            'clientSpace:id,uuid,name',
+        ]);
+
+        $payload = $this->toteChecklistPayload($token);
+
+        $response = $this->requestClinical(
+            'POST',
+            '/api/v1/clinical/pharmacy/totes/staged',
+            $payload,
+            (string) $token->business_id
+        );
+
+        if ($response === null) {
+            return;
+        }
+
+        if ($response->failed()) {
+            Log::warning('Clinical tote-staged alert failed', [
+                'handoff_ref' => $token->uuid,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            return;
+        }
+
+        $sessionId = data_get($response->json(), 'data.clinical_session_id')
+            ?? data_get($response->json(), 'clinical_session_id');
+
+        $token->clinical_notified_at = now();
+        if (is_string($sessionId) && $sessionId !== '') {
+            $token->clinical_session_id = $sessionId;
+        }
+        $token->save();
+    }
+
+    /**
+     * Allow EndStore release without Clinical when outbound integration is not configured.
+     */
+    public function handoffBypassEnabled(): bool
+    {
+        if (! (bool) config('services.clinical_module.handoff_bypass_enabled', false)) {
+            return false;
+        }
+
+        return ! KashtreClinicalModuleSetting::resolved()->isConfiguredForOutbound();
+    }
+
+    public function handoffBypassCode(): string
+    {
+        $digits = preg_replace('/\D+/', '', (string) config('services.clinical_module.handoff_bypass_code', '00000')) ?? '';
+
+        return str_pad(substr($digits, 0, 5), 5, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * @return array{valid: bool, message: ?string, clinical_session_id: ?string}|null
+     */
+    public function tryHandoffBypass(string $code): ?array
+    {
+        if (! $this->handoffBypassEnabled()) {
+            return null;
+        }
+
+        $normalized = preg_replace('/\D+/', '', $code) ?? '';
+        if ($normalized !== $this->handoffBypassCode()) {
+            return null;
+        }
+
+        Log::info('Inventory handoff release accepted via bypass (Clinical Module not configured).');
+
+        return [
+            'valid' => true,
+            'message' => null,
+            'clinical_session_id' => 'inventory-bypass',
+        ];
+    }
+
+    /**
+     * SRD §4.5 step 4 — validate nurse 5-digit code with Clinical Module.
+     *
+     * @return array{valid: bool, message: ?string, clinical_session_id: ?string}
+     */
+    public function validateHandoffCode(string $code, InventoryHandoffToken $token): array
+    {
+        $bypass = $this->tryHandoffBypass($code);
+        if ($bypass !== null) {
+            return $bypass;
+        }
+
+        $settings = KashtreClinicalModuleSetting::resolved();
+
+        if (! $settings->isConfiguredForOutbound()) {
+            return [
+                'valid' => false,
+                'message' => $this->handoffBypassEnabled()
+                    ? 'Enter the dev bypass code ('.$this->handoffBypassCode().') or configure Clinical Module.'
+                    : 'Clinical Module is not configured. Cannot validate handoff code.',
+                'clinical_session_id' => null,
+            ];
+        }
+
+        $response = $this->requestClinical(
+            'POST',
+            '/api/v1/clinical/pharmacy/handoff/validate',
+            [
+                'code' => $code,
+                'handoff_ref' => $token->uuid,
+                'clinical_session_id' => $token->clinical_session_id,
+                'store_id' => $token->store_id,
+                'store_uuid' => $token->store?->uuid,
+                'client_space_id' => $token->client_space_id,
+                'client_space_uuid' => $token->clientSpace?->uuid,
+                'basket_key' => $token->basket_key,
+                'business_id' => $token->business_id,
+            ],
+            (string) $token->business_id
+        );
+
+        if ($response === null) {
+            return [
+                'valid' => false,
+                'message' => 'Unable to reach Clinical Module to validate the handoff code.',
+                'clinical_session_id' => null,
+            ];
+        }
+
+        if ($response->failed()) {
+            $message = data_get($response->json(), 'message')
+                ?? data_get($response->json(), 'error')
+                ?? 'Clinical Module rejected the handoff code.';
+
+            return [
+                'valid' => false,
+                'message' => is_string($message) ? $message : 'Clinical Module rejected the handoff code.',
+                'clinical_session_id' => null,
+            ];
+        }
+
+        $json = $response->json() ?? [];
+        $valid = (bool) (data_get($json, 'data.valid') ?? data_get($json, 'valid') ?? true);
+        $sessionId = data_get($json, 'data.clinical_session_id')
+            ?? data_get($json, 'clinical_session_id');
+
+        return [
+            'valid' => $valid,
+            'message' => $valid
+                ? null
+                : (data_get($json, 'data.message') ?? data_get($json, 'message') ?? 'Invalid handoff code.'),
+            'clinical_session_id' => is_string($sessionId) ? $sessionId : null,
+        ];
+    }
+
+    /**
+     * Checklist payload for Clinical ward dashboard / Collect Medications.
+     *
+     * @return array<string, mixed>
+     */
+    public function toteChecklistPayload(InventoryHandoffToken $token): array
+    {
+        $token->loadMissing([
+            'store:id,uuid,name',
+            'clientSpace:id,uuid,name',
+        ]);
+
+        $lineIds = array_values(array_map('intval', $token->fulfillment_line_ids ?? []));
+
+        $lines = InventoryFulfillmentLine::query()
+            ->with(['client:id,uuid,client_id,name,visit_id', 'item:id,uuid,code,name,strength'])
+            ->whereIn('id', $lineIds)
+            ->orderBy('id')
+            ->get();
+
+        return [
+            'handoff_ref' => $token->uuid,
+            'clinical_session_id' => $token->clinical_session_id,
+            'expires_at' => $token->expires_at?->toIso8601String(),
+            'business_id' => $token->business_id,
+            'store' => $token->store ? [
+                'id' => $token->store->id,
+                'uuid' => $token->store->uuid,
+                'name' => $token->store->name,
+            ] : null,
+            'client_space' => $token->clientSpace ? [
+                'id' => $token->clientSpace->id,
+                'uuid' => $token->clientSpace->uuid,
+                'name' => $token->clientSpace->name,
+            ] : null,
+            'basket_key' => $token->basket_key,
+            'tote_barcode' => $token->tote_barcode,
+            'lines' => $lines->map(function (InventoryFulfillmentLine $line) {
+                $remaining = max(0, (float) $line->quantity - (float) $line->quantity_fulfilled);
+
+                return [
+                    'fulfillment_line_uuid' => $line->uuid,
+                    'fulfillment_line_id' => $line->id,
+                    'global_client_id' => $line->client?->uuid,
+                    'client_code' => $line->client?->client_id,
+                    'client_name' => $line->client?->name,
+                    'visit_id' => $line->visit_id ?: $line->client?->visit_id,
+                    'sku' => $line->item?->code,
+                    'item_uuid' => $line->item?->uuid,
+                    'item_name' => $line->item_name ?: $line->item?->name,
+                    'strength' => $line->item?->strength,
+                    'quantity' => $remaining,
+                    'status' => $line->status,
+                ];
+            })->values()->all(),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     */
+    public function postToClinical(string $path, array $body, ?string $tenantId = null): void
+    {
+        $this->requestClinical('POST', $path, $body, $tenantId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     */
+    public function requestClinical(
+        string $method,
+        string $path,
+        array $body = [],
+        ?string $tenantId = null
+    ): ?\Illuminate\Http\Client\Response {
+        $settings = KashtreClinicalModuleSetting::resolved();
+
+        if (! $settings->isConfiguredForOutbound()) {
+            return null;
         }
 
         $url = $settings->baseUrl().'/'.ltrim($path, '/');
 
         try {
-            $response = Http::timeout(15)
+            $pending = Http::timeout(15)
                 ->withHeaders(array_filter([
                     'X-Service-Key' => $settings->serviceKey(),
                     'X-Tenant-Id' => $tenantId,
                     'Accept' => 'application/json',
-                ]))
-                ->post($url, $body);
+                ]));
+
+            $response = strtoupper($method) === 'GET'
+                ? $pending->get($url, $body)
+                : $pending->send($method, $url, ['json' => $body]);
 
             if ($response->failed()) {
                 Log::warning('Clinical Module request failed', [
+                    'method' => $method,
                     'url' => $url,
                     'status' => $response->status(),
                     'body' => $response->body(),
                 ]);
             }
+
+            return $response;
         } catch (\Throwable $e) {
             Log::warning('Clinical Module request exception', [
+                'method' => $method,
                 'url' => $url,
                 'message' => $e->getMessage(),
             ]);
+
+            return null;
         }
     }
 }

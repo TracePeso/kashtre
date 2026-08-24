@@ -12,6 +12,10 @@ use Illuminate\Support\Str;
 
 class InventoryFulfillmentIngestService
 {
+    public function __construct(
+        private readonly InventoryDemandLedgerService $demandLedger,
+    ) {}
+
     /**
      * Stamp paid goods onto the mapped End Store fulfillment queue (SRD §4.1).
      *
@@ -24,6 +28,11 @@ class InventoryFulfillmentIngestService
         $skipped = 0;
         $lines = [];
 
+        $payloadItems = $items !== [] ? $items : (is_array($invoice->items) ? $invoice->items : []);
+
+        // Dual-stream demand: always capture intent before stock / routing decisions (SRD A-02).
+        $this->demandLedger->recordFromInvoice($invoice, $payloadItems);
+
         if (! InventoryModuleConfig::query()
             ->where('business_id', $invoice->business_id)
             ->where('is_active', true)
@@ -31,7 +40,6 @@ class InventoryFulfillmentIngestService
             return compact('created', 'skipped', 'lines');
         }
 
-        $payloadItems = $items !== [] ? $items : (is_array($invoice->items) ? $invoice->items : []);
         $assignment = $this->resolveAssignment($invoice, $explicitClientSpaceId);
 
         if (! $assignment) {
@@ -70,7 +78,7 @@ class InventoryFulfillmentIngestService
                 continue;
             }
 
-            $priority = $this->detectPriority($item, $itemModel);
+            $priority = $this->detectPriority($item, $itemModel, (int) $invoice->business_id);
             $line = $this->upsertLine($invoice, $itemModel, $assignment, $quantity, $priority, $item);
 
             if ($line->wasRecentlyCreated) {
@@ -132,7 +140,7 @@ class InventoryFulfillmentIngestService
     /**
      * @param  array<string, mixed>  $itemPayload
      */
-    protected function detectPriority(array $itemPayload, Item $item): string
+    protected function detectPriority(array $itemPayload, Item $item, int $businessId): string
     {
         $haystack = Str::upper(implode(' ', array_filter([
             (string) ($itemPayload['name'] ?? ''),
@@ -142,12 +150,17 @@ class InventoryFulfillmentIngestService
             (string) $item->name,
         ])));
 
-        if (str_contains($haystack, 'STAT')) {
-            return InventoryFulfillmentLine::PRIORITY_STAT;
-        }
+        $keywords = InventoryModuleConfig::query()
+            ->where('business_id', $businessId)
+            ->first()
+            ?->statPriorityKeywords() ?? ['STAT', 'URGENT'];
 
-        if (str_contains($haystack, 'URGENT')) {
-            return InventoryFulfillmentLine::PRIORITY_URGENT;
+        foreach ($keywords as $word) {
+            if ($word !== '' && str_contains($haystack, $word)) {
+                return ($word === 'STAT' || str_starts_with($word, 'STAT'))
+                    ? InventoryFulfillmentLine::PRIORITY_STAT
+                    : InventoryFulfillmentLine::PRIORITY_URGENT;
+            }
         }
 
         $explicit = Str::lower((string) ($itemPayload['priority'] ?? 'normal'));
@@ -186,6 +199,7 @@ class InventoryFulfillmentIngestService
                 'priority' => $priority,
                 'client_space_id' => $assignment->client_space_id,
                 'fulfillment_strategy' => $assignment->fulfillment_strategy,
+                'supports_approved_pool' => $assignment->supportsApprovedPool(),
                 'visit_id' => $invoice->visit_id,
                 'client_id' => $invoice->client_id,
                 'item_name' => $item->name,
@@ -207,6 +221,7 @@ class InventoryFulfillmentIngestService
             'quantity' => $quantity,
             'quantity_fulfilled' => 0,
             'fulfillment_strategy' => $assignment->fulfillment_strategy,
+            'supports_approved_pool' => $assignment->supportsApprovedPool(),
             'priority' => $priority,
             'status' => InventoryFulfillmentLine::STATUS_PENDING,
             'basket_key' => $invoice->client_id

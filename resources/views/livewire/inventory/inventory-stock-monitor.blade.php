@@ -11,13 +11,15 @@
                         class="px-2.5 py-1 text-xs font-medium rounded transition disabled:opacity-60 {{ $stockView === 'local' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:text-gray-900' }}">
                     Local
                 </button>
-                <button type="button"
-                        wire:click="setStockView('network')"
-                        wire:loading.attr="disabled"
-                        wire:target="setStockView"
-                        class="px-2.5 py-1 text-xs font-medium rounded transition disabled:opacity-60 {{ $stockView === 'network' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:text-gray-900' }}">
-                    Network
-                </button>
+                @if(\App\Support\InventoryBusinessContext::multiStoreNetworkEnabled())
+                    <button type="button"
+                            wire:click="setStockView('network')"
+                            wire:loading.attr="disabled"
+                            wire:target="setStockView"
+                            class="px-2.5 py-1 text-xs font-medium rounded transition disabled:opacity-60 {{ $stockView === 'network' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:text-gray-900' }}">
+                        Network
+                    </button>
+                @endif
             </div>
 
             <select id="stock-monitor-store" wire:model.live="storeId" aria-label="Store"

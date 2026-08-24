@@ -45,6 +45,10 @@ class InventoryController extends Controller
 
     public function network()
     {
+        if (! InventoryBusinessContext::multiStoreNetworkEnabled()) {
+            abort(403, 'Multi-store network view is disabled for this organisation.');
+        }
+
         return redirect()->route('inventory.monitor', ['view' => 'network']);
     }
 

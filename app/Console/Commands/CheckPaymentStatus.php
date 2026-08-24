@@ -306,8 +306,15 @@ class CheckPaymentStatus extends Command
                                         $moneyTrackingService = new MoneyTrackingService();
                                         $itemsForStatements = is_array($invoice->items) ? $invoice->items : json_decode($invoice->items, true) ?? [];
                                         $moneyTrackingService->processPaymentCompleted($invoice->fresh(), $itemsForStatements);
-                                        $this->createPackageTrackingRecords($invoice, $invoice->items);
-                                        $queuedItems = $this->queueItemsAtServicePoints($invoice, $invoice->items);
+                                        if (! $invoice->isInventoryUsagePostpaid()) {
+                                            $this->createPackageTrackingRecords($invoice, $invoice->items);
+                                            $queuedItems = $this->queueItemsAtServicePoints($invoice, $invoice->items);
+                                        } else {
+                                            Log::info('Skipping service queue for inventory postpaid usage invoice', [
+                                                'invoice_id' => $invoice->id,
+                                                'invoice_number' => $invoice->invoice_number,
+                                            ]);
+                                        }
                                         InsuranceClientPortionThirdPartyNotifier::notifyIfApplicable($invoice, $transaction);
                                     } else {
                                         // Normal payment: credit client suspense then client account
@@ -324,13 +331,20 @@ class CheckPaymentStatus extends Command
                                             ]
                                         );
                                         $balanceStatements = $moneyTrackingService->processPaymentCompleted($invoice, $invoice->items);
-                                        $this->createPackageTrackingRecords($invoice, $invoice->items);
-                                        try {
-                                            $moneyTrackingService->processSuspenseAccountMovements($invoice, $invoice->items);
-                                        } catch (\Exception $e) {
-                                            Log::error("Suspense account movements failed", ['invoice_id' => $invoice->id, 'error' => $e->getMessage()]);
+                                        if (! $invoice->isInventoryUsagePostpaid()) {
+                                            $this->createPackageTrackingRecords($invoice, $invoice->items);
+                                            try {
+                                                $moneyTrackingService->processSuspenseAccountMovements($invoice, $invoice->items);
+                                            } catch (\Exception $e) {
+                                                Log::error("Suspense account movements failed", ['invoice_id' => $invoice->id, 'error' => $e->getMessage()]);
+                                            }
+                                            $queuedItems = $this->queueItemsAtServicePoints($invoice, $invoice->items);
+                                        } else {
+                                            Log::info('Skipping service queue for inventory postpaid usage invoice', [
+                                                'invoice_id' => $invoice->id,
+                                                'invoice_number' => $invoice->invoice_number,
+                                            ]);
                                         }
-                                        $queuedItems = $this->queueItemsAtServicePoints($invoice, $invoice->items);
                                         InsuranceClientPortionThirdPartyNotifier::notifyIfApplicable($invoice, $transaction);
                                     }
                                 } else {

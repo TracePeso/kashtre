@@ -666,6 +666,17 @@ class InvoiceController extends Controller
                 throw new \RuntimeException('Could not allocate a unique invoice number after repeated attempts.');
             }
 
+            // SRD A-02 — capture demand intent as soon as invoice items exist (before payment / stock fulfillment).
+            try {
+                app(\App\Services\Inventory\InventoryDemandLedgerService::class)
+                    ->recordFromInvoice($invoice, $itemsCollection->toArray());
+            } catch (\Throwable $e) {
+                Log::warning('Inventory demand ledger early capture failed', [
+                    'invoice_id' => $invoice->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             Log::info('Invoice created successfully', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
@@ -3723,9 +3734,30 @@ class InvoiceController extends Controller
         $this->repairVendorPortionTraceInvoicesIfNeeded($invoice);
 
         // Load the invoice with quotations relationship
-        $invoice->load(['quotations', 'vendorPortionInvoices', 'parentInvoice.vendorPortionInvoices']);
+        $invoice->load(['quotations', 'vendorPortionInvoices', 'parentInvoice.vendorPortionInvoices', 'client']);
 
-        return view('invoices.show', compact('invoice'));
+        $inventoryUsageEvent = null;
+        $canCollectUsagePayment = false;
+        $usagePaymentMethods = [];
+        $usageDefaultPhone = null;
+
+        if ($invoice->isInventoryUsagePostpaid()) {
+            $inventoryUsageEvent = \App\Models\InventoryUsageEvent::query()
+                ->where('invoice_id', $invoice->id)
+                ->with(['client:id,name,client_id,phone_number,payment_phone_number,is_credit_eligible'])
+                ->first();
+
+            if ($inventoryUsageEvent) {
+                $usagePayments = app(\App\Services\Inventory\InventoryUsagePaymentService::class);
+                $canCollectUsagePayment = $usagePayments->canCollect($inventoryUsageEvent);
+                $usagePaymentMethods = $usagePayments->availablePaymentMethods((int) $invoice->business_id);
+                $usageDefaultPhone = $invoice->payment_phone
+                    ?: $inventoryUsageEvent->client?->payment_phone_number
+                    ?: $inventoryUsageEvent->client?->phone_number;
+            }
+        }
+
+        return view('invoices.show', compact('invoice', 'inventoryUsageEvent', 'canCollectUsagePayment', 'usagePaymentMethods', 'usageDefaultPhone'));
     }
 
     /**

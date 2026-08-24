@@ -40,6 +40,9 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
 
     public string $budgetCapNotice = '';
 
+    /** Quantity Mode (default) vs Days Mode (SRD §7.5). */
+    public string $editMode = 'quantity';
+
     /**
      * Original vs adjusted line snapshot after an edit.
      *
@@ -124,7 +127,8 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
                 ->type('number')
                 ->alignEnd()
                 ->step('1')
-                ->disabled(! $writable)
+                ->disabled(! $writable || $this->editMode === 'days')
+                ->visible($this->editMode === 'quantity')
                 ->updateStateUsing(function (InventoryOrderLine $record, $state) use ($service, $writable) {
                     if (! $writable) {
                         return $state;
@@ -147,6 +151,45 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
                     );
 
                     return $actualQty;
+                }),
+
+            TextColumn::make('order_quantity_suom_readonly')
+                ->label('Order qty')
+                ->alignEnd()
+                ->visible($this->editMode === 'days')
+                ->state(fn (InventoryOrderLine $record): float => (float) $record->order_quantity_suom)
+                ->formatStateUsing(fn ($state): string => number_format((float) $state, 0)),
+
+            TextInputColumn::make('order_days')
+                ->label('Order days')
+                ->type('number')
+                ->alignEnd()
+                ->step('0.1')
+                ->disabled(! $writable || $this->editMode === 'quantity')
+                ->visible($this->editMode === 'days')
+                ->updateStateUsing(function (InventoryOrderLine $record, $state) use ($service, $writable) {
+                    if (! $writable) {
+                        return $state;
+                    }
+
+                    \App\Support\InventoryBusinessContext::assertWritable();
+
+                    $requestedDays = (float) ($state ?? 0);
+                    $beforeQty = (float) $record->order_quantity_suom;
+                    $result = $service->applyLineDaysUpdate($record, $requestedDays, true);
+                    $this->order->refresh();
+
+                    $this->applyCapAdjustmentFeedback(
+                        $result,
+                        $this->order->enforcesBudgetCap()
+                            && (float) $result['line']->order_quantity_suom + 0.0001 < $beforeQty
+                            ? 'Quantity limited so this line alone does not exceed the order cap.'
+                            : null,
+                        'Days change updated this line and adjusted 1 other line equally so the order total stays at the cap.',
+                        'Days change updated this line and adjusted :count other lines equally so the order total stays at the cap.'
+                    );
+
+                    return (float) $result['line']->order_days;
                 }),
         ];
 
@@ -314,6 +357,17 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
             $this->order,
             $this->budgetCapEnforced
         );
+        $this->resetTable();
+    }
+
+    public function setEditMode(string $mode): void
+    {
+        if (! in_array($mode, ['quantity', 'days'], true) || $this->editMode === $mode) {
+            return;
+        }
+
+        $this->editMode = $mode;
+        $this->dismissCapAdjustmentComparison();
         $this->resetTable();
     }
 

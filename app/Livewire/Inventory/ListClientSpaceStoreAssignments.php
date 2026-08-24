@@ -68,6 +68,16 @@ class ListClientSpaceStoreAssignments extends Component implements HasForms, Has
                     ->color(fn (ClientSpaceStoreAssignment $record): string => $record->fulfillment_strategy === ClientSpaceStoreAssignment::STRATEGY_BATCH_AND_STAGE
                         ? 'warning'
                         : 'primary'),
+                Tables\Columns\IconColumn::make('supports_approved_pool')
+                    ->label('Approved Pool')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-circle')
+                    ->falseIcon('heroicon-o-x-circle')
+                    ->trueColor('success')
+                    ->falseColor('gray')
+                    ->tooltip(fn (ClientSpaceStoreAssignment $record): string => $record->supportsApprovedPool()
+                        ? 'Dispense adds to the client Approved Pool for later Record Usage.'
+                        : 'Dispense completes the ticket only — no Approved Pool balance.'),
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('Active')
                     ->boolean(),
@@ -104,11 +114,16 @@ class ListClientSpaceStoreAssignments extends Component implements HasForms, Has
                     ->visible(fn () => $this->canManage)
                     ->label('Assign End Store')
                     ->modalHeading('Assign Client Space → End Store')
-                    ->modalDescription('Maps a Client Space (ward / clinic) to the End Store that receives its paid inventory queue lines (SRD §4.1).')
+                    ->modalDescription('Maps a Client Space (ward / clinic) to the End Store that receives its paid inventory queue lines. Choose whether dispensed goods credit the Approved Pool or only complete the ticket.')
                     ->form($this->formSchema($businessId))
+                    ->disabled(fn (): bool => $this->clientSpaceOptions($businessId) === [])
+                    ->tooltip(fn (): ?string => $this->clientSpaceOptions($businessId) === []
+                        ? 'All Client Spaces are already mapped. Create another Client Space, or update an existing mapping.'
+                        : null)
                     ->mutateFormDataUsing(function (array $data) use ($businessId): array {
                         $data['business_id'] = $businessId;
                         $data['is_active'] = (bool) ($data['is_active'] ?? true);
+                        $data['supports_approved_pool'] = (bool) ($data['supports_approved_pool'] ?? true);
 
                         return $data;
                     })
@@ -132,6 +147,7 @@ class ListClientSpaceStoreAssignments extends Component implements HasForms, Has
                     ->mutateFormDataUsing(function (array $data) use ($businessId): array {
                         $data['business_id'] = $businessId;
                         $data['is_active'] = (bool) ($data['is_active'] ?? true);
+                        $data['supports_approved_pool'] = (bool) ($data['supports_approved_pool'] ?? true);
 
                         return $data;
                     })
@@ -148,6 +164,7 @@ class ListClientSpaceStoreAssignments extends Component implements HasForms, Has
             Select::make('client_space_id')
                 ->label('Client Space')
                 ->options(fn () => $this->clientSpaceOptions($businessId, $record?->client_space_id))
+                ->placeholder('Select Client Space')
                 ->required()
                 ->searchable()
                 ->disabled($record !== null)
@@ -158,16 +175,22 @@ class ListClientSpaceStoreAssignments extends Component implements HasForms, Has
             Select::make('store_id')
                 ->label('End Store')
                 ->options(fn () => $this->endStoreOptions($businessId))
+                ->placeholder('Select End Store')
                 ->required()
                 ->searchable()
                 ->helperText('Only End Stores appear here. Create them under Manage Stores first.'),
             Select::make('fulfillment_strategy')
                 ->label('Fulfillment strategy')
                 ->options(ClientSpaceStoreAssignment::strategyOptions())
+                ->placeholder('Select fulfillment strategy')
                 ->required()
                 ->default(ClientSpaceStoreAssignment::STRATEGY_DISCRETE_IMMEDIATE)
                 ->native(false)
                 ->helperText('Outpatient = immediate discrete pick. Inpatient = batch, stage, and ward handoff.'),
+            Toggle::make('supports_approved_pool')
+                ->label('Supports Approved Pool')
+                ->default(true)
+                ->helperText('On: dispensed goods credit the client Approved Pool for later Record Usage. Off: dispense only completes / ticks off the ticket — no pool balance.'),
             Toggle::make('is_active')
                 ->label('Active')
                 ->default(true)

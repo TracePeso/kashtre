@@ -7,27 +7,35 @@ use App\Models\InventoryHandoffToken;
 use App\Models\Client;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\ClinicalModuleIntegrationService;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
 class InventoryHandoffTokenService
 {
     public function __construct(
         private readonly InventoryFulfillmentDispenseService $dispense,
+        private readonly ClinicalModuleIntegrationService $clinical,
     ) {}
 
     /**
-     * Validate a 5-digit handoff code for an End Store and dispense all linked staged lines.
+     * Validate a Clinical-issued 5-digit handoff code and dispense accepted staged lines.
      *
+     * @param  list<int>  $flaggedLineIds  Lines to roll back to Pending (partial acceptance)
      * @return array{
      *     token: InventoryHandoffToken,
      *     completed: list<InventoryFulfillmentLine>,
+     *     flagged: list<InventoryFulfillmentLine>,
      *     failed: list<array{line: InventoryFulfillmentLine, message: string}>
      * }
      */
-    public function release(Store $store, string $code, User $user): array
-    {
+    public function release(
+        Store $store,
+        string $code,
+        User $user,
+        ?InventoryHandoffToken $session = null,
+        array $flaggedLineIds = [],
+    ): array {
         if (! $store->isEndStore()) {
             throw ValidationException::withMessages([
                 'store_id' => 'Handoff release is only allowed at an End Store.',
@@ -37,32 +45,43 @@ class InventoryHandoffTokenService
         $code = preg_replace('/\D+/', '', $code) ?? '';
         if (strlen($code) !== 5) {
             throw ValidationException::withMessages([
-                'code' => 'Enter the 5-digit handoff token.',
+                'code' => 'Enter the 5-digit handoff token from the ward nurse (Clinical Module).',
             ]);
         }
 
-        $candidates = InventoryHandoffToken::query()
-            ->where('store_id', $store->id)
-            ->whereNull('used_at')
-            ->where('expires_at', '>', now())
-            ->orderByDesc('id')
-            ->get();
-
-        $matched = null;
-        foreach ($candidates as $candidate) {
-            if (Hash::check($code, $candidate->code_hash)) {
-                $matched = $candidate;
-                break;
-            }
+        $matched = $session;
+        if ($matched === null) {
+            $matched = InventoryHandoffToken::query()
+                ->where('store_id', $store->id)
+                ->whereNull('used_at')
+                ->where('expires_at', '>', now())
+                ->orderByDesc('id')
+                ->first();
         }
 
-        if (! $matched) {
+        if (! $matched || ! $matched->isActive() || (int) $matched->store_id !== (int) $store->id) {
             throw ValidationException::withMessages([
-                'code' => 'Invalid or expired handoff token for this End Store.',
+                'code' => 'No active staged handoff session for this End Store.',
             ]);
         }
 
-        return DB::transaction(function () use ($matched, $user) {
+        $matched->loadMissing(['store', 'clientSpace']);
+
+        $validation = $this->clinical->validateHandoffCode($code, $matched);
+        if (! $validation['valid']) {
+            throw ValidationException::withMessages([
+                'code' => $validation['message'] ?? 'Clinical Module rejected the handoff code.',
+            ]);
+        }
+
+        if (! empty($validation['clinical_session_id'])) {
+            $matched->clinical_session_id = $validation['clinical_session_id'];
+            $matched->save();
+        }
+
+        $flaggedLineIds = array_values(array_unique(array_map('intval', $flaggedLineIds)));
+
+        return DB::transaction(function () use ($matched, $user, $flaggedLineIds) {
             $lineIds = array_values(array_map('intval', $matched->fulfillment_line_ids ?? []));
 
             $lines = InventoryFulfillmentLine::query()
@@ -70,12 +89,18 @@ class InventoryHandoffTokenService
                 ->get()
                 ->keyBy('id');
 
+            $flagged = [];
             $completed = [];
             $failed = [];
 
             foreach ($lineIds as $lineId) {
                 $line = $lines->get($lineId);
                 if (! $line) {
+                    continue;
+                }
+
+                if (in_array($lineId, $flaggedLineIds, true)) {
+                    $flagged[] = $this->rollbackFlaggedLine($line, $matched);
                     continue;
                 }
 
@@ -97,13 +122,20 @@ class InventoryHandoffTokenService
                 }
             }
 
-            if ($completed === [] && $failed !== []) {
+            if ($completed === [] && $flagged === [] && $failed !== []) {
                 throw ValidationException::withMessages([
                     'code' => 'Handoff could not release any lines: '.($failed[0]['message'] ?? 'unknown error'),
                 ]);
             }
 
-            // Mark used when at least one line released (partial accept allowed).
+            if ($completed === [] && $flagged === []) {
+                throw ValidationException::withMessages([
+                    'code' => 'No staged lines available to release for this handoff.',
+                ]);
+            }
+
+            // Keep failed staged lines on a refreshed session requirement; mark used when we released or flagged.
+            $matched->fulfillment_line_ids = array_values(array_diff($lineIds, $flaggedLineIds));
             $matched->used_at = now();
             $matched->used_by = $user->id;
             $matched->save();
@@ -111,9 +143,31 @@ class InventoryHandoffTokenService
             return [
                 'token' => $matched->fresh(),
                 'completed' => $completed,
+                'flagged' => $flagged,
                 'failed' => $failed,
             ];
         });
+    }
+
+    /**
+     * Resolve the active handoff session for a staged line's basket.
+     */
+    public function activeSessionForLine(InventoryFulfillmentLine $line): ?InventoryHandoffToken
+    {
+        if ($line->handoff_token_id) {
+            $token = InventoryHandoffToken::query()->find($line->handoff_token_id);
+            if ($token && $token->isActive()) {
+                return $token;
+            }
+        }
+
+        return InventoryHandoffToken::query()
+            ->where('store_id', $line->store_id)
+            ->where('basket_key', (string) $line->basket_key)
+            ->whereNull('used_at')
+            ->where('expires_at', '>', now())
+            ->orderByDesc('id')
+            ->first();
     }
 
     /**
@@ -129,7 +183,17 @@ class InventoryHandoffTokenService
             ->whereNull('used_at')
             ->where('expires_at', '>', now())
             ->orderBy('expires_at')
-            ->get(['id', 'uuid', 'store_id', 'client_space_id', 'basket_key', 'expires_at', 'fulfillment_line_ids']);
+            ->get([
+                'id',
+                'uuid',
+                'store_id',
+                'client_space_id',
+                'basket_key',
+                'expires_at',
+                'fulfillment_line_ids',
+                'clinical_session_id',
+                'clinical_notified_at',
+            ]);
 
         $clientIds = $tokens
             ->pluck('basket_key')
@@ -151,5 +215,25 @@ class InventoryHandoffTokenService
         }
 
         return $tokens;
+    }
+
+    protected function rollbackFlaggedLine(
+        InventoryFulfillmentLine $line,
+        InventoryHandoffToken $token
+    ): InventoryFulfillmentLine {
+        $meta = $line->metadata ?? [];
+        $meta['flagged_from_handoff'] = [
+            'handoff_ref' => $token->uuid,
+            'flagged_at' => now()->toIso8601String(),
+        ];
+
+        $line->status = InventoryFulfillmentLine::STATUS_PENDING;
+        $line->staged_at = null;
+        $line->handoff_token_id = null;
+        $line->metadata = $meta;
+        $line->notes = trim(($line->notes ? $line->notes."\n" : '').'Flagged at handoff; rolled back for urgent correction.');
+        $line->save();
+
+        return $line->fresh();
     }
 }
