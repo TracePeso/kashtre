@@ -22,7 +22,8 @@ class InventoryFulfillmentDispenseService
 
     /**
      * End Store dispense complete (SRD §4 / §8.1):
-     * stock ↓ at stamped End Store, Approved Pool ↑, Main Module goods → Completed.
+     * stock ↓ at stamped End Store, Main Module goods → Completed.
+     * Approved Pool ↑ only when the line's Client Space routing supports it.
      *
      * @param  array{batch_lot?: string|null, serials?: list<string>|null}|null  $traceability
      */
@@ -153,7 +154,7 @@ class InventoryFulfillmentDispenseService
             }
             $line->save();
 
-            if ($line->client_id) {
+            if ($line->client_id && $line->supportsApprovedPool()) {
                 PatientApprovedPoolLine::create([
                     'business_id' => $businessId,
                     'client_id' => $line->client_id,

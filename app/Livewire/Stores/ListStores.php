@@ -89,8 +89,8 @@ class ListStores extends Component implements HasForms, HasTable
                 Tables\Columns\TextColumn::make('distribution_type')
                     ->label('Store type')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state, Store $record): string => $record->isCrashCart()
-                        ? 'Crash cart'
+                    ->formatStateUsing(fn (?string $state, Store $record): string => $record->isSatelliteStore()
+                        ? ($record->satelliteRoleLabel() ?? 'Satellite')
                         : $record->distributionTypeLabel())
                     ->color(fn (Store $record): string => $record->isCrashCart()
                         ? 'danger'
@@ -432,21 +432,27 @@ class ListStores extends Component implements HasForms, HasTable
                 ->maxLength(255),
             Forms\Components\Hidden::make('distribution_type')
                 ->default(Store::DISTRIBUTION_SATELLITE),
-            Forms\Components\Toggle::make('is_crash_cart')
-                ->label('This is a crash cart')
-                ->helperText('Enables Ready → Deployed → Reconciling status. Inbound stock is locked while Deployed.')
-                ->visible(fn (Get $get): bool => $this->businessAllowsCrashCart(
+            Forms\Components\Select::make('satellite_role')
+                ->label('Satellite role')
+                ->options(fn (Get $get): array => $this->satelliteRoleFormOptions(
                     $this->resolvedBusinessId($get('business_id'))
                 ))
-                ->default(false)
+                ->default(Store::SATELLITE_ROLE_NORMAL)
+                ->required()
+                ->native(false)
                 ->live()
+                ->helperText('Crash carts are satellites under an End Store with Ready → Deploy → Reconcile → Seal.')
                 ->afterStateUpdated(function ($state, Set $set) {
-                    $set('crash_cart_status', $state ? Store::CRASH_CART_READY : null);
+                    $set('crash_cart_status', $state === Store::SATELLITE_ROLE_CRASH_CART
+                        ? Store::CRASH_CART_READY
+                        : null);
+                    $set('is_crash_cart', $state === Store::SATELLITE_ROLE_CRASH_CART);
                 }),
+            Forms\Components\Hidden::make('is_crash_cart')->default(false),
             Forms\Components\Hidden::make('crash_cart_status'),
             Forms\Components\Placeholder::make('type_note')
                 ->label('Store type')
-                ->content(fn (Get $get): string => $get('is_crash_cart')
+                ->content(fn (Get $get): string => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART
                     ? 'Crash cart — sealed emergency stock under an End Store. Not for client sales.'
                     : 'Satellite store — floor stock under an End Store. Not for client sales.'),
             Forms\Components\Textarea::make('description')
@@ -484,26 +490,33 @@ class ListStores extends Component implements HasForms, HasTable
                     ->required(),
                 Forms\Components\Hidden::make('distribution_type')
                     ->default(Store::DISTRIBUTION_SATELLITE),
-                Forms\Components\Toggle::make('is_crash_cart')
-                    ->label('This is a crash cart')
-                    ->helperText('Enables Ready → Deployed → Reconciling status. Inbound stock is locked while Deployed.')
-                    ->visible(fn (Get $get): bool => $this->businessAllowsCrashCart(
-                        $this->resolvedBusinessId($get('business_id') ?: $record->business_id)
+                Forms\Components\Select::make('satellite_role')
+                    ->label('Satellite role')
+                    ->options(fn (Get $get) use ($record): array => $this->satelliteRoleFormOptions(
+                        $this->resolvedBusinessId($get('business_id') ?: $record->business_id),
+                        $record->satellite_role
                     ))
+                    ->required()
+                    ->native(false)
                     ->live()
+                    ->helperText('Crash carts are satellites under an End Store with Ready → Deploy → Reconcile → Seal.')
                     ->afterStateUpdated(function ($state, Set $set) {
-                        $set('crash_cart_status', $state ? Store::CRASH_CART_READY : null);
+                        $set('crash_cart_status', $state === Store::SATELLITE_ROLE_CRASH_CART
+                            ? Store::CRASH_CART_READY
+                            : null);
+                        $set('is_crash_cart', $state === Store::SATELLITE_ROLE_CRASH_CART);
                     }),
+                Forms\Components\Hidden::make('is_crash_cart'),
                 Forms\Components\Hidden::make('crash_cart_status'),
                 Forms\Components\Placeholder::make('type_note')
                     ->label('Store type')
-                    ->content(fn (Get $get): string => $get('is_crash_cart')
-                        ? 'Crash cart'
-                        : 'Satellite store'),
+                    ->content(fn (Get $get): string => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART
+                        ? 'Satellite · Crash cart'
+                        : 'Satellite'),
                 Forms\Components\Placeholder::make('crash_status_note')
                     ->label('Cart status')
                     ->content(fn () => $record->crashCartStatusLabel() ?? '—')
-                    ->visible(fn (): bool => $record->isCrashCart()),
+                    ->visible(fn (Get $get): bool => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART),
                 Forms\Components\Placeholder::make('crash_seal_note')
                     ->label('Current seal')
                     ->content(fn () => $record->crash_cart_seal_number
@@ -511,7 +524,7 @@ class ListStores extends Component implements HasForms, HasTable
                             ? ' · sealed '.$record->crash_cart_sealed_at->format('d M Y H:i')
                             : '')
                         : 'Not sealed yet')
-                    ->visible(fn (): bool => $record->isCrashCart()),
+                    ->visible(fn (Get $get): bool => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART),
                 Forms\Components\Placeholder::make('crash_order_note')
                     ->label('Last replenishment')
                     ->content(function () use ($record) {
@@ -522,7 +535,7 @@ class ListStores extends Component implements HasForms, HasTable
 
                         return $order->order_number.' ('.$order->status.')';
                     })
-                    ->visible(fn (): bool => $record->isCrashCart()),
+                    ->visible(fn (Get $get): bool => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART),
                 Forms\Components\Textarea::make('description')
                     ->label('Description')
                     ->nullable(),
@@ -677,6 +690,23 @@ class ListStores extends Component implements HasForms, HasTable
             ->first();
 
         return $config?->crashCartEnabled() ?? false;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function satelliteRoleFormOptions(?int $businessId, ?string $currentRole = null): array
+    {
+        $options = [
+            Store::SATELLITE_ROLE_NORMAL => 'Normal floor stock',
+        ];
+
+        if ($this->businessAllowsCrashCart($businessId)
+            || $currentRole === Store::SATELLITE_ROLE_CRASH_CART) {
+            $options[Store::SATELLITE_ROLE_CRASH_CART] = 'Crash cart';
+        }
+
+        return $options;
     }
 
     protected function canManageCrashCartStatus(Store $record): bool

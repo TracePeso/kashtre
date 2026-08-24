@@ -199,6 +199,7 @@ class InventoryFulfillmentIngestService
                 'priority' => $priority,
                 'client_space_id' => $assignment->client_space_id,
                 'fulfillment_strategy' => $assignment->fulfillment_strategy,
+                'supports_approved_pool' => $assignment->supportsApprovedPool(),
                 'visit_id' => $invoice->visit_id,
                 'client_id' => $invoice->client_id,
                 'item_name' => $item->name,
@@ -220,6 +221,7 @@ class InventoryFulfillmentIngestService
             'quantity' => $quantity,
             'quantity_fulfilled' => 0,
             'fulfillment_strategy' => $assignment->fulfillment_strategy,
+            'supports_approved_pool' => $assignment->supportsApprovedPool(),
             'priority' => $priority,
             'status' => InventoryFulfillmentLine::STATUS_PENDING,
             'basket_key' => $invoice->client_id

@@ -4,7 +4,9 @@
             <div class="mb-6">
                 <h1 class="text-xl font-semibold text-gray-900">Crash Carts</h1>
                 <p class="mt-1 text-sm text-gray-600">
-                    Mobile emergency stock. Deploy during a code, reconcile usage after the event, then return the cart to service with a new seal.
+                    Crash carts are <span class="font-medium text-gray-800">satellite stores</span> under an End Store,
+                    with an emergency lifecycle: Deploy during a code, reconcile usage after the event, then seal and return to Ready.
+                    They are not Client Space / EndStore queue nodes.
                 </p>
             </div>
 
@@ -226,7 +228,8 @@
                 <div class="rounded-lg border border-dashed border-gray-300 bg-white px-6 py-12 text-center">
                     <p class="text-sm font-medium text-gray-900">No crash carts configured</p>
                     <p class="mt-1 text-sm text-gray-500">
-                        Create a Satellite {{ strtolower(inventory_label('store')) }} and mark it as a crash cart under Manage Stores.
+                        Create a Satellite {{ strtolower(inventory_label('store')) }} under an End Store and set its role to
+                        <span class="font-medium">Crash cart</span> under Manage Stores.
                     </p>
                 </div>
             @endforelse

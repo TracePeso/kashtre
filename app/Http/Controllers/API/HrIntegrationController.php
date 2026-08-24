@@ -9,6 +9,7 @@ use App\Models\ClientSpace;
 use App\Models\Department;
 use App\Models\Qualification;
 use App\Models\StaffCategory;
+use App\Models\Title;
 use App\Models\User;
 use App\Services\HrModuleSyncService;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +24,7 @@ class HrIntegrationController extends Controller
 
     /**
      * GET /api/businesses
+     * Also: GET /api/facilities (facility = Kashtre business / organisation).
      */
     public function businesses(): JsonResponse
     {
@@ -32,6 +34,14 @@ class HrIntegrationController extends Controller
             ->get(['id', 'uuid', 'name', 'email', 'phone', 'account_number']);
 
         return response()->json($businesses);
+    }
+
+    /**
+     * GET /api/facilities — alias of businesses for HR integrators.
+     */
+    public function facilities(): JsonResponse
+    {
+        return $this->businesses();
     }
 
     /**
@@ -63,6 +73,30 @@ class HrIntegrationController extends Controller
     }
 
     /**
+     * GET /api/titles?business_id=X
+     * Official titles (e.g. Dr, Mr, Sister). Also: GET /api/official-titles
+     */
+    public function titles(Request $request): JsonResponse
+    {
+        $query = Title::query()
+            ->where('business_id', '!=', 1)
+            ->select('id', 'uuid', 'name', 'description', 'business_id')
+            ->orderBy('name');
+
+        $this->applyBusinessFilter($query, $request);
+
+        return response()->json($query->get());
+    }
+
+    /**
+     * GET /api/official-titles — alias of titles.
+     */
+    public function officialTitles(Request $request): JsonResponse
+    {
+        return $this->titles($request);
+    }
+
+    /**
      * GET /api/qualifications?business_id=X
      */
     public function qualifications(Request $request): JsonResponse
@@ -78,6 +112,7 @@ class HrIntegrationController extends Controller
 
     /**
      * GET /api/staff-categories?business_id=X
+     * Staff categories / cadres / job designations in Kashtre.
      */
     public function staffCategories(Request $request): JsonResponse
     {
@@ -88,6 +123,22 @@ class HrIntegrationController extends Controller
         $this->applyBusinessFilter($query, $request);
 
         return response()->json($query->get());
+    }
+
+    /**
+     * GET /api/cadres — alias of staff-categories.
+     */
+    public function cadres(Request $request): JsonResponse
+    {
+        return $this->staffCategories($request);
+    }
+
+    /**
+     * GET /api/designations — alias of staff-categories (job designation / category).
+     */
+    public function designations(Request $request): JsonResponse
+    {
+        return $this->staffCategories($request);
     }
 
     /**
@@ -125,7 +176,7 @@ class HrIntegrationController extends Controller
 
     /**
      * GET /api/users?business_id=X&per_page=100
-     * Also available as GET /api/hr/staff for backwards compatibility.
+     * Also: GET /api/hr/staff, GET /api/employee-identities
      */
     public function users(Request $request): JsonResponse
     {
@@ -140,7 +191,8 @@ class HrIntegrationController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('employee_code', 'like', "%{$search}%");
+                    ->orWhere('employee_code', 'like', "%{$search}%")
+                    ->orWhere('nin', 'like', "%{$search}%");
             });
         }
 
@@ -164,7 +216,16 @@ class HrIntegrationController extends Controller
     }
 
     /**
+     * GET /api/employee-identities — users with employee identity fields (same as users).
+     */
+    public function employeeIdentities(Request $request): JsonResponse
+    {
+        return $this->users($request);
+    }
+
+    /**
      * GET /api/users/{uuid}
+     * Also: GET /api/employee-identities/{uuid}
      */
     public function userShow(string $uuid): JsonResponse
     {
@@ -174,6 +235,14 @@ class HrIntegrationController extends Controller
             ->firstOrFail();
 
         return response()->json($this->hrSync->userPayload($user));
+    }
+
+    /**
+     * GET /api/employee-identities/{uuid}
+     */
+    public function employeeIdentityShow(string $uuid): JsonResponse
+    {
+        return $this->userShow($uuid);
     }
 
     /**

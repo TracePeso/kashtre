@@ -43,6 +43,7 @@ class InventoryFulfillmentLine extends Model
         'quantity',
         'quantity_fulfilled',
         'fulfillment_strategy',
+        'supports_approved_pool',
         'priority',
         'status',
         'basket_key',
@@ -62,6 +63,7 @@ class InventoryFulfillmentLine extends Model
     protected $casts = [
         'quantity' => 'decimal:2',
         'quantity_fulfilled' => 'decimal:2',
+        'supports_approved_pool' => 'boolean',
         'queued_at' => 'datetime',
         'acknowledged_at' => 'datetime',
         'staged_at' => 'datetime',
@@ -167,6 +169,14 @@ class InventoryFulfillmentLine extends Model
     public function isStaged(): bool
     {
         return $this->status === self::STATUS_STAGED;
+    }
+
+    /**
+     * When false, dispense completes Main Module / SDQ without creating Approved Pool balance.
+     */
+    public function supportsApprovedPool(): bool
+    {
+        return (bool) ($this->supports_approved_pool ?? true);
     }
 
     public function business(): BelongsTo

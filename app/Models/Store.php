@@ -34,6 +34,12 @@ class Store extends Model
 
     public const CRASH_CART_RECONCILING = 'reconciling';
 
+    /** Floor-stock satellite under an End Store (default). */
+    public const SATELLITE_ROLE_NORMAL = 'normal';
+
+    /** Emergency crash-cart satellite under an End Store. */
+    public const SATELLITE_ROLE_CRASH_CART = 'crash_cart';
+
     protected $fillable = [
         'uuid',
         'business_id',
@@ -45,6 +51,7 @@ class Store extends Model
         'reorder_level_days',
         'max_stock_days',
         'distribution_type',
+        'satellite_role',
         'is_crash_cart',
         'crash_cart_status',
         'crash_cart_seal_number',
@@ -335,7 +342,46 @@ class Store extends Model
 
     public function isCrashCart(): bool
     {
-        return $this->isSatelliteStore() && (bool) $this->is_crash_cart;
+        return $this->isSatelliteStore()
+            && $this->satellite_role === self::SATELLITE_ROLE_CRASH_CART;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function satelliteRoleOptions(): array
+    {
+        return [
+            self::SATELLITE_ROLE_NORMAL => 'Normal floor stock',
+            self::SATELLITE_ROLE_CRASH_CART => 'Crash cart',
+        ];
+    }
+
+    public function satelliteRoleLabel(): ?string
+    {
+        if (! $this->isSatelliteStore()) {
+            return null;
+        }
+
+        if ($this->isCrashCart()) {
+            return 'Satellite · Crash cart';
+        }
+
+        return 'Satellite';
+    }
+
+    /**
+     * Query helpers for crash-cart satellites (role + legacy flag during transition).
+     */
+    public function scopeCrashCarts(Builder $query): Builder
+    {
+        return $query->where('distribution_type', self::DISTRIBUTION_SATELLITE)
+            ->where(function (Builder $q) {
+                $q->where('satellite_role', self::SATELLITE_ROLE_CRASH_CART)
+                    ->orWhere(function (Builder $legacy) {
+                        $legacy->whereNull('satellite_role')->where('is_crash_cart', true);
+                    });
+            });
     }
 
     /**
@@ -610,6 +656,7 @@ class Store extends Model
     protected function normalizeCrashCartFields(): void
     {
         if (! $this->isSatelliteStore()) {
+            $this->satellite_role = null;
             $this->is_crash_cart = false;
             $this->crash_cart_status = null;
             $this->crash_cart_seal_number = null;
@@ -620,12 +667,26 @@ class Store extends Model
             return;
         }
 
-        if ($this->is_crash_cart) {
+        // Dual-write transition: accept either satellite_role or legacy is_crash_cart.
+        $role = $this->satellite_role;
+        if ($role === self::SATELLITE_ROLE_CRASH_CART || $this->is_crash_cart) {
+            $role = self::SATELLITE_ROLE_CRASH_CART;
+        } elseif ($role === self::SATELLITE_ROLE_NORMAL) {
+            $role = self::SATELLITE_ROLE_NORMAL;
+        } else {
+            // New satellite with neither set → normal floor stock.
+            $role = self::SATELLITE_ROLE_NORMAL;
+        }
+
+        if ($role === self::SATELLITE_ROLE_CRASH_CART) {
             if (! $this->businessAllowsCrashCart()) {
                 throw ValidationException::withMessages([
-                    'is_crash_cart' => 'Crash cart management is disabled. Enable it under Inventory settings → Capabilities.',
+                    'satellite_role' => 'Crash cart management is disabled. Enable it under Inventory settings → Capabilities.',
                 ]);
             }
+
+            $this->satellite_role = self::SATELLITE_ROLE_CRASH_CART;
+            $this->is_crash_cart = true;
 
             if (! in_array($this->crash_cart_status, [
                 self::CRASH_CART_READY,
@@ -638,6 +699,7 @@ class Store extends Model
             return;
         }
 
+        $this->satellite_role = self::SATELLITE_ROLE_NORMAL;
         $this->is_crash_cart = false;
         $this->crash_cart_status = null;
         $this->crash_cart_seal_number = null;

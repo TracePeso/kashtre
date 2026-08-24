@@ -25,10 +25,10 @@ class InventoryCrashCartController extends Controller
     {
         $businessId = InventoryBusinessContext::effectiveBusinessId();
 
-        $carts = Store::query()
+                        $carts = Store::query()
             ->with(['parent:id,name', 'branch:id,name'])
             ->where('business_id', $businessId)
-            ->where('is_crash_cart', true)
+            ->crashCarts()
             ->orderBy('name')
             ->get()
             ->each(function (Store $cart): void {

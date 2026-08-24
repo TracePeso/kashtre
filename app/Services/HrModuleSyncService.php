@@ -23,6 +23,7 @@ class HrModuleSyncService
             'department:id,uuid,name',
             'qualification:id,uuid,name',
             'staffCategory:id,uuid,name',
+            'title:id,uuid,name',
         ]);
 
         return [
@@ -37,10 +38,14 @@ class HrModuleSyncService
             'department_id' => $user->department_id,
             'qualification_id' => $user->qualification_id,
             'staff_category_id' => $user->staff_category_id,
+            'title_id' => $user->title_id,
             'status' => $user->status,
             'hire_date' => $user->hire_date?->toDateString(),
+            'birth_date' => $user->birth_date?->toDateString(),
             'employment_type' => $user->employment_type,
             'employee_code' => $user->employee_code,
+            'nin' => $user->nin,
+            'marital_status' => $user->marital_status,
             'business' => $user->business ? [
                 'id' => $user->business->id,
                 'uuid' => $user->business->uuid,
@@ -56,6 +61,34 @@ class HrModuleSyncService
                 'uuid' => $user->department->uuid,
                 'name' => $user->department->name,
             ] : null,
+            'qualification' => $user->qualification ? [
+                'id' => $user->qualification->id,
+                'uuid' => $user->qualification->uuid,
+                'name' => $user->qualification->name,
+            ] : null,
+            'staff_category' => $user->staffCategory ? [
+                'id' => $user->staffCategory->id,
+                'uuid' => $user->staffCategory->uuid,
+                'name' => $user->staffCategory->name,
+            ] : null,
+            'title' => $user->title ? [
+                'id' => $user->title->id,
+                'uuid' => $user->title->uuid,
+                'name' => $user->title->name,
+            ] : null,
+            // Nested employee identity block for HR Module consumers.
+            'employee_identity' => [
+                'employee_code' => $user->employee_code,
+                'nin' => $user->nin,
+                'hire_date' => $user->hire_date?->toDateString(),
+                'birth_date' => $user->birth_date?->toDateString(),
+                'employment_type' => $user->employment_type,
+                'marital_status' => $user->marital_status,
+                'gender' => $user->gender,
+                'title_id' => $user->title_id,
+                'qualification_id' => $user->qualification_id,
+                'staff_category_id' => $user->staff_category_id,
+            ],
         ];
     }
 

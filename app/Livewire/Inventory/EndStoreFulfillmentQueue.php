@@ -299,7 +299,9 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     })
                     ->modalHeading('Complete dispense')
                     ->modalDescription(fn (InventoryFulfillmentLine $record): string => sprintf(
-                        'Dispense %s × %s from %s? Stock will leave this End Store, the Approved Pool will be updated, and the Main Module ticket will close.',
+                        $record->supportsApprovedPool()
+                            ? 'Dispense %s × %s from %s? Stock will leave this End Store, the Approved Pool will be updated, and the Main Module ticket will close.'
+                            : 'Dispense %s × %s from %s? Stock will leave this End Store and the Main Module ticket will be marked complete (this Client Space does not use Approved Pool).',
                         rtrim(rtrim(number_format((float) $record->quantity - (float) $record->quantity_fulfilled, 2), '0'), '.'),
                         $record->item_name,
                         $record->store?->name ?? 'this End Store'
@@ -319,7 +321,9 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
 
                             Notification::make()
                                 ->title('Dispense completed')
-                                ->body('Status is now '.$updated->statusLabel().'. Stock deducted and Approved Pool updated.')
+                                ->body($updated->supportsApprovedPool()
+                                    ? 'Status is now '.$updated->statusLabel().'. Stock deducted and Approved Pool updated.'
+                                    : 'Status is now '.$updated->statusLabel().'. Stock deducted and ticket completed (no Approved Pool for this Client Space).')
                                 ->success()
                                 ->send();
                         } catch (ValidationException $e) {

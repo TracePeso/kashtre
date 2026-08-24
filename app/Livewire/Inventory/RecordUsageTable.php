@@ -229,11 +229,11 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     Store::DISTRIBUTION_SATELLITE,
                 ])
                 ->orderBy('name')
-                ->get(['id', 'name', 'distribution_type', 'is_crash_cart'])
+                ->get(['id', 'name', 'distribution_type', 'satellite_role', 'is_crash_cart'])
                 ->mapWithKeys(fn (Store $store) => [
                     $store->id => $store->name.(
                         $store->isCrashCart()
-                            ? ' (Crash cart)'
+                            ? ' (Satellite · Crash cart)'
                             : ($store->isSatelliteStore() ? ' (Satellite)' : ' (End Store)')
                     ),
                 ])
@@ -243,10 +243,9 @@ class RecordUsageTable extends Component implements HasForms, HasTable
         $crashCartStoreOptions = ($floorStockEnabled && $crashCartEnabled)
             ? Store::query()
                 ->where('business_id', $businessId)
-                ->where('distribution_type', Store::DISTRIBUTION_SATELLITE)
-                ->where('is_crash_cart', true)
+                ->crashCarts()
                 ->orderBy('name')
-                ->get(['id', 'name', 'crash_cart_status'])
+                ->get(['id', 'name', 'crash_cart_status', 'satellite_role', 'is_crash_cart', 'distribution_type'])
                 ->mapWithKeys(fn (Store $store) => [
                     $store->id => $store->name.' — '.($store->crashCartStatusLabel() ?? 'Ready'),
                 ])

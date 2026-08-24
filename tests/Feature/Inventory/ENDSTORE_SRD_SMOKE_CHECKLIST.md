@@ -14,7 +14,7 @@
 - [ ] Monitor Stock → Location edit (Wall/Cabinet/Bin or Aisle/Rack/Pallet)
 - [ ] End Store → Pick route (basket) + Ward pick
 - [ ] STAT tone every ~60s until Ack; keywords configurable in Capabilities
-- [ ] Crash Carts page: Deploy → Reconcile → Record usage → Seal Ready
+- [ ] Crash Carts: Satellite under End Store with role Crash cart → Deploy → Reconcile → Record usage → Seal Ready → IR restock
 - [ ] Settings → Capabilities: labels, lookback, admin purposes, STAT keywords
 
 ## Phase 2–4

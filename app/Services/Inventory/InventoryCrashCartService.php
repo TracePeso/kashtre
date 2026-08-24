@@ -208,10 +208,10 @@ class InventoryCrashCartService
         }
 
         if (! $store->isCrashCart()) {
-            throw ValidationException::withMessages([
-                'is_crash_cart' => 'This store is not marked as a crash cart.',
-            ]);
-        }
+                throw ValidationException::withMessages([
+                    'is_crash_cart' => 'This store is not a crash-cart satellite (set Satellite role to Crash cart under Manage Stores).',
+                ]);
+            }
     }
 
     protected function businessCrashCartEnabled(int $businessId): bool
