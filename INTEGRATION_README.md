@@ -245,7 +245,6 @@ X-API-Key: {inbound_key}
   "expires_at": "2026-08-12T12:00:00+00:00",
   "business_id": 1,
   "store": { "id": 5, "uuid": "...", "name": "Pharmacy End Store" },
-  "client_space": { "id": 3, "uuid": "...", "name": "Ward 4A" },
   "basket_key": "client-42-visit-...",
   "tote_barcode": "TOTE-8842",
   "lines": [
@@ -321,8 +320,6 @@ Content-Type: application/json
   "clinical_session_id": "optional",
   "store_id": 5,
   "store_uuid": "...",
-  "client_space_id": 3,
-  "client_space_uuid": "...",
   "basket_key": "...",
   "business_id": 1
 }
@@ -375,18 +372,18 @@ These run in the **Kashtre browser UI** (Inventory → **EndStore**):
 | Step | Who | Action |
 |------|-----|--------|
 | 1 | Cashier / Main | Patient pays for **goods** (`item.type = good`) |
-| 2 | System | Queue line appears on mapped End Store (Client Space → End Store routing in Inventory settings) |
-| 3a OP | Pharmacist | **Dispense** — stock ↓, Approved Pool ↑ (if space routing supports it), ticket Completed |
+| 2 | System | Queue line appears on a branch-preferred End Store for the business |
+| 3a OP | Pharmacist | **Dispense** — stock ↓, Approved Pool ↑ (when enabled on the line), ticket Completed |
 | 3b IP | Pharmacist | **Stage** (tote barcode) → Clinical alert → nurse code → **Release** |
 | 4 | Ward | **Record Usage** — pool / floor / admin / crash cart |
 
-**Crash carts** are not part of the EndStore pay→queue path. They are **satellite stores** under an End Store with role **Crash cart** (Ready → Deploy → Reconcile → Seal). Usage is recorded on the ward; Seal Ready drafts an internal replenishment from the parent End Store. They do not use Client Space → End Store routing or Approved Pool from dispense.
+**Crash carts** are not part of the EndStore pay→queue path. They are **satellite stores** under an End Store with role **Crash cart** (Ready → Deploy → Reconcile → Seal). Usage is recorded on the ward; Seal Ready drafts an internal replenishment from the parent End Store. They do not use Approved Pool from dispense.
 
 **Prerequisites in Kashtre:**
 
 1. Inventory module active for the business  
 2. Store hierarchy: Distribution → **End Store** → Satellite (optional; crash cart = satellite role)  
-3. **Inventory settings → Space routing:** Client Space → End Store (optional Approved Pool toggle)  
+3. At least one End Store for the business/branch  
 4. Stock on the End Store  
 5. Clinical settings configured for IP handoff  
 
@@ -410,36 +407,6 @@ curl -sS -H "X-API-Key: YOUR_INBOUND_KEY" \
 # Tote checklist (after staging in EndStore UI)
 curl -sS -H "X-API-Key: YOUR_INBOUND_KEY" \
   "https://kashtre.example.com/api/pharmacy/totes/HANDOFF_REF?tenant_id=BUSINESS_UUID"
-```
-
----
-
-## HR APIs (supporting, not EndStore ops)
-
-Auth: middleware `hr.api` — key via **Settings → HR Module Settings** (`X-API-Key` or `X-HR-API-Key`).  
-Same routes are mirrored under `/api/hr/*`.
-
-| Your term | Endpoint | Kashtre model |
-|-----------|----------|---------------|
-| Users | `GET /api/users`, `GET /api/users/{uuid}` | User |
-| Employee identity | `GET /api/employee-identities` (alias of users; payload includes `employee_identity`) | User |
-| Official titles | `GET /api/titles`, `GET /api/official-titles` | Title |
-| Designations | `GET /api/designations` (alias of staff-categories) | StaffCategory |
-| Cadres | `GET /api/cadres` (alias of staff-categories) | StaffCategory |
-| Qualifications | `GET /api/qualifications` | Qualification |
-| Facilities | `GET /api/facilities` (alias of businesses) | Business |
-| Client spaces | `GET /api/client-spaces` | ClientSpace |
-
-Also available: `GET /api/businesses`, `GET /api/branches`, `GET /api/departments`, `GET /api/staff-categories`.
-
-Optional query: `?business_id=` on list endpoints; users also support `search`, `email`, `status`, `per_page`.
-
-```bash
-curl -sS -H "X-API-Key: YOUR_HR_KEY" \
-  "https://kashtre.example.com/api/titles?business_id=4"
-
-curl -sS -H "X-API-Key: YOUR_HR_KEY" \
-  "https://kashtre.example.com/api/employee-identities?business_id=4"
 ```
 
 ---

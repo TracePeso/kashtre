@@ -65,7 +65,7 @@ class InventoryHandoffTokenService
             ]);
         }
 
-        $matched->loadMissing(['store', 'clientSpace']);
+        $matched->loadMissing('store');
 
         $validation = $this->clinical->validateHandoffCode($code, $matched);
         if (! $validation['valid']) {
@@ -178,7 +178,6 @@ class InventoryHandoffTokenService
     public function activeForStore(int $storeId)
     {
         $tokens = InventoryHandoffToken::query()
-            ->with(['clientSpace:id,name'])
             ->where('store_id', $storeId)
             ->whereNull('used_at')
             ->where('expires_at', '>', now())

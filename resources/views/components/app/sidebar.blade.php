@@ -67,59 +67,6 @@
                     </li>
                     @endif
 
-                    <!-- Callers dropdown: for business admins with calling module enabled -->
-                    @php
-                        $callerPerms = ['View Callers', 'Add Callers', 'Edit Callers', 'Manage Callers'];
-                        $canBroadcastAnnouncements = in_array('Broadcast Announcements', (array) $permissions);
-                        $hasAnyCallerPerm = count(array_intersect($callerPerms, (array) $permissions)) > 0 || $canBroadcastAnnouncements;
-                    @endphp
-                    @if(Auth::user()->business_id != 1 && isset($callingModuleEnabled) && $callingModuleEnabled && $hasAnyCallerPerm)
-                    <li>
-                        <button @click="openGroup === 'callers' ? openGroup = '' : openGroup = 'callers'"
-                                :class="openGroup === 'callers' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'"
-                                class="flex items-center justify-between w-full text-left pl-4 pr-3 py-2 rounded-md">
-                            <span class="flex items-center">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.129a11.042 11.042 0 005.516 5.516l1.129-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
-                                </svg>
-                                <span class="ml-3 text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">Calling Service</span>
-                            </span>
-                            <svg class="w-4 h-4 transform transition-transform duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100" :class="{ 'rotate-180': openGroup === 'callers' }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                <path d="M19 9l-7 7-7-7" />
-                            </svg>
-                        </button>
-                        <ul x-show="openGroup === 'callers'" x-collapse class="mt-1 space-y-1 pl-10">
-                            <li>
-                                <a href="{{ route('service-point-callers.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
-                                    Manage Callers
-                                </a>
-                            </li>
-                            <li>
-                                <a href="{{ route('service-point-callers.call-settings-index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
-                                    Call Settings
-                                </a>
-                            </li>
-                            @if($canBroadcastAnnouncements)
-                            <li>
-                                <a href="{{ route('pa.console') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
-                                    Public Announcements
-                                </a>
-                            </li>
-                            @endif
-                            <li>
-                                <a href="{{ route('service-point-callers.p2p-settings') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
-                                    P2P Calling
-                                </a>
-                            </li>
-                            <li>
-                                <a href="{{ route('service-point-callers.emergency-settings-index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
-                                    Emergency Calling
-                                </a>
-                            </li>
-                        </ul>
-                    </li>
-                    @endif
-
                     @if($inventoryModuleEnabled)
                     <li>
                         <button @click="openGroup === 'inventory' ? openGroup = '' : openGroup = 'inventory'"
@@ -638,10 +585,6 @@
                         </button>
                         <ul x-show="openGroup === 'reports'" x-collapse class="mt-1 space-y-1 pl-10">
                             <li><a href="{{ route('dashboard') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>View Reports</a></li>
-                            @if(Auth::user()->business_id != 1 && isset($callingModuleEnabled) && $callingModuleEnabled)
-                            <li><a href="{{ route('callers.log') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Called List</a></li>
-                            <li><a href="{{ route('emergency.log') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Emergency Log</a></li>
-                            @endif
                         </ul>
                     </li>
                     @endif
@@ -697,20 +640,6 @@
                             </li>
                             @endif
 
-                            @php
-                                $clientSpacePermissions = [
-                                    'Client Spaces',
-                                    'View Client Spaces',
-                                    'Add Client Spaces',
-                                    'Edit Client Spaces',
-                                    'Delete Client Spaces',
-                                ];
-                                $canAccessClientSpaces = count(array_intersect($clientSpacePermissions, (array) $permissions)) > 0;
-                            @endphp
-                            @if($canAccessClientSpaces)
-                            <li><a href="{{ route('client-spaces.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Client Spaces</a></li>
-                            @endif
-
                             <!-- Settings only for business_id == 1 (Kashtre) -->
                             @if(Auth::user()->business_id == 1)
                             @if(in_array('View Service Points', $permissions))
@@ -747,10 +676,6 @@
 
                             @if(Auth::user()->business_id == 1)
                             <li><a href="{{ route('maturation-periods.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Payment Methods and Maturation Periods</a></li>
-                            @endif
-
-                            @if(in_array('View Calling Module', $permissions))
-                            <li><a href="{{ route('calling-module-configs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Calling</a></li>
                             @endif
 
                             @if(in_array('View Inventory Module', $permissions))
@@ -812,12 +737,6 @@
                                 <a href="{{ route('settings.kashtre.edit') }}"
                                    class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
                                     Kashtre Settings
-                                </a>
-                            </li>
-                            <li>
-                                <a href="{{ route('settings.hr-module.edit') }}"
-                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
-                                    HR Module Settings
                                 </a>
                             </li>
                             <li>

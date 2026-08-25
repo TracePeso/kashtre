@@ -6,7 +6,7 @@
                 <p class="mt-1 text-sm text-gray-600">
                     Crash carts are <span class="font-medium text-gray-800">satellite stores</span> under an End Store,
                     with an emergency lifecycle: Deploy during a code, reconcile usage after the event, then seal and return to Ready.
-                    They are not Client Space / EndStore queue nodes.
+                    They are not End Store fulfillment queue nodes.
                 </p>
             </div>
 

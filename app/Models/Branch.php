@@ -43,11 +43,6 @@ class Branch extends Model
         return $this->hasMany(ServicePoint::class);
     }
 
-    public function clientSpaces()
-    {
-        return $this->hasMany(ClientSpace::class);
-    }
-
     public function getRouteKeyName()
     {
         return 'uuid';

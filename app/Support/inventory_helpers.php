@@ -4,13 +4,12 @@ if (! function_exists('inventory_label')) {
     /**
      * Tenant terminology override (SRD §2.4). Falls back to platform defaults.
      *
-     * @param  'client'|'client_space'|'item'|'store'|'usage_record'  $key
+     * @param  'client'|'item'|'store'|'usage_record'  $key
      */
     function inventory_label(string $key, ?int $businessId = null): string
     {
         $defaults = [
             'client' => 'Client',
-            'client_space' => 'Client Space',
             'item' => 'Inventory Item',
             'store' => 'Store',
             'usage_record' => 'Usage Record',

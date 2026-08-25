@@ -2,7 +2,6 @@
 
 namespace App\Livewire\Inventory;
 
-use App\Models\ClientSpaceStoreAssignment;
 use App\Models\InventoryFulfillmentLine;
 use App\Models\InventoryModuleConfig;
 use App\Models\Store;
@@ -11,6 +10,7 @@ use App\Services\Inventory\InventoryFulfillmentStageService;
 use App\Services\Inventory\InventoryHandoffTokenService;
 use App\Services\ClinicalModuleIntegrationService;
 use App\Support\InventoryBusinessContext;
+use App\Support\InventoryFulfillmentStrategy;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
@@ -86,7 +86,7 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
     public function outpatientOpenCount(): int
     {
         return $this->baseCountQuery()
-            ->where('fulfillment_strategy', ClientSpaceStoreAssignment::STRATEGY_DISCRETE_IMMEDIATE)
+            ->where('fulfillment_strategy', InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE)
             ->whereIn('status', $this->openStatuses())
             ->count();
     }
@@ -94,7 +94,7 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
     public function inpatientOpenCount(): int
     {
         return $this->baseCountQuery()
-            ->where('fulfillment_strategy', ClientSpaceStoreAssignment::STRATEGY_BATCH_AND_STAGE)
+            ->where('fulfillment_strategy', InventoryFulfillmentStrategy::BATCH_AND_STAGE)
             ->whereIn('status', $this->openStatuses())
             ->count();
     }
@@ -124,7 +124,6 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
             ->with([
                 'client:id,name',
                 'item:id,strength,code',
-                'clientSpace:id,name',
                 'invoice:id,invoice_number',
                 'store:id,name',
             ])
@@ -197,19 +196,15 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->placeholder('—')
                     ->searchable()
                     ->wrap(),
-                Tables\Columns\TextColumn::make('clientSpace.name')
-                    ->label('Space')
-                    ->placeholder('—')
-                    ->toggleable(),
                 Tables\Columns\TextColumn::make('fulfillment_strategy')
                     ->label('Path')
                     ->formatStateUsing(fn (?string $state, InventoryFulfillmentLine $record): string => match ($record->fulfillment_strategy) {
-                        ClientSpaceStoreAssignment::STRATEGY_BATCH_AND_STAGE => 'Inpatient',
-                        ClientSpaceStoreAssignment::STRATEGY_DISCRETE_IMMEDIATE => 'Outpatient',
+                        InventoryFulfillmentStrategy::BATCH_AND_STAGE => 'Inpatient',
+                        InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE => 'Outpatient',
                         default => $record->strategyLabel(),
                     })
                     ->badge()
-                    ->color(fn (InventoryFulfillmentLine $record): string => $record->fulfillment_strategy === ClientSpaceStoreAssignment::STRATEGY_BATCH_AND_STAGE
+                    ->color(fn (InventoryFulfillmentLine $record): string => $record->fulfillment_strategy === InventoryFulfillmentStrategy::BATCH_AND_STAGE
                         ? 'warning'
                         : 'info')
                     ->toggleable(isToggledHiddenByDefault: in_array($this->consoleTab, ['outpatient', 'inpatient'], true)),
@@ -230,8 +225,8 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                 Tables\Filters\SelectFilter::make('fulfillment_strategy')
                     ->label('Path')
                     ->options([
-                        ClientSpaceStoreAssignment::STRATEGY_DISCRETE_IMMEDIATE => 'Outpatient',
-                        ClientSpaceStoreAssignment::STRATEGY_BATCH_AND_STAGE => 'Inpatient',
+                        InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE => 'Outpatient',
+                        InventoryFulfillmentStrategy::BATCH_AND_STAGE => 'Inpatient',
                     ])
                     ->visible(fn (): bool => $this->consoleTab === 'all' || $this->consoleTab === 'stat'),
                 Tables\Filters\TernaryFilter::make('acknowledged_at')
@@ -422,21 +417,6 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->url(fn (InventoryFulfillmentLine $record): string => route('inventory.fulfillment.pick-route', $record))
                     ->openUrlInNewTab()
                     ->visible(fn (InventoryFulfillmentLine $record) => $record->isInpatient() && $record->isOpen()),
-
-                Action::make('wardPickRoute')
-                    ->label('Ward pick')
-                    ->button()
-                    ->size('sm')
-                    ->icon('heroicon-o-building-office-2')
-                    ->color('gray')
-                    ->url(fn (InventoryFulfillmentLine $record): string => route('inventory.fulfillment.ward-pick-route', [
-                        'store' => $record->store_id,
-                        'client_space' => $record->client_space_id,
-                    ]))
-                    ->openUrlInNewTab()
-                    ->visible(fn (InventoryFulfillmentLine $record) => $record->isInpatient()
-                        && $record->isOpen()
-                        && $record->client_space_id),
 
                 Action::make('releaseHandoff')
                     ->label('Release')
@@ -684,11 +664,11 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
         match ($this->consoleTab) {
             'outpatient' => $query->where(
                 'fulfillment_strategy',
-                ClientSpaceStoreAssignment::STRATEGY_DISCRETE_IMMEDIATE
+                InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE
             ),
             'inpatient' => $query->where(
                 'fulfillment_strategy',
-                ClientSpaceStoreAssignment::STRATEGY_BATCH_AND_STAGE
+                InventoryFulfillmentStrategy::BATCH_AND_STAGE
             ),
             'stat' => $query->where('priority', InventoryFulfillmentLine::PRIORITY_STAT),
             default => null,

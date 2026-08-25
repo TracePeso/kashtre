@@ -29,7 +29,7 @@ class InventorySettingsController extends Controller
         $config->load(['approvers.user', 'evaluationCommitteeMembers.user']);
 
         $activeTab = $request->query('tab', 'notifications');
-        if (! in_array($activeTab, ['notifications', 'approvers', 'evaluation-committee', 'space-routing', 'capabilities'], true)) {
+        if (! in_array($activeTab, ['notifications', 'approvers', 'evaluation-committee', 'capabilities'], true)) {
             $activeTab = 'notifications';
         }
 
@@ -114,7 +114,6 @@ class InventorySettingsController extends Controller
             'visit_reactivation_lookback_days' => max(1, (int) $request->input('visit_reactivation_lookback_days', 30)),
             'label_dictionary' => [
                 'client' => trim((string) $request->input('label_client', '')),
-                'client_space' => trim((string) $request->input('label_client_space', '')),
                 'item' => trim((string) $request->input('label_item', '')),
                 'store' => trim((string) $request->input('label_store', '')),
                 'usage_record' => trim((string) $request->input('label_usage_record', '')),

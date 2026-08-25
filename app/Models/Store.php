@@ -622,11 +622,6 @@ class Store extends Model
         return $this->children()->where('distribution_type', self::DISTRIBUTION_END);
     }
 
-    public function clientSpaceAssignments(): HasMany
-    {
-        return $this->hasMany(ClientSpaceStoreAssignment::class, 'store_id');
-    }
-
     protected function businessAllowsFloorStock(): bool
     {
         if (! $this->business_id) {

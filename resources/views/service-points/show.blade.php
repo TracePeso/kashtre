@@ -669,112 +669,11 @@
             });
         }
 
-        /**
-         * fireEmergency — instantly broadcast without confirmation dialog (used by F9).
-         */
-        function fireEmergency() {
-            const presetMessage = '{{ addslashes($defaultEmergencyMessage ?? 'Emergency at ' . $servicePoint->name) }}';
-            fetch('{{ route('emergency.trigger', $servicePoint) }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                },
-                body: JSON.stringify({ message: presetMessage })
-            }).then(r => r.json()).then(data => {
-                if (data.success) emergencyActive = true;
-            }).catch(() => {});
-        }
-
-        /**
-         * triggerEmergency — broadcast an emergency alert to all display boards.
-         */
-        function triggerEmergency() {
-            const presetMessage = '{{ addslashes($defaultEmergencyMessage ?? 'Emergency at ' . $servicePoint->name) }}';
-
-            Swal.fire({
-                title: 'Trigger Emergency Alert?',
-                html: `<p class="text-sm text-gray-600">The following message will be broadcast to all display boards and speakers:</p>
-                       <p class="mt-3 font-semibold text-red-700 text-lg">"${presetMessage}"</p>`,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#dc2626',
-                cancelButtonColor: '#6b7280',
-                confirmButtonText: 'Yes, broadcast now',
-                cancelButtonText: 'Cancel',
-            }).then((result) => {
-                if (!result.isConfirmed) return;
-
-                fetch('{{ route('emergency.trigger', $servicePoint) }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                    },
-                    body: JSON.stringify({ message: presetMessage })
-                }).then(r => r.json()).then(data => {
-                    if (data.success) {
-                        document.getElementById('all-clear-btn').classList.remove('hidden');
-                        Swal.fire({
-                            title: 'Alert Broadcast!',
-                            text: data.message,
-                            icon: 'warning',
-                            confirmButtonColor: '#dc2626',
-                            timer: 4000,
-                            timerProgressBar: true,
-                        });
-                    } else {
-                        Swal.fire('Error', data.error || 'Failed to send emergency alert.', 'error');
-                    }
-                }).catch(() => {
-                    Swal.fire('Error', 'Failed to send emergency alert. Check calling module.', 'error');
-                });
-            });
-        }
-
-        /**
-         * resolveEmergency — clear the active emergency alert.
-         */
-        function resolveEmergency() {
-            fetch('{{ route('emergency.resolve', $servicePoint) }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                },
-                body: JSON.stringify({})
-            }).then(r => r.json()).then(data => {
-                if (data.success) emergencyActive = false;
-            }).catch(() => {});
-        }
-
         function announceAndNavigate(url, clientName, clientId) {
-            // Trigger a "serving" announcement for the display board
-            fetch('{{ route('calling.announce') }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                },
-                body: JSON.stringify({
-                    client_id: clientId,
-                    client_name: clientName,
-                    service_point_id: {{ $servicePoint->id }},
-                    type: 'serving'
-                })
-            }).then(() => {
-                window.location.href = url;
-            }).catch(() => {
-                window.location.href = url;
-            });
+            window.location.href = url;
         }
 
-        /**
-         * callClient — announce a client at this service point and record the call log.
-         * Audio is handled by the display board (ElevenLabs), not the browser.
-         */
         function callClient(clientName, clientId) {
-            // Visual feedback
             Swal.fire({
                 title: 'Calling...',
                 html: `<div class="text-center">
@@ -786,21 +685,6 @@
                 confirmButtonColor: '#4f46e5',
                 timer: 8000,
                 timerProgressBar: true,
-            });
-
-            // Record the call in the caller log
-            fetch('{{ route('calling.announce') }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                },
-                body: JSON.stringify({
-                    client_id: clientId,
-                    client_name: clientName,
-                    service_point_id: {{ $servicePoint->id }},
-                    type: 'calling'
-                })
             });
         }
 

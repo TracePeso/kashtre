@@ -32,8 +32,6 @@ class ClassificationReportTable extends Component implements HasForms, HasTable
                         'store:id,name',
                         'item:id,name,code',
                         'client:id,name',
-                        'invoice:id,client_space_id',
-                        'invoice.clientSpace:id,name',
                     ])
             )
             ->columns([
@@ -50,9 +48,6 @@ class ClassificationReportTable extends Component implements HasForms, HasTable
                     ->description(fn (InventoryUsageEvent $record): ?string => $record->item?->code)
                     ->searchable()
                     ->wrap(),
-                TextColumn::make('client_space')
-                    ->label('Client Space')
-                    ->state(fn (InventoryUsageEvent $record): string => $record->invoice?->clientSpace?->name ?? '—'),
                 TextColumn::make('classification')
                     ->label('Classification')
                     ->badge()

@@ -2,11 +2,12 @@
 
 namespace App\Services\Inventory;
 
-use App\Models\ClientSpaceStoreAssignment;
 use App\Models\InventoryFulfillmentLine;
 use App\Models\InventoryModuleConfig;
 use App\Models\Invoice;
 use App\Models\Item;
+use App\Models\Store;
+use App\Support\InventoryFulfillmentStrategy;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -40,14 +41,13 @@ class InventoryFulfillmentIngestService
             return compact('created', 'skipped', 'lines');
         }
 
-        $assignment = $this->resolveAssignment($invoice, $explicitClientSpaceId);
+        $store = $this->resolveEndStore($invoice);
 
-        if (! $assignment) {
-            Log::warning('Inventory fulfillment ingest skipped — no Client Space → End Store routing', [
+        if (! $store) {
+            Log::warning('Inventory fulfillment ingest skipped — no End Store found', [
                 'invoice_id' => $invoice->id,
                 'business_id' => $invoice->business_id,
                 'branch_id' => $invoice->branch_id,
-                'client_space_id' => $explicitClientSpaceId ?? $invoice->client_space_id,
             ]);
 
             return compact('created', 'skipped', 'lines');
@@ -79,7 +79,7 @@ class InventoryFulfillmentIngestService
             }
 
             $priority = $this->detectPriority($item, $itemModel, (int) $invoice->business_id);
-            $line = $this->upsertLine($invoice, $itemModel, $assignment, $quantity, $priority, $item);
+            $line = $this->upsertLine($invoice, $itemModel, $store, $quantity, $priority, $item);
 
             if ($line->wasRecentlyCreated) {
                 $created++;
@@ -92,8 +92,7 @@ class InventoryFulfillmentIngestService
 
         Log::info('Inventory fulfillment ingest finished', [
             'invoice_id' => $invoice->id,
-            'store_id' => $assignment->store_id,
-            'client_space_id' => $assignment->client_space_id,
+            'store_id' => $store->id,
             'created' => $created,
             'skipped' => $skipped,
         ]);
@@ -101,40 +100,30 @@ class InventoryFulfillmentIngestService
         return compact('created', 'skipped', 'lines');
     }
 
-    protected function resolveAssignment(Invoice $invoice, ?int $explicitClientSpaceId = null): ?ClientSpaceStoreAssignment
+    protected function resolveEndStore(Invoice $invoice): ?Store
     {
-        $spaceId = $explicitClientSpaceId
-            ?? $invoice->client_space_id
-            ?? null;
-
-        if ($spaceId) {
-            return ClientSpaceStoreAssignment::resolveForClientSpace((int) $spaceId);
-        }
-
-        $branchScoped = ClientSpaceStoreAssignment::query()
-            ->with(['store', 'clientSpace'])
+        $branchScoped = Store::query()
             ->where('business_id', $invoice->business_id)
-            ->where('is_active', true)
-            ->whereHas('clientSpace', function ($q) use ($invoice) {
-                $q->where('branch_id', $invoice->branch_id);
+            ->where(function ($query) {
+                $query->where('distribution_type', Store::DISTRIBUTION_END)
+                    ->orWhereNull('distribution_type');
             })
-            ->get();
+            ->when($invoice->branch_id, fn ($query) => $query->where('branch_id', $invoice->branch_id))
+            ->orderBy('id')
+            ->first();
 
-        if ($branchScoped->count() === 1) {
-            return $branchScoped->first();
+        if ($branchScoped) {
+            return $branchScoped;
         }
 
-        $businessScoped = ClientSpaceStoreAssignment::query()
-            ->with(['store', 'clientSpace'])
+        return Store::query()
             ->where('business_id', $invoice->business_id)
-            ->where('is_active', true)
-            ->get();
-
-        if ($businessScoped->count() === 1) {
-            return $businessScoped->first();
-        }
-
-        return null;
+            ->where(function ($query) {
+                $query->where('distribution_type', Store::DISTRIBUTION_END)
+                    ->orWhereNull('distribution_type');
+            })
+            ->orderBy('id')
+            ->first();
     }
 
     /**
@@ -178,15 +167,17 @@ class InventoryFulfillmentIngestService
     protected function upsertLine(
         Invoice $invoice,
         Item $item,
-        ClientSpaceStoreAssignment $assignment,
+        Store $store,
         float $quantity,
         string $priority,
         array $itemPayload,
+        string $strategy = InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE,
+        bool $supportsApprovedPool = true,
     ): InventoryFulfillmentLine {
         $existing = InventoryFulfillmentLine::query()
             ->where('invoice_id', $invoice->id)
             ->where('item_id', $item->id)
-            ->where('store_id', $assignment->store_id)
+            ->where('store_id', $store->id)
             ->whereNotIn('status', [
                 InventoryFulfillmentLine::STATUS_CANCELLED,
                 InventoryFulfillmentLine::STATUS_COMPLETED,
@@ -197,9 +188,9 @@ class InventoryFulfillmentIngestService
             $existing->fill([
                 'quantity' => $quantity,
                 'priority' => $priority,
-                'client_space_id' => $assignment->client_space_id,
-                'fulfillment_strategy' => $assignment->fulfillment_strategy,
-                'supports_approved_pool' => $assignment->supportsApprovedPool(),
+                'client_space_id' => null,
+                'fulfillment_strategy' => $strategy,
+                'supports_approved_pool' => $supportsApprovedPool,
                 'visit_id' => $invoice->visit_id,
                 'client_id' => $invoice->client_id,
                 'item_name' => $item->name,
@@ -211,8 +202,8 @@ class InventoryFulfillmentIngestService
 
         return InventoryFulfillmentLine::create([
             'business_id' => $invoice->business_id,
-            'store_id' => $assignment->store_id,
-            'client_space_id' => $assignment->client_space_id,
+            'store_id' => $store->id,
+            'client_space_id' => null,
             'invoice_id' => $invoice->id,
             'client_id' => $invoice->client_id,
             'visit_id' => $invoice->visit_id,
@@ -220,8 +211,8 @@ class InventoryFulfillmentIngestService
             'item_name' => $item->name,
             'quantity' => $quantity,
             'quantity_fulfilled' => 0,
-            'fulfillment_strategy' => $assignment->fulfillment_strategy,
-            'supports_approved_pool' => $assignment->supportsApprovedPool(),
+            'fulfillment_strategy' => $strategy,
+            'supports_approved_pool' => $supportsApprovedPool,
             'priority' => $priority,
             'status' => InventoryFulfillmentLine::STATUS_PENDING,
             'basket_key' => $invoice->client_id

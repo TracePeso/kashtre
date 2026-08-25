@@ -298,16 +298,6 @@ class TransactionController extends Controller
             ->orderBy('name')
             ->get();
 
-        $branchId = $currentBranch?->id;
-        $clientSpaces = \App\Models\ClientSpace::query()
-            ->with(['storeAssignment' => fn ($q) => $q->where('is_active', true)->with('store:id,name')])
-            ->where('business_id', $client->business_id)
-            ->when($branchId, fn ($q) => $q->where(function ($inner) use ($branchId) {
-                $inner->where('branch_id', $branchId)->orWhereNull('branch_id');
-            }))
-            ->orderBy('name')
-            ->get(['id', 'name', 'branch_id', 'business_id']);
-
         return view('pos.item-selection', compact(
             'client',
             'items',
@@ -315,8 +305,7 @@ class TransactionController extends Controller
             'partiallyDoneItems',
             'correctTotalAmount',
             'servicePoint',
-            'thirdPartyPayers',
-            'clientSpaces'
+            'thirdPartyPayers'
         ));
     }
 

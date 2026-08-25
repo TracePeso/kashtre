@@ -132,7 +132,6 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             @foreach([
                 'label_client' => ['Client', $dict['client'] ?? ''],
-                'label_client_space' => ['Client Space', $dict['client_space'] ?? ''],
                 'label_item' => ['Inventory Item', $dict['item'] ?? ''],
                 'label_store' => ['Store', $dict['store'] ?? ''],
                 'label_usage_record' => ['Usage Record', $dict['usage_record'] ?? ''],

@@ -15,9 +15,7 @@
             @if(! $hasEndStores)
                 <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                     No End Stores found. Create one under
-                    <a href="{{ route('stores.index') }}" class="font-medium underline">Manage Stores</a>,
-                    then map Client Spaces in
-                    <a href="{{ route('inventory.settings.edit', ['tab' => 'space-routing']) }}" class="font-medium underline">Space routing</a>.
+                    <a href="{{ route('stores.index') }}" class="font-medium underline">Manage Stores</a>.
                 </div>
             @else
                 <livewire:inventory.end-store-fulfillment-queue />
