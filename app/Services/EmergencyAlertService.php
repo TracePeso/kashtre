@@ -23,12 +23,14 @@ class EmergencyAlertService
             ->where('is_active', true)
             ->first();
 
+        $hadActiveAlert = (bool) $alert;
+
         if ($alert) {
             if (!$this->hasExpired($alert, $config)) {
                 return $alert;
             }
 
-            // Display time is up â€” deactivate only this alert so any queued
+            // Display time is up — deactivate only this alert so any queued
             // alerts can be promoted once their scheduled time is reached.
             $alert->update([
                 'is_active'   => false,
@@ -55,12 +57,17 @@ class EmergencyAlertService
             return $next;
         }
 
-        $hasQueued = EmergencyAlert::where('business_id', $businessId)
-            ->whereNull('resolved_at')
-            ->exists();
+        // Only tell the calling service to resolve if we actually transitioned
+        // away from an active alert this request — avoid HTTP call on every page
+        // load when no alerts have ever been set for this business.
+        if ($hadActiveAlert) {
+            $hasQueued = EmergencyAlert::where('business_id', $businessId)
+                ->whereNull('resolved_at')
+                ->exists();
 
-        if (!$hasQueued) {
-            app(CallingServiceClient::class)->resolveEmergency($businessId);
+            if (!$hasQueued) {
+                app(CallingServiceClient::class)->resolveEmergency($businessId);
+            }
         }
 
         return null;
