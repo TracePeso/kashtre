@@ -59,7 +59,6 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     ->modalHeading('Record usage')
                     ->modalDescription('Enter what was used. Pool, stock, and billing are applied automatically.')
                     ->modalSubmitActionLabel('Save')
-                    ->modalWidth('md')
                     ->createAnother(false)
                     ->form($this->usageForm($businessId))
                     ->action(function (array $data) use ($businessId): void {
