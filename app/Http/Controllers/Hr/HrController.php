@@ -93,6 +93,16 @@ class HrController extends Controller
         return view('hr.reports.index', ['attendance' => $attendance, 'stats' => $stats]);
     }
 
+    public function employeeRecords(Request $request)
+    {
+        return redirect()->route('hr.embed', ['path' => '/hr/employee-records']);
+    }
+
+    public function recognition(Request $request)
+    {
+        return redirect()->route('hr.embed', ['path' => '/hr/recognition']);
+    }
+
     public function settings(Request $request)
     {
         return redirect()->route('hr.embed', ['path' => '/hr/settings']);
@@ -111,7 +121,7 @@ class HrController extends Controller
         $hrUrl   = ($parsed['scheme'] ?? 'http') . '://' . $request->getHost() . ':' . $hrPort;
 
         $path    = $request->input('path', '/hr/dashboard');
-        $payload = $user->email . '|' . time();
+        $payload = $user->email . '|' . ($user->business_id ?? '') . '|' . time();
         $sig     = hash_hmac('sha256', $payload, $apiKey);
         $token   = base64_encode($payload . ':' . $sig);
 
