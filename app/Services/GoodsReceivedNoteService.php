@@ -296,6 +296,20 @@ class GoodsReceivedNoteService
                 'occurred_at' => now(),
             ]);
 
+            app(\App\Services\Inventory\InventoryForensicAuditService::class)->recordStockDelta(
+                $stock->fresh(),
+                'GRN_RECEIPT',
+                $balanceBefore,
+                $balanceAfter,
+                $grn->entry_by_user_id ? (int) $grn->entry_by_user_id : null,
+                null,
+                [
+                    'goods_received_note_id' => $grn->id,
+                    'grn_number' => $grn->grn_number,
+                    'goods_received_note_line_id' => $line->id,
+                ]
+            );
+
             $postedUnits += $saleUnits;
         }
 

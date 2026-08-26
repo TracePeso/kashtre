@@ -525,6 +525,21 @@ class ServicePointController extends Controller
                 }
 
                 if (in_array($status, ['partially_done', 'completed']) && $item->status !== $status) {
+                    // SRD §2.2 — goods cannot enter In Progress / partially_done on the service-point dashboard.
+                    $item->loadMissing('item');
+                    if (($item->item?->type ?? null) === 'good') {
+                        $inventoryOn = \App\Models\InventoryModuleConfig::query()
+                            ->where('business_id', $item->business_id)
+                            ->where('is_active', true)
+                            ->exists();
+                        if ($inventoryOn && in_array($status, ['partially_done', 'completed'], true)) {
+                            return response()->json([
+                                'success' => false,
+                                'message' => 'Goods cannot be marked In Progress or Completed here. Dispense/release them from EndStore.',
+                            ], 422);
+                        }
+                    }
+
                     // Set the invoice if not already set
                     if (!$invoice) {
                         $invoice = $item->invoice;
@@ -562,8 +577,28 @@ class ServicePointController extends Controller
                             'money_moved_at' => $item->money_moved_at
                         ]);
                         if ($status === 'partially_done' && $item->status !== 'partially_done') {
+                            $item->loadMissing('item');
+                            if (($item->item?->type ?? null) === 'good') {
+                                return response()->json([
+                                    'success' => false,
+                                    'message' => 'Goods cannot be marked In Progress. Dispense them from EndStore.',
+                                ], 422);
+                            }
                             $item->markAsPartiallyDone(auth()->id());
                         } elseif ($status === 'completed' && $item->status !== 'completed') {
+                            $item->loadMissing('item');
+                            if (($item->item?->type ?? null) === 'good') {
+                                $inventoryOn = \App\Models\InventoryModuleConfig::query()
+                                    ->where('business_id', $item->business_id)
+                                    ->where('is_active', true)
+                                    ->exists();
+                                if ($inventoryOn) {
+                                    return response()->json([
+                                        'success' => false,
+                                        'message' => 'Goods cannot be marked Completed here. Dispense/release them from EndStore.',
+                                    ], 422);
+                                }
+                            }
                             $item->markAsCompleted(auth()->id());
                         } else {
                             $item->status = $status;

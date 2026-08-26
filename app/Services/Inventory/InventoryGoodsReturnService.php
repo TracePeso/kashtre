@@ -129,6 +129,19 @@ class InventoryGoodsReturnService
                     'recorded_by_user_id' => $user->id,
                     'occurred_at' => now(),
                 ]);
+
+                app(InventoryForensicAuditService::class)->recordStockDelta(
+                    $stock->fresh(),
+                    'GOODS_RETURN',
+                    $before,
+                    $after,
+                    (int) $user->id,
+                    null,
+                    [
+                        'goods_return_note_id' => $note->id,
+                        'reference' => $note->reference,
+                    ]
+                );
             }
 
             $note->update([

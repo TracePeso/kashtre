@@ -18,13 +18,20 @@ class InventoryFulfillmentIngestService
     ) {}
 
     /**
-     * Stamp paid goods onto the mapped End Store fulfillment queue (SRD §4.1).
+     * Stamp paid goods onto the mapped End Store fulfillment queue (SRD §4.1–4.2).
+     *
+     * Routing (after Client Spaces removal):
+     * 1. End Store = invoice.end_store_id (if End Store) → else branch End Store → else business End Store
+     * 2. Strategy = invoice.fulfillment_strategy → else store.default_fulfillment_strategy → OP
+     * 3. Approved Pool flag = store.supports_approved_pool (default true)
      *
      * @param  array<int, array<string, mixed>>  $items
      * @return array{created: int, skipped: int, lines: list<InventoryFulfillmentLine>}
      */
     public function ingestFromInvoice(Invoice $invoice, array $items = [], ?int $explicitClientSpaceId = null): array
     {
+        unset($explicitClientSpaceId);
+
         $created = 0;
         $skipped = 0;
         $lines = [];
@@ -48,10 +55,14 @@ class InventoryFulfillmentIngestService
                 'invoice_id' => $invoice->id,
                 'business_id' => $invoice->business_id,
                 'branch_id' => $invoice->branch_id,
+                'end_store_id' => $invoice->end_store_id ?? null,
             ]);
 
             return compact('created', 'skipped', 'lines');
         }
+
+        $strategy = $this->resolveStrategy($invoice, $store);
+        $supportsApprovedPool = $store->supportsApprovedPool();
 
         foreach ($payloadItems as $item) {
             $name = Str::lower(trim((string) ($item['displayName'] ?? $item['name'] ?? $item['item_name'] ?? '')));
@@ -79,12 +90,19 @@ class InventoryFulfillmentIngestService
             }
 
             $priority = $this->detectPriority($item, $itemModel, (int) $invoice->business_id);
-            $line = $this->upsertLine($invoice, $itemModel, $store, $quantity, $priority, $item);
+            $line = $this->upsertLine(
+                $invoice,
+                $itemModel,
+                $store,
+                $quantity,
+                $priority,
+                $item,
+                $strategy,
+                $supportsApprovedPool,
+            );
 
             if ($line->wasRecentlyCreated) {
                 $created++;
-            } else {
-                // Quantity/priority refresh on an open line still counts as handled, not skipped.
             }
 
             $lines[] = $line;
@@ -93,6 +111,8 @@ class InventoryFulfillmentIngestService
         Log::info('Inventory fulfillment ingest finished', [
             'invoice_id' => $invoice->id,
             'store_id' => $store->id,
+            'fulfillment_strategy' => $strategy,
+            'supports_approved_pool' => $supportsApprovedPool,
             'created' => $created,
             'skipped' => $skipped,
         ]);
@@ -102,6 +122,17 @@ class InventoryFulfillmentIngestService
 
     protected function resolveEndStore(Invoice $invoice): ?Store
     {
+        if (! empty($invoice->end_store_id)) {
+            $explicit = Store::query()
+                ->where('id', $invoice->end_store_id)
+                ->where('business_id', $invoice->business_id)
+                ->first();
+
+            if ($explicit && $explicit->isEndStore()) {
+                return $explicit;
+            }
+        }
+
         $branchScoped = Store::query()
             ->where('business_id', $invoice->business_id)
             ->where(function ($query) {
@@ -124,6 +155,36 @@ class InventoryFulfillmentIngestService
             })
             ->orderBy('id')
             ->first();
+    }
+
+    protected function resolveStrategy(Invoice $invoice, Store $store): string
+    {
+        $fromInvoice = (string) ($invoice->fulfillment_strategy ?? '');
+        if (in_array($fromInvoice, [
+            InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE,
+            InventoryFulfillmentStrategy::BATCH_AND_STAGE,
+        ], true)) {
+            return $fromInvoice;
+        }
+
+        $fromItem = null;
+        $items = is_array($invoice->items) ? $invoice->items : [];
+        foreach ($items as $item) {
+            $candidate = Str::upper((string) ($item['fulfillment_strategy'] ?? ''));
+            if (in_array($candidate, [
+                InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE,
+                InventoryFulfillmentStrategy::BATCH_AND_STAGE,
+            ], true)) {
+                $fromItem = $candidate;
+                break;
+            }
+        }
+
+        if ($fromItem) {
+            return $fromItem;
+        }
+
+        return $store->defaultFulfillmentStrategy();
     }
 
     /**

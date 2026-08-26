@@ -17,7 +17,7 @@ class InventoryPickRouteService
      *     store: Store,
      *     basket_key: string,
      *     scope: string,
-     *     client_space: null,
+     *     visit_id: ?string,
      *     lines: list<array{item_id:int,item_name:string,quantity:float,location_layer_3:?string,location_layer_2:?string,location_layer_1:?string}>
      * }
      */
@@ -42,31 +42,30 @@ class InventoryPickRouteService
         return $this->buildRoute($seed->store, $open, [
             'scope' => 'basket',
             'basket_key' => (string) $seed->basket_key,
-            'client_space' => null,
+            'visit_id' => $seed->visit_id,
         ]);
     }
 
     /**
-     * Legacy ward collection run keyed by the retained client_space_id column.
+     * Ward / End Store reservoir collection run — all open inpatient lines at the store (SRD §4.4).
+     * Optionally narrow to a single visit_id.
      *
      * @return array{
      *     store: Store,
      *     basket_key: string,
      *     scope: string,
-     *     client_space: null,
+     *     visit_id: ?string,
      *     lines: list<array{item_id:int,item_name:string,quantity:float,location_layer_3:?string,location_layer_2:?string,location_layer_1:?string}>
      * }
      */
-    public function forWardRun(Store $store, int $spaceId): array
+    public function forWardRun(Store $store, ?string $visitId = null): array
     {
-        $store->loadMissing([]);
-
         $open = InventoryFulfillmentLine::query()
             ->with('item:id,name,code')
             ->where('business_id', $store->business_id)
             ->where('store_id', $store->id)
-            ->where('client_space_id', $spaceId)
             ->where('fulfillment_strategy', InventoryFulfillmentStrategy::BATCH_AND_STAGE)
+            ->when($visitId !== null && $visitId !== '', fn ($q) => $q->where('visit_id', $visitId))
             ->whereIn('status', [
                 InventoryFulfillmentLine::STATUS_PENDING,
                 InventoryFulfillmentLine::STATUS_PICKING,
@@ -77,14 +76,16 @@ class InventoryPickRouteService
 
         return $this->buildRoute($store, $open, [
             'scope' => 'ward',
-            'basket_key' => 'ward-'.$spaceId,
-            'client_space' => null,
+            'basket_key' => $visitId
+                ? 'visit-'.$visitId
+                : 'store-'.$store->id.'-reservoir',
+            'visit_id' => $visitId,
         ]);
     }
 
     /**
      * @param  Collection<int, InventoryFulfillmentLine>  $open
-     * @param  array{scope:string,basket_key:string,client_space:null}  $meta
+     * @param  array{scope:string,basket_key:string,visit_id:?string}  $meta
      * @return array<string, mixed>
      */
     protected function buildRoute(Store $store, Collection $open, array $meta): array
@@ -135,7 +136,8 @@ class InventoryPickRouteService
             'store' => $store,
             'basket_key' => $meta['basket_key'],
             'scope' => $meta['scope'],
-            'client_space' => $meta['client_space'],
+            'visit_id' => $meta['visit_id'] ?? null,
+            'client_space' => null,
             'lines' => $rows,
             'labels' => $store->locationLayerLabels() ?? Store::defaultLocationLabels($store->distribution_type),
         ];

@@ -39,6 +39,7 @@ class InventoryDaysOfStockService
         if ($basis === self::FORECAST_DEMAND) {
             $total = (float) InventoryDemandLedger::query()
                 ->where('business_id', $businessId)
+                ->where('store_id', $storeId)
                 ->where('item_id', $itemId)
                 ->where('occurred_at', '>=', $from)
                 ->sum('quantity');

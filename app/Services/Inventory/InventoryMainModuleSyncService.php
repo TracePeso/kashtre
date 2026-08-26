@@ -329,9 +329,8 @@ class InventoryMainModuleSyncService
 
             if ($line->status === InventoryFulfillmentLine::STATUS_COMPLETED) {
                 $queue->markAsCompleted($userId ?: null);
-            } elseif ($line->status === InventoryFulfillmentLine::STATUS_PARTIAL) {
-                $queue->markAsPartiallyDone($userId ?: null);
             }
+            // SRD §2.2: goods remain Pending until full Completed — do not flip to partially_done.
         }
     }
 

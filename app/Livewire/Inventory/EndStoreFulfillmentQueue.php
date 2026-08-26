@@ -296,7 +296,7 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->modalDescription(fn (InventoryFulfillmentLine $record): string => sprintf(
                         $record->supportsApprovedPool()
                             ? 'Dispense %s × %s from %s? Stock will leave this End Store, the Approved Pool will be updated, and the Main Module ticket will close.'
-                            : 'Dispense %s × %s from %s? Stock will leave this End Store and the Main Module ticket will be marked complete (this Client Space does not use Approved Pool).',
+                            : 'Dispense %s × %s from %s? Stock will leave this End Store and the Main Module ticket will be marked complete (Approved Pool disabled for this End Store).',
                         rtrim(rtrim(number_format((float) $record->quantity - (float) $record->quantity_fulfilled, 2), '0'), '.'),
                         $record->item_name,
                         $record->store?->name ?? 'this End Store'
@@ -318,7 +318,7 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                                 ->title('Dispense completed')
                                 ->body($updated->supportsApprovedPool()
                                     ? 'Status is now '.$updated->statusLabel().'. Stock deducted and Approved Pool updated.'
-                                    : 'Status is now '.$updated->statusLabel().'. Stock deducted and ticket completed (no Approved Pool for this Client Space).')
+                                    : 'Status is now '.$updated->statusLabel().'. Stock deducted and ticket completed (no Approved Pool for this End Store).')
                                 ->success()
                                 ->send();
                         } catch (ValidationException $e) {
@@ -427,11 +427,12 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->form(function (InventoryFulfillmentLine $record): array {
                         $session = app(InventoryHandoffTokenService::class)->activeSessionForLine($record);
                         $lineIds = array_values(array_map('intval', $session?->fulfillment_line_ids ?? [$record->id]));
-                        $options = InventoryFulfillmentLine::query()
+                        $stagedLines = InventoryFulfillmentLine::query()
                             ->whereIn('id', $lineIds)
                             ->where('status', InventoryFulfillmentLine::STATUS_STAGED)
                             ->orderBy('id')
-                            ->get()
+                            ->get();
+                        $options = $stagedLines
                             ->mapWithKeys(fn (InventoryFulfillmentLine $line) => [
                                 $line->id => sprintf(
                                     '%s × %s',
@@ -441,7 +442,11 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                             ])
                             ->all();
 
-                        return [
+                        $config = InventoryModuleConfig::query()
+                            ->where('business_id', InventoryBusinessContext::effectiveBusinessId())
+                            ->first();
+
+                        $fields = [
                             TextInput::make('code')
                                 ->label('Nurse handoff code (Clinical)')
                                 ->placeholder('5-digit code from ward nurse')
@@ -466,6 +471,27 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                                 ->columns(1)
                                 ->visible(count($options) > 0),
                         ];
+
+                        if ($config?->batchLotTrackingEnabled() || $config?->serialNumberTrackingEnabled()) {
+                            foreach ($stagedLines as $staged) {
+                                $prefix = 'trace_'.$staged->id.'_';
+                                if ($config->batchLotTrackingEnabled()) {
+                                    $fields[] = TextInput::make($prefix.'batch_lot')
+                                        ->label('Batch / lot — '.$staged->item_name)
+                                        ->required()
+                                        ->maxLength(120);
+                                }
+                                if ($config->serialNumberTrackingEnabled()) {
+                                    $fields[] = TagsInput::make($prefix.'serials')
+                                        ->label('Serials — '.$staged->item_name)
+                                        ->required()
+                                        ->placeholder('Type a serial and press Enter')
+                                        ->helperText('One serial per unit released for this line.');
+                                }
+                            }
+                        }
+
+                        return $fields;
                     })
                     ->modalHeading('Release handoff')
                     ->modalDescription(fn (InventoryFulfillmentLine $record): string => sprintf(
@@ -484,13 +510,28 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
 
                             $handoff = app(InventoryHandoffTokenService::class);
                             $session = $handoff->activeSessionForLine($record);
+                            $flagged = array_map('intval', $data['flagged_line_ids'] ?? []);
+                            $traceabilityByLineId = [];
+                            foreach ($data as $key => $value) {
+                                if (! is_string($key) || ! str_starts_with($key, 'trace_')) {
+                                    continue;
+                                }
+                                // trace_{lineId}_batch_lot | trace_{lineId}_serials
+                                if (preg_match('/^trace_(\d+)_(batch_lot|serials)$/', $key, $m)) {
+                                    $lineId = (int) $m[1];
+                                    $field = $m[2];
+                                    $traceabilityByLineId[$lineId] ??= [];
+                                    $traceabilityByLineId[$lineId][$field === 'batch_lot' ? 'batch_lot' : 'serials'] = $value;
+                                }
+                            }
 
                             $result = $handoff->release(
                                 $store,
                                 (string) ($data['code'] ?? ''),
                                 Auth::user(),
                                 $session,
-                                array_map('intval', $data['flagged_line_ids'] ?? []),
+                                $flagged,
+                                $traceabilityByLineId,
                             );
 
                             $done = count($result['completed']);
@@ -585,6 +626,34 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                                     ->persistent()
                                     ->send();
                             }
+                        })
+                        ->after(fn () => $this->resetTable()),
+                    Action::make('setInpatient')
+                        ->label('Set inpatient')
+                        ->icon('heroicon-o-building-office-2')
+                        ->visible(fn (InventoryFulfillmentLine $record) => $record->isOpen() && $record->isOutpatient())
+                        ->requiresConfirmation()
+                        ->modalHeading('Switch to inpatient (batch & stage)?')
+                        ->action(function (InventoryFulfillmentLine $record) {
+                            $record->update([
+                                'fulfillment_strategy' => InventoryFulfillmentStrategy::BATCH_AND_STAGE,
+                            ]);
+                            Notification::make()->title('Set to inpatient')->success()->send();
+                        })
+                        ->after(fn () => $this->resetTable()),
+                    Action::make('setOutpatient')
+                        ->label('Set outpatient')
+                        ->icon('heroicon-o-user')
+                        ->visible(fn (InventoryFulfillmentLine $record) => $record->isOpen()
+                            && $record->isInpatient()
+                            && $record->status !== InventoryFulfillmentLine::STATUS_STAGED)
+                        ->requiresConfirmation()
+                        ->modalHeading('Switch to outpatient (dispense now)?')
+                        ->action(function (InventoryFulfillmentLine $record) {
+                            $record->update([
+                                'fulfillment_strategy' => InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE,
+                            ]);
+                            Notification::make()->title('Set to outpatient')->success()->send();
                         })
                         ->after(fn () => $this->resetTable()),
                     Action::make('startPicking')

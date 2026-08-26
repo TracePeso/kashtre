@@ -1154,6 +1154,8 @@ class InventoryOrderService
                 'line_total' => round($orderQtySuom * $unitPrice, 2),
             ]);
 
+            $this->syncOrderDaysFromQuantity($line->fresh(['order', 'item']), $orderQtySuom);
+
             $freshOrder = $order->fresh(['lines.item']);
             $cap = $order->effectiveAmountCap();
 
@@ -1187,6 +1189,8 @@ class InventoryOrderService
             'order_quantity_ouom' => $orderQtyOuom,
             'line_total' => $newLineTotal,
         ]);
+
+        $this->syncOrderDaysFromQuantity($line->fresh(['order', 'item']), $newQty);
 
         $delta = round($newLineTotal - $oldLineTotal, 2);
         $adjustedCount = 0;
@@ -1269,6 +1273,48 @@ class InventoryOrderService
         $result['line'] = $result['line']->fresh('item');
 
         return $result;
+    }
+
+    /**
+     * Reverse of Days Mode: order_days ≈ (qty + on_hand) / MA (SRD §7.5 bidirectional).
+     */
+    private function syncOrderDaysFromQuantity(InventoryOrderLine $line, float $orderQtySuom): void
+    {
+        $line->loadMissing(['order', 'item']);
+        $order = $line->order;
+        if (! $order || ! $order->store_id) {
+            return;
+        }
+
+        $basis = $order->usesDemandForecast()
+            ? InventoryDaysOfStockService::FORECAST_DEMAND
+            : InventoryDaysOfStockService::FORECAST_CONSUMPTION;
+
+        $ma = $this->daysOfStock->movingAverageDaily(
+            (int) $order->business_id,
+            (int) $order->store_id,
+            (int) $line->item_id,
+            15,
+            $basis
+        );
+
+        if ($ma <= 0) {
+            $line->update(['order_days' => null]);
+
+            return;
+        }
+
+        $onHand = (float) (InventoryStockLevel::query()
+            ->where('business_id', $order->business_id)
+            ->where('store_id', $order->store_id)
+            ->where('item_id', $line->item_id)
+            ->where(function ($q) {
+                $q->whereNull('stock_zone')->orWhere('stock_zone', 'active');
+            })
+            ->value('quantity_suom') ?? $line->current_stock_suom ?? 0);
+
+        $days = round(($orderQtySuom + $onHand) / $ma, 2);
+        $line->update(['order_days' => max(0, $days)]);
     }
 
     /**

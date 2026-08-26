@@ -469,6 +469,22 @@ class InventoryStockTransferService
             'recorded_by_user_id' => $userId,
             'occurred_at' => now(),
         ]);
+
+        app(InventoryForensicAuditService::class)->recordStockDelta(
+            $stock->fresh(),
+            $movementType === InventoryStockMovement::TYPE_TRANSFER_IN
+                ? 'TRANSFER_IN'
+                : 'TRANSFER_OUT',
+            $before,
+            $after,
+            $userId,
+            null,
+            [
+                'stock_transfer_id' => $transfer->id,
+                'reference' => $transfer->reference,
+                'label' => $label,
+            ]
+        );
     }
 
     private function assertTransferRouteAllowed(StockTransfer $transfer): void
@@ -584,6 +600,21 @@ class InventoryStockTransferService
             'recorded_by_user_id' => $userId,
             'occurred_at' => now(),
         ]);
+
+        app(InventoryForensicAuditService::class)->recordStockDelta(
+            $stock->fresh(),
+            'TRANSFER_OUT',
+            $before,
+            $after,
+            $userId,
+            null,
+            [
+                'stock_transfer_id' => $transfer->id,
+                'reference' => $transfer->reference,
+                'label' => $label,
+                'phase' => 'in_transit',
+            ]
+        );
     }
 
     /**

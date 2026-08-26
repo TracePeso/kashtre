@@ -51,6 +51,8 @@ class Store extends Model
         'reorder_level_days',
         'max_stock_days',
         'distribution_type',
+        'default_fulfillment_strategy',
+        'supports_approved_pool',
         'satellite_role',
         'is_crash_cart',
         'crash_cart_status',
@@ -62,6 +64,7 @@ class Store extends Model
 
     protected $casts = [
         'is_crash_cart' => 'boolean',
+        'supports_approved_pool' => 'boolean',
         'crash_cart_sealed_at' => 'datetime',
         'crash_cart_deployed_at' => 'datetime',
         'location_layer_labels' => 'array',
@@ -328,6 +331,23 @@ class Store extends Model
     public function isEndStore(): bool
     {
         return ($this->distribution_type ?? self::DISTRIBUTION_END) === self::DISTRIBUTION_END;
+    }
+
+    public function defaultFulfillmentStrategy(): string
+    {
+        $strategy = (string) ($this->default_fulfillment_strategy ?? '');
+
+        return in_array($strategy, [
+            \App\Support\InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE,
+            \App\Support\InventoryFulfillmentStrategy::BATCH_AND_STAGE,
+        ], true)
+            ? $strategy
+            : \App\Support\InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE;
+    }
+
+    public function supportsApprovedPool(): bool
+    {
+        return (bool) ($this->supports_approved_pool ?? true);
     }
 
     public function isInterimDistributionStore(): bool

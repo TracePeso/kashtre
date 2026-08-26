@@ -30,13 +30,16 @@ class InventoryPickRouteController extends Controller
         ]);
     }
 
-    public function ward(Store $store, int $spaceId, InventoryPickRouteService $routes)
+    public function ward(Request $request, Store $store, InventoryPickRouteService $routes)
     {
         $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
         abort_unless((int) $store->business_id === $businessId, 404);
         abort_unless($store->isEndStore(), 404);
 
-        $route = $routes->forWardRun($store, $spaceId);
+        $visitId = $request->query('visit_id');
+        $visitId = is_string($visitId) && $visitId !== '' ? $visitId : null;
+
+        $route = $routes->forWardRun($store, $visitId);
 
         return view('inventory.fulfillment.pick-route', [
             'route' => $route,

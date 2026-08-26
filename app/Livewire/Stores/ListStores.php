@@ -389,6 +389,31 @@ class ListStores extends Component implements HasForms, HasTable
                 ->maxLength(255),
             Forms\Components\Hidden::make('distribution_type')
                 ->default(Store::DISTRIBUTION_END),
+            Forms\Components\Select::make('default_fulfillment_strategy')
+                ->label('Default fulfillment strategy')
+                ->options(\App\Support\InventoryFulfillmentStrategy::options())
+                ->default(\App\Support\InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE)
+                ->required()
+                ->native(false)
+                ->helperText('Used when POS/invoice does not specify Outpatient vs Inpatient.'),
+            Forms\Components\Toggle::make('supports_approved_pool')
+                ->label('Credit Approved Pool on dispense')
+                ->default(true)
+                ->helperText('When off, dispense still completes the ticket but does not add Approved Pool balance.'),
+            Forms\Components\TextInput::make('reorder_level_days')
+                ->label('Reorder level (days)')
+                ->numeric()
+                ->minValue(0)
+                ->step(0.01)
+                ->default(5)
+                ->helperText('SRD §7.2 — draft replenishment when current stock days fall below this.'),
+            Forms\Components\TextInput::make('max_stock_days')
+                ->label('Maximum stock level (days)')
+                ->numeric()
+                ->minValue(0)
+                ->step(0.01)
+                ->default(30)
+                ->helperText('SRD §7.2 — target coverage days for internal replenishment.'),
             Forms\Components\Placeholder::make('type_note')
                 ->label('Store type')
                 ->content('End store — only this type can sell / dispense to clients.'),
@@ -455,6 +480,18 @@ class ListStores extends Component implements HasForms, HasTable
                 ->content(fn (Get $get): string => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART
                     ? 'Crash cart — sealed emergency stock under an End Store. Not for client sales.'
                     : 'Satellite store — floor stock under an End Store. Not for client sales.'),
+            Forms\Components\TextInput::make('reorder_level_days')
+                ->label('Reorder level (days)')
+                ->numeric()
+                ->minValue(0)
+                ->step(0.01)
+                ->default(5),
+            Forms\Components\TextInput::make('max_stock_days')
+                ->label('Maximum stock level (days)')
+                ->numeric()
+                ->minValue(0)
+                ->step(0.01)
+                ->default(30),
             Forms\Components\Textarea::make('description')
                 ->label('Description')
                 ->nullable()
@@ -492,7 +529,7 @@ class ListStores extends Component implements HasForms, HasTable
                     ->default(Store::DISTRIBUTION_SATELLITE),
                 Forms\Components\Select::make('satellite_role')
                     ->label('Satellite role')
-                    ->options(fn (Get $get) use ($record): array => $this->satelliteRoleFormOptions(
+                    ->options(fn (Get $get): array => $this->satelliteRoleFormOptions(
                         $this->resolvedBusinessId($get('business_id') ?: $record->business_id),
                         $record->satellite_role
                     ))
@@ -536,6 +573,16 @@ class ListStores extends Component implements HasForms, HasTable
                         return $order->order_number.' ('.$order->status.')';
                     })
                     ->visible(fn (Get $get): bool => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART),
+                Forms\Components\TextInput::make('reorder_level_days')
+                    ->label('Reorder level (days)')
+                    ->numeric()
+                    ->minValue(0)
+                    ->step(0.01),
+                Forms\Components\TextInput::make('max_stock_days')
+                    ->label('Maximum stock level (days)')
+                    ->numeric()
+                    ->minValue(0)
+                    ->step(0.01),
                 Forms\Components\Textarea::make('description')
                     ->label('Description')
                     ->nullable(),
@@ -566,6 +613,30 @@ class ListStores extends Component implements HasForms, HasTable
                     ->required(),
                 Forms\Components\Hidden::make('distribution_type')
                     ->default(Store::DISTRIBUTION_END),
+                Forms\Components\Select::make('default_fulfillment_strategy')
+                    ->label('Default fulfillment strategy')
+                    ->options(\App\Support\InventoryFulfillmentStrategy::options())
+                    ->default(fn () => $record->default_fulfillment_strategy
+                        ?: \App\Support\InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE)
+                    ->required()
+                    ->native(false)
+                    ->helperText('Used when POS/invoice does not specify Outpatient vs Inpatient.'),
+                Forms\Components\Toggle::make('supports_approved_pool')
+                    ->label('Credit Approved Pool on dispense')
+                    ->default(fn () => $record->supports_approved_pool ?? true)
+                    ->helperText('When off, dispense still completes the ticket but does not add Approved Pool balance.'),
+                Forms\Components\TextInput::make('reorder_level_days')
+                    ->label('Reorder level (days)')
+                    ->numeric()
+                    ->minValue(0)
+                    ->step(0.01)
+                    ->helperText('SRD §7.2 — draft replenishment when current stock days fall below this.'),
+                Forms\Components\TextInput::make('max_stock_days')
+                    ->label('Maximum stock level (days)')
+                    ->numeric()
+                    ->minValue(0)
+                    ->step(0.01)
+                    ->helperText('SRD §7.2 — target coverage days for internal replenishment.'),
                 Forms\Components\Placeholder::make('type_note')
                     ->label('Store type')
                     ->content(
@@ -601,6 +672,16 @@ class ListStores extends Component implements HasForms, HasTable
                 ->required(),
             Forms\Components\Hidden::make('distribution_type')
                 ->default(Store::DISTRIBUTION_INTERIM),
+            Forms\Components\TextInput::make('reorder_level_days')
+                ->label('Reorder level (days)')
+                ->numeric()
+                ->minValue(0)
+                ->step(0.01),
+            Forms\Components\TextInput::make('max_stock_days')
+                ->label('Maximum stock level (days)')
+                ->numeric()
+                ->minValue(0)
+                ->step(0.01),
             Forms\Components\Placeholder::make('type_note')
                 ->label('Store type')
                 ->content('Distribution store — warehouse / hub.'),

@@ -298,6 +298,35 @@ class TransactionController extends Controller
             ->orderBy('name')
             ->get();
 
+        $inventoryModuleEnabled = \App\Models\InventoryModuleConfig::query()
+            ->where('business_id', $client->business_id)
+            ->where('is_active', true)
+            ->exists();
+
+        $endStores = collect();
+        if ($inventoryModuleEnabled) {
+            $endStores = \App\Models\Store::query()
+                ->where('business_id', $client->business_id)
+                ->where(function ($query) {
+                    $query->where('distribution_type', \App\Models\Store::DISTRIBUTION_END)
+                        ->orWhereNull('distribution_type');
+                })
+                ->when($currentBranch?->id, fn ($q) => $q->where('branch_id', $currentBranch->id))
+                ->orderBy('name')
+                ->get(['id', 'name', 'default_fulfillment_strategy', 'supports_approved_pool']);
+
+            if ($endStores->isEmpty()) {
+                $endStores = \App\Models\Store::query()
+                    ->where('business_id', $client->business_id)
+                    ->where(function ($query) {
+                        $query->where('distribution_type', \App\Models\Store::DISTRIBUTION_END)
+                            ->orWhereNull('distribution_type');
+                    })
+                    ->orderBy('name')
+                    ->get(['id', 'name', 'default_fulfillment_strategy', 'supports_approved_pool']);
+            }
+        }
+
         return view('pos.item-selection', compact(
             'client',
             'items',
@@ -305,7 +334,9 @@ class TransactionController extends Controller
             'partiallyDoneItems',
             'correctTotalAmount',
             'servicePoint',
-            'thirdPartyPayers'
+            'thirdPartyPayers',
+            'inventoryModuleEnabled',
+            'endStores'
         ));
     }
 

@@ -106,6 +106,21 @@ class ServiceDeliveryQueueController extends Controller
                 ], 403);
             }
 
+            // SRD §2.2 — goods Pending → Completed only via EndStore dispense, not service-point Complete.
+            $serviceDeliveryQueue->loadMissing('item');
+            if (($serviceDeliveryQueue->item?->type ?? null) === 'good') {
+                $inventoryOn = \App\Models\InventoryModuleConfig::query()
+                    ->where('business_id', $serviceDeliveryQueue->business_id)
+                    ->where('is_active', true)
+                    ->exists();
+                if ($inventoryOn) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Goods must be completed from the EndStore dispense/release queue, not from the service point.',
+                    ], 422);
+                }
+            }
+
             // Log the action before processing money transfers
             Log::info("=== MARKING ITEM AS COMPLETED ===", [
                 'service_delivery_queue_id' => $serviceDeliveryQueue->id,

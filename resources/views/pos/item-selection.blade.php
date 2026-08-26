@@ -122,6 +122,47 @@
                                 Edit Payment Methods
                             </button>
                         </div>
+                        @if(!empty($inventoryModuleEnabled) && isset($endStores) && $endStores->isNotEmpty())
+                        <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-100 md:col-span-2 lg:col-span-2">
+                            <p class="text-sm text-indigo-700 font-medium mb-2">Inventory fulfillment</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label for="fulfillment-strategy" class="block text-xs text-gray-600 mb-1">Strategy</label>
+                                    <select id="fulfillment-strategy"
+                                            class="block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                        <option value="DISCRETE_IMMEDIATE">Outpatient (dispense now)</option>
+                                        <option value="BATCH_AND_STAGE">Inpatient (batch &amp; stage)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="end-store-id" class="block text-xs text-gray-600 mb-1">End Store</label>
+                                    <select id="end-store-id"
+                                            class="block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                            onchange="syncFulfillmentStrategyFromEndStore()">
+                                        @foreach($endStores as $store)
+                                            <option value="{{ $store->id }}"
+                                                data-strategy="{{ $store->default_fulfillment_strategy ?: 'DISCRETE_IMMEDIATE' }}"
+                                                @selected($loop->first)>
+                                                {{ $store->name }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                            </div>
+                            <p class="mt-2 text-xs text-indigo-600">Paid goods route to this End Store. Strategy defaults from the End Store; change it here to override.</p>
+                            <script>
+                                function syncFulfillmentStrategyFromEndStore() {
+                                    const storeSelect = document.getElementById('end-store-id');
+                                    const strategySelect = document.getElementById('fulfillment-strategy');
+                                    if (!storeSelect || !strategySelect) return;
+                                    const opt = storeSelect.options[storeSelect.selectedIndex];
+                                    const strategy = opt?.getAttribute('data-strategy') || 'DISCRETE_IMMEDIATE';
+                                    strategySelect.value = strategy;
+                                }
+                                document.addEventListener('DOMContentLoaded', syncFulfillmentStrategyFromEndStore);
+                            </script>
+                        </div>
+                        @endif
                         @if($client->vendors && $client->vendors->count() > 0)
                         <div class="bg-green-50 p-4 rounded-lg border-2 border-green-200">
                             <p class="text-sm text-green-700 font-medium mb-3">Third-party payment methods</p>
@@ -2217,7 +2258,11 @@
                     payment_methods: paymentMethods,
                     payment_status: amountPaid >= totalAmount ? 'paid' : 'pending',
                     status: 'confirmed',
-                    notes: ''
+                    notes: '',
+                    fulfillment_strategy: document.getElementById('fulfillment-strategy')?.value || null,
+                    end_store_id: document.getElementById('end-store-id')?.value
+                        ? parseInt(document.getElementById('end-store-id').value, 10)
+                        : null,
                 };
                 @if($client->insurance_company_id)
                 if (typeof paymentResponsibility !== 'undefined' && paymentResponsibility.deductibleRemaining !== undefined) {

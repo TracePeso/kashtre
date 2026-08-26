@@ -345,6 +345,8 @@ class InvoiceController extends Controller
                 'notes' => 'nullable|string',
                 'third_party_payer_id' => 'nullable|exists:third_party_payers,id',
                 'deductible_remaining' => 'nullable|numeric|min:0',
+                'fulfillment_strategy' => 'nullable|in:DISCRETE_IMMEDIATE,BATCH_AND_STAGE',
+                'end_store_id' => 'nullable|exists:stores,id',
             ]);
 
             // Get client
@@ -601,6 +603,8 @@ class InvoiceController extends Controller
                 'business_id' => $validated['business_id'],
                 'branch_id' => $validated['branch_id'],
                 'client_space_id' => $validated['client_space_id'] ?? null,
+                'fulfillment_strategy' => $validated['fulfillment_strategy'] ?? null,
+                'end_store_id' => $validated['end_store_id'] ?? null,
                 'created_by' => $validated['created_by'],
                 'currency' => $invoiceCurrency,
                 'client_name' => $validated['client_name'],

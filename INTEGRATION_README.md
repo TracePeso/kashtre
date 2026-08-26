@@ -372,7 +372,7 @@ These run in the **Kashtre browser UI** (Inventory → **EndStore**):
 | Step | Who | Action |
 |------|-----|--------|
 | 1 | Cashier / Main | Patient pays for **goods** (`item.type = good`) |
-| 2 | System | Queue line appears on a branch-preferred End Store for the business |
+| 2 | System | Queue line appears on selected/default End Store with OP or IP strategy from POS or store defaults |
 | 3a OP | Pharmacist | **Dispense** — stock ↓, Approved Pool ↑ (when enabled on the line), ticket Completed |
 | 3b IP | Pharmacist | **Stage** (tote barcode) → Clinical alert → nurse code → **Release** |
 | 4 | Ward | **Record Usage** — pool / floor / admin / crash cart |

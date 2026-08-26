@@ -54,7 +54,7 @@
         </div>
     @endif
 
-    <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
             <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">End Store</label>
             <select wire:model.live="selectedStoreId"
@@ -66,11 +66,20 @@
             </select>
         </div>
 
-        <div class="flex flex-wrap gap-2 text-xs text-gray-500">
-            <span class="rounded-full bg-gray-100 px-2.5 py-1">Open {{ $this->openCount() }}</span>
-            <span class="rounded-full bg-sky-50 text-sky-800 px-2.5 py-1">OP {{ $this->outpatientOpenCount() }}</span>
-            <span class="rounded-full bg-amber-50 text-amber-900 px-2.5 py-1">IP {{ $this->inpatientOpenCount() }}</span>
-            <span class="rounded-full bg-red-50 text-red-800 px-2.5 py-1">STAT {{ $this->statOpenCount() }}</span>
+        <div class="flex flex-wrap items-center gap-2">
+            @if($selectedStoreId)
+                <a href="{{ route('inventory.fulfillment.ward-pick', $selectedStoreId) }}"
+                   target="_blank"
+                   class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100">
+                    Ward pick route
+                </a>
+            @endif
+            <div class="flex flex-wrap gap-2 text-xs text-gray-500">
+                <span class="rounded-full bg-gray-100 px-2.5 py-1">Open {{ $this->openCount() }}</span>
+                <span class="rounded-full bg-sky-50 text-sky-800 px-2.5 py-1">OP {{ $this->outpatientOpenCount() }}</span>
+                <span class="rounded-full bg-amber-50 text-amber-900 px-2.5 py-1">IP {{ $this->inpatientOpenCount() }}</span>
+                <span class="rounded-full bg-red-50 text-red-800 px-2.5 py-1">STAT {{ $this->statOpenCount() }}</span>
+            </div>
         </div>
     </div>
 

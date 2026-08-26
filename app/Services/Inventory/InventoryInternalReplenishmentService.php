@@ -79,6 +79,19 @@ class InventoryInternalReplenishmentService
             ]);
 
             foreach ($levels as $level) {
+                $reorderDays = (float) ($child->reorder_level_days ?? 0);
+                if ($reorderDays > 0) {
+                    $stockDays = $this->daysOfStock->currentStockDays(
+                        (int) $child->business_id,
+                        (int) $child->id,
+                        (int) $level->item_id
+                    );
+                    // Only draft lines that are at/below the store reorder horizon.
+                    if ($stockDays !== null && $stockDays > $reorderDays) {
+                        continue;
+                    }
+                }
+
                 $suggested = $this->daysOfStock->suggestedUnitsToMax($child, (int) $level->item_id, $basis);
                 if ($suggested <= 0) {
                     continue;

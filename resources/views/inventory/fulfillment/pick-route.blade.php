@@ -7,7 +7,10 @@
                     <p class="text-sm text-gray-600 mt-1">
                         {{ $route['store']?->name ?? 'End Store' }}
                         @if(($route['scope'] ?? 'basket') === 'ward')
-                            · Legacy ward run
+                            · Ward / store reservoir
+                            @if(!empty($route['visit_id']))
+                                · Visit {{ $route['visit_id'] }}
+                            @endif
                         @else
                             · Basket {{ $route['basket_key'] }}
                         @endif

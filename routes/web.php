@@ -307,6 +307,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/monitor', [InventoryController::class, 'monitor'])->name('monitor');
         Route::get('/monitor/items/{item}/history', [InventoryController::class, 'stockHistory'])->name('monitor.history');
         Route::get('/fulfillment', [InventoryFulfillmentController::class, 'index'])->name('fulfillment.index');
+        Route::get('/fulfillment/ward-pick/{store}', [InventoryPickRouteController::class, 'ward'])->name('fulfillment.ward-pick');
         Route::get('/fulfillment/{fulfillmentLine}/pick-route', [InventoryPickRouteController::class, 'show'])->name('fulfillment.pick-route');
         Route::get('/approved-pool', [InventoryApprovedPoolController::class, 'index'])->name('approved-pool.index');
         Route::get('/usage', [InventoryRecordUsageController::class, 'index'])->name('usage.index');

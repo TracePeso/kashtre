@@ -35,6 +35,7 @@ class InventoryHandoffTokenService
         User $user,
         ?InventoryHandoffToken $session = null,
         array $flaggedLineIds = [],
+        array $traceabilityByLineId = [],
     ): array {
         if (! $store->isEndStore()) {
             throw ValidationException::withMessages([
@@ -81,7 +82,7 @@ class InventoryHandoffTokenService
 
         $flaggedLineIds = array_values(array_unique(array_map('intval', $flaggedLineIds)));
 
-        return DB::transaction(function () use ($matched, $user, $flaggedLineIds) {
+        return DB::transaction(function () use ($matched, $user, $flaggedLineIds, $traceabilityByLineId) {
             $lineIds = array_values(array_map('intval', $matched->fulfillment_line_ids ?? []));
 
             $lines = InventoryFulfillmentLine::query()
@@ -113,7 +114,15 @@ class InventoryHandoffTokenService
                 }
 
                 try {
-                    $completed[] = $this->dispense->complete($line, $user);
+                    $trace = $traceabilityByLineId[$lineId]
+                        ?? $traceabilityByLineId[(string) $lineId]
+                        ?? null;
+                    $completed[] = $this->dispense->complete(
+                        $line,
+                        $user,
+                        null,
+                        is_array($trace) ? $trace : null
+                    );
                 } catch (ValidationException $e) {
                     $failed[] = [
                         'line' => $line->fresh(),
