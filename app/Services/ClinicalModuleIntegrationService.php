@@ -608,7 +608,8 @@ class ClinicalModuleIntegrationService
         $url = $settings->baseUrl().'/'.ltrim($path, '/');
 
         try {
-            $pending = Http::timeout(15)
+            $pending = Http::timeout(10)
+                ->withOptions(['connect_timeout' => 3])
                 ->withHeaders(array_filter([
                     'X-Service-Key' => $settings->serviceKey(),
                     'X-Tenant-Id' => $tenantId,
