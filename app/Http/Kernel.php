@@ -69,6 +69,7 @@ class Kernel extends HttpKernel
         'auth.api' => \App\Http\Middleware\AuthenticateApiKey::class,
         'require.2fa.kashtre' => \App\Http\Middleware\RequireTwoFactorForKashtre::class,
         'cashier' => \App\Http\Middleware\EnsureCashier::class,
+        'hr.api' => \App\Http\Middleware\VerifyHrApiKey::class,
         'clinical.api' => \App\Http\Middleware\VerifyClinicalApiKey::class,
     ];
 }

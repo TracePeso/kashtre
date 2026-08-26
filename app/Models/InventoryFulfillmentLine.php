@@ -189,6 +189,11 @@ class InventoryFulfillmentLine extends Model
         return $this->belongsTo(Store::class);
     }
 
+    public function clientSpace(): BelongsTo
+    {
+        return $this->belongsTo(ClientSpace::class);
+    }
+
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);

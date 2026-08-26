@@ -19,6 +19,48 @@ Route::middleware('clinical.api')->group(function () {
     Route::get('/pharmacy/totes/{ref}', [\App\Http\Controllers\API\ClinicalIntegrationController::class, 'toteShow']);
 });
 
+// HR Module Integration API (X-API-Key or X-HR-API-Key)
+Route::middleware('hr.api')->group(function () {
+    Route::get('/businesses', [\App\Http\Controllers\API\HrIntegrationController::class, 'businesses']);
+    Route::get('/facilities', [\App\Http\Controllers\API\HrIntegrationController::class, 'facilities']);
+    Route::get('/branches', [\App\Http\Controllers\API\HrIntegrationController::class, 'branches']);
+    Route::get('/departments', [\App\Http\Controllers\API\HrIntegrationController::class, 'departments']);
+    Route::get('/titles', [\App\Http\Controllers\API\HrIntegrationController::class, 'titles']);
+    Route::get('/official-titles', [\App\Http\Controllers\API\HrIntegrationController::class, 'officialTitles']);
+    Route::get('/qualifications', [\App\Http\Controllers\API\HrIntegrationController::class, 'qualifications']);
+    Route::get('/staff-categories', [\App\Http\Controllers\API\HrIntegrationController::class, 'staffCategories']);
+    Route::get('/cadres', [\App\Http\Controllers\API\HrIntegrationController::class, 'cadres']);
+    Route::get('/designations', [\App\Http\Controllers\API\HrIntegrationController::class, 'designations']);
+    Route::get('/client-spaces', [\App\Http\Controllers\API\HrIntegrationController::class, 'clientSpaces']);
+    Route::get('/users', [\App\Http\Controllers\API\HrIntegrationController::class, 'users']);
+    Route::get('/users/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'userShow']);
+    Route::get('/employee-identities', [\App\Http\Controllers\API\HrIntegrationController::class, 'employeeIdentities']);
+    Route::get('/employee-identities/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'employeeIdentityShow']);
+});
+
+// Backwards-compatible HR aliases under /api/hr/*
+Route::prefix('hr')->middleware('hr.api')->group(function () {
+    Route::get('/staff', [\App\Http\Controllers\API\HrIntegrationController::class, 'staff']);
+    Route::get('/staff/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'staffShow']);
+    Route::get('/businesses', [\App\Http\Controllers\API\HrIntegrationController::class, 'businesses']);
+    Route::get('/facilities', [\App\Http\Controllers\API\HrIntegrationController::class, 'facilities']);
+    Route::get('/kashtre-entities', [\App\Http\Controllers\API\KashtreEntityController::class, 'index']);
+    Route::get('/kashtre-entities/{uuid}', [\App\Http\Controllers\API\KashtreEntityController::class, 'show']);
+    Route::get('/branches', [\App\Http\Controllers\API\HrIntegrationController::class, 'branches']);
+    Route::get('/departments', [\App\Http\Controllers\API\HrIntegrationController::class, 'departments']);
+    Route::get('/titles', [\App\Http\Controllers\API\HrIntegrationController::class, 'titles']);
+    Route::get('/official-titles', [\App\Http\Controllers\API\HrIntegrationController::class, 'officialTitles']);
+    Route::get('/qualifications', [\App\Http\Controllers\API\HrIntegrationController::class, 'qualifications']);
+    Route::get('/staff-categories', [\App\Http\Controllers\API\HrIntegrationController::class, 'staffCategories']);
+    Route::get('/cadres', [\App\Http\Controllers\API\HrIntegrationController::class, 'cadres']);
+    Route::get('/designations', [\App\Http\Controllers\API\HrIntegrationController::class, 'designations']);
+    Route::get('/client-spaces', [\App\Http\Controllers\API\HrIntegrationController::class, 'clientSpaces']);
+    Route::get('/users', [\App\Http\Controllers\API\HrIntegrationController::class, 'users']);
+    Route::get('/users/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'userShow']);
+    Route::get('/employee-identities', [\App\Http\Controllers\API\HrIntegrationController::class, 'employeeIdentities']);
+    Route::get('/employee-identities/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'employeeIdentityShow']);
+});
+
 Route::prefix('v1')->group(function () {
     include_once __DIR__ . '/custom/airtel_routes.php';
     include_once __DIR__ . '/custom/mtn_routes.php';

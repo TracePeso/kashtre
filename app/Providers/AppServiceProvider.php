@@ -22,6 +22,7 @@ use App\Models\StockTransfer;
 use App\Observers\ClientClinicalEncounterObserver;
 use App\Observers\ClientInventoryVisitObserver;
 use App\Observers\ModelActivityObserver;
+use App\Observers\UserHrSyncObserver;
 use App\Models\Client;
 use Dedoc\Scramble\Scramble;
 use Dedoc\Scramble\Support\Generator\OpenApi;
@@ -83,6 +84,7 @@ class AppServiceProvider extends ServiceProvider
 
          // Register observers
          User::observe(ModelActivityObserver::class);
+         User::observe(UserHrSyncObserver::class);
          Client::observe(ClientClinicalEncounterObserver::class);
          Client::observe(ClientInventoryVisitObserver::class);
          Business::observe(ModelActivityObserver::class);

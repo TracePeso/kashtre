@@ -125,6 +125,7 @@ trait AccessTrait
     public static $businessAccess = [
         "Business" => ['View Business', 'Edit Business', 'Add Business'],
         "Branches" => ['View Branches', 'Edit Branches', 'Add Branches'],
+        "Client Spaces" => ['View Client Spaces', 'Add Client Spaces', 'Edit Client Spaces', 'Delete Client Spaces'],
         "Business Settings" => ['View Business Settings', 'Edit Business Settings'],
     ];
 
@@ -138,6 +139,19 @@ trait AccessTrait
             'View Staff', 'Edit Staff', 'Add Staff', 'Assign Roles',
             "Edit Contractor", "Add Contractor Profile", 'View Contractor Profile', 'Edit Contractor Profile'
     ],
+    ];
+
+    public static $hrModule = [
+        "HR Module" => [
+            'View HR Staff',
+            'Add HR Staff',
+            'Edit HR Staff',
+            'View HR Setup',
+            'Add HR Setup',
+            'Edit HR Setup',
+            'View HR Approvals',
+            'Edit HR Approvals',
+        ],
     ];
 
     public static $reportAccess = [
@@ -206,6 +220,7 @@ trait AccessTrait
                 static::$businessAccess,
                 static::$clientAccess,
                 static::$staffAccess,
+                static::$hrModule,
                 static::$reportAccess,
                 static::$bulkUpload,
                 static::$finance,
@@ -240,6 +255,7 @@ trait AccessTrait
         "Business" => self::$businessAccess,
         "Client" => self::$clientAccess,
         "Staff Access" => self::$staffAccess,
+        "HR Module" => self::$hrModule,
         "Report Access" => self::$reportAccess,
         "Bulk Upload" => self::$bulkUpload,
         "Finance" => self::$finance,

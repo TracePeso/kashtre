@@ -327,6 +327,20 @@ class TransactionController extends Controller
             }
         }
 
+        $branchId = $currentBranch?->id;
+        $clientSpaces = collect();
+        if (\Illuminate\Support\Facades\Schema::hasTable('client_spaces')) {
+            $clientSpaces = \App\Models\ClientSpace::query()
+                ->with(['storeAssignment' => fn ($q) => $q->where('is_active', true)->with('store:id,name')])
+                ->where('business_id', $client->business_id)
+                ->when($branchId, fn ($q) => $q->where(function ($inner) use ($branchId) {
+                    $inner->where('branch_id', $branchId)->orWhereNull('branch_id');
+                }))
+                ->orderByDesc('is_default')
+                ->orderBy('name')
+                ->get(['id', 'name', 'branch_id', 'business_id', 'is_default']);
+        }
+
         return view('pos.item-selection', compact(
             'client',
             'items',
@@ -336,7 +350,8 @@ class TransactionController extends Controller
             'servicePoint',
             'thirdPartyPayers',
             'inventoryModuleEnabled',
-            'endStores'
+            'endStores',
+            'clientSpaces'
         ));
     }
 

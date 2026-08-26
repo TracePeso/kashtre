@@ -43,6 +43,8 @@ use App\Http\Controllers\ContractorServiceChargeController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\QuotationController;
 use App\Http\Controllers\LocalPaymentController;
+use App\Http\Controllers\ClientSpaceController;
+use App\Http\Controllers\HrModuleSettingsController;
 
 use App\Http\Controllers\PackageTrackingController;
 use App\Http\Controllers\PackageSalesController;
@@ -153,6 +155,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Route::get('/json-data-feed', [DataFeedController::class, 'getDataFeed'])->name('json_data_feed');
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/hr-module/open', [\App\Http\Controllers\HrSsoController::class, 'redirect'])->name('hr-module.open');
     Route::post('/dashboard/yo-payment-test', [DashboardController::class, 'testYoPayment'])->name('dashboard.yo-payment-test');
     Route::post('/dashboard/testing-environment-reset', [DashboardController::class, 'clearTestingEnvironment'])
         ->name('dashboard.testing-environment-reset')
@@ -168,6 +171,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::resource("businesses", BusinessController::class);
     Route::resource("branches", BranchController::class);
+    Route::resource("client-spaces", ClientSpaceController::class);
     Route::resource("support", SupportController::class);
     Route::resource("transactions", TransactionController::class);
     Route::get('/sales', [SalesController::class, 'index'])->name('sales.index');
@@ -254,6 +258,8 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     Route::put('/settings/kashtre', [CashTraySettingsController::class, 'update'])->name('settings.kashtre.update');
     Route::get('/settings/clinical-module', [ClinicalModuleSettingsController::class, 'edit'])->name('settings.clinical-module.edit');
     Route::put('/settings/clinical-module', [ClinicalModuleSettingsController::class, 'update'])->name('settings.clinical-module.update');
+    Route::get('/settings/hr-module', [HrModuleSettingsController::class, 'edit'])->name('settings.hr-module.edit');
+    Route::put('/settings/hr-module', [HrModuleSettingsController::class, 'update'])->name('settings.hr-module.update');
 
     // Insurance Companies routes (redirect index to settings)
     Route::get('/insurance-companies', function() {
@@ -307,6 +313,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/monitor', [InventoryController::class, 'monitor'])->name('monitor');
         Route::get('/monitor/items/{item}/history', [InventoryController::class, 'stockHistory'])->name('monitor.history');
         Route::get('/fulfillment', [InventoryFulfillmentController::class, 'index'])->name('fulfillment.index');
+        Route::get('/fulfillment/ward-pick/{store}/{client_space}', [InventoryPickRouteController::class, 'ward'])->name('fulfillment.ward-pick-route');
         Route::get('/fulfillment/ward-pick/{store}', [InventoryPickRouteController::class, 'ward'])->name('fulfillment.ward-pick');
         Route::get('/fulfillment/{fulfillmentLine}/pick-route', [InventoryPickRouteController::class, 'show'])->name('fulfillment.pick-route');
         Route::get('/approved-pool', [InventoryApprovedPoolController::class, 'index'])->name('approved-pool.index');

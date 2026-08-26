@@ -75,7 +75,7 @@ class InventoryFulfillmentStageService
             $token = InventoryHandoffToken::create([
                 'business_id' => $seedLine->business_id,
                 'store_id' => $seedLine->store_id,
-                'client_space_id' => null,
+                'client_space_id' => $seedLine->client_space_id,
                 'basket_key' => (string) $seedLine->basket_key,
                 'tote_barcode' => $tote,
                 'code_hash' => null,
@@ -97,7 +97,7 @@ class InventoryFulfillmentStageService
             }
 
             return [
-                'token' => $token->fresh(['store']),
+                'token' => $token->fresh(['store', 'clientSpace']),
                 'lines' => $toStage->map->fresh(),
             ];
         });

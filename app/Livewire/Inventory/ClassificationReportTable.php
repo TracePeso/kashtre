@@ -34,6 +34,8 @@ class ClassificationReportTable extends Component implements HasForms, HasTable
                         'store.branch:id,name',
                         'item:id,name,code',
                         'client:id,name',
+                        'invoice:id,client_space_id',
+                        'invoice.clientSpace:id,name',
                         'recordedBy:id,name,department_id',
                         'recordedBy.department:id,name',
                     ])
@@ -52,6 +54,10 @@ class ClassificationReportTable extends Component implements HasForms, HasTable
                     ->placeholder('—')
                     ->toggleable()
                     ->sortable(),
+                TextColumn::make('client_space')
+                    ->label(inventory_label('client_space'))
+                    ->state(fn (InventoryUsageEvent $record): string => $record->invoice?->clientSpace?->name ?? '—')
+                    ->toggleable(),
                 TextColumn::make('recordedBy.department.name')
                     ->label('Recorder department')
                     ->placeholder('—')

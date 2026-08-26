@@ -347,6 +347,7 @@ class InvoiceController extends Controller
                 'deductible_remaining' => 'nullable|numeric|min:0',
                 'fulfillment_strategy' => 'nullable|in:DISCRETE_IMMEDIATE,BATCH_AND_STAGE',
                 'end_store_id' => 'nullable|exists:stores,id',
+                'client_space_id' => 'nullable|exists:client_spaces,id',
             ]);
 
             // Get client

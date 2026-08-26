@@ -481,8 +481,8 @@ class ClinicalModuleIntegrationService
                 'clinical_session_id' => $token->clinical_session_id,
                 'store_id' => $token->store_id,
                 'store_uuid' => $token->store?->uuid,
-                'client_space_id' => null,
-                'client_space_uuid' => null,
+                'client_space_id' => $token->client_space_id,
+                'client_space_uuid' => $token->clientSpace?->uuid,
                 'basket_key' => $token->basket_key,
                 'business_id' => $token->business_id,
             ],
@@ -532,6 +532,7 @@ class ClinicalModuleIntegrationService
     {
         $token->loadMissing([
             'store:id,uuid,name',
+            'clientSpace:id,uuid,name',
         ]);
 
         $lineIds = array_values(array_map('intval', $token->fulfillment_line_ids ?? []));
@@ -552,7 +553,11 @@ class ClinicalModuleIntegrationService
                 'uuid' => $token->store->uuid,
                 'name' => $token->store->name,
             ] : null,
-            'client_space' => null,
+            'client_space' => $token->clientSpace ? [
+                'id' => $token->clientSpace->id,
+                'uuid' => $token->clientSpace->uuid,
+                'name' => $token->clientSpace->name,
+            ] : null,
             'basket_key' => $token->basket_key,
             'tote_barcode' => $token->tote_barcode,
             'lines' => $lines->map(function (InventoryFulfillmentLine $line) {

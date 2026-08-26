@@ -20,7 +20,9 @@
     @endif
 
     @if($this->unacknowledgedStatCount() > 0)
-        <div class="rounded-lg border-2 border-red-500 bg-red-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3 animate-pulse"
+        {{-- SRD §4.3 STAT highlight color: #FFECEC --}}
+        <div class="rounded-lg border-2 border-red-500 px-4 py-3 flex flex-wrap items-center justify-between gap-3 animate-pulse"
+             style="background-color: #FFECEC;"
              x-data="{
                 play() {
                     try {
@@ -78,7 +80,7 @@
                 <span class="rounded-full bg-gray-100 px-2.5 py-1">Open {{ $this->openCount() }}</span>
                 <span class="rounded-full bg-sky-50 text-sky-800 px-2.5 py-1">OP {{ $this->outpatientOpenCount() }}</span>
                 <span class="rounded-full bg-amber-50 text-amber-900 px-2.5 py-1">IP {{ $this->inpatientOpenCount() }}</span>
-                <span class="rounded-full bg-red-50 text-red-800 px-2.5 py-1">STAT {{ $this->statOpenCount() }}</span>
+                <span class="rounded-full px-2.5 py-1 text-red-800" style="background-color: #FFECEC;">STAT {{ $this->statOpenCount() }}</span>
             </div>
         </div>
     </div>
@@ -112,13 +114,18 @@
 
     <div class="end-store-console-table">
         <style>
+            /* SRD §4.3 — distinct STAT background highlight must be #FFECEC */
             .end-store-console-table .fi-ta-row-stat-unacked,
             .end-store-console-table tr.fi-ta-row-stat-unacked {
-                background-color: rgb(254 242 242) !important;
+                background-color: #FFECEC !important;
+            }
+            .end-store-console-table .fi-ta-row-stat-unacked > td,
+            .end-store-console-table tr.fi-ta-row-stat-unacked > td {
+                background-color: #FFECEC !important;
             }
             .end-store-console-table .fi-ta-row-stat-unacked > td:first-child,
             .end-store-console-table tr.fi-ta-row-stat-unacked > td:first-child {
-                box-shadow: inset 3px 0 0 rgb(220 38 38);
+                box-shadow: inset 3px 0 0 #DC2626;
             }
         </style>
         {{ $this->table }}

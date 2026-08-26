@@ -11,7 +11,6 @@ use App\Models\PatientApprovedPoolLine;
 use App\Models\Store;
 use App\Services\Inventory\InventoryRecordUsageService;
 use App\Support\InventoryBusinessContext;
-use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -58,7 +57,9 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                 CreateAction::make()
                     ->label('Record usage')
                     ->modalHeading('Record usage')
+                    ->modalDescription('Enter what was used. Pool, stock, and billing are applied automatically.')
                     ->modalSubmitActionLabel('Save')
+                    ->modalWidth('md')
                     ->createAnother(false)
                     ->form($this->usageForm($businessId))
                     ->action(function (array $data) use ($businessId): void {
@@ -71,19 +72,19 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                                 'store_id' => isset($data['store_id']) ? (int) $data['store_id'] : null,
                                 'quantity' => $data['quantity'],
                                 'notes' => $this->composeUsageNotes($data),
-                                'occurred_at' => $data['occurred_at'] ?? now(),
+                                'occurred_at' => now(),
                             ], Auth::user());
 
                             Notification::make()
-                                ->title('Usage recorded')
+                                ->title('Saved')
                                 ->body($events->count() > 1
-                                    ? $events->count().' entries created (Approved Pool + floor stock).'
+                                    ? $events->count().' lines (pool + floor).'
                                     : null)
                                 ->success()
                                 ->send();
                         } catch (ValidationException $e) {
                             Notification::make()
-                                ->title('Cannot record usage')
+                                ->title('Could not save')
                                 ->body(collect($e->errors())->flatten()->first() ?? $e->getMessage())
                                 ->danger()
                                 ->send();
@@ -93,14 +94,13 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                             report($e);
 
                             Notification::make()
-                                ->title('Cannot record usage')
-                                ->body($e->getMessage() ?: 'Something went wrong while saving.')
+                                ->title('Could not save')
+                                ->body($e->getMessage() ?: 'Something went wrong.')
                                 ->danger()
-                                ->persistent()
                                 ->send();
 
                             throw ValidationException::withMessages([
-                                'context' => $e->getMessage() ?: 'Something went wrong while saving.',
+                                'context' => $e->getMessage() ?: 'Something went wrong.',
                             ]);
                         }
                     })
@@ -109,10 +109,10 @@ class RecordUsageTable extends Component implements HasForms, HasTable
             ->columns([
                 Tables\Columns\TextColumn::make('occurred_at')
                     ->label('When')
-                    ->dateTime('d M Y H:i')
+                    ->dateTime('d M H:i')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('context')
-                    ->label('Context')
+                    ->label('Type')
                     ->badge()
                     ->formatStateUsing(fn (?string $state, InventoryUsageEvent $record): string => $record->contextLabel())
                     ->color(fn (InventoryUsageEvent $record): string => match ($record->context) {
@@ -130,28 +130,22 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                 Tables\Columns\TextColumn::make('item.name')
                     ->label(fn (): string => inventory_label('item'))
                     ->searchable()
-                    ->wrap()
-                    ->description(fn (InventoryUsageEvent $record): ?string => $record->item?->strength
-                        ? 'Strength: '.$record->item->strength
-                        : null),
+                    ->wrap(),
                 Tables\Columns\TextColumn::make('quantity')
                     ->label('Qty')
                     ->alignEnd()
                     ->formatStateUsing(fn ($state): string => rtrim(rtrim(number_format((float) $state, 2), '0'), '.')),
                 Tables\Columns\TextColumn::make('resolution')
-                    ->label('Resolved via')
+                    ->label('Source')
                     ->badge()
                     ->formatStateUsing(fn (?string $state, InventoryUsageEvent $record): string => $record->resolutionLabel())
                     ->color(fn (InventoryUsageEvent $record): string => $record->resolution === InventoryUsageEvent::RESOLUTION_APPROVED_POOL
                         ? 'success'
                         : 'warning'),
-                Tables\Columns\IconColumn::make('billed_main_module')
-                    ->label('Bill')
-                    ->boolean()
-                    ->trueIcon('heroicon-o-banknotes')
-                    ->falseIcon('heroicon-o-minus')
-                    ->trueColor('warning')
-                    ->falseColor('gray'),
+                Tables\Columns\TextColumn::make('store.name')
+                    ->label(fn (): string => inventory_label('store'))
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('main_billing_status')
                     ->label('Billing')
                     ->badge()
@@ -160,46 +154,21 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                         'pending' => 'Pending',
                         'completed' => 'Invoiced',
                         'failed' => 'Failed',
-                        'skipped' => 'Skipped',
+                        'skipped' => '—',
                         default => $state ? ucfirst($state) : '—',
                     })
                     ->color(fn (?string $state): string => match ($state) {
                         'completed' => 'success',
                         'pending' => 'warning',
                         'failed' => 'danger',
-                        'skipped' => 'gray',
                         default => 'gray',
                     })
-                    ->description(fn (InventoryUsageEvent $record): ?string => $record->invoice?->invoice_number)
-                    ->toggleable(),
-                Tables\Columns\TextColumn::make('store.name')
-                    ->label(fn (): string => inventory_label('store'))
-                    ->placeholder('—')
-                    ->toggleable(),
-                Tables\Columns\TextColumn::make('recordedBy.name')
-                    ->label('Recorded by')
-                    ->placeholder('—')
-                    ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('notes')
-                    ->label('Notes')
-                    ->placeholder('—')
-                    ->limit(40)
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('context')
+                    ->label('Type')
                     ->options(InventoryUsageEvent::contextOptions()),
-                Tables\Filters\SelectFilter::make('resolution')
-                    ->label('Resolved via')
-                    ->options(InventoryUsageEvent::resolutionOptions()),
-                Tables\Filters\TernaryFilter::make('billed_main_module')
-                    ->label('Bill Main Module')
-                    ->boolean(),
-                Tables\Filters\SelectFilter::make('client_id')
-                    ->label(fn (): string => inventory_label('client'))
-                    ->relationship('client', 'name')
-                    ->searchable()
-                    ->preload(),
             ])
             ->actions([
                 Action::make('view')
@@ -208,8 +177,8 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     ->url(fn (InventoryUsageEvent $record): string => route('inventory.usage.show', $record)),
             ])
             ->paginated([10, 25, 50])
-            ->emptyStateHeading('No usage recorded yet')
-            ->emptyStateDescription(fn (): string => 'Record '.strtolower(inventory_label('client')).' usage (Approved Pool first, then floor stock) or administrative usage from '.strtolower(inventory_label('store')).' stock.')
+            ->emptyStateHeading('Nothing recorded yet')
+            ->emptyStateDescription('Use Record usage when something is given or used on the floor.')
             ->emptyStateIcon('heroicon-o-clipboard-document-check');
     }
 
@@ -229,14 +198,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     Store::DISTRIBUTION_SATELLITE,
                 ])
                 ->orderBy('name')
-                ->get(['id', 'name', 'distribution_type', 'satellite_role', 'is_crash_cart'])
-                ->mapWithKeys(fn (Store $store) => [
-                    $store->id => $store->name.(
-                        $store->isCrashCart()
-                            ? ' (Satellite · Crash cart)'
-                            : ($store->isSatelliteStore() ? ' (Satellite)' : ' (End Store)')
-                    ),
-                ])
+                ->pluck('name', 'id')
                 ->all()
             : [];
 
@@ -247,12 +209,20 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                 ->orderBy('name')
                 ->get(['id', 'name', 'crash_cart_status', 'satellite_role', 'is_crash_cart', 'distribution_type'])
                 ->mapWithKeys(fn (Store $store) => [
-                    $store->id => $store->name.' — '.($store->crashCartStatusLabel() ?? 'Ready'),
+                    $store->id => $store->name.' ('.$store->crashCartStatusLabel().')',
                 ])
                 ->all()
             : [];
 
-        $contextOptions = InventoryUsageEvent::contextOptions();
+        $contextOptions = [
+            InventoryUsageEvent::CONTEXT_PATIENT => 'Patient',
+            InventoryUsageEvent::CONTEXT_ADMINISTRATIVE => 'Admin / ward',
+            InventoryUsageEvent::CONTEXT_WASTAGE_OPERATIONAL => 'Broken / spill',
+            InventoryUsageEvent::CONTEXT_WASTAGE_EXPIRED => 'Expired',
+        ];
+        if ($floorStockEnabled && $crashCartEnabled) {
+            $contextOptions[InventoryUsageEvent::CONTEXT_CRASH_CART] = 'Crash cart';
+        }
         if (! $floorStockEnabled) {
             unset(
                 $contextOptions[InventoryUsageEvent::CONTEXT_ADMINISTRATIVE],
@@ -260,9 +230,6 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                 $contextOptions[InventoryUsageEvent::CONTEXT_WASTAGE_OPERATIONAL],
                 $contextOptions[InventoryUsageEvent::CONTEXT_WASTAGE_EXPIRED],
             );
-        }
-        if (! $crashCartEnabled) {
-            unset($contextOptions[InventoryUsageEvent::CONTEXT_CRASH_CART]);
         }
 
         $stockContexts = [
@@ -274,38 +241,31 @@ class RecordUsageTable extends Component implements HasForms, HasTable
 
         return [
             Select::make('context')
-                ->label('Context')
+                ->label('What kind?')
                 ->options($contextOptions)
-                ->placeholder('Select usage context')
                 ->required()
                 ->live()
+                ->native(false)
                 ->default(InventoryUsageEvent::CONTEXT_PATIENT)
                 ->afterStateUpdated(function (callable $set) {
                     $set('store_id', null);
                     $set('item_id', null);
                     $set('quantity', null);
+                    $set('admin_purpose', null);
                 }),
             Select::make('client_id')
                 ->label(fn (): string => inventory_label('client'))
                 ->options(function () use ($businessId): array {
-                    $clients = Client::query()
+                    return Client::query()
                         ->where('business_id', $businessId)
                         ->orderBy('name')
-                        ->get(['id', 'name', 'client_id']);
-
-                    return $clients->mapWithKeys(function (Client $client) {
-                        $name = trim((string) ($client->name ?? ''));
-                        $clientCode = (string) ($client->client_id ?? '');
-
-                        return [
-                            $client->id => $name !== ''
-                                ? sprintf('%s [%s]', $name, $clientCode)
-                                : sprintf('Client [%s]', $clientCode),
-                        ];
-                    })->all();
+                        ->get(['id', 'name', 'client_id'])
+                        ->mapWithKeys(fn (Client $client) => [
+                            $client->id => trim(($client->name ?? '').' ['.$client->client_id.']'),
+                        ])
+                        ->all();
                 })
                 ->searchable()
-                ->placeholder('Search by name or client ID')
                 ->required(fn (Get $get): bool => in_array($get('context'), [
                     InventoryUsageEvent::CONTEXT_PATIENT,
                     InventoryUsageEvent::CONTEXT_CRASH_CART,
@@ -314,34 +274,23 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     InventoryUsageEvent::CONTEXT_PATIENT,
                     InventoryUsageEvent::CONTEXT_CRASH_CART,
                 ], true))
-                ->helperText(fn (Get $get): ?string => $get('context') === InventoryUsageEvent::CONTEXT_CRASH_CART
-                    ? 'Required so Main Module can create the postpaid billing packet.'
-                    : null)
                 ->live()
-                ->afterStateUpdated(function (callable $set) {
-                    $set('item_id', null);
-                }),
+                ->afterStateUpdated(fn (callable $set) => $set('item_id', null)),
             Select::make('store_id')
                 ->label(fn (): string => inventory_label('store'))
                 ->options(fn (Get $get) => $get('context') === InventoryUsageEvent::CONTEXT_CRASH_CART
                     ? $crashCartStoreOptions
                     : $floorStoreOptions)
                 ->searchable()
-                ->placeholder('Select '.strtolower(inventory_label('store')))
                 ->live()
-                ->helperText(function (Get $get): string {
-                    return match ($get('context')) {
-                        InventoryUsageEvent::CONTEXT_PATIENT => 'Select a '.strtolower(inventory_label('store')).' to use floor stock. Leave empty to use Approved Pool only.',
-                        InventoryUsageEvent::CONTEXT_CRASH_CART => 'Only Reconciling crash carts. Deploy → emergency (no docs) → Start reconcile → record usage here.',
-                        InventoryUsageEvent::CONTEXT_WASTAGE_EXPIRED => 'Expired wastage reduces stock but is excluded from reorder averages.',
-                        default => 'Only items with stock at this '.strtolower(inventory_label('store')).' will be listed.',
-                    };
-                })
                 ->required(fn (Get $get): bool => in_array($get('context'), $stockContexts, true))
                 ->visible(fn (Get $get): bool => $floorStockEnabled && (
                     $get('context') === InventoryUsageEvent::CONTEXT_PATIENT
                     || in_array($get('context'), $stockContexts, true)
                 ))
+                ->placeholder(fn (Get $get): string => $get('context') === InventoryUsageEvent::CONTEXT_PATIENT
+                    ? 'Optional — only if using floor stock'
+                    : 'Select store')
                 ->afterStateUpdated(function (callable $set) {
                     $set('item_id', null);
                     $set('quantity', null);
@@ -372,7 +321,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                                 $name = $names[$row->item_id] ?? ('Item #'.$row->item_id);
                                 $qty = rtrim(rtrim(number_format((float) $row->quantity_suom, 2), '0'), '.');
 
-                                return [$row->item_id => $name.' — '.$qty.' on hand'];
+                                return [$row->item_id => $name.' ('.$qty.')'];
                             })
                             ->all();
                     }
@@ -399,7 +348,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                                 $name = $names[$row->item_id] ?? ('Item #'.$row->item_id);
                                 $qty = rtrim(rtrim(number_format((float) $row->available, 2), '0'), '.');
 
-                                return [$row->item_id => $name.' — '.$qty.' in pool'];
+                                return [$row->item_id => $name.' (pool '.$qty.')'];
                             })
                             ->all();
                     }
@@ -407,7 +356,6 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     return [];
                 })
                 ->searchable()
-                ->placeholder('Select '.strtolower(inventory_label('item')))
                 ->required()
                 ->live()
                 ->disabled(function (Get $get) use ($floorStockEnabled, $stockContexts): bool {
@@ -416,78 +364,26 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     }
 
                     return ! $get('client_id') && (! $floorStockEnabled || ! $get('store_id'));
-                })
-                ->helperText(function (Get $get) use ($floorStockEnabled, $stockContexts): ?string {
-                    if (in_array($get('context'), $stockContexts, true) && ! $get('store_id')) {
-                        return 'Select a store first to see available items.';
-                    }
-
-                    if ($get('context') === InventoryUsageEvent::CONTEXT_PATIENT && ! $get('client_id') && (! $floorStockEnabled || ! $get('store_id'))) {
-                        return $floorStockEnabled
-                            ? 'Select a client (pool) and/or a store (floor stock) first.'
-                            : 'Select a client to use Approved Pool balance.';
-                    }
-
-                    if ($floorStockEnabled && $get('store_id') && $get('item_id') === null) {
-                        return 'Showing items with stock at the selected store only.';
-                    }
-
-                    return null;
                 }),
             TextInput::make('quantity')
-                ->label('Quantity')
+                ->label('How many?')
                 ->numeric()
-                ->placeholder('e.g. 1')
                 ->required()
                 ->minValue(0.01)
-                ->live()
-                ->helperText(function (Get $get) use ($businessId, $floorStockEnabled): ?string {
-                    if (! $get('item_id')) {
-                        return null;
-                    }
-
-                    $parts = [];
-
-                    if ($get('context') === InventoryUsageEvent::CONTEXT_PATIENT && $get('client_id')) {
-                        $pool = (float) PatientApprovedPoolLine::query()
-                            ->where('business_id', $businessId)
-                            ->where('client_id', (int) $get('client_id'))
-                            ->where('item_id', (int) $get('item_id'))
-                            ->sum('quantity_remaining');
-                        $parts[] = 'Pool: '.rtrim(rtrim(number_format($pool, 2), '0'), '.');
-                    }
-
-                    if ($floorStockEnabled && $get('store_id')) {
-                        $onHand = (float) (InventoryStockLevel::query()
-                            ->where('business_id', $businessId)
-                            ->where('store_id', (int) $get('store_id'))
-                            ->where('item_id', (int) $get('item_id'))
-                            ->value('quantity_suom') ?? 0);
-                        $parts[] = 'On hand: '.rtrim(rtrim(number_format($onHand, 2), '0'), '.');
-                    }
-
-                    return $parts !== [] ? implode(' · ', $parts) : null;
-                }),
-            DateTimePicker::make('occurred_at')
-                ->label('When')
-                ->placeholder('Select date and time')
-                ->default(now())
-                ->seconds(false)
-                ->required(),
+                ->placeholder('1'),
             Select::make('admin_purpose')
-                ->label('Administrative purpose')
+                ->label('Purpose')
                 ->options(fn (): array => InventoryModuleConfig::query()
                     ->where('business_id', $businessId)
                     ->first()
                     ?->adminUsagePurposeOptions() ?? InventoryModuleConfig::defaultAdminUsagePurposes())
                 ->searchable()
-                ->placeholder('Select purpose (e.g. Cleaning)')
                 ->required()
                 ->visible(fn (Get $get): bool => $get('context') === InventoryUsageEvent::CONTEXT_ADMINISTRATIVE),
             Textarea::make('notes')
-                ->label('Notes')
-                ->placeholder('Optional — e.g. bedside administration, spill, expired batch removed')
-                ->rows(2)
+                ->label('Note')
+                ->placeholder('Optional')
+                ->rows(1)
                 ->maxLength(500),
         ];
     }

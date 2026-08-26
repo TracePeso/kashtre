@@ -88,6 +88,11 @@ class Invoice extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    public function clientSpace()
+    {
+        return $this->belongsTo(ClientSpace::class);
+    }
+
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');

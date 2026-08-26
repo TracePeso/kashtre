@@ -29,7 +29,7 @@ class InventorySettingsController extends Controller
         $config->load(['approvers.user', 'evaluationCommitteeMembers.user']);
 
         $activeTab = $request->query('tab', 'notifications');
-        if (! in_array($activeTab, ['notifications', 'approvers', 'evaluation-committee', 'capabilities'], true)) {
+        if (! in_array($activeTab, ['notifications', 'approvers', 'evaluation-committee', 'space-routing', 'capabilities'], true)) {
             $activeTab = 'notifications';
         }
 

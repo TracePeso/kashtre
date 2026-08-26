@@ -640,6 +640,20 @@
                             </li>
                             @endif
 
+                            @php
+                                $clientSpacePermissions = [
+                                    'Client Spaces',
+                                    'View Client Spaces',
+                                    'Add Client Spaces',
+                                    'Edit Client Spaces',
+                                    'Delete Client Spaces',
+                                ];
+                                $canAccessClientSpaces = count(array_intersect($clientSpacePermissions, (array) $permissions)) > 0;
+                            @endphp
+                            @if($canAccessClientSpaces)
+                            <li><a href="{{ route('client-spaces.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Client Spaces</a></li>
+                            @endif
+
                             <!-- Settings only for business_id == 1 (Kashtre) -->
                             @if(Auth::user()->business_id == 1)
                             @if(in_array('View Service Points', $permissions))
@@ -737,6 +751,12 @@
                                 <a href="{{ route('settings.kashtre.edit') }}"
                                    class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
                                     Kashtre Settings
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('settings.hr-module.edit') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    HR Module Settings
                                 </a>
                             </li>
                             <li>

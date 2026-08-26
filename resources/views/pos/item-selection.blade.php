@@ -78,6 +78,61 @@
                             <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5 leading-none">Age</p>
                             <p class="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-tight tabular-nums">{{ $client->age !== null && $client->age !== '' ? $client->age . ' years' : 'N/A' }}</p>
                         </div>
+                        @if(($clientSpaces ?? collect())->isNotEmpty())
+                        <div class="bg-indigo-50 border border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700 px-2.5 py-2 rounded-md min-w-[12rem] flex-1 sm:flex-none sm:max-w-xs">
+                            <label for="client-space-select" class="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase tracking-wide mb-0.5 leading-none block">{{ inventory_label('client_space') }}</label>
+                            <select id="client-space-select"
+                                    class="mt-0.5 w-full text-sm font-semibold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 border-0 focus:ring-2 focus:ring-indigo-500 rounded py-0.5 px-0"
+                                    onchange="syncFulfillmentFromClientSpace()">
+                                <option value="">Select space…</option>
+                                @foreach($clientSpaces as $space)
+                                    @php
+                                        $assignment = $space->storeAssignment;
+                                        $routeLabel = $assignment?->store?->name
+                                            ? ' → '.$assignment->store->name
+                                            : '';
+                                        $strategyLabel = $assignment
+                                            ? ' ('.($assignment->fulfillment_strategy === 'BATCH_AND_STAGE' ? 'Inpatient' : 'Outpatient').')'
+                                            : '';
+                                        $isDefaultSpace = (bool) ($space->is_default ?? false)
+                                            || ($clientSpaces->count() === 1);
+                                    @endphp
+                                    <option value="{{ $space->id }}"
+                                            data-strategy="{{ $assignment?->fulfillment_strategy ?: '' }}"
+                                            data-end-store="{{ $assignment?->store_id ?: '' }}"
+                                            data-supports-pool="{{ ($assignment?->supports_approved_pool ?? true) ? '1' : '0' }}"
+                                            @selected($isDefaultSpace)>
+                                        {{ $space->name }}{{ $routeLabel }}{{ $strategyLabel }}{{ $space->is_default ? ' ★' : '' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <script>
+                                function syncFulfillmentFromClientSpace() {
+                                    const spaceSelect = document.getElementById('client-space-select');
+                                    const strategySelect = document.getElementById('fulfillment-strategy');
+                                    const endStoreSelect = document.getElementById('end-store-id');
+                                    if (!spaceSelect) return;
+                                    const opt = spaceSelect.options[spaceSelect.selectedIndex];
+                                    if (!opt || !opt.value) return;
+
+                                    let strategy = opt.getAttribute('data-strategy') || '';
+                                    const supportsPool = opt.getAttribute('data-supports-pool') !== '0';
+                                    if (!supportsPool) {
+                                        strategy = 'DISCRETE_IMMEDIATE';
+                                    }
+                                    if (strategySelect && strategy) {
+                                        strategySelect.value = strategy;
+                                    }
+
+                                    const endStoreId = opt.getAttribute('data-end-store') || '';
+                                    if (endStoreSelect && endStoreId) {
+                                        endStoreSelect.value = endStoreId;
+                                    }
+                                }
+                                document.addEventListener('DOMContentLoaded', syncFulfillmentFromClientSpace);
+                            </script>
+                        </div>
+                        @endif
                         <button type="button"
                                 @click="expanded = !expanded"
                                 :aria-expanded="expanded"
@@ -2262,6 +2317,9 @@
                     fulfillment_strategy: document.getElementById('fulfillment-strategy')?.value || null,
                     end_store_id: document.getElementById('end-store-id')?.value
                         ? parseInt(document.getElementById('end-store-id').value, 10)
+                        : null,
+                    client_space_id: document.getElementById('client-space-select')?.value
+                        ? parseInt(document.getElementById('client-space-select').value, 10)
                         : null,
                 };
                 @if($client->insurance_company_id)

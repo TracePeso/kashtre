@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('kashtre_hr_module_settings')) {
+            return;
+        }
+
         Schema::create('kashtre_hr_module_settings', function (Blueprint $table) {
             $table->id();
             $table->string('url')->nullable();
