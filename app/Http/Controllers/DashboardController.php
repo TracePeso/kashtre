@@ -32,7 +32,7 @@ class DashboardController extends Controller
 
         $business = $user->business;
         $branch = $user->branch;
-        $rooms = Room::where('branch_id', $branch->id)->get();
+        $rooms = $branch ? Room::where('branch_id', $branch->id)->get() : collect();
 
         // Get allowed branches for the user
         $allowedBranches = [];

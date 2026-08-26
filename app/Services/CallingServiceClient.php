@@ -28,7 +28,8 @@ class CallingServiceClient
                 'Accept'        => 'application/json',
                 'Authorization' => 'Bearer ' . $this->secret,
             ])
-            ->timeout(5);
+            ->timeout(5)
+            ->withOptions(['connect_timeout' => 3]);
     }
 
     public function syncQueue(ServiceDeliveryQueue $queueItem, ?string $forceStatus = null)
