@@ -38,6 +38,10 @@ class Kernel extends ConsoleKernel
 
         // Move matured service charges from entity account to Kashtre
         $schedule->command('service-charge:release-matured')->hourly();
+
+        // Keep the HR sidebar submenu in sync with the HR module's navigation
+        // manifest (cache TTL is 5 minutes — see App\Console\Commands\RefreshHrNavigation).
+        $schedule->command('hr:refresh-navigation')->everyFourMinutes();
     }
 
     /**

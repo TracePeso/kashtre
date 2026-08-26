@@ -13,12 +13,13 @@ class HrModuleApiClient
     public function __construct()
     {
         $this->http = new Client([
-            'base_uri' => rtrim(config('services.hr_module.url'), '/') . '/api/v1/hr/',
-            'headers'  => [
+            'base_uri'        => rtrim(config('services.hr_module.url'), '/') . '/api/v1/hr/',
+            'headers'         => [
                 'X-HR-API-Key' => config('services.hr_module.api_key'),
                 'Accept'       => 'application/json',
             ],
-            'timeout' => 15,
+            'timeout'         => 5,
+            'connect_timeout' => 3,
         ]);
     }
 
@@ -63,6 +64,14 @@ class HrModuleApiClient
             $businessId ? ['business_id' => $businessId] : [],
             $params
         ));
+    }
+
+    public function navigation(): array
+    {
+        $result = $this->get('navigation');
+        if (!is_array($result)) return [];
+        // Accept either a flat array [{label,path},...] or a wrapped {items:[...]}
+        return isset($result['items']) ? $result['items'] : $result;
     }
 
     public function get(string $endpoint, array $params = []): array

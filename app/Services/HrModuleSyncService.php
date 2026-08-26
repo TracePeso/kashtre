@@ -118,12 +118,13 @@ class HrModuleSyncService
         }
 
         try {
-            $response = Http::timeout(15)
+            $response = Http::timeout(10)
+                ->withOptions(['connect_timeout' => 3])
                 ->withHeaders([
-                    'X-API-Key' => $settings->apiKey(),
+                    'X-HR-API-Key' => $settings->apiKey(),
                     'Accept' => 'application/json',
                 ])
-                ->post($settings->baseUrl().'/api/sync/users', [
+                ->post($settings->baseUrl().'/api/v1/users/sync', [
                     'users' => $payload,
                 ]);
 

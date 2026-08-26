@@ -164,6 +164,21 @@ Route::middleware(['auth', 'cashier'])->prefix('cashier-dashboard')->name('cashi
 
 Route::middleware(['auth', 'verified'])->group(function () {
 
+    // ── HR Module routes (UI lives in kashtre, data comes from HR API) ──────
+    Route::prefix('hr')->name('hr.')->group(function () {
+        Route::get('/',            [\App\Http\Controllers\Hr\HrController::class, 'stats'])->name('dashboard');
+        Route::get('/employees',        [\App\Http\Controllers\Hr\HrController::class, 'employees'])->name('employees');
+        Route::get('/employee-records', [\App\Http\Controllers\Hr\HrController::class, 'employeeRecords'])->name('employee-records');
+        Route::get('/attendance',  [\App\Http\Controllers\Hr\HrController::class, 'attendance'])->name('attendance');
+        Route::get('/leave',       [\App\Http\Controllers\Hr\HrController::class, 'leave'])->name('leave');
+        Route::get('/payroll',     [\App\Http\Controllers\Hr\HrController::class, 'payroll'])->name('payroll');
+        Route::get('/performance',  [\App\Http\Controllers\Hr\HrController::class, 'performance'])->name('performance');
+        Route::get('/recognition',  [\App\Http\Controllers\Hr\HrController::class, 'recognition'])->name('recognition');
+        Route::get('/reports',     [\App\Http\Controllers\Hr\HrController::class, 'reports'])->name('reports');
+        Route::get('/settings',    [\App\Http\Controllers\Hr\HrController::class, 'settings'])->name('settings');
+        Route::get('/embed',       [\App\Http\Controllers\Hr\HrController::class, 'embed'])->name('embed');
+    });
+
     // Route for the getting the data feed
     // Route::get('/json-data-feed', [DataFeedController::class, 'getDataFeed'])->name('json_data_feed');
 

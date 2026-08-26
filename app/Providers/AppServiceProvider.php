@@ -31,6 +31,7 @@ use Dedoc\Scramble\Scramble;
 use Dedoc\Scramble\Support\Generator\OpenApi;
 use Dedoc\Scramble\Support\Generator\SecurityScheme;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -151,6 +152,13 @@ class AppServiceProvider extends ServiceProvider
         $hrModuleUrl     = rtrim(config('services.hr_module.url', ''), '/');
         $hrModuleEnabled = $hrModuleUrl !== '' && config('services.hr_module.api_key') !== null;
 
+        $hrNavigation = [];
+        if ($hrModuleEnabled && $user) {
+            // Only reads from cache — never makes an outbound HTTP call on the request path.
+            // Warm the cache manually via: php artisan hr:refresh-navigation
+            $hrNavigation = Cache::get('hr.navigation', []);
+        }
+
         return [
             'business' => $user?->business,
             'businessBranding' => BusinessBranding::for($user?->business),
@@ -166,6 +174,7 @@ class AppServiceProvider extends ServiceProvider
             'cashTraySettings' => KashtreCashTraySetting::resolved(),
             'hrModuleUrl' => $hrModuleUrl,
             'hrModuleEnabled' => $hrModuleEnabled,
+            'hrNavigation' => $hrNavigation,
         ];
     }
 }
