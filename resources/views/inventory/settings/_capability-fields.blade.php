@@ -34,7 +34,7 @@
                    class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-60">
             <span>
                 <span class="font-medium text-gray-900">Crash cart management</span>
-                <span class="block text-xs text-gray-500">Satellite stores with role Crash cart (Ready → Deployed → Reconciling), plus Crash cart usage on Record Usage. Not EndStore queue nodes.</span>
+                <span class="block text-xs text-gray-500">Satellite stores with role Crash cart: fixed manifest, break seal, record usage. Not EndStore queue nodes.</span>
             </span>
         </label>
     </div>

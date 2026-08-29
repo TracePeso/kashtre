@@ -21,7 +21,7 @@ Last run: **2026-08-26** — business `KS1759822163` (`business_id=4`), branch K
 - [ ] Monitor Stock → Location edit (Wall/Cabinet/Bin or Aisle/Rack/Pallet)
 - [x] End Store → Pick route (basket) + Ward pick *(routes + ward-pick HTTP 200)*
 - [x] STAT tone every ~60s until Ack; keywords configurable in Capabilities *(keywords STAT,URGENT present; tone UI not exercised)*
-- [x] Crash Carts: Satellite under End Store with role Crash cart → Deploy → Reconcile → Record usage → Seal Ready → IR restock
+- [x] Crash Carts: fixed manifest at create → Break seal → Record usage → balances *(no deploy/reconcile/reseal cycle)*
 - [x] Settings → Capabilities: labels, lookback, admin purposes, STAT keywords *(module + STAT keywords; page 200)*
 - [ ] Manage Stores → End Store: default OP/IP strategy + Approved Pool toggle
 - [ ] Manage Stores → reorder level (days) + max stock (days) on End / Distribution / Satellite nodes

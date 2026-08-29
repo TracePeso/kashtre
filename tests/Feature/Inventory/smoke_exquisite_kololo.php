@@ -341,40 +341,34 @@ try {
         skip('Goods SDQ gates', 'no service point for business');
     }
 
-    // --- Crash cart lifecycle (store 15 Ready) ---
+    // --- Crash cart: break seal + manifest usage ---
     $crash = Store::find($CRASH)->fresh();
     $crashSvc = app(InventoryCrashCartService::class);
-    $origCrashStatus = $crash->crash_cart_status;
 
-    // Ensure stock on crash cart for usage
-    $crashStock = InventoryStockLevel::firstOrCreate(
-        ['business_id' => $BID, 'store_id' => $CRASH, 'item_id' => $item->id],
-        ['quantity_suom' => 0]
-    );
-    if ((float) $crashStock->quantity_suom < 1) {
-        $crashStock->update(['quantity_suom' => 5]);
+    if ($crash->crashCartItems()->count() === 0) {
+        $crashSvc->syncManifest($crash, [[
+            'item_id' => $item->id,
+            'par_quantity' => 5,
+        ]], $user);
+        $crash = $crash->fresh();
+    }
+
+    if ($crash->isCrashCartSealed()) {
+        try {
+            $crash = $crashSvc->breakSeal($crash, $user);
+            if ($crash->isCrashCartOpen()) {
+                ok('Crash cart break seal', 'id='.$CRASH);
+            } else {
+                fail('Crash cart break seal', $crash->crash_cart_status);
+            }
+        } catch (Throwable $e) {
+            fail('Crash cart break seal', $e->getMessage());
+        }
+    } elseif ($crash->isCrashCartOpen()) {
+        ok('Crash cart break seal', 'already open');
     }
 
     try {
-        if ($crash->crash_cart_status !== Store::CRASH_CART_READY) {
-            // force ready for smoke if stuck
-            $crash->update(['crash_cart_status' => Store::CRASH_CART_READY, 'crash_cart_deployed_at' => null]);
-            $crash = $crash->fresh();
-        }
-        $crash = $crashSvc->deploy($crash, $user);
-        if ($crash->crash_cart_status === Store::CRASH_CART_DEPLOYED) {
-            ok('Crash cart Deploy', 'id='.$CRASH);
-        } else {
-            fail('Crash cart Deploy', $crash->crash_cart_status);
-        }
-
-        $crash = $crashSvc->startReconcile($crash, $user);
-        if ($crash->crash_cart_status === Store::CRASH_CART_RECONCILING) {
-            ok('Crash cart Reconciling');
-        } else {
-            fail('Crash cart Reconciling', $crash->crash_cart_status);
-        }
-
         $usage = app(InventoryRecordUsageService::class)->record([
             'business_id' => $BID,
             'context' => InventoryUsageEvent::CONTEXT_CRASH_CART,
@@ -390,19 +384,14 @@ try {
             fail('Crash cart Record Usage');
         }
 
-        $sealed = $crashSvc->markReady($crash->fresh(), $user, 'SMOKE-SEAL-'.uniqid(), 'smoke seal');
-        if (($sealed['store']->crash_cart_status ?? null) === Store::CRASH_CART_READY) {
-            ok('Crash cart Seal → Ready', 'IR order='.($sealed['order']?->id ?? 'none'));
+        $balances = $crashSvc->balances($crash->fresh());
+        if ($balances->isNotEmpty()) {
+            ok('Crash cart manifest balances', 'lines='.$balances->count());
         } else {
-            fail('Crash cart Seal → Ready', json_encode($sealed['store']->crash_cart_status ?? null));
+            fail('Crash cart manifest balances');
         }
     } catch (Throwable $e) {
-        fail('Crash cart lifecycle', $e->getMessage());
-        // best-effort restore
-        try {
-            Store::where('id', $CRASH)->update(['crash_cart_status' => $origCrashStatus ?: Store::CRASH_CART_READY]);
-        } catch (Throwable) {
-        }
+        fail('Crash cart usage/balances', $e->getMessage());
     }
 
     // --- Route / UI surface checks ---
@@ -413,6 +402,7 @@ try {
         'inventory.reports.classification',
         'inventory.settings.edit',
         'inventory.crash-carts.index',
+        'inventory.crash-carts.show',
         'client-spaces.index',
     ];
     foreach ($routeNames as $name) {

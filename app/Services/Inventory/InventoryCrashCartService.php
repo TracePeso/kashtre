@@ -2,100 +2,133 @@
 
 namespace App\Services\Inventory;
 
+use App\Models\CrashCartItem;
 use App\Models\InventoryModuleConfig;
-use App\Models\InventoryOrder;
-use App\Models\InventoryOrderLine;
 use App\Models\InventoryStockLevel;
 use App\Models\InventoryUsageEvent;
+use App\Models\Item;
 use App\Models\Store;
 use App\Models\User;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class InventoryCrashCartService
 {
-    public function __construct(
-        private readonly InventoryOrderService $orders,
-    ) {}
-
-    public function deploy(Store $store, User $user): Store
+    /**
+     * Replace the cart manifest and restock to par while the cart is sealed.
+     *
+     * @param  list<array{item_id: int|string, par_quantity: float|int|string}>  $lines
+     */
+    public function syncManifest(Store $store, array $lines, User $user): void
     {
         $this->assertCrashCart($store);
 
-        if ($store->crash_cart_status !== Store::CRASH_CART_READY) {
+        if ($store->isCrashCartOpen()) {
             throw ValidationException::withMessages([
-                'crash_cart_status' => 'Only a Ready crash cart can be deployed.',
+                'crash_cart_items' => 'Cannot change the manifest while the seal is broken. Restock and reseal the cart first.',
+            ]);
+        }
+
+        $normalized = $this->normalizeManifestLines($store, $lines);
+
+        DB::transaction(function () use ($store, $normalized): void {
+            $store->crashCartItems()->delete();
+
+            foreach ($normalized as $line) {
+                CrashCartItem::create([
+                    'store_id' => $store->id,
+                    'item_id' => $line['item_id'],
+                    'par_quantity' => $line['par_quantity'],
+                ]);
+            }
+
+            $this->applyManifestStock($store);
+        });
+    }
+
+    public function breakSeal(Store $store, User $user): Store
+    {
+        $this->assertCrashCart($store);
+
+        if (! $store->isCrashCartSealed()) {
+            throw ValidationException::withMessages([
+                'crash_cart_status' => 'Only a sealed crash cart can have its seal broken.',
+            ]);
+        }
+
+        if ($store->crashCartItems()->count() === 0) {
+            throw ValidationException::withMessages([
+                'crash_cart_items' => 'Define the cart manifest before breaking the seal.',
             ]);
         }
 
         $store->update([
-            'crash_cart_status' => Store::CRASH_CART_DEPLOYED,
+            'crash_cart_status' => Store::CRASH_CART_OPEN,
             'crash_cart_deployed_at' => now(),
         ]);
 
-        return $store->fresh();
-    }
-
-    public function startReconcile(Store $store, User $user): Store
-    {
-        $this->assertCrashCart($store);
-
-        if ($store->crash_cart_status !== Store::CRASH_CART_DEPLOYED) {
-            throw ValidationException::withMessages([
-                'crash_cart_status' => 'Only a Deployed crash cart can enter reconciliation.',
-            ]);
-        }
-
-        $store->update([
-            'crash_cart_status' => Store::CRASH_CART_RECONCILING,
-        ]);
-
-        return $store->fresh();
+        return $store->fresh(['crashCartItems.item']);
     }
 
     /**
-     * Seal the cart, mark Ready, and open an internal replenishment draft for used items.
-     *
-     * @return array{store: Store, order: ?InventoryOrder}
+     * @return Collection<int, array{
+     *     item_id: int,
+     *     item_name: string,
+     *     par: float,
+     *     used: float,
+     *     remaining: float,
+     *     on_hand: float
+     * }>
      */
-    public function markReady(Store $store, User $user, string $sealNumber, ?string $notes = null): array
+    public function balances(Store $store): Collection
     {
         $this->assertCrashCart($store);
 
-        if ($store->crash_cart_status !== Store::CRASH_CART_RECONCILING) {
-            throw ValidationException::withMessages([
-                'crash_cart_status' => 'Mark Ready after reconciliation (restock / seal). Cart must be Reconciling.',
-            ]);
-        }
+        $store->loadMissing(['crashCartItems.item']);
 
-        $sealNumber = trim($sealNumber);
-        if ($sealNumber === '') {
-            throw ValidationException::withMessages([
-                'seal_number' => 'Enter the new seal number before marking the cart Ready.',
-            ]);
-        }
+        $usedByItem = $this->usageQuantitiesSinceSealBroken($store);
 
-        if (! $store->parent_id) {
-            throw ValidationException::withMessages([
-                'parent_id' => 'Crash cart must sit under an End Store to create a replenishment ticket.',
-            ]);
-        }
-
-        return DB::transaction(function () use ($store, $user, $sealNumber, $notes) {
-            $order = $this->createReplenishmentDraft($store, $user, $sealNumber, $notes);
-
-            $store->update([
-                'crash_cart_status' => Store::CRASH_CART_READY,
-                'crash_cart_seal_number' => $sealNumber,
-                'crash_cart_sealed_at' => now(),
-                'crash_cart_last_replenishment_order_id' => $order?->id,
-            ]);
+        return $store->crashCartItems->map(function (CrashCartItem $line) use ($store, $usedByItem) {
+            $itemId = (int) $line->item_id;
+            $par = round((float) $line->par_quantity, 4);
+            $used = round((float) ($usedByItem[$itemId] ?? 0), 4);
+            $onHand = round((float) (InventoryStockLevel::query()
+                ->where('business_id', $store->business_id)
+                ->where('store_id', $store->id)
+                ->where('item_id', $itemId)
+                ->value('quantity_suom') ?? 0), 4);
 
             return [
-                'store' => $store->fresh(),
-                'order' => $order?->fresh(['lines.item', 'sourceStore', 'store']),
+                'item_id' => $itemId,
+                'item_name' => (string) ($line->item?->name ?? 'Item #'.$itemId),
+                'par' => $par,
+                'used' => $used,
+                'remaining' => max(0, round($par - $used, 4)),
+                'on_hand' => $onHand,
             ];
-        });
+        })->values();
+    }
+
+    public function remainingManifestQuantity(Store $store, int $itemId): float
+    {
+        $line = $store->crashCartItems()->where('item_id', $itemId)->first();
+        if (! $line) {
+            return 0;
+        }
+
+        $used = $this->usageQuantitiesSinceSealBroken($store)[$itemId] ?? 0;
+
+        return max(0, round((float) $line->par_quantity - (float) $used, 4));
+    }
+
+    public function assertManifestItem(Store $store, int $itemId): void
+    {
+        if (! $store->crashCartItems()->where('item_id', $itemId)->exists()) {
+            throw ValidationException::withMessages([
+                'item_id' => 'That item is not on this crash cart manifest.',
+            ]);
+        }
     }
 
     public function assertAllowsStockIn(Store $store): void
@@ -104,91 +137,48 @@ class InventoryCrashCartService
             return;
         }
 
-        if ($store->crash_cart_status === Store::CRASH_CART_DEPLOYED) {
+        if ($store->isCrashCartOpen()) {
             throw ValidationException::withMessages([
-                'to_store_id' => 'Crash cart “'.$store->name.'” is deployed. Stock cannot be added until it is reconciling or ready.',
+                'to_store_id' => 'Crash cart “'.$store->name.'” seal is broken. Stock cannot be transferred in until the cart is resealed.',
             ]);
         }
     }
 
-    protected function createReplenishmentDraft(
-        Store $store,
-        User $user,
-        string $sealNumber,
-        ?string $notes
-    ): ?InventoryOrder {
-        $used = $this->usageSinceDeploy($store);
+    protected function applyManifestStock(Store $store): void
+    {
+        $store->loadMissing('crashCartItems');
 
-        if ($used === []) {
-            return null;
+        foreach ($store->crashCartItems as $line) {
+            InventoryStockLevel::query()->updateOrCreate(
+                [
+                    'business_id' => $store->business_id,
+                    'store_id' => $store->id,
+                    'item_id' => $line->item_id,
+                ],
+                [
+                    'quantity_suom' => $line->par_quantity,
+                ]
+            );
         }
-
-        $noteBits = [
-            'Crash cart replenishment for '.$store->name,
-            'Seal: '.$sealNumber,
-        ];
-        if ($notes) {
-            $noteBits[] = $notes;
-        }
-
-        $order = InventoryOrder::create([
-            'business_id' => $store->business_id,
-            'store_id' => $store->id,
-            'order_type' => InventoryOrder::TYPE_INTERNAL,
-            'source_store_id' => $store->parent_id,
-            'order_number' => $this->orders->generateOrderNumber(
-                (int) $store->business_id,
-                InventoryOrder::TYPE_INTERNAL
-            ),
-            'status' => InventoryOrder::STATUS_DRAFT,
-            'notes' => implode(' · ', $noteBits),
-            'created_by_user_id' => $user->id,
-        ]);
-
-        foreach ($used as $itemId => $qty) {
-            $onHand = (float) (InventoryStockLevel::query()
-                ->where('business_id', $store->business_id)
-                ->where('store_id', $store->id)
-                ->where('item_id', $itemId)
-                ->value('quantity_suom') ?? 0);
-
-            InventoryOrderLine::create([
-                'inventory_order_id' => $order->id,
-                'item_id' => $itemId,
-                'daily_average_suom' => 0,
-                'lead_time_days' => 0,
-                'system_quantity_suom' => $onHand,
-                'current_stock_suom' => $onHand,
-                'suggested_quantity_suom' => $qty,
-                'base_suggested_quantity_suom' => $qty,
-                'order_quantity_suom' => $qty,
-            ]);
-        }
-
-        return $order;
     }
 
     /**
-     * @return array<int, float> item_id => quantity
+     * @return array<int, float>
      */
-    protected function usageSinceDeploy(Store $store): array
+    protected function usageQuantitiesSinceSealBroken(Store $store): array
     {
         $query = InventoryUsageEvent::query()
             ->where('business_id', $store->business_id)
             ->where('store_id', $store->id)
-            ->where('context', InventoryUsageEvent::CONTEXT_CRASH_CART)
-            ->where('resolution', InventoryUsageEvent::RESOLUTION_PHYSICAL_STOCK);
+            ->where('context', InventoryUsageEvent::CONTEXT_CRASH_CART);
 
         if ($store->crash_cart_deployed_at) {
             $query->where('occurred_at', '>=', $store->crash_cart_deployed_at);
-        } elseif ($store->crash_cart_sealed_at) {
-            $query->where('occurred_at', '>', $store->crash_cart_sealed_at);
         }
 
         $rows = $query
             ->selectRaw('item_id, SUM(quantity) as total_qty')
             ->groupBy('item_id')
-            ->havingRaw('SUM(quantity) > 0')
             ->get();
 
         $used = [];
@@ -197,6 +187,67 @@ class InventoryCrashCartService
         }
 
         return $used;
+    }
+
+    /**
+     * @param  list<array{item_id: int|string, par_quantity: float|int|string}>  $lines
+     * @return list<array{item_id: int, par_quantity: float}>
+     */
+    protected function normalizeManifestLines(Store $store, array $lines): array
+    {
+        if ($lines === []) {
+            throw ValidationException::withMessages([
+                'crash_cart_items' => 'Add at least one item to the crash cart manifest.',
+            ]);
+        }
+
+        $businessId = (int) $store->business_id;
+        $normalized = [];
+        $seen = [];
+
+        foreach ($lines as $index => $line) {
+            $itemId = (int) ($line['item_id'] ?? 0);
+            $qty = round((float) ($line['par_quantity'] ?? 0), 4);
+
+            if ($itemId <= 0) {
+                throw ValidationException::withMessages([
+                    'crash_cart_items' => 'Select an item on row '.($index + 1).'.',
+                ]);
+            }
+
+            if ($qty <= 0) {
+                throw ValidationException::withMessages([
+                    'crash_cart_items' => 'Quantity must be greater than zero on row '.($index + 1).'.',
+                ]);
+            }
+
+            if (isset($seen[$itemId])) {
+                throw ValidationException::withMessages([
+                    'crash_cart_items' => 'Each item can only appear once on the manifest.',
+                ]);
+            }
+
+            $seen[$itemId] = true;
+
+            $item = Item::query()
+                ->where('business_id', $businessId)
+                ->whereKey($itemId)
+                ->where('type', 'good')
+                ->first();
+
+            if (! $item) {
+                throw ValidationException::withMessages([
+                    'crash_cart_items' => 'Item on row '.($index + 1).' is not a valid good for this organisation.',
+                ]);
+            }
+
+            $normalized[] = [
+                'item_id' => $itemId,
+                'par_quantity' => $qty,
+            ];
+        }
+
+        return $normalized;
     }
 
     protected function assertCrashCart(Store $store): void
@@ -208,10 +259,10 @@ class InventoryCrashCartService
         }
 
         if (! $store->isCrashCart()) {
-                throw ValidationException::withMessages([
-                    'is_crash_cart' => 'This store is not a crash-cart satellite (set Satellite role to Crash cart under Manage Stores).',
-                ]);
-            }
+            throw ValidationException::withMessages([
+                'is_crash_cart' => 'This store is not a crash-cart satellite.',
+            ]);
+        }
     }
 
     protected function businessCrashCartEnabled(int $businessId): bool

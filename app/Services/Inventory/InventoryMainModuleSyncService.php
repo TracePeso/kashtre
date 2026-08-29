@@ -336,8 +336,7 @@ class InventoryMainModuleSyncService
 
     protected function processCrashCartReplenishment(InventoryMainModuleOutbox $row): void
     {
-        // Audit / Main Module signal only. Physical IR draft is created on Seal Ready
-        // via InventoryCrashCartService::markReady (avoids duplicate drafts per usage line).
+        // Audit / Main Module signal only (replenishment IR is out of scope for simplified crash-cart flow).
         Log::info('Crash cart replenishment signal acknowledged', $row->payload ?? []);
     }
 

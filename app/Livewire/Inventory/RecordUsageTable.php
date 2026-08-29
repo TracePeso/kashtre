@@ -9,6 +9,7 @@ use App\Models\InventoryUsageEvent;
 use App\Models\Item;
 use App\Models\PatientApprovedPoolLine;
 use App\Models\Store;
+use App\Services\Inventory\InventoryCrashCartService;
 use App\Services\Inventory\InventoryRecordUsageService;
 use App\Support\InventoryBusinessContext;
 use Filament\Forms\Components\Select;
@@ -57,7 +58,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                 CreateAction::make()
                     ->label('Record usage')
                     ->modalHeading('Record usage')
-                    ->modalDescription('Enter what was used. Pool, stock, and billing are applied automatically.')
+                    ->modalDescription('Enter what was used. For crash carts: break seal first (Inventory → Crash Carts), then pick Type = Crash cart.')
                     ->modalSubmitActionLabel('Save')
                     ->createAnother(false)
                     ->form($this->usageForm($businessId))
@@ -205,6 +206,7 @@ class RecordUsageTable extends Component implements HasForms, HasTable
             ? Store::query()
                 ->where('business_id', $businessId)
                 ->crashCarts()
+                ->where('crash_cart_status', Store::CRASH_CART_OPEN)
                 ->orderBy('name')
                 ->get(['id', 'name', 'crash_cart_status', 'satellite_role', 'is_crash_cart', 'distribution_type'])
                 ->mapWithKeys(fn (Store $store) => [
@@ -246,6 +248,9 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                 ->live()
                 ->native(false)
                 ->default(InventoryUsageEvent::CONTEXT_PATIENT)
+                ->helperText(fn (Get $get): ?string => $get('context') === InventoryUsageEvent::CONTEXT_CRASH_CART
+                    ? 'Manifest items only, from carts with broken seal. Client is billed via Main Module.'
+                    : null)
                 ->afterStateUpdated(function (callable $set) {
                     $set('store_id', null);
                     $set('item_id', null);
@@ -287,6 +292,15 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                     $get('context') === InventoryUsageEvent::CONTEXT_PATIENT
                     || in_array($get('context'), $stockContexts, true)
                 ))
+                ->helperText(function (Get $get) use ($crashCartStoreOptions): ?string {
+                    if ($get('context') !== InventoryUsageEvent::CONTEXT_CRASH_CART) {
+                        return null;
+                    }
+
+                    return $crashCartStoreOptions === []
+                        ? 'No open crash carts. Break a seal on Inventory → Crash Carts first.'
+                        : 'Only carts with a broken seal appear here.';
+                })
                 ->placeholder(fn (Get $get): string => $get('context') === InventoryUsageEvent::CONTEXT_PATIENT
                     ? 'Optional — only if using floor stock'
                     : 'Select store')
@@ -298,6 +312,19 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                 ->label(fn (): string => inventory_label('item'))
                 ->options(function (Get $get) use ($businessId, $floorStockEnabled) {
                     $storeId = $floorStockEnabled && $get('store_id') ? (int) $get('store_id') : null;
+
+                    if ($get('context') === InventoryUsageEvent::CONTEXT_CRASH_CART && $storeId) {
+                        $store = Store::query()->where('business_id', $businessId)->find($storeId);
+                        if ($store?->isCrashCart()) {
+                            return app(InventoryCrashCartService::class)
+                                ->balances($store)
+                                ->filter(fn (array $row): bool => $row['remaining'] > 0)
+                                ->mapWithKeys(fn (array $row) => [
+                                    $row['item_id'] => $row['item_name'].' ('.rtrim(rtrim(number_format($row['remaining'], 2), '0'), '.').' left)',
+                                ])
+                                ->all();
+                        }
+                    }
 
                     if ($storeId) {
                         $stockRows = InventoryStockLevel::query()
@@ -369,6 +396,44 @@ class RecordUsageTable extends Component implements HasForms, HasTable
                 ->numeric()
                 ->required()
                 ->minValue(0.01)
+                ->maxValue(function (Get $get) use ($businessId): ?float {
+                    if ($get('context') !== InventoryUsageEvent::CONTEXT_CRASH_CART
+                        || ! $get('store_id')
+                        || ! $get('item_id')) {
+                        return null;
+                    }
+
+                    $store = Store::query()
+                        ->where('business_id', $businessId)
+                        ->find((int) $get('store_id'));
+
+                    if (! $store?->isCrashCartOpen()) {
+                        return null;
+                    }
+
+                    return app(InventoryCrashCartService::class)
+                        ->remainingManifestQuantity($store, (int) $get('item_id')) ?: null;
+                })
+                ->helperText(function (Get $get) use ($businessId): ?string {
+                    if ($get('context') !== InventoryUsageEvent::CONTEXT_CRASH_CART
+                        || ! $get('store_id')
+                        || ! $get('item_id')) {
+                        return null;
+                    }
+
+                    $store = Store::query()
+                        ->where('business_id', $businessId)
+                        ->find((int) $get('store_id'));
+
+                    if (! $store?->isCrashCartOpen()) {
+                        return null;
+                    }
+
+                    $remaining = app(InventoryCrashCartService::class)
+                        ->remainingManifestQuantity($store, (int) $get('item_id'));
+
+                    return 'Manifest remaining: '.rtrim(rtrim(number_format($remaining, 2), '0'), '.');
+                })
                 ->placeholder('1'),
             Select::make('admin_purpose')
                 ->label('Purpose')

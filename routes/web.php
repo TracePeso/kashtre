@@ -156,7 +156,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/hr-module/open', [\App\Http\Controllers\HrSsoController::class, 'redirect'])->name('hr-module.open');
-    Route::post('/dashboard/yo-payment-test', [DashboardController::class, 'testYoPayment'])->name('dashboard.yo-payment-test');
     Route::post('/dashboard/testing-environment-reset', [DashboardController::class, 'clearTestingEnvironment'])
         ->name('dashboard.testing-environment-reset')
         ->middleware('throttle:5,1');
@@ -322,9 +321,9 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::post('/usage/{usageEvent}/retry-billing', [InventoryRecordUsageController::class, 'retryBilling'])->name('usage.retry-billing');
         Route::post('/usage/{usageEvent}/collect-payment', [InventoryRecordUsageController::class, 'collectPayment'])->name('usage.collect-payment');
         Route::get('/crash-carts', [InventoryCrashCartController::class, 'index'])->name('crash-carts.index');
-        Route::post('/crash-carts/{store}/deploy', [InventoryCrashCartController::class, 'deploy'])->name('crash-carts.deploy');
-        Route::post('/crash-carts/{store}/reconcile', [InventoryCrashCartController::class, 'reconcile'])->name('crash-carts.reconcile');
-        Route::post('/crash-carts/{store}/ready', [InventoryCrashCartController::class, 'ready'])->name('crash-carts.ready');
+        Route::get('/crash-carts/{store}', [InventoryCrashCartController::class, 'show'])->name('crash-carts.show');
+        Route::post('/crash-carts/{store}/break-seal', [InventoryCrashCartController::class, 'breakSeal'])->name('crash-carts.break-seal');
+        Route::post('/crash-carts/{store}/usage', [InventoryCrashCartController::class, 'recordUsage'])->name('crash-carts.usage');
         Route::get('/replenishment/create', [InventoryInternalReplenishmentController::class, 'create'])->name('replenishment.create');
         Route::post('/replenishment', [InventoryInternalReplenishmentController::class, 'store'])->name('replenishment.store');
         Route::get('/stock-counts', [InventoryStockCountController::class, 'index'])->name('stock-counts.index');
