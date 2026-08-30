@@ -91,7 +91,7 @@ class ClientSpaceStoreAssignment extends Model
     }
 
     /**
-     * Resolve the active End Store routing for a Client Space (SRD §4.1).
+     * Resolve the active End Store routing for a Client Space.
      */
     public static function resolveForClientSpace(int $clientSpaceId): ?self
     {

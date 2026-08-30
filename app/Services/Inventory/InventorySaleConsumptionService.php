@@ -27,7 +27,7 @@ class InventorySaleConsumptionService
             return;
         }
 
-        // End Store fulfillment owns physical stock for these goods (SRD).
+        // End Store fulfillment owns physical stock for these goods.
         // Service-point Completed must not deduct again / early.
         if ($this->ownedByFulfillmentQueue($queue)) {
             Log::info('Inventory auto-consumption skipped: End Store fulfillment owns this good', [
@@ -56,7 +56,7 @@ class InventorySaleConsumptionService
             return;
         }
 
-        // SRD §3 — only End Store may execute client sales / consumption.
+        // only End Store may execute client sales / consumption.
         $store = Store::query()->find($storeId);
         if (! $store || ! $store->isEndStore()) {
             Log::info('Inventory auto-consumption skipped: resolved store is not an End Store', [

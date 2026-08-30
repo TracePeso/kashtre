@@ -24,7 +24,7 @@ class InventoryRecordUsageService
     ) {}
 
     /**
-     * Record bedside / floor usage (SRD §5.2).
+     * Record bedside / floor usage.
      *
      * Patient: use Approved Pool first; any shortfall comes from selected floor stock
      * (End / Satellite) and is billed to Main Module asynchronously.

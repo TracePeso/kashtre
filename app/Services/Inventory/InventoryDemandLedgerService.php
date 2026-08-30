@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 class InventoryDemandLedgerService
 {
     /**
-     * Record clinical/user intent before stock validation (SRD A-02).
+     * Record clinical/user intent before stock validation.
      *
      * @param  array<int, array<string, mixed>>  $items
      */

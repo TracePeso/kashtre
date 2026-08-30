@@ -1226,7 +1226,7 @@ class InventoryOrderService
     }
 
     /**
-     * Days Mode (SRD §7.5): order_qty = MA × days − on_hand.
+     * Days Mode: order_qty = MA × days − on_hand.
      *
      * @return array{
      *     line: InventoryOrderLine,
@@ -1276,7 +1276,7 @@ class InventoryOrderService
     }
 
     /**
-     * Reverse of Days Mode: order_days ≈ (qty + on_hand) / MA (SRD §7.5 bidirectional).
+     * Reverse of Days Mode: order_days ≈ (qty + on_hand) / MA.
      */
     private function syncOrderDaysFromQuantity(InventoryOrderLine $line, float $orderQtySuom): void
     {

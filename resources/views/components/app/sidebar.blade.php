@@ -104,7 +104,7 @@
                                 </a>
                             </li>
                             <li>
-                                <a href="{{ route('inventory.replenishment.create') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.replenishment*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                <a href="{{ route('inventory.replenishment.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.replenishment*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
                                     Internal Replenishment
                                 </a>
                             </li>

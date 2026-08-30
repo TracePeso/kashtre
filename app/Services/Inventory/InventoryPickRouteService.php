@@ -11,7 +11,7 @@ use Illuminate\Support\Collection;
 class InventoryPickRouteService
 {
     /**
-     * Build a sequential pick route for an inpatient basket (SRD §4.4).
+     * Build a sequential pick route for an inpatient basket.
      *
      * @return array{
      *     store: Store,
@@ -47,7 +47,7 @@ class InventoryPickRouteService
     }
 
     /**
-     * Ward / End Store reservoir collection run — all open inpatient lines at the store (SRD §4.4).
+     * Ward / End Store reservoir collection run — all open inpatient lines at the store.
      * Optionally narrow to a Client Space and/or visit_id.
      *
      * @return array{

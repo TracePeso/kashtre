@@ -21,7 +21,7 @@ class InventoryFulfillmentDispenseService
     ) {}
 
     /**
-     * End Store dispense complete (SRD §4 / §8.1):
+     * End Store dispense complete:
      * stock ↓ at stamped End Store, Main Module goods → Completed.
      * Approved Pool ↑ only for Batch & Stage lines (strategy-derived).
      * Outpatient (discrete / immediate) completes the ticket with no pool balance.
@@ -206,7 +206,7 @@ class InventoryFulfillmentDispenseService
             if ($line->status === InventoryFulfillmentLine::STATUS_COMPLETED) {
                 $queue->markAsCompleted((int) $user->id);
             }
-            // SRD §2.2: goods stay Pending until fully Completed — never partially_done.
+            // goods stay Pending until fully Completed — never partially_done.
         }
     }
 }

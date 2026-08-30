@@ -656,7 +656,7 @@ class InvoiceController extends Controller
                 throw new \RuntimeException('Could not allocate a unique invoice number after repeated attempts.');
             }
 
-            // SRD A-02 — capture demand intent as soon as invoice items exist (before payment / stock fulfillment).
+            // capture demand intent as soon as invoice items exist (before payment / stock fulfillment).
             try {
                 app(\App\Services\Inventory\InventoryDemandLedgerService::class)
                     ->recordFromInvoice($invoice, $itemsCollection->toArray());
@@ -4099,7 +4099,7 @@ class InvoiceController extends Controller
             return;
         }
 
-        // SRD §4.1 — paid goods land on the mapped End Store fulfillment queue (independent of service-point mapping).
+        // paid goods land on the mapped End Store fulfillment queue (independent of service-point mapping).
         try {
             app(\App\Services\Inventory\InventoryFulfillmentIngestService::class)
                 ->ingestFromInvoice($invoice, $filteredItems->all());

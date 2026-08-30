@@ -11,7 +11,7 @@ class VerifyInventoryForensicAuditCommand extends Command
 {
     protected $signature = 'inventory:verify-forensic-audit {business_id?} {--all : Verify every business with an active inventory module}';
 
-    protected $description = 'Verify SHA-256 hash chain on inventory forensic audit logs (SRD A-03)';
+    protected $description = 'Verify SHA-256 hash chain on inventory forensic audit logs';
 
     public function handle(InventoryForensicAuditService $audit): int
     {

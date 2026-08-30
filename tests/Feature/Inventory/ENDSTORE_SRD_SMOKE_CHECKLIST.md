@@ -1,4 +1,4 @@
-# Endstore SRD V6.0 — smoke checklist
+# Endstore inventory — smoke checklist
 
 Programmatic runner (Exquisite Test Life / Kololo):
 

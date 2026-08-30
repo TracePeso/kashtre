@@ -76,7 +76,7 @@ class ClientSpace extends Model
     }
 
     /**
-     * Active End Store routing for fulfillment queue ingestion (SRD §4.1).
+     * Active End Store routing for fulfillment queue ingestion.
      */
     public function resolveEndStoreAssignment(): ?ClientSpaceStoreAssignment
     {

@@ -4,7 +4,7 @@ Shareable reference for teams wiring **Clinical Module** to **Kashtre** (Main + 
 
 **Source of truth in code:** `routes/api.php`, `ClinicalIntegrationController`, `ClinicalModuleIntegrationService`.
 
-**SRD:** *KashTre Inventory Endstore Systems Requirements Document* V6.0 — §4.5 ward handoff, §8 cross-module sync.
+**Requirements doc:** *KashTre Inventory Endstore Systems Requirements Document* V6.0 (ward handoff, cross-module sync).
 
 ---
 
@@ -223,7 +223,7 @@ Duplicate `event_id` returns the stored response (idempotent).
 
 ---
 
-### 5. Staged tote checklist (End Store §4.5)
+### 5. Staged tote checklist (End Store ward handoff)
 
 Used when the ward opens **Collect Medications** for a staged handoff.
 
@@ -272,7 +272,7 @@ X-API-Key: {inbound_key}
 
 **Base:** `{CLINICAL_MODULE_URL}` from Kashtre settings.
 
-### A. Tote staged alert — §4.5 step 1
+### A. Tote staged alert — ward handoff step 1
 
 ```http
 POST /api/v1/clinical/pharmacy/totes/staged
@@ -281,7 +281,7 @@ X-Tenant-Id: {business_id}
 Content-Type: application/json
 ```
 
-**Body:** same shape as [§5 tote checklist](#5-staged-tote-checklist-end-store-45) `data` above.
+**Body:** same shape as [staged tote checklist](#5-staged-tote-checklist-end-store-ward-handoff) `data` above.
 
 **Expected response (flexible):**
 
@@ -303,7 +303,7 @@ Kashtre stores `clinical_session_id` on the handoff token for validate.
 
 ---
 
-### B. Handoff code validation — §4.5 step 4
+### B. Handoff code validation — ward handoff step 4
 
 ```http
 POST /api/v1/clinical/pharmacy/handoff/validate
@@ -421,7 +421,7 @@ curl -sS -H "X-API-Key: YOUR_INBOUND_KEY" \
 | Integration service | `app/Services/ClinicalModuleIntegrationService.php` |
 | EndStore UI | `/inventory/fulfillment` |
 
-For questions about **dispense rules, Approved Pool, or crash carts**, refer to the Endstore SRD V6.0 and the smoke checklist above.
+For questions about **dispense rules, Approved Pool, or crash carts**, refer to the Endstore requirements document and the smoke checklist above.
 
 ---
 

@@ -363,14 +363,14 @@ class ListStores extends Component implements HasForms, HasTable
                 ->minValue(0)
                 ->step(0.01)
                 ->default(5)
-                ->helperText('SRD §7.2 — draft replenishment when current stock days fall below this.'),
+                ->helperText('Draft replenishment when current stock days fall below this.'),
             Forms\Components\TextInput::make('max_stock_days')
                 ->label('Maximum stock level (days)')
                 ->numeric()
                 ->minValue(0)
                 ->step(0.01)
                 ->default(30)
-                ->helperText('SRD §7.2 — target coverage days for internal replenishment.'),
+                ->helperText('Target coverage days for internal replenishment.'),
             Forms\Components\Placeholder::make('type_note')
                 ->label('Store type')
                 ->content('End store — only this type can sell / dispense to clients.'),
@@ -576,13 +576,13 @@ class ListStores extends Component implements HasForms, HasTable
                     ->numeric()
                     ->minValue(0)
                     ->step(0.01)
-                    ->helperText('SRD §7.2 — draft replenishment when current stock days fall below this.'),
+                    ->helperText('Draft replenishment when current stock days fall below this.'),
                 Forms\Components\TextInput::make('max_stock_days')
                     ->label('Maximum stock level (days)')
                     ->numeric()
                     ->minValue(0)
                     ->step(0.01)
-                    ->helperText('SRD §7.2 — target coverage days for internal replenishment.'),
+                    ->helperText('Target coverage days for internal replenishment.'),
                 Forms\Components\Placeholder::make('type_note')
                     ->label('Store type')
                     ->content(

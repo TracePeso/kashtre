@@ -525,7 +525,7 @@ class ServicePointController extends Controller
                 }
 
                 if (in_array($status, ['partially_done', 'completed']) && $item->status !== $status) {
-                    // SRD §2.2 — goods cannot enter In Progress / partially_done on the service-point dashboard.
+                    // goods cannot enter In Progress / partially_done on the service-point dashboard.
                     $item->loadMissing('item');
                     if (($item->item?->type ?? null) === 'good') {
                         $inventoryOn = \App\Models\InventoryModuleConfig::query()

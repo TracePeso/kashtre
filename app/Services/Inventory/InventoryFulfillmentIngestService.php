@@ -19,7 +19,7 @@ class InventoryFulfillmentIngestService
     ) {}
 
     /**
-     * Stamp paid goods onto the mapped End Store fulfillment queue (SRD §4.1–4.2).
+     * Stamp paid goods onto the mapped End Store fulfillment queue.
      *
      * Routing:
      * 1. Active Client Space → End Store assignment (strategy always from this mapping)
@@ -38,7 +38,7 @@ class InventoryFulfillmentIngestService
 
         $payloadItems = $items !== [] ? $items : (is_array($invoice->items) ? $invoice->items : []);
 
-        // Dual-stream demand: always capture intent before stock / routing decisions (SRD A-02).
+        // Dual-stream demand: always capture intent before stock / routing decisions.
         $this->demandLedger->recordFromInvoice($invoice, $payloadItems);
 
         if (! InventoryModuleConfig::query()

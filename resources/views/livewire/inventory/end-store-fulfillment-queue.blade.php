@@ -20,7 +20,7 @@
     @endif
 
     @if($this->unacknowledgedStatCount() > 0)
-        {{-- SRD §4.3 STAT highlight color: #FFECEC --}}
+        {{-- #FFECEC --}}
         <div class="rounded-lg border-2 border-red-500 px-4 py-3 flex flex-wrap items-center justify-between gap-3 animate-pulse"
              style="background-color: #FFECEC;"
              x-data="{
@@ -107,7 +107,7 @@
 
     <div class="end-store-console-table">
         <style>
-            /* SRD §4.3 — distinct STAT background highlight must be #FFECEC */
+            /* distinct STAT background highlight must be #FFECEC */
             .end-store-console-table .fi-ta-row-stat-unacked,
             .end-store-console-table tr.fi-ta-row-stat-unacked {
                 background-color: #FFECEC !important;

@@ -30,7 +30,7 @@ class ServiceDeliveryQueueController extends Controller
                 ], 403);
             }
 
-            // SRD §2.2 — goods are Pending → Completed only (no In Progress).
+            // goods are Pending → Completed only (no In Progress).
             $serviceDeliveryQueue->loadMissing('item');
             if (($serviceDeliveryQueue->item?->type ?? null) === 'good') {
                 return response()->json([
@@ -106,7 +106,7 @@ class ServiceDeliveryQueueController extends Controller
                 ], 403);
             }
 
-            // SRD §2.2 — goods Pending → Completed only via EndStore dispense, not service-point Complete.
+            // goods Pending → Completed only via EndStore dispense, not service-point Complete.
             $serviceDeliveryQueue->loadMissing('item');
             if (($serviceDeliveryQueue->item?->type ?? null) === 'good') {
                 $inventoryOn = \App\Models\InventoryModuleConfig::query()
