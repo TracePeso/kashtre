@@ -23,7 +23,8 @@ class InventoryFulfillmentDispenseService
     /**
      * End Store dispense complete (SRD §4 / §8.1):
      * stock ↓ at stamped End Store, Main Module goods → Completed.
-     * Approved Pool ↑ only when the line's End Store supports_approved_pool flag is on.
+     * Approved Pool ↑ only for Batch & Stage lines (strategy-derived).
+     * Outpatient (discrete / immediate) completes the ticket with no pool balance.
      *
      * @param  array{batch_lot?: string|null, serials?: list<string>|null}|null  $traceability
      */

@@ -323,6 +323,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/crash-carts', [InventoryCrashCartController::class, 'index'])->name('crash-carts.index');
         Route::get('/crash-carts/{store}', [InventoryCrashCartController::class, 'show'])->name('crash-carts.show');
         Route::post('/crash-carts/{store}/break-seal', [InventoryCrashCartController::class, 'breakSeal'])->name('crash-carts.break-seal');
+        Route::post('/crash-carts/{store}/restock-reseal', [InventoryCrashCartController::class, 'restockAndReseal'])->name('crash-carts.restock-reseal');
         Route::post('/crash-carts/{store}/usage', [InventoryCrashCartController::class, 'recordUsage'])->name('crash-carts.usage');
         Route::get('/replenishment/create', [InventoryInternalReplenishmentController::class, 'create'])->name('replenishment.create');
         Route::post('/replenishment', [InventoryInternalReplenishmentController::class, 'store'])->name('replenishment.store');

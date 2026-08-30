@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\RequiresInventoryModule;
-use App\Models\Client;
 use App\Models\Store;
 use App\Services\Inventory\InventoryCrashCartService;
 use App\Services\Inventory\InventoryRecordUsageService;
@@ -39,36 +38,14 @@ class InventoryCrashCartController extends Controller
         ]);
     }
 
-    public function show(Store $store, InventoryCrashCartService $crashCarts)
+    public function show(Store $store)
     {
         $this->assertOwnedCrashCart($store);
 
-        $store->load(['parent:id,name', 'branch:id,name', 'crashCartItems.item:id,name,strength,code']);
-
-        $businessId = (int) $store->business_id;
-
-        $balances = $crashCarts->balances($store);
-
-        $clients = Client::query()
-            ->where('business_id', $businessId)
-            ->orderBy('name')
-            ->get(['id', 'name', 'client_id']);
-
-        $recentUsage = \App\Models\InventoryUsageEvent::query()
-            ->with(['client:id,name,client_id', 'item:id,name', 'recordedBy:id,name'])
-            ->where('business_id', $businessId)
-            ->where('store_id', $store->id)
-            ->where('context', \App\Models\InventoryUsageEvent::CONTEXT_CRASH_CART)
-            ->orderByDesc('occurred_at')
-            ->orderByDesc('id')
-            ->limit(25)
-            ->get();
+        $store->load(['parent:id,name', 'branch:id,name']);
 
         return view('inventory.crash-carts.show', [
             'cart' => $store,
-            'balances' => $balances,
-            'clients' => $clients,
-            'recentUsage' => $recentUsage,
         ]);
     }
 
@@ -82,7 +59,35 @@ class InventoryCrashCartController extends Controller
             return back()->withErrors($e->errors());
         }
 
-        return back()->with('status', 'Seal broken. Record usage against the cart manifest.');
+        return back()->with('success', 'Seal broken. Record usage against the cart manifest.');
+    }
+
+    public function restockAndReseal(Request $request, Store $store, InventoryCrashCartService $crashCarts): RedirectResponse
+    {
+        $this->assertOwnedCrashCart($store);
+
+        $data = $request->validate([
+            'seal_number' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        try {
+            $result = $crashCarts->restockAndReseal(
+                $store,
+                Auth::user(),
+                isset($data['seal_number']) ? trim((string) $data['seal_number']) : null
+            );
+        } catch (ValidationException $e) {
+            return back()->withErrors($e->errors())->withInput();
+        }
+
+        $pulled = count($result['restocked']);
+        $message = $pulled === 0
+            ? 'Cart resealed (seal '.$result['seal_number'].'). Nothing to pull from the End Store.'
+            : 'Restocked '.$pulled.' line'.($pulled === 1 ? '' : 's').' from the End Store and resealed (seal '.$result['seal_number'].').';
+
+        return redirect()
+            ->route('inventory.crash-carts.show', $result['store'])
+            ->with('success', $message);
     }
 
     public function recordUsage(Request $request, Store $store, InventoryRecordUsageService $usage): RedirectResponse
@@ -115,7 +120,7 @@ class InventoryCrashCartController extends Controller
             return back()->withErrors($e->errors())->withInput();
         }
 
-        return back()->with('status', $count > 1
+        return back()->with('success', $count > 1
             ? 'Usage recorded ('.$count.' lines).'
             : 'Usage recorded.');
     }

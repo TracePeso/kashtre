@@ -10,7 +10,8 @@ Last run: **2026-08-26** — business `KS1759822163` (`business_id=4`), branch K
 
 ## Clinical core
 - [x] Paid goods → End Store queue (POS strategy + End Store / store default)
-- [x] OP Dispense (stock ↓, Approved Pool ↑ when enabled, SDQ completed) — batch/serial when toggles on (serial count = qty)
+- [x] OP Dispense (stock ↓, no Approved Pool — OP is immediate dispense; SDQ completed) — batch/serial when toggles on (serial count = qty)
+- [x] IP Release credits Approved Pool; Record Usage consumes pool after IP
 - [x] Goods on service point: **no** In Progress; **no** Completed when inventory module on (EndStore only); partial dispense keeps Main ticket **Pending** until full Completed
 - [x] IP Stage (tote barcode **required**) → Clinical tote alert → nurse code → Release validate *(bypass code in local smoke)*
 - [x] Ward pick route (sum SKUs across End Store inpatient reservoir; optional `?visit_id=`) *(HTTP 200; Client Space URL uses UUID)*

@@ -177,6 +177,13 @@ class ListStores extends Component implements HasForms, HasTable
                         $manifest = $data['crash_cart_items'] ?? null;
                         unset($data['crash_cart_items']);
 
+                        if ($record->isEndStore() || ($data['distribution_type'] ?? null) === Store::DISTRIBUTION_END) {
+                            $strategy = $data['default_fulfillment_strategy']
+                                ?? $record->default_fulfillment_strategy
+                                ?? \App\Support\InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE;
+                            $data['supports_approved_pool'] = \App\Support\InventoryFulfillmentStrategy::supportsApprovedPool($strategy);
+                        }
+
                         $record->update($data);
 
                         if ($record->isCrashCart() && is_array($manifest)) {
@@ -231,9 +238,14 @@ class ListStores extends Component implements HasForms, HasTable
                     ->modalHeading('Add End Store')
                     ->modalDescription('Dispensary / POS gate. Must sit under a Distribution Store. Only End Stores sell or dispense to clients.')
                     ->form($this->endStoreForm())
-                    ->mutateFormDataUsing(fn (array $data) => array_merge($data, [
-                        'distribution_type' => Store::DISTRIBUTION_END,
-                    ]))
+                    ->mutateFormDataUsing(function (array $data): array {
+                        $data['distribution_type'] = Store::DISTRIBUTION_END;
+                        $strategy = $data['default_fulfillment_strategy']
+                            ?? \App\Support\InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE;
+                        $data['supports_approved_pool'] = \App\Support\InventoryFulfillmentStrategy::supportsApprovedPool($strategy);
+
+                        return $data;
+                    })
                     ->createAnother(false)
                     ->after(fn () => $this->notifyCreated()),
                 CreateAction::make('createSatelliteStore')
@@ -344,11 +356,7 @@ class ListStores extends Component implements HasForms, HasTable
                 ->default(\App\Support\InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE)
                 ->required()
                 ->native(false)
-                ->helperText('Used when POS/invoice does not specify Outpatient vs Inpatient.'),
-            Forms\Components\Toggle::make('supports_approved_pool')
-                ->label('Credit Approved Pool on dispense')
-                ->default(true)
-                ->helperText('When off, dispense still completes the ticket but does not add Approved Pool balance.'),
+                ->helperText('Outpatient = immediate dispense (no Approved Pool). Inpatient (batch & stage) credits Approved Pool after release. Used when POS/invoice does not override.'),
             Forms\Components\TextInput::make('reorder_level_days')
                 ->label('Reorder level (days)')
                 ->numeric()
@@ -562,11 +570,7 @@ class ListStores extends Component implements HasForms, HasTable
                         ?: \App\Support\InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE)
                     ->required()
                     ->native(false)
-                    ->helperText('Used when POS/invoice does not specify Outpatient vs Inpatient.'),
-                Forms\Components\Toggle::make('supports_approved_pool')
-                    ->label('Credit Approved Pool on dispense')
-                    ->default(fn () => $record->supports_approved_pool ?? true)
-                    ->helperText('When off, dispense still completes the ticket but does not add Approved Pool balance.'),
+                    ->helperText('Outpatient = immediate dispense (no Approved Pool). Inpatient (batch & stage) credits Approved Pool after release. Used when POS/invoice does not override.'),
                 Forms\Components\TextInput::make('reorder_level_days')
                     ->label('Reorder level (days)')
                     ->numeric()

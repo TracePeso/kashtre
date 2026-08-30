@@ -189,42 +189,23 @@ try {
         try {
             $lineOp = app(InventoryFulfillmentDispenseService::class)->complete($lineOp, $user, 1);
             $stockAfter = (float) InventoryStockLevel::where('business_id', $BID)->where('store_id', $END_STORE)->where('item_id', $item->id)->value('quantity_suom');
-            $pool = PatientApprovedPoolLine::where('business_id', $BID)->where('client_id', $client->id)->where('item_id', $item->id)->where('quantity_remaining', '>', 0)->first();
+            $poolAfterOp = PatientApprovedPoolLine::where('business_id', $BID)->where('client_id', $client->id)->where('item_id', $item->id)->where('source_fulfillment_line_id', $lineOp->id)->first();
             if ($lineOp->status === 'completed' && abs(($stockBeforeOp - 1) - $stockAfter) < 0.01) {
                 ok('OP dispense stock ↓', 'before='.$stockBeforeOp.' after='.$stockAfter);
             } else {
                 fail('OP dispense stock ↓', 'status='.$lineOp->status.' after='.$stockAfter);
             }
-            if ($pool) {
-                ok('Approved Pool ↑ after OP', 'remaining='.$pool->quantity_remaining);
+            if ($poolAfterOp) {
+                fail('OP dispense must not credit Approved Pool', 'remaining='.$poolAfterOp->quantity_remaining);
             } else {
-                fail('Approved Pool ↑ after OP');
+                ok('OP dispense skips Approved Pool', 'immediate dispense only');
             }
         } catch (Throwable $e) {
             fail('OP dispense', $e->getMessage());
         }
     }
 
-    // --- Record usage from pool ---
-    try {
-        $events = app(InventoryRecordUsageService::class)->record([
-            'business_id' => $BID,
-            'context' => InventoryUsageEvent::CONTEXT_PATIENT,
-            'client_id' => $client->id,
-            'item_id' => $item->id,
-            'quantity' => 1,
-            'notes' => 'SMOKE patient usage',
-        ], $user);
-        if ($events->isNotEmpty()) {
-            ok('Record Usage (patient / pool)', 'events='.$events->count());
-        } else {
-            fail('Record Usage (patient / pool)', 'empty');
-        }
-    } catch (Throwable $e) {
-        fail('Record Usage (patient / pool)', $e->getMessage());
-    }
-
-    // --- IP: stage → release ---
+    // --- IP: stage → release (credits Approved Pool) ---
     $stockBeforeIp = (float) InventoryStockLevel::where('business_id', $BID)->where('store_id', $END_STORE)->where('item_id', $item->id)->value('quantity_suom');
     if ($stockBeforeIp < 1) {
         skip('IP stage→release', 'insufficient stock after OP ('.$stockBeforeIp.')');
@@ -286,10 +267,36 @@ try {
                 } else {
                     fail('IP release (bypass code) stock ↓', 'status='.$lineIp->status.' detail='.json_encode($release ?? null));
                 }
+
+                $pool = PatientApprovedPoolLine::where('business_id', $BID)->where('client_id', $client->id)->where('item_id', $item->id)->where('quantity_remaining', '>', 0)->first();
+                if ($pool) {
+                    ok('Approved Pool ↑ after IP release', 'remaining='.$pool->quantity_remaining);
+                } else {
+                    fail('Approved Pool ↑ after IP release');
+                }
             } catch (Throwable $e) {
                 fail('IP stage→release', $e->getMessage());
             }
         }
+    }
+
+    // --- Record usage from pool (after IP release) ---
+    try {
+        $events = app(InventoryRecordUsageService::class)->record([
+            'business_id' => $BID,
+            'context' => InventoryUsageEvent::CONTEXT_PATIENT,
+            'client_id' => $client->id,
+            'item_id' => $item->id,
+            'quantity' => 1,
+            'notes' => 'SMOKE patient usage',
+        ], $user);
+        if ($events->isNotEmpty()) {
+            ok('Record Usage (patient / pool)', 'events='.$events->count());
+        } else {
+            fail('Record Usage (patient / pool)', 'empty');
+        }
+    } catch (Throwable $e) {
+        fail('Record Usage (patient / pool)', $e->getMessage());
     }
 
     // --- Goods SDQ gate (assign a SP so access passes, then assert 422) ---

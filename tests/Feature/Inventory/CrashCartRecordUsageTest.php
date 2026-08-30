@@ -3,6 +3,7 @@
 namespace Tests\Feature\Inventory;
 
 use App\Models\Client;
+use App\Models\CrashCartEvent;
 use App\Models\CrashCartItem;
 use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
@@ -157,6 +158,109 @@ class CrashCartRecordUsageTest extends TestCase
             'store_id' => $cart->id,
             'quantity' => 1,
         ], $user);
+    }
+
+    public function test_restock_and_reseal_pulls_from_parent_and_reseals(): void
+    {
+        [$cart, $item, $client, $user] = $this->seedSealedCart();
+        $svc = app(InventoryCrashCartService::class);
+
+        $cart = $svc->breakSeal($cart, $user);
+
+        app(InventoryRecordUsageService::class)->record([
+            'business_id' => self::BUSINESS_ID,
+            'context' => InventoryUsageEvent::CONTEXT_CRASH_CART,
+            'client_id' => $client->id,
+            'item_id' => $item->id,
+            'store_id' => $cart->id,
+            'quantity' => 2,
+        ], $user);
+
+        $this->ensureParentStock($item->id, 10);
+
+        $parentBefore = (float) InventoryStockLevel::query()
+            ->where('store_id', self::END_STORE_ID)
+            ->where('item_id', $item->id)
+            ->value('quantity_suom');
+
+        $result = $svc->restockAndReseal($cart->fresh(), $user, 'SEAL-TEST-RESTOCK');
+
+        $this->assertTrue($result['store']->isCrashCartSealed());
+        $this->assertSame('SEAL-TEST-RESTOCK', $result['store']->crash_cart_seal_number);
+        $this->assertNull($result['store']->crash_cart_deployed_at);
+        $this->assertCount(1, $result['restocked']);
+        $this->assertEqualsWithDelta(2.0, $result['restocked'][0]['quantity'], 0.0001);
+
+        $cartOnHand = (float) InventoryStockLevel::query()
+            ->where('store_id', $cart->id)
+            ->where('item_id', $item->id)
+            ->value('quantity_suom');
+        $this->assertEqualsWithDelta(6.0, $cartOnHand, 0.0001);
+
+        $parentAfter = (float) InventoryStockLevel::query()
+            ->where('store_id', self::END_STORE_ID)
+            ->where('item_id', $item->id)
+            ->value('quantity_suom');
+        $this->assertEqualsWithDelta($parentBefore - 2, $parentAfter, 0.0001);
+
+        $history = CrashCartEvent::query()
+            ->where('store_id', $cart->id)
+            ->where('event_type', CrashCartEvent::TYPE_RESTOCK_RESEAL)
+            ->latest('id')
+            ->first();
+        $this->assertNotNull($history);
+        $this->assertSame('SEAL-TEST-RESTOCK', $history->seal_number);
+        $this->assertCount(1, $history->lines ?? []);
+    }
+
+    public function test_restock_blocked_when_parent_short_on_any_line(): void
+    {
+        [$cart, $item, $client, $user] = $this->seedOpenCart();
+        $svc = app(InventoryCrashCartService::class);
+
+        app(InventoryRecordUsageService::class)->record([
+            'business_id' => self::BUSINESS_ID,
+            'context' => InventoryUsageEvent::CONTEXT_CRASH_CART,
+            'client_id' => $client->id,
+            'item_id' => $item->id,
+            'store_id' => $cart->id,
+            'quantity' => 2,
+        ], $user);
+
+        $this->ensureParentStock($item->id, 0);
+
+        $this->expectException(ValidationException::class);
+
+        $svc->restockAndReseal($cart->fresh(), $user);
+    }
+
+    public function test_restock_rejected_while_sealed(): void
+    {
+        [$cart, , , $user] = $this->seedSealedCart();
+
+        $this->expectException(ValidationException::class);
+
+        app(InventoryCrashCartService::class)->restockAndReseal($cart, $user);
+    }
+
+    protected function ensureParentStock(int $itemId, float $quantity): void
+    {
+        $stock = InventoryStockLevel::query()->firstOrCreate(
+            [
+                'business_id' => self::BUSINESS_ID,
+                'store_id' => self::END_STORE_ID,
+                'item_id' => $itemId,
+            ],
+            ['quantity_suom' => 0, 'physical_quantity_suom' => 0]
+        );
+
+        if (method_exists($stock, 'applyOnHandBalance')) {
+            $stock->applyOnHandBalance($quantity);
+        } else {
+            $stock->quantity_suom = $quantity;
+            $stock->physical_quantity_suom = $quantity;
+        }
+        $stock->save();
     }
 
     /**

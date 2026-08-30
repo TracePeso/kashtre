@@ -100,13 +100,20 @@
                                     <option value="{{ $space->id }}"
                                             data-strategy="{{ $assignment?->fulfillment_strategy ?: '' }}"
                                             data-end-store="{{ $assignment?->store_id ?: '' }}"
-                                            data-supports-pool="{{ ($assignment?->supports_approved_pool ?? true) ? '1' : '0' }}"
+                                            data-supports-pool="{{ ($assignment && $assignment->fulfillment_strategy === 'BATCH_AND_STAGE') ? '1' : '0' }}"
                                             @selected($isDefaultSpace)>
                                         {{ $space->name }}{{ $routeLabel }}{{ $strategyLabel }}{{ $space->is_default ? ' ★' : '' }}
                                     </option>
                                 @endforeach
                             </select>
                             <script>
+                                function clientSpaceHasRoutedStrategy() {
+                                    const spaceSelect = document.getElementById('client-space-select');
+                                    if (!spaceSelect) return false;
+                                    const opt = spaceSelect.options[spaceSelect.selectedIndex];
+                                    return !!(opt && opt.value && opt.getAttribute('data-strategy'));
+                                }
+
                                 function syncFulfillmentFromClientSpace() {
                                     const spaceSelect = document.getElementById('client-space-select');
                                     const strategySelect = document.getElementById('fulfillment-strategy');
@@ -115,13 +122,16 @@
                                     const opt = spaceSelect.options[spaceSelect.selectedIndex];
                                     if (!opt || !opt.value) return;
 
-                                    let strategy = opt.getAttribute('data-strategy') || '';
-                                    const supportsPool = opt.getAttribute('data-supports-pool') !== '0';
-                                    if (!supportsPool) {
-                                        strategy = 'DISCRETE_IMMEDIATE';
-                                    }
-                                    if (strategySelect && strategy) {
-                                        strategySelect.value = strategy;
+                                    const strategy = opt.getAttribute('data-strategy') || '';
+                                    if (strategySelect) {
+                                        if (strategy) {
+                                            strategySelect.value = strategy;
+                                            strategySelect.disabled = true;
+                                            strategySelect.title = 'Strategy comes from Client Space routing and cannot be overridden here.';
+                                        } else {
+                                            strategySelect.disabled = false;
+                                            strategySelect.title = '';
+                                        }
                                     }
 
                                     const endStoreId = opt.getAttribute('data-end-store') || '';
@@ -129,6 +139,8 @@
                                         endStoreSelect.value = endStoreId;
                                     }
                                 }
+
+                                document.getElementById('client-space-select')?.addEventListener('change', syncFulfillmentFromClientSpace);
                                 document.addEventListener('DOMContentLoaded', syncFulfillmentFromClientSpace);
                             </script>
                         </div>
@@ -204,17 +216,29 @@
                                     </select>
                                 </div>
                             </div>
-                            <p class="mt-2 text-xs text-indigo-600">Paid goods route to this End Store. Strategy defaults from the End Store; change it here to override.</p>
+                            <p class="mt-2 text-xs text-indigo-600">When a Client Space has routing, strategy follows that mapping (Batch &amp; Stage or Outpatient). End Store can still be chosen for which pharmacy fulfills.</p>
                             <script>
                                 function syncFulfillmentStrategyFromEndStore() {
                                     const storeSelect = document.getElementById('end-store-id');
                                     const strategySelect = document.getElementById('fulfillment-strategy');
                                     if (!storeSelect || !strategySelect) return;
+                                    // Space routing owns strategy when mapped — do not overwrite from store default.
+                                    if (typeof clientSpaceHasRoutedStrategy === 'function' && clientSpaceHasRoutedStrategy()) {
+                                        if (typeof syncFulfillmentFromClientSpace === 'function') {
+                                            syncFulfillmentFromClientSpace();
+                                        }
+                                        return;
+                                    }
                                     const opt = storeSelect.options[storeSelect.selectedIndex];
                                     const strategy = opt?.getAttribute('data-strategy') || 'DISCRETE_IMMEDIATE';
+                                    strategySelect.disabled = false;
+                                    strategySelect.title = '';
                                     strategySelect.value = strategy;
                                 }
-                                document.addEventListener('DOMContentLoaded', syncFulfillmentStrategyFromEndStore);
+                                document.addEventListener('DOMContentLoaded', function () {
+                                    // Run after space sync so routed strategy wins over store default.
+                                    setTimeout(syncFulfillmentStrategyFromEndStore, 0);
+                                });
                             </script>
                         </div>
                         @endif

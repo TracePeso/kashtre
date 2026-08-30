@@ -125,6 +125,11 @@ class Store extends Model
         return $this->hasMany(CrashCartItem::class);
     }
 
+    public function crashCartEvents(): HasMany
+    {
+        return $this->hasMany(CrashCartEvent::class, 'store_id');
+    }
+
     public function isCrashCartSealed(): bool
     {
         return $this->isCrashCart() && $this->crash_cart_status === self::CRASH_CART_READY;
@@ -367,7 +372,9 @@ class Store extends Model
 
     public function supportsApprovedPool(): bool
     {
-        return (bool) ($this->supports_approved_pool ?? true);
+        return \App\Support\InventoryFulfillmentStrategy::supportsApprovedPool(
+            $this->defaultFulfillmentStrategy()
+        );
     }
 
     public function isInterimDistributionStore(): bool

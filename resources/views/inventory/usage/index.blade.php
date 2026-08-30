@@ -6,8 +6,14 @@
         <div class="mt-4 flex flex-wrap items-end justify-between gap-3">
             <div>
                 <h1 class="text-xl font-semibold text-gray-900 tracking-tight">Record usage</h1>
-                <p class="mt-1 text-sm text-gray-500">Log what was used. Pool, stock, and billing update automatically.</p>
+                <p class="mt-1 text-sm text-gray-500">Log patient, floor, or crash cart use. Pool, stock, and billing update automatically.</p>
             </div>
+            @if(\App\Support\InventoryBusinessContext::crashCartEnabled() && \App\Support\InventoryBusinessContext::floorStockEnabled())
+                <a href="{{ route('inventory.crash-carts.index') }}"
+                   class="text-sm font-medium text-red-700 hover:text-red-800">
+                    Crash carts →
+                </a>
+            @endif
         </div>
 
         <div class="mt-4 bg-white border border-gray-200 shadow-sm sm:rounded-lg p-6">

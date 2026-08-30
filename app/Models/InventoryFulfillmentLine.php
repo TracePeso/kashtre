@@ -172,11 +172,11 @@ class InventoryFulfillmentLine extends Model
     }
 
     /**
-     * When false, dispense completes Main Module / SDQ without creating Approved Pool balance.
+     * Approved Pool only for Batch & Stage lines.
      */
     public function supportsApprovedPool(): bool
     {
-        return (bool) ($this->supports_approved_pool ?? true);
+        return InventoryFulfillmentStrategy::supportsApprovedPool($this->fulfillment_strategy);
     }
 
     public function business(): BelongsTo

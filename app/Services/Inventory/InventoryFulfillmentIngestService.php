@@ -22,10 +22,11 @@ class InventoryFulfillmentIngestService
      * Stamp paid goods onto the mapped End Store fulfillment queue (SRD §4.1–4.2).
      *
      * Routing:
-     * 1. Active Client Space → End Store assignment (invoice / explicit space)
+     * 1. Active Client Space → End Store assignment (strategy always from this mapping)
      * 2. Else invoice.end_store_id + fulfillment_strategy / store defaults
      * 3. Else branch-preferred End Store
      *
+     * When a space assignment exists, invoice/POS fulfillment_strategy does not override it.
      * @param  array<int, array<string, mixed>>  $items
      * @return array{created: int, skipped: int, lines: list<InventoryFulfillmentLine>}
      */
@@ -51,11 +52,10 @@ class InventoryFulfillmentIngestService
         $store = $assignment?->store;
         $clientSpaceId = $assignment?->client_space_id;
         $strategy = null;
-        $supportsApprovedPool = true;
 
         if ($assignment) {
+            // Space routing is authoritative for strategy (and default End Store).
             $strategy = (string) $assignment->fulfillment_strategy;
-            $supportsApprovedPool = $assignment->supportsApprovedPool();
         } else {
             $store = $this->resolveEndStore($invoice);
             if (! $store) {
@@ -71,11 +71,20 @@ class InventoryFulfillmentIngestService
             }
 
             $strategy = $this->resolveStrategy($invoice, $store);
-            $supportsApprovedPool = $store->supportsApprovedPool();
             $clientSpaceId = $explicitClientSpaceId ?? $invoice->client_space_id;
+
+            // Without space routing, invoice strategy may still override store default.
+            $fromInvoiceStrategy = (string) ($invoice->fulfillment_strategy ?? '');
+            if (in_array($fromInvoiceStrategy, [
+                InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE,
+                InventoryFulfillmentStrategy::BATCH_AND_STAGE,
+            ], true)) {
+                $strategy = $fromInvoiceStrategy;
+            }
         }
 
-        // Invoice-level End Store / strategy override when set (alongside space routing).
+        // Invoice End Store may still redirect which pharmacy fulfills, but never overrides
+        // an active Client Space → strategy mapping.
         if (! empty($invoice->end_store_id)) {
             $override = Store::query()
                 ->where('id', $invoice->end_store_id)
@@ -83,26 +92,15 @@ class InventoryFulfillmentIngestService
                 ->first();
             if ($override && $override->isEndStore()) {
                 $store = $override;
-                $supportsApprovedPool = $override->supportsApprovedPool();
             }
-        }
-
-        $fromInvoiceStrategy = (string) ($invoice->fulfillment_strategy ?? '');
-        if (in_array($fromInvoiceStrategy, [
-            InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE,
-            InventoryFulfillmentStrategy::BATCH_AND_STAGE,
-        ], true)) {
-            $strategy = $fromInvoiceStrategy;
-        }
-
-        // No Approved Pool → always immediate outpatient dispense.
-        if (! $supportsApprovedPool) {
-            $strategy = InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE;
         }
 
         if (! $store || ! $strategy) {
             return compact('created', 'skipped', 'lines');
         }
+
+        // Approved Pool only for Batch & Stage; Outpatient dispenses immediately with no pool.
+        $supportsApprovedPool = InventoryFulfillmentStrategy::supportsApprovedPool($strategy);
 
         foreach ($payloadItems as $item) {
             $name = Str::lower(trim((string) ($item['displayName'] ?? $item['name'] ?? $item['item_name'] ?? '')));
