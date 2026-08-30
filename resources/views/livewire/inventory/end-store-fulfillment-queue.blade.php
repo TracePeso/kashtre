@@ -69,6 +69,13 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
+            @if($selectedStoreId)
+                <a href="{{ route('inventory.fulfillment.ward-pick', $selectedStoreId) }}"
+                   target="_blank"
+                   class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100">
+                    Ward pick route
+                </a>
+            @endif
             <div class="flex flex-wrap gap-2 text-xs text-gray-500">
                 <span class="rounded-full bg-gray-100 px-2.5 py-1">Open {{ $this->openCount() }}</span>
                 <span class="rounded-full bg-sky-50 text-sky-800 px-2.5 py-1">OP {{ $this->outpatientOpenCount() }}</span>

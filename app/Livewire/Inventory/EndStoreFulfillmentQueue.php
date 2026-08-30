@@ -420,6 +420,16 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     })
                     ->after(fn () => $this->resetTable()),
 
+                Action::make('pickRoute')
+                    ->label('Pick route')
+                    ->button()
+                    ->size('sm')
+                    ->icon('heroicon-o-map')
+                    ->color('gray')
+                    ->url(fn (InventoryFulfillmentLine $record): string => route('inventory.fulfillment.pick-route', $record))
+                    ->openUrlInNewTab()
+                    ->visible(fn (InventoryFulfillmentLine $record) => $record->isInpatient() && $record->isOpen()),
+
                 Action::make('releaseHandoff')
                     ->label(fn (InventoryFulfillmentLine $record): string => sprintf(
                         'Release all (%d)',
