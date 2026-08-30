@@ -417,14 +417,12 @@ class ListStores extends Component implements HasForms, HasTable
                 ->default(Store::DISTRIBUTION_SATELLITE),
             Forms\Components\Select::make('satellite_role')
                 ->label('Satellite role')
-                ->options(fn (Get $get): array => $this->satelliteRoleFormOptions(
-                    $this->resolvedBusinessId($get('business_id'))
-                ))
+                ->options(Store::satelliteRoleOptions())
                 ->default(Store::SATELLITE_ROLE_NORMAL)
                 ->required()
                 ->native(false)
                 ->live()
-                ->helperText('Crash carts are satellites under an End Store with a fixed manifest. Break seal → record usage.')
+                ->helperText(fn (Get $get): string => $this->satelliteRoleHelperText($get))
                 ->afterStateUpdated(function ($state, Set $set) {
                     $set('crash_cart_status', $state === Store::SATELLITE_ROLE_CRASH_CART
                         ? Store::CRASH_CART_READY
@@ -488,14 +486,11 @@ class ListStores extends Component implements HasForms, HasTable
                     ->default(Store::DISTRIBUTION_SATELLITE),
                 Forms\Components\Select::make('satellite_role')
                     ->label('Satellite role')
-                    ->options(fn (Get $get): array => $this->satelliteRoleFormOptions(
-                        $this->resolvedBusinessId($get('business_id') ?: $record->business_id),
-                        $record->satellite_role
-                    ))
+                    ->options(Store::satelliteRoleOptions())
                     ->required()
                     ->native(false)
                     ->live()
-                    ->helperText('Crash carts are satellites under an End Store with a fixed manifest. Break seal → record usage.')
+                    ->helperText(fn (Get $get): string => $this->satelliteRoleHelperText($get, $record))
                     ->afterStateUpdated(function ($state, Set $set) {
                         $set('crash_cart_status', $state === Store::SATELLITE_ROLE_CRASH_CART
                             ? Store::CRASH_CART_READY
@@ -808,21 +803,14 @@ class ListStores extends Component implements HasForms, HasTable
         return $config?->crashCartEnabled() ?? false;
     }
 
-    /**
-     * @return array<string, string>
-     */
-    protected function satelliteRoleFormOptions(?int $businessId, ?string $currentRole = null): array
+    protected function satelliteRoleHelperText(Get $get, ?Store $record = null): string
     {
-        $options = [
-            Store::SATELLITE_ROLE_NORMAL => 'Normal floor stock',
-        ];
-
-        if ($this->businessAllowsCrashCart($businessId)
-            || $currentRole === Store::SATELLITE_ROLE_CRASH_CART) {
-            $options[Store::SATELLITE_ROLE_CRASH_CART] = 'Crash cart';
+        if ($get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART
+            && ! $this->businessAllowsCrashCart($this->resolveFormBusinessId($get, $record))) {
+            return 'Enable crash cart management under Inventory settings → Capabilities before saving a crash cart.';
         }
 
-        return $options;
+        return 'Crash carts are satellites under an End Store with a fixed manifest. Break seal → record usage.';
     }
 
     /**
