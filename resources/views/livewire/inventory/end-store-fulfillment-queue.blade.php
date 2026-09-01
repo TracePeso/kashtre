@@ -20,7 +20,9 @@
     @endif
 
     @if($this->unacknowledgedStatCount() > 0)
-        <div class="rounded-lg border-2 border-red-500 bg-red-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3 animate-pulse"
+        {{-- #FFECEC --}}
+        <div class="rounded-lg border-2 border-red-500 px-4 py-3 flex flex-wrap items-center justify-between gap-3 animate-pulse"
+             style="background-color: #FFECEC;"
              x-data="{
                 play() {
                     try {
@@ -54,7 +56,7 @@
         </div>
     @endif
 
-    <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
             <label class="block text-xs font-medium uppercase tracking-wide text-gray-500">End Store</label>
             <select wire:model.live="selectedStoreId"
@@ -66,11 +68,20 @@
             </select>
         </div>
 
-        <div class="flex flex-wrap gap-2 text-xs text-gray-500">
-            <span class="rounded-full bg-gray-100 px-2.5 py-1">Open {{ $this->openCount() }}</span>
-            <span class="rounded-full bg-sky-50 text-sky-800 px-2.5 py-1">OP {{ $this->outpatientOpenCount() }}</span>
-            <span class="rounded-full bg-amber-50 text-amber-900 px-2.5 py-1">IP {{ $this->inpatientOpenCount() }}</span>
-            <span class="rounded-full bg-red-50 text-red-800 px-2.5 py-1">STAT {{ $this->statOpenCount() }}</span>
+        <div class="flex flex-wrap items-center gap-2">
+            @if($selectedStoreId)
+                <a href="{{ route('inventory.fulfillment.ward-pick', $selectedStoreId) }}"
+                   target="_blank"
+                   class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100">
+                    Ward pick route
+                </a>
+            @endif
+            <div class="flex flex-wrap gap-2 text-xs text-gray-500">
+                <span class="rounded-full bg-gray-100 px-2.5 py-1">Open {{ $this->openCount() }}</span>
+                <span class="rounded-full bg-sky-50 text-sky-800 px-2.5 py-1">OP {{ $this->outpatientOpenCount() }}</span>
+                <span class="rounded-full bg-amber-50 text-amber-900 px-2.5 py-1">IP {{ $this->inpatientOpenCount() }}</span>
+                <span class="rounded-full px-2.5 py-1 text-red-800" style="background-color: #FFECEC;">STAT {{ $this->statOpenCount() }}</span>
+            </div>
         </div>
     </div>
 
@@ -103,13 +114,18 @@
 
     <div class="end-store-console-table">
         <style>
+            /* distinct STAT background highlight must be #FFECEC */
             .end-store-console-table .fi-ta-row-stat-unacked,
             .end-store-console-table tr.fi-ta-row-stat-unacked {
-                background-color: rgb(254 242 242) !important;
+                background-color: #FFECEC !important;
+            }
+            .end-store-console-table .fi-ta-row-stat-unacked > td,
+            .end-store-console-table tr.fi-ta-row-stat-unacked > td {
+                background-color: #FFECEC !important;
             }
             .end-store-console-table .fi-ta-row-stat-unacked > td:first-child,
             .end-store-console-table tr.fi-ta-row-stat-unacked > td:first-child {
-                box-shadow: inset 3px 0 0 rgb(220 38 38);
+                box-shadow: inset 3px 0 0 #DC2626;
             }
         </style>
         {{ $this->table }}

@@ -5,6 +5,7 @@ namespace App\Livewire\Stores;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\InventoryModuleConfig;
+use App\Models\Item;
 use App\Models\Store;
 use App\Services\Inventory\InventoryCrashCartService;
 use App\Support\InventoryBusinessContext;
@@ -159,108 +160,43 @@ class ListStores extends Component implements HasForms, HasTable
                         default => 'Edit Distribution Store',
                     })
                     ->form(fn (Store $record) => $this->storeForm($record))
-                    ->successNotificationTitle('Store updated successfully.'),
-                Action::make('deployCrashCart')
-                    ->label('Deploy')
-                    ->color('danger')
-                    ->icon('heroicon-o-truck')
-                    ->requiresConfirmation()
-                    ->modalHeading('Deploy crash cart')
-                    ->modalDescription('Locks inbound stock until reconciliation. Record usage after deploy or while reconciling.')
-                    ->visible(fn (Store $record): bool => $this->canManageCrashCartStatus($record)
-                        && $record->isCrashCart()
-                        && $record->crash_cart_status === Store::CRASH_CART_READY)
-                    ->action(function (Store $record) {
-                        try {
-                            app(InventoryCrashCartService::class)->deploy($record, Auth::user());
-                            Notification::make()->title('Crash cart deployed')->success()->send();
-                        } catch (ValidationException $e) {
-                            Notification::make()
-                                ->title('Cannot deploy')
-                                ->body(collect($e->errors())->flatten()->first())
-                                ->danger()
-                                ->send();
+                    ->mutateRecordDataUsing(function (array $data, Store $record): array {
+                        if ($record->isCrashCart()) {
+                            $data['crash_cart_items'] = $record->crashCartItems()
+                                ->get(['item_id', 'par_quantity'])
+                                ->map(fn ($line) => [
+                                    'item_id' => $line->item_id,
+                                    'par_quantity' => $line->par_quantity,
+                                ])
+                                ->all();
                         }
-                    }),
-                Action::make('reconcileCrashCart')
-                    ->label('Start reconcile')
-                    ->color('warning')
-                    ->icon('heroicon-o-clipboard-document-check')
-                    ->requiresConfirmation()
-                    ->modalHeading('Start reconciliation')
-                    ->modalDescription('Record used items via Record Usage (Crash cart), then restock and Mark Ready.')
-                    ->visible(fn (Store $record): bool => $this->canManageCrashCartStatus($record)
-                        && $record->isCrashCart()
-                        && $record->crash_cart_status === Store::CRASH_CART_DEPLOYED)
-                    ->action(function (Store $record) {
-                        try {
-                            app(InventoryCrashCartService::class)->startReconcile($record, Auth::user());
-                            Notification::make()->title('Crash cart reconciling')->success()->send();
-                        } catch (ValidationException $e) {
-                            Notification::make()
-                                ->title('Cannot start reconcile')
-                                ->body(collect($e->errors())->flatten()->first())
-                                ->danger()
-                                ->send();
+
+                        return $data;
+                    })
+                    ->using(function (Store $record, array $data): Store {
+                        $manifest = $data['crash_cart_items'] ?? null;
+                        unset($data['crash_cart_items']);
+
+                        if ($record->isEndStore() || ($data['distribution_type'] ?? null) === Store::DISTRIBUTION_END) {
+                            $strategy = $data['default_fulfillment_strategy']
+                                ?? $record->default_fulfillment_strategy
+                                ?? \App\Support\InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE;
+                            $data['supports_approved_pool'] = \App\Support\InventoryFulfillmentStrategy::supportsApprovedPool($strategy);
                         }
-                    }),
-                Action::make('readyCrashCart')
-                    ->label('Mark Ready')
-                    ->color('success')
-                    ->icon('heroicon-o-check-badge')
-                    ->modalHeading('Mark crash cart Ready')
-                    ->modalDescription('Enter the new seal number. Used items since deploy become an internal replenishment draft from the parent End Store.')
-                    ->form(fn (Store $record): array => [
-                        Forms\Components\TextInput::make('seal_number')
-                            ->label('New seal number')
-                            ->required()
-                            ->maxLength(64)
-                            ->placeholder('e.g. SEAL-1042'),
-                        Forms\Components\Textarea::make('notes')
-                            ->label('Notes')
-                            ->rows(2)
-                            ->maxLength(500),
-                        Forms\Components\Placeholder::make('current_seal')
-                            ->label('Previous seal')
-                            ->content($record->crash_cart_seal_number
-                                ? $record->crash_cart_seal_number.($record->crash_cart_sealed_at
-                                    ? ' ('.$record->crash_cart_sealed_at->format('d M Y H:i').')'
-                                    : '')
-                                : 'None'),
-                    ])
-                    ->visible(fn (Store $record): bool => $this->canManageCrashCartStatus($record)
-                        && $record->isCrashCart()
-                        && $record->crash_cart_status === Store::CRASH_CART_RECONCILING)
-                    ->action(function (Store $record, array $data) {
-                        try {
-                            $result = app(InventoryCrashCartService::class)->markReady(
-                                $record,
-                                Auth::user(),
-                                (string) ($data['seal_number'] ?? ''),
-                                isset($data['notes']) ? trim((string) $data['notes']) : null
+
+                        $record->update($data);
+
+                        if ($record->isCrashCart() && is_array($manifest)) {
+                            app(InventoryCrashCartService::class)->syncManifest(
+                                $record->fresh(),
+                                $manifest,
+                                Auth::user()
                             );
-
-                            $order = $result['order'] ?? null;
-                            $body = $order
-                                ? 'Seal saved. Replenishment draft '.$order->order_number.' created — open Orders to submit/approve.'
-                                : 'Seal saved. No crash-cart usage since deploy, so no replenishment ticket was created.';
-
-                            Notification::make()
-                                ->title('Crash cart Ready')
-                                ->body($body)
-                                ->success()
-                                ->persistent()
-                                ->send();
-                        } catch (ValidationException $e) {
-                            Notification::make()
-                                ->title('Cannot mark ready')
-                                ->body(collect($e->errors())->flatten()->first())
-                                ->danger()
-                                ->send();
-
-                            throw $e;
                         }
-                    }),
+
+                        return $record->fresh();
+                    })
+                    ->successNotificationTitle('Store updated successfully.'),
                 DeleteAction::make()
                     ->visible(fn () => in_array('Delete Stores', Auth::user()->permissions ?? []))
                     ->before(function (Store $record) {
@@ -302,9 +238,14 @@ class ListStores extends Component implements HasForms, HasTable
                     ->modalHeading('Add End Store')
                     ->modalDescription('Dispensary / POS gate. Must sit under a Distribution Store. Only End Stores sell or dispense to clients.')
                     ->form($this->endStoreForm())
-                    ->mutateFormDataUsing(fn (array $data) => array_merge($data, [
-                        'distribution_type' => Store::DISTRIBUTION_END,
-                    ]))
+                    ->mutateFormDataUsing(function (array $data): array {
+                        $data['distribution_type'] = Store::DISTRIBUTION_END;
+                        $strategy = $data['default_fulfillment_strategy']
+                            ?? \App\Support\InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE;
+                        $data['supports_approved_pool'] = \App\Support\InventoryFulfillmentStrategy::supportsApprovedPool($strategy);
+
+                        return $data;
+                    })
                     ->createAnother(false)
                     ->after(fn () => $this->notifyCreated()),
                 CreateAction::make('createSatelliteStore')
@@ -317,6 +258,26 @@ class ListStores extends Component implements HasForms, HasTable
                     ->mutateFormDataUsing(fn (array $data) => array_merge($data, [
                         'distribution_type' => Store::DISTRIBUTION_SATELLITE,
                     ]))
+                    ->using(function (array $data): Store {
+                        $manifest = $data['crash_cart_items'] ?? [];
+                        unset($data['crash_cart_items']);
+
+                        if (($data['satellite_role'] ?? null) === Store::SATELLITE_ROLE_CRASH_CART) {
+                            $data['crash_cart_sealed_at'] = now();
+                        }
+
+                        $store = Store::create($data);
+
+                        if ($store->isCrashCart()) {
+                            app(InventoryCrashCartService::class)->syncManifest(
+                                $store,
+                                is_array($manifest) ? $manifest : [],
+                                Auth::user()
+                            );
+                        }
+
+                        return $store;
+                    })
                     ->createAnother(false)
                     ->after(fn () => $this->notifyCreated()),
             ]);
@@ -389,6 +350,27 @@ class ListStores extends Component implements HasForms, HasTable
                 ->maxLength(255),
             Forms\Components\Hidden::make('distribution_type')
                 ->default(Store::DISTRIBUTION_END),
+            Forms\Components\Select::make('default_fulfillment_strategy')
+                ->label('Default fulfillment strategy')
+                ->options(\App\Support\InventoryFulfillmentStrategy::options())
+                ->default(\App\Support\InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE)
+                ->required()
+                ->native(false)
+                ->helperText('Outpatient = immediate dispense (no Approved Pool). Inpatient (batch & stage) credits Approved Pool after release. Used when POS/invoice does not override.'),
+            Forms\Components\TextInput::make('reorder_level_days')
+                ->label('Reorder level (days)')
+                ->numeric()
+                ->minValue(0)
+                ->step(0.01)
+                ->default(5)
+                ->helperText('Draft replenishment when current stock days fall below this.'),
+            Forms\Components\TextInput::make('max_stock_days')
+                ->label('Maximum stock level (days)')
+                ->numeric()
+                ->minValue(0)
+                ->step(0.01)
+                ->default(30)
+                ->helperText('Target coverage days for internal replenishment.'),
             Forms\Components\Placeholder::make('type_note')
                 ->label('Store type')
                 ->content('End store — only this type can sell / dispense to clients.'),
@@ -421,6 +403,7 @@ class ListStores extends Component implements HasForms, HasTable
                 ))
                 ->required()
                 ->searchable()
+                ->live()
                 ->disabled(fn (Get $get) => ! $this->resolvedBusinessId($get('business_id')))
                 ->helperText(fn (Get $get) => $this->resolvedBusinessId($get('business_id'))
                     ? 'Create an End Store first if the list is empty. Satellite inherits its branch.'
@@ -434,14 +417,12 @@ class ListStores extends Component implements HasForms, HasTable
                 ->default(Store::DISTRIBUTION_SATELLITE),
             Forms\Components\Select::make('satellite_role')
                 ->label('Satellite role')
-                ->options(fn (Get $get): array => $this->satelliteRoleFormOptions(
-                    $this->resolvedBusinessId($get('business_id'))
-                ))
+                ->options(Store::satelliteRoleOptions())
                 ->default(Store::SATELLITE_ROLE_NORMAL)
                 ->required()
                 ->native(false)
                 ->live()
-                ->helperText('Crash carts are satellites under an End Store with Ready → Deploy → Reconcile → Seal.')
+                ->helperText(fn (Get $get): string => $this->satelliteRoleHelperText($get))
                 ->afterStateUpdated(function ($state, Set $set) {
                     $set('crash_cart_status', $state === Store::SATELLITE_ROLE_CRASH_CART
                         ? Store::CRASH_CART_READY
@@ -450,11 +431,24 @@ class ListStores extends Component implements HasForms, HasTable
                 }),
             Forms\Components\Hidden::make('is_crash_cart')->default(false),
             Forms\Components\Hidden::make('crash_cart_status'),
+            ...$this->crashCartManifestFields(),
             Forms\Components\Placeholder::make('type_note')
                 ->label('Store type')
                 ->content(fn (Get $get): string => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART
-                    ? 'Crash cart — sealed emergency stock under an End Store. Not for client sales.'
+                    ? 'Crash cart — fixed manifest under an End Store. Break seal to use items.'
                     : 'Satellite store — floor stock under an End Store. Not for client sales.'),
+            Forms\Components\TextInput::make('reorder_level_days')
+                ->label('Reorder level (days)')
+                ->numeric()
+                ->minValue(0)
+                ->step(0.01)
+                ->default(5),
+            Forms\Components\TextInput::make('max_stock_days')
+                ->label('Maximum stock level (days)')
+                ->numeric()
+                ->minValue(0)
+                ->step(0.01)
+                ->default(30),
             Forms\Components\Textarea::make('description')
                 ->label('Description')
                 ->nullable()
@@ -492,14 +486,11 @@ class ListStores extends Component implements HasForms, HasTable
                     ->default(Store::DISTRIBUTION_SATELLITE),
                 Forms\Components\Select::make('satellite_role')
                     ->label('Satellite role')
-                    ->options(fn (Get $get) use ($record): array => $this->satelliteRoleFormOptions(
-                        $this->resolvedBusinessId($get('business_id') ?: $record->business_id),
-                        $record->satellite_role
-                    ))
+                    ->options(Store::satelliteRoleOptions())
                     ->required()
                     ->native(false)
                     ->live()
-                    ->helperText('Crash carts are satellites under an End Store with Ready → Deploy → Reconcile → Seal.')
+                    ->helperText(fn (Get $get): string => $this->satelliteRoleHelperText($get, $record))
                     ->afterStateUpdated(function ($state, Set $set) {
                         $set('crash_cart_status', $state === Store::SATELLITE_ROLE_CRASH_CART
                             ? Store::CRASH_CART_READY
@@ -508,6 +499,7 @@ class ListStores extends Component implements HasForms, HasTable
                     }),
                 Forms\Components\Hidden::make('is_crash_cart'),
                 Forms\Components\Hidden::make('crash_cart_status'),
+                ...$this->crashCartManifestFields(forEdit: true, record: $record),
                 Forms\Components\Placeholder::make('type_note')
                     ->label('Store type')
                     ->content(fn (Get $get): string => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART
@@ -524,18 +516,18 @@ class ListStores extends Component implements HasForms, HasTable
                             ? ' · sealed '.$record->crash_cart_sealed_at->format('d M Y H:i')
                             : '')
                         : 'Not sealed yet')
-                    ->visible(fn (Get $get): bool => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART),
-                Forms\Components\Placeholder::make('crash_order_note')
-                    ->label('Last replenishment')
-                    ->content(function () use ($record) {
-                        $order = $record->lastCrashCartReplenishmentOrder;
-                        if (! $order) {
-                            return 'None';
-                        }
-
-                        return $order->order_number.' ('.$order->status.')';
-                    })
-                    ->visible(fn (Get $get): bool => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART),
+                    ->visible(fn (Get $get): bool => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART
+                        && $record->isCrashCartSealed()),
+                Forms\Components\TextInput::make('reorder_level_days')
+                    ->label('Reorder level (days)')
+                    ->numeric()
+                    ->minValue(0)
+                    ->step(0.01),
+                Forms\Components\TextInput::make('max_stock_days')
+                    ->label('Maximum stock level (days)')
+                    ->numeric()
+                    ->minValue(0)
+                    ->step(0.01),
                 Forms\Components\Textarea::make('description')
                     ->label('Description')
                     ->nullable(),
@@ -566,6 +558,26 @@ class ListStores extends Component implements HasForms, HasTable
                     ->required(),
                 Forms\Components\Hidden::make('distribution_type')
                     ->default(Store::DISTRIBUTION_END),
+                Forms\Components\Select::make('default_fulfillment_strategy')
+                    ->label('Default fulfillment strategy')
+                    ->options(\App\Support\InventoryFulfillmentStrategy::options())
+                    ->default(fn () => $record->default_fulfillment_strategy
+                        ?: \App\Support\InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE)
+                    ->required()
+                    ->native(false)
+                    ->helperText('Outpatient = immediate dispense (no Approved Pool). Inpatient (batch & stage) credits Approved Pool after release. Used when POS/invoice does not override.'),
+                Forms\Components\TextInput::make('reorder_level_days')
+                    ->label('Reorder level (days)')
+                    ->numeric()
+                    ->minValue(0)
+                    ->step(0.01)
+                    ->helperText('Draft replenishment when current stock days fall below this.'),
+                Forms\Components\TextInput::make('max_stock_days')
+                    ->label('Maximum stock level (days)')
+                    ->numeric()
+                    ->minValue(0)
+                    ->step(0.01)
+                    ->helperText('Target coverage days for internal replenishment.'),
                 Forms\Components\Placeholder::make('type_note')
                     ->label('Store type')
                     ->content(
@@ -601,6 +613,16 @@ class ListStores extends Component implements HasForms, HasTable
                 ->required(),
             Forms\Components\Hidden::make('distribution_type')
                 ->default(Store::DISTRIBUTION_INTERIM),
+            Forms\Components\TextInput::make('reorder_level_days')
+                ->label('Reorder level (days)')
+                ->numeric()
+                ->minValue(0)
+                ->step(0.01),
+            Forms\Components\TextInput::make('max_stock_days')
+                ->label('Maximum stock level (days)')
+                ->numeric()
+                ->minValue(0)
+                ->step(0.01),
             Forms\Components\Placeholder::make('type_note')
                 ->label('Store type')
                 ->content('Distribution store — warehouse / hub.'),
@@ -670,6 +692,95 @@ class ListStores extends Component implements HasForms, HasTable
             ->all();
     }
 
+    protected function resolveFormBusinessId(Get $get, ?Store $record = null): ?int
+    {
+        $candidates = [
+            $get('business_id'),
+            $get('../../business_id'),
+            $record?->business_id,
+        ];
+
+        $parentId = $get('parent_id') ?: $get('../../parent_id');
+        if ($parentId) {
+            $candidates[] = Store::query()->whereKey($parentId)->value('business_id');
+        }
+
+        foreach ($candidates as $candidate) {
+            $resolved = $this->resolvedBusinessId($candidate ? (int) $candidate : null);
+            if ($resolved) {
+                return $resolved;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int, \Filament\Forms\Components\Component>
+     */
+    protected function crashCartManifestFields(bool $forEdit = false, ?Store $record = null): array
+    {
+        return [
+            Forms\Components\TextInput::make('crash_cart_seal_number')
+                ->label('Seal number')
+                ->maxLength(100)
+                ->required(fn (Get $get): bool => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART
+                    && ! ($forEdit && $record?->isCrashCartOpen()))
+                ->disabled(fn (): bool => $forEdit && ($record?->isCrashCartOpen() ?? false))
+                ->dehydrated(fn (): bool => ! ($forEdit && ($record?->isCrashCartOpen() ?? false)))
+                ->visible(fn (Get $get): bool => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART),
+            Forms\Components\Repeater::make('crash_cart_items')
+                ->label('Fixed cart contents')
+                ->schema([
+                    Forms\Components\Select::make('item_id')
+                        ->label('Item')
+                        ->options(fn (Get $get) => $this->goodItemOptions(
+                            $this->resolveFormBusinessId($get, $record)
+                        ))
+                        ->required()
+                        ->searchable()
+                        ->preload()
+                        ->disableOptionsWhenSelectedInSiblingRepeaterItems(),
+                    Forms\Components\TextInput::make('par_quantity')
+                        ->label('Quantity')
+                        ->numeric()
+                        ->minValue(0.0001)
+                        ->step(0.0001)
+                        ->required(),
+                ])
+                ->minItems(1)
+                ->defaultItems(1)
+                ->addActionLabel('Add item')
+                ->columns(2)
+                ->disabled(fn (): bool => $forEdit && ($record?->isCrashCartOpen() ?? false))
+                ->dehydrated(fn (): bool => ! ($forEdit && ($record?->isCrashCartOpen() ?? false)))
+                ->visible(fn (Get $get): bool => $get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART)
+                ->helperText(fn (Get $get): string => $this->resolveFormBusinessId($get, $record)
+                    ? 'Every crash cart must have a complete, known item list. Stock is set to these quantities while sealed.'
+                    : 'Select a business and End store first to load items.'),
+        ];
+    }
+
+    /**
+     * @return array<int|string, string>
+     */
+    protected function goodItemOptions(?int $businessId): array
+    {
+        if (! $businessId) {
+            return [];
+        }
+
+        return Item::query()
+            ->where('business_id', $businessId)
+            ->where('type', 'good')
+            ->orderBy('name')
+            ->get(['id', 'name', 'strength'])
+            ->mapWithKeys(fn (Item $item) => [
+                $item->id => trim($item->name.($item->strength ? ' '.$item->strength : '')),
+            ])
+            ->all();
+    }
+
     protected function resolvedBusinessId(?int $businessId): ?int
     {
         if (Auth::user()->business_id !== 1) {
@@ -692,34 +803,14 @@ class ListStores extends Component implements HasForms, HasTable
         return $config?->crashCartEnabled() ?? false;
     }
 
-    /**
-     * @return array<string, string>
-     */
-    protected function satelliteRoleFormOptions(?int $businessId, ?string $currentRole = null): array
+    protected function satelliteRoleHelperText(Get $get, ?Store $record = null): string
     {
-        $options = [
-            Store::SATELLITE_ROLE_NORMAL => 'Normal floor stock',
-        ];
-
-        if ($this->businessAllowsCrashCart($businessId)
-            || $currentRole === Store::SATELLITE_ROLE_CRASH_CART) {
-            $options[Store::SATELLITE_ROLE_CRASH_CART] = 'Crash cart';
+        if ($get('satellite_role') === Store::SATELLITE_ROLE_CRASH_CART
+            && ! $this->businessAllowsCrashCart($this->resolveFormBusinessId($get, $record))) {
+            return 'Enable crash cart management under Inventory settings → Capabilities before saving a crash cart.';
         }
 
-        return $options;
-    }
-
-    protected function canManageCrashCartStatus(Store $record): bool
-    {
-        if (! $this->businessAllowsCrashCart((int) $record->business_id)) {
-            return false;
-        }
-
-        $permissions = Auth::user()->permissions ?? [];
-
-        return in_array('Edit Stores', $permissions, true)
-            || in_array('Add Stores', $permissions, true)
-            || in_array('Record Inventory Usage', $permissions, true);
+        return 'Crash carts are satellites under an End Store with a fixed manifest. Break seal → record usage.';
     }
 
     /**

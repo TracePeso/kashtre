@@ -21,9 +21,10 @@ class InventoryFulfillmentDispenseService
     ) {}
 
     /**
-     * End Store dispense complete (SRD §4 / §8.1):
+     * End Store dispense complete:
      * stock ↓ at stamped End Store, Main Module goods → Completed.
-     * Approved Pool ↑ only when the line's Client Space routing supports it.
+     * Approved Pool ↑ only for Batch & Stage lines (strategy-derived).
+     * Outpatient (discrete / immediate) completes the ticket with no pool balance.
      *
      * @param  array{batch_lot?: string|null, serials?: list<string>|null}|null  $traceability
      */
@@ -58,15 +59,6 @@ class InventoryFulfillmentDispenseService
             ]);
         }
 
-        if ($config?->enable_serial_number_tracking) {
-            $serials = array_values(array_filter(array_map('strval', $traceability['serials'] ?? [])));
-            if ($serials === []) {
-                throw ValidationException::withMessages([
-                    'serials' => 'At least one serial number is required for this organisation.',
-                ]);
-            }
-        }
-
         $already = (float) $line->quantity_fulfilled;
         $remaining = max(0, (float) $line->quantity - $already);
         // Default to remaining open qty (not original qty) so re-opens / partials work.
@@ -82,6 +74,22 @@ class InventoryFulfillmentDispenseService
             throw ValidationException::withMessages([
                 'quantity' => 'Cannot dispense more than the remaining quantity ('.$remaining.').',
             ]);
+        }
+
+        if ($config?->enable_serial_number_tracking) {
+            $serials = array_values(array_filter(array_map('strval', $traceability['serials'] ?? [])));
+            $expected = (int) round($dispenseQty);
+            // Whole-unit serial items: one unique serial per unit dispensed.
+            if ($expected >= 1 && count($serials) !== $expected) {
+                throw ValidationException::withMessages([
+                    'serials' => 'Enter exactly '.$expected.' serial number(s) (one per unit dispensed).',
+                ]);
+            }
+            if (count($serials) !== count(array_unique($serials))) {
+                throw ValidationException::withMessages([
+                    'serials' => 'Serial numbers must be unique for this dispense.',
+                ]);
+            }
         }
 
         $businessId = (int) $line->business_id;
@@ -197,9 +205,8 @@ class InventoryFulfillmentDispenseService
 
             if ($line->status === InventoryFulfillmentLine::STATUS_COMPLETED) {
                 $queue->markAsCompleted((int) $user->id);
-            } elseif ($line->status === InventoryFulfillmentLine::STATUS_PARTIAL) {
-                $queue->markAsPartiallyDone((int) $user->id);
             }
+            // goods stay Pending until fully Completed — never partially_done.
         }
     }
 }

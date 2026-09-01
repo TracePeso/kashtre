@@ -2,7 +2,6 @@
 
 namespace App\Livewire\Inventory;
 
-use App\Models\ClientSpaceStoreAssignment;
 use App\Models\InventoryFulfillmentLine;
 use App\Models\InventoryModuleConfig;
 use App\Models\Store;
@@ -11,7 +10,7 @@ use App\Services\Inventory\InventoryFulfillmentStageService;
 use App\Services\Inventory\InventoryHandoffTokenService;
 use App\Services\ClinicalModuleIntegrationService;
 use App\Support\InventoryBusinessContext;
-use Filament\Forms\Components\CheckboxList;
+use App\Support\InventoryFulfillmentStrategy;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -20,11 +19,14 @@ use Filament\Notifications\Notification;
 use Filament\Tables;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Actions\ActionGroup;
+use Filament\Tables\Actions\BulkAction;
+use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use Livewire\Component;
@@ -86,7 +88,7 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
     public function outpatientOpenCount(): int
     {
         return $this->baseCountQuery()
-            ->where('fulfillment_strategy', ClientSpaceStoreAssignment::STRATEGY_DISCRETE_IMMEDIATE)
+            ->where('fulfillment_strategy', InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE)
             ->whereIn('status', $this->openStatuses())
             ->count();
     }
@@ -94,7 +96,7 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
     public function inpatientOpenCount(): int
     {
         return $this->baseCountQuery()
-            ->where('fulfillment_strategy', ClientSpaceStoreAssignment::STRATEGY_BATCH_AND_STAGE)
+            ->where('fulfillment_strategy', InventoryFulfillmentStrategy::BATCH_AND_STAGE)
             ->whereIn('status', $this->openStatuses())
             ->count();
     }
@@ -124,7 +126,6 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
             ->with([
                 'client:id,name',
                 'item:id,strength,code',
-                'clientSpace:id,name',
                 'invoice:id,invoice_number',
                 'store:id,name',
             ])
@@ -197,19 +198,15 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->placeholder('—')
                     ->searchable()
                     ->wrap(),
-                Tables\Columns\TextColumn::make('clientSpace.name')
-                    ->label('Space')
-                    ->placeholder('—')
-                    ->toggleable(),
                 Tables\Columns\TextColumn::make('fulfillment_strategy')
                     ->label('Path')
                     ->formatStateUsing(fn (?string $state, InventoryFulfillmentLine $record): string => match ($record->fulfillment_strategy) {
-                        ClientSpaceStoreAssignment::STRATEGY_BATCH_AND_STAGE => 'Inpatient',
-                        ClientSpaceStoreAssignment::STRATEGY_DISCRETE_IMMEDIATE => 'Outpatient',
+                        InventoryFulfillmentStrategy::BATCH_AND_STAGE => 'Inpatient',
+                        InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE => 'Outpatient',
                         default => $record->strategyLabel(),
                     })
                     ->badge()
-                    ->color(fn (InventoryFulfillmentLine $record): string => $record->fulfillment_strategy === ClientSpaceStoreAssignment::STRATEGY_BATCH_AND_STAGE
+                    ->color(fn (InventoryFulfillmentLine $record): string => $record->fulfillment_strategy === InventoryFulfillmentStrategy::BATCH_AND_STAGE
                         ? 'warning'
                         : 'info')
                     ->toggleable(isToggledHiddenByDefault: in_array($this->consoleTab, ['outpatient', 'inpatient'], true)),
@@ -230,8 +227,8 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                 Tables\Filters\SelectFilter::make('fulfillment_strategy')
                     ->label('Path')
                     ->options([
-                        ClientSpaceStoreAssignment::STRATEGY_DISCRETE_IMMEDIATE => 'Outpatient',
-                        ClientSpaceStoreAssignment::STRATEGY_BATCH_AND_STAGE => 'Inpatient',
+                        InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE => 'Outpatient',
+                        InventoryFulfillmentStrategy::BATCH_AND_STAGE => 'Inpatient',
                     ])
                     ->visible(fn (): bool => $this->consoleTab === 'all' || $this->consoleTab === 'stat'),
                 Tables\Filters\TernaryFilter::make('acknowledged_at')
@@ -301,7 +298,7 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->modalDescription(fn (InventoryFulfillmentLine $record): string => sprintf(
                         $record->supportsApprovedPool()
                             ? 'Dispense %s × %s from %s? Stock will leave this End Store, the Approved Pool will be updated, and the Main Module ticket will close.'
-                            : 'Dispense %s × %s from %s? Stock will leave this End Store and the Main Module ticket will be marked complete (this Client Space does not use Approved Pool).',
+                            : 'Dispense %s × %s from %s? Stock will leave this End Store and the Main Module ticket will be marked complete (Approved Pool disabled for this End Store).',
                         rtrim(rtrim(number_format((float) $record->quantity - (float) $record->quantity_fulfilled, 2), '0'), '.'),
                         $record->item_name,
                         $record->store?->name ?? 'this End Store'
@@ -323,7 +320,7 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                                 ->title('Dispense completed')
                                 ->body($updated->supportsApprovedPool()
                                     ? 'Status is now '.$updated->statusLabel().'. Stock deducted and Approved Pool updated.'
-                                    : 'Status is now '.$updated->statusLabel().'. Stock deducted and ticket completed (no Approved Pool for this Client Space).')
+                                    : 'Status is now '.$updated->statusLabel().'. Stock deducted and ticket completed (no Approved Pool for this End Store).')
                                 ->success()
                                 ->send();
                         } catch (ValidationException $e) {
@@ -346,7 +343,10 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->after(fn () => $this->resetTable()),
 
                 Action::make('stageBasket')
-                    ->label('Stage')
+                    ->label(fn (InventoryFulfillmentLine $record): string => sprintf(
+                        'Stage all (%d)',
+                        max(1, $this->basketStageableCount($record))
+                    ))
                     ->button()
                     ->size('sm')
                     ->icon('heroicon-o-archive-box')
@@ -354,17 +354,18 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->form([
                         TextInput::make('tote_barcode')
                             ->label('Tote barcode')
-                            ->placeholder('e.g. TOTE-CHW-001 or scan label on tote')
+                            ->placeholder('Scan or type the tote label')
                             ->required()
                             ->maxLength(100)
-                            ->helperText('The barcode or ID on the physical tote or bin you put the picked items into — not the medicine batch number.'),
+                            ->helperText('One tote for the whole basket.'),
                     ])
-                    ->modalHeading('Stage for collection')
+                    ->modalHeading('Stage whole basket')
                     ->modalDescription(fn (InventoryFulfillmentLine $record): string => sprintf(
-                        'Confirm %s’s picked inpatient items are bagged in a labelled tote ready for the ward. Clinical will alert the ward; the nurse receives a 5-digit code for release. Stock stays at this End Store until release.',
+                        'Stage all %d open item(s) for %s into one tote. Stock stays here until release.',
+                        max(1, $this->basketStageableCount($record)),
                         $record->client?->name ?? 'this client'
                     ))
-                    ->modalSubmitActionLabel('Stage')
+                    ->modalSubmitActionLabel('Stage all')
                     ->visible(fn (InventoryFulfillmentLine $record) => $record->isInpatient()
                         && $record->isStageable())
                     ->action(function (InventoryFulfillmentLine $record, array $data) {
@@ -388,9 +389,15 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                             $this->lastHandoffBasket = $record->client?->name
                                 ?? ('Basket '.$record->basket_key);
 
+                            $count = $result['lines']->count();
+                            $clinical = app(ClinicalModuleIntegrationService::class);
+                            $body = $clinical->handoffBypassEnabled()
+                                ? "Staged {$count} item(s). Release with code {$clinical->handoffBypassCode()} (test bypass) when ready."
+                                : "Staged {$count} item(s). Release when the nurse gives their 5-digit code.";
+
                             Notification::make()
-                                ->title('Staged — ward notified')
-                                ->body('Clinical Module was alerted for collection. Ask the nurse for their 5-digit code, then Release. Ref: '.$result['token']->uuid)
+                                ->title('Basket staged')
+                                ->body($body)
                                 ->success()
                                 ->persistent()
                                 ->send();
@@ -423,23 +430,11 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->openUrlInNewTab()
                     ->visible(fn (InventoryFulfillmentLine $record) => $record->isInpatient() && $record->isOpen()),
 
-                Action::make('wardPickRoute')
-                    ->label('Ward pick')
-                    ->button()
-                    ->size('sm')
-                    ->icon('heroicon-o-building-office-2')
-                    ->color('gray')
-                    ->url(fn (InventoryFulfillmentLine $record): string => route('inventory.fulfillment.ward-pick-route', [
-                        'store' => $record->store_id,
-                        'client_space' => $record->client_space_id,
-                    ]))
-                    ->openUrlInNewTab()
-                    ->visible(fn (InventoryFulfillmentLine $record) => $record->isInpatient()
-                        && $record->isOpen()
-                        && $record->client_space_id),
-
                 Action::make('releaseHandoff')
-                    ->label('Release')
+                    ->label(fn (InventoryFulfillmentLine $record): string => sprintf(
+                        'Release all (%d)',
+                        max(1, $this->basketStagedCount($record))
+                    ))
                     ->button()
                     ->size('sm')
                     ->icon('heroicon-o-key')
@@ -447,53 +442,64 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->form(function (InventoryFulfillmentLine $record): array {
                         $session = app(InventoryHandoffTokenService::class)->activeSessionForLine($record);
                         $lineIds = array_values(array_map('intval', $session?->fulfillment_line_ids ?? [$record->id]));
-                        $options = InventoryFulfillmentLine::query()
+                        $stagedLines = InventoryFulfillmentLine::query()
                             ->whereIn('id', $lineIds)
                             ->where('status', InventoryFulfillmentLine::STATUS_STAGED)
                             ->orderBy('id')
-                            ->get()
-                            ->mapWithKeys(fn (InventoryFulfillmentLine $line) => [
-                                $line->id => sprintf(
-                                    '%s × %s',
-                                    rtrim(rtrim(number_format((float) $line->quantity - (float) $line->quantity_fulfilled, 2), '0'), '.'),
-                                    $line->item_name
-                                ),
-                            ])
-                            ->all();
+                            ->get();
 
-                        return [
+                        $config = InventoryModuleConfig::query()
+                            ->where('business_id', InventoryBusinessContext::effectiveBusinessId())
+                            ->first();
+
+                        $fields = [
                             TextInput::make('code')
-                                ->label('Nurse handoff code (Clinical)')
-                                ->placeholder('5-digit code from ward nurse')
+                                ->label('Release code')
+                                ->placeholder('5-digit code')
                                 ->helperText(function (): string {
                                     $clinical = app(ClinicalModuleIntegrationService::class);
                                     if ($clinical->handoffBypassEnabled()) {
-                                        return 'Clinical is not connected — for testing use bypass code '
-                                            .$clinical->handoffBypassCode().'.';
+                                        return 'Test bypass: '.$clinical->handoffBypassCode().'. Or use the nurse’s code when Clinical is connected.';
                                     }
 
-                                    return 'Issued by Clinical Module after Collect Medications — not by Inventory.';
+                                    return 'Enter the 5-digit code from the ward nurse.';
                                 })
                                 ->required()
                                 ->minLength(5)
                                 ->maxLength(5)
                                 ->rule('regex:/^\d{5}$/')
                                 ->autocomplete(false),
-                            CheckboxList::make('flagged_line_ids')
-                                ->label('Flag for correction (exclude from release)')
-                                ->helperText('Flagged packages roll back to Pending; remaining lines release if the code validates.')
-                                ->options($options)
-                                ->columns(1)
-                                ->visible(count($options) > 0),
                         ];
+
+                        if ($config?->batchLotTrackingEnabled() || $config?->serialNumberTrackingEnabled()) {
+                            foreach ($stagedLines as $staged) {
+                                $prefix = 'trace_'.$staged->id.'_';
+                                if ($config->batchLotTrackingEnabled()) {
+                                    $fields[] = TextInput::make($prefix.'batch_lot')
+                                        ->label('Batch / lot — '.$staged->item_name)
+                                        ->required()
+                                        ->maxLength(120);
+                                }
+                                if ($config->serialNumberTrackingEnabled()) {
+                                    $fields[] = TagsInput::make($prefix.'serials')
+                                        ->label('Serials — '.$staged->item_name)
+                                        ->required()
+                                        ->placeholder('Type a serial and press Enter')
+                                        ->helperText('One serial per unit released for this line.');
+                                }
+                            }
+                        }
+
+                        return $fields;
                     })
-                    ->modalHeading('Release handoff')
+                    ->modalHeading('Release whole basket')
                     ->modalDescription(fn (InventoryFulfillmentLine $record): string => sprintf(
-                        'Enter the Clinical Module code from the ward nurse to release staged goods for %s from %s.',
+                        'Release all %d staged item(s) for %s from %s.',
+                        max(1, $this->basketStagedCount($record)),
                         $record->client?->name ?? 'this client',
                         $record->store?->name ?? 'this End Store'
                     ))
-                    ->modalSubmitActionLabel('Validate & release')
+                    ->modalSubmitActionLabel('Release all')
                     ->visible(fn (InventoryFulfillmentLine $record) => $record->isInpatient() && $record->isStaged())
                     ->action(function (InventoryFulfillmentLine $record, array $data) {
                         try {
@@ -504,23 +510,44 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
 
                             $handoff = app(InventoryHandoffTokenService::class);
                             $session = $handoff->activeSessionForLine($record);
+                            $traceabilityByLineId = [];
+                            foreach ($data as $key => $value) {
+                                if (! is_string($key) || ! str_starts_with($key, 'trace_')) {
+                                    continue;
+                                }
+                                if (preg_match('/^trace_(\d+)_(batch_lot|serials)$/', $key, $m)) {
+                                    $lineId = (int) $m[1];
+                                    $field = $m[2];
+                                    $traceabilityByLineId[$lineId] ??= [];
+                                    $traceabilityByLineId[$lineId][$field === 'batch_lot' ? 'batch_lot' : 'serials'] = $value;
+                                }
+                            }
 
                             $result = $handoff->release(
                                 $store,
                                 (string) ($data['code'] ?? ''),
                                 Auth::user(),
                                 $session,
-                                array_map('intval', $data['flagged_line_ids'] ?? []),
+                                [],
+                                $traceabilityByLineId,
                             );
 
                             $done = count($result['completed']);
-                            $flagged = count($result['flagged']);
                             $failed = count($result['failed']);
 
-                            $parts = ["{$done} line(s) released."];
-                            if ($flagged > 0) {
-                                $parts[] = "{$flagged} flagged back to Pending.";
+                            if ($done === 0) {
+                                $first = $result['failed'][0]['message'] ?? 'No staged items were released.';
+                                Notification::make()
+                                    ->title('Release failed')
+                                    ->body($first)
+                                    ->danger()
+                                    ->persistent()
+                                    ->send();
+
+                                return;
                             }
+
+                            $parts = ["{$done} item(s) released."];
                             if ($failed > 0) {
                                 $first = $result['failed'][0]['message'] ?? '';
                                 $parts[] = "{$failed} failed".($first ? ": {$first}" : '.');
@@ -529,9 +556,9 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                             $this->clearLastHandoffBanner();
 
                             Notification::make()
-                                ->title(($flagged > 0 || $failed > 0) && $done > 0 ? 'Partially released' : 'Handoff released')
+                                ->title($failed > 0 ? 'Partially released' : 'Basket released')
                                 ->body(implode(' ', $parts))
-                                ->color(($flagged > 0 || $failed > 0) ? 'warning' : 'success')
+                                ->color($failed > 0 ? 'warning' : 'success')
                                 ->persistent()
                                 ->send();
                         } catch (ValidationException $e) {
@@ -607,6 +634,36 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                             }
                         })
                         ->after(fn () => $this->resetTable()),
+                    Action::make('setInpatient')
+                        ->label('Set inpatient')
+                        ->icon('heroicon-o-building-office-2')
+                        ->visible(fn (InventoryFulfillmentLine $record) => $record->isOpen() && $record->isOutpatient())
+                        ->requiresConfirmation()
+                        ->modalHeading('Switch to inpatient (batch & stage)?')
+                        ->action(function (InventoryFulfillmentLine $record) {
+                            $record->update([
+                                'fulfillment_strategy' => InventoryFulfillmentStrategy::BATCH_AND_STAGE,
+                                'supports_approved_pool' => true,
+                            ]);
+                            Notification::make()->title('Set to inpatient')->success()->send();
+                        })
+                        ->after(fn () => $this->resetTable()),
+                    Action::make('setOutpatient')
+                        ->label('Set outpatient')
+                        ->icon('heroicon-o-user')
+                        ->visible(fn (InventoryFulfillmentLine $record) => $record->isOpen()
+                            && $record->isInpatient()
+                            && $record->status !== InventoryFulfillmentLine::STATUS_STAGED)
+                        ->requiresConfirmation()
+                        ->modalHeading('Switch to outpatient (dispense now)?')
+                        ->action(function (InventoryFulfillmentLine $record) {
+                            $record->update([
+                                'fulfillment_strategy' => InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE,
+                                'supports_approved_pool' => false,
+                            ]);
+                            Notification::make()->title('Set to outpatient')->success()->send();
+                        })
+                        ->after(fn () => $this->resetTable()),
                     Action::make('startPicking')
                         ->label('Start pick')
                         ->icon('heroicon-o-hand-raised')
@@ -661,6 +718,164 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
                     ->color('gray')
                     ->visible(fn (InventoryFulfillmentLine $record) => $record->isOpen()),
             ])
+            ->bulkActions([
+                BulkActionGroup::make([
+                    BulkAction::make('stageSelectedBaskets')
+                        ->label('Stage selected baskets')
+                        ->icon('heroicon-o-archive-box')
+                        ->color('warning')
+                        ->form([
+                            TextInput::make('tote_barcode')
+                                ->label('Tote barcode')
+                                ->placeholder('Scan or type tote label')
+                                ->required()
+                                ->maxLength(100)
+                                ->helperText('Used for each selected basket (same tote ID if they share one physical tote; otherwise stage baskets one at a time).'),
+                        ])
+                        ->modalHeading('Stage selected baskets')
+                        ->modalDescription('Stages every open inpatient item in each selected basket.')
+                        ->modalSubmitActionLabel('Stage all selected')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (EloquentCollection $records, array $data): void {
+                            $tote = trim((string) ($data['tote_barcode'] ?? ''));
+                            if ($tote === '') {
+                                Notification::make()->title('Tote barcode required')->danger()->send();
+
+                                return;
+                            }
+
+                            $seeds = $records
+                                ->filter(fn (InventoryFulfillmentLine $line) => $line->isInpatient() && $line->isStageable())
+                                ->unique(fn (InventoryFulfillmentLine $line) => $line->store_id.'|'.$line->basket_key)
+                                ->values();
+
+                            if ($seeds->isEmpty()) {
+                                Notification::make()
+                                    ->title('Nothing to stage')
+                                    ->body('Select open inpatient lines.')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
+
+                            $stagedBaskets = 0;
+                            $stagedLines = 0;
+                            $errors = [];
+
+                            foreach ($seeds as $seed) {
+                                try {
+                                    $result = app(InventoryFulfillmentStageService::class)
+                                        ->stageBasket($seed, Auth::user(), true, $tote);
+                                    $stagedBaskets++;
+                                    $stagedLines += $result['lines']->count();
+                                    $this->lastHandoffRef = $result['token']->uuid;
+                                    $this->lastHandoffBasket = $seed->client?->name
+                                        ?? ('Basket '.$seed->basket_key);
+                                } catch (\Throwable $e) {
+                                    $errors[] = ($seed->client?->name ?? $seed->basket_key).': '.$e->getMessage();
+                                }
+                            }
+
+                            if ($stagedBaskets > 0) {
+                                Notification::make()
+                                    ->title('Baskets staged')
+                                    ->body("{$stagedBaskets} basket(s), {$stagedLines} item(s).")
+                                    ->success()
+                                    ->send();
+                            }
+
+                            if ($errors !== []) {
+                                Notification::make()
+                                    ->title('Some baskets failed')
+                                    ->body(implode(' | ', array_slice($errors, 0, 3)))
+                                    ->danger()
+                                    ->persistent()
+                                    ->send();
+                            }
+                        })
+                        ->after(fn () => $this->resetTable()),
+                    BulkAction::make('releaseSelectedBaskets')
+                        ->label('Release selected baskets')
+                        ->icon('heroicon-o-key')
+                        ->color('success')
+                        ->form([
+                            TextInput::make('code')
+                                ->label('Release code')
+                                ->placeholder('5-digit code')
+                                ->helperText(function (): string {
+                                    $clinical = app(ClinicalModuleIntegrationService::class);
+                                    if ($clinical->handoffBypassEnabled()) {
+                                        return 'Test bypass: '.$clinical->handoffBypassCode().'. Applied to every selected staged basket.';
+                                    }
+
+                                    return 'Same nurse code is used for each selected staged basket.';
+                                })
+                                ->required()
+                                ->minLength(5)
+                                ->maxLength(5)
+                                ->rule('regex:/^\d{5}$/')
+                                ->autocomplete(false),
+                        ])
+                        ->modalHeading('Release selected baskets')
+                        ->modalDescription('Releases all staged items in each selected basket/session.')
+                        ->modalSubmitActionLabel('Release all selected')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (EloquentCollection $records, array $data): void {
+                            $seeds = $records
+                                ->filter(fn (InventoryFulfillmentLine $line) => $line->isInpatient() && $line->isStaged())
+                                ->unique(fn (InventoryFulfillmentLine $line) => $line->handoff_token_id
+                                    ?: ($line->store_id.'|'.$line->basket_key))
+                                ->values();
+
+                            if ($seeds->isEmpty()) {
+                                Notification::make()
+                                    ->title('Nothing to release')
+                                    ->body('Select staged inpatient lines.')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
+
+                            $released = 0;
+                            $failed = 0;
+                            $errors = [];
+                            $handoff = app(InventoryHandoffTokenService::class);
+                            $code = (string) ($data['code'] ?? '');
+
+                            foreach ($seeds as $seed) {
+                                try {
+                                    $store = $seed->store ?? Store::query()->find($seed->store_id);
+                                    if (! $store) {
+                                        throw ValidationException::withMessages([
+                                            'store_id' => 'Missing End Store.',
+                                        ]);
+                                    }
+                                    $session = $handoff->activeSessionForLine($seed);
+                                    $result = $handoff->release($store, $code, Auth::user(), $session);
+                                    $released += count($result['completed']);
+                                    $failed += count($result['failed']);
+                                } catch (\Throwable $e) {
+                                    $failed++;
+                                    $errors[] = ($seed->client?->name ?? $seed->basket_key).': '.$e->getMessage();
+                                }
+                            }
+
+                            $this->clearLastHandoffBanner();
+
+                            Notification::make()
+                                ->title($failed > 0 && $released > 0 ? 'Partially released' : ($released > 0 ? 'Baskets released' : 'Release failed'))
+                                ->body($released > 0
+                                    ? "{$released} item(s) released.".($errors !== [] ? ' '.implode(' | ', array_slice($errors, 0, 2)) : '')
+                                    : ($errors[0] ?? 'Could not release selected baskets.'))
+                                ->color($failed > 0 ? 'warning' : 'success')
+                                ->persistent()
+                                ->send();
+                        })
+                        ->after(fn () => $this->resetTable()),
+                ]),
+            ])
             ->paginated([10, 25, 50])
             ->emptyStateHeading(match ($this->consoleTab) {
                 'outpatient' => 'No outpatient lines',
@@ -675,6 +890,40 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
             ->emptyStateIcon('heroicon-o-queue-list');
     }
 
+    protected function basketStageableCount(InventoryFulfillmentLine $record): int
+    {
+        return InventoryFulfillmentLine::query()
+            ->where('business_id', $record->business_id)
+            ->where('store_id', $record->store_id)
+            ->where('basket_key', (string) $record->basket_key)
+            ->where('fulfillment_strategy', InventoryFulfillmentStrategy::BATCH_AND_STAGE)
+            ->whereIn('status', [
+                InventoryFulfillmentLine::STATUS_PENDING,
+                InventoryFulfillmentLine::STATUS_PICKING,
+                InventoryFulfillmentLine::STATUS_PARTIAL,
+            ])
+            ->count();
+    }
+
+    protected function basketStagedCount(InventoryFulfillmentLine $record): int
+    {
+        $session = app(InventoryHandoffTokenService::class)->activeSessionForLine($record);
+        if ($session && is_array($session->fulfillment_line_ids) && $session->fulfillment_line_ids !== []) {
+            return InventoryFulfillmentLine::query()
+                ->whereIn('id', $session->fulfillment_line_ids)
+                ->where('status', InventoryFulfillmentLine::STATUS_STAGED)
+                ->count();
+        }
+
+        return InventoryFulfillmentLine::query()
+            ->where('business_id', $record->business_id)
+            ->where('store_id', $record->store_id)
+            ->where('basket_key', (string) $record->basket_key)
+            ->where('fulfillment_strategy', InventoryFulfillmentStrategy::BATCH_AND_STAGE)
+            ->where('status', InventoryFulfillmentLine::STATUS_STAGED)
+            ->count();
+    }
+
     protected function applyConsoleScope(Builder $query): void
     {
         if ($this->selectedStoreId) {
@@ -684,11 +933,11 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
         match ($this->consoleTab) {
             'outpatient' => $query->where(
                 'fulfillment_strategy',
-                ClientSpaceStoreAssignment::STRATEGY_DISCRETE_IMMEDIATE
+                InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE
             ),
             'inpatient' => $query->where(
                 'fulfillment_strategy',
-                ClientSpaceStoreAssignment::STRATEGY_BATCH_AND_STAGE
+                InventoryFulfillmentStrategy::BATCH_AND_STAGE
             ),
             'stat' => $query->where('priority', InventoryFulfillmentLine::PRIORITY_STAT),
             default => null,

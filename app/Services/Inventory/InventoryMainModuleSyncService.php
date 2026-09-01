@@ -23,7 +23,7 @@ use Illuminate\Validation\ValidationException;
 class InventoryMainModuleSyncService
 {
     /**
-     * Queue Main Module billing for a usage event (SRD §5.3 B / §6).
+     * Queue Main Module billing for a usage event.
      */
     public function dispatchUsageBilling(InventoryUsageEvent $event): void
     {
@@ -173,7 +173,7 @@ class InventoryMainModuleSyncService
     }
 
     /**
-     * After local SDQ flip, enqueue durable Completed sync (§8.1 / §8.3).
+     * After local SDQ flip, enqueue durable Completed sync.
      */
     public function enqueueFulfillmentCompleted(InventoryFulfillmentLine $line, User $user): void
     {
@@ -199,7 +199,7 @@ class InventoryMainModuleSyncService
     }
 
     /**
-     * High-priority replenishment signal after crash cart usage (§6 step 4.4).
+     * High-priority replenishment signal after crash cart usage (step 4.4).
      */
     public function enqueueCrashCartReplenishment(InventoryUsageEvent $event): void
     {
@@ -329,16 +329,14 @@ class InventoryMainModuleSyncService
 
             if ($line->status === InventoryFulfillmentLine::STATUS_COMPLETED) {
                 $queue->markAsCompleted($userId ?: null);
-            } elseif ($line->status === InventoryFulfillmentLine::STATUS_PARTIAL) {
-                $queue->markAsPartiallyDone($userId ?: null);
             }
+            // goods remain Pending until full Completed — do not flip to partially_done.
         }
     }
 
     protected function processCrashCartReplenishment(InventoryMainModuleOutbox $row): void
     {
-        // Audit / Main Module signal only. Physical IR draft is created on Seal Ready
-        // via InventoryCrashCartService::markReady (avoids duplicate drafts per usage line).
+        // Audit / Main Module signal only (replenishment IR is out of scope for simplified crash-cart flow).
         Log::info('Crash cart replenishment signal acknowledged', $row->payload ?? []);
     }
 

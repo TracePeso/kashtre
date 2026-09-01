@@ -19,6 +19,15 @@ class InventoryInternalReplenishmentController extends Controller
         $this->middleware($this->inventoryMiddleware(...));
     }
 
+    public function index()
+    {
+        if (! InventoryBusinessContext::internalOrderingEnabled()) {
+            abort(403, 'Internal ordering is disabled for this organisation.');
+        }
+
+        return view('inventory.replenishment.index');
+    }
+
     public function create()
     {
         if (! InventoryBusinessContext::internalOrderingEnabled()) {
@@ -27,6 +36,7 @@ class InventoryInternalReplenishmentController extends Controller
 
         $businessId = InventoryBusinessContext::effectiveBusinessId();
         $stores = Store::query()
+            ->with('parent:id,name')
             ->where('business_id', $businessId)
             ->whereIn('distribution_type', [Store::DISTRIBUTION_END, Store::DISTRIBUTION_SATELLITE])
             ->orderBy('name')

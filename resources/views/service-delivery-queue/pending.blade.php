@@ -59,7 +59,7 @@
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                                 @if(($item->item->type ?? null) === 'good')
-                                                    <span class="text-xs text-gray-500" title="SRD: goods stay Pending until End Store dispense">
+                                                    <span class="text-xs text-gray-500" title="Goods stay Pending until End Store dispense">
                                                         End Store dispense only
                                                     </span>
                                                 @else

@@ -30,9 +30,14 @@ class Store extends Model
 
     public const CRASH_CART_READY = 'ready';
 
+    /** @deprecated Use CRASH_CART_OPEN; kept for legacy rows migrated in 2026_08_29 migration. */
     public const CRASH_CART_DEPLOYED = 'deployed';
 
+    /** @deprecated Use CRASH_CART_OPEN; kept for legacy rows migrated in 2026_08_29 migration. */
     public const CRASH_CART_RECONCILING = 'reconciling';
+
+    /** Seal broken — cart in use. */
+    public const CRASH_CART_OPEN = 'open';
 
     /** Floor-stock satellite under an End Store (default). */
     public const SATELLITE_ROLE_NORMAL = 'normal';
@@ -51,6 +56,8 @@ class Store extends Model
         'reorder_level_days',
         'max_stock_days',
         'distribution_type',
+        'default_fulfillment_strategy',
+        'supports_approved_pool',
         'satellite_role',
         'is_crash_cart',
         'crash_cart_status',
@@ -62,6 +69,7 @@ class Store extends Model
 
     protected $casts = [
         'is_crash_cart' => 'boolean',
+        'supports_approved_pool' => 'boolean',
         'crash_cart_sealed_at' => 'datetime',
         'crash_cart_deployed_at' => 'datetime',
         'location_layer_labels' => 'array',
@@ -110,6 +118,26 @@ class Store extends Model
     public function children(): HasMany
     {
         return $this->hasMany(Store::class, 'parent_id');
+    }
+
+    public function crashCartItems(): HasMany
+    {
+        return $this->hasMany(CrashCartItem::class);
+    }
+
+    public function crashCartEvents(): HasMany
+    {
+        return $this->hasMany(CrashCartEvent::class, 'store_id');
+    }
+
+    public function isCrashCartSealed(): bool
+    {
+        return $this->isCrashCart() && $this->crash_cart_status === self::CRASH_CART_READY;
+    }
+
+    public function isCrashCartOpen(): bool
+    {
+        return $this->isCrashCart() && $this->crash_cart_status === self::CRASH_CART_OPEN;
     }
 
     public function isChild(): bool
@@ -330,6 +358,25 @@ class Store extends Model
         return ($this->distribution_type ?? self::DISTRIBUTION_END) === self::DISTRIBUTION_END;
     }
 
+    public function defaultFulfillmentStrategy(): string
+    {
+        $strategy = (string) ($this->default_fulfillment_strategy ?? '');
+
+        return in_array($strategy, [
+            \App\Support\InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE,
+            \App\Support\InventoryFulfillmentStrategy::BATCH_AND_STAGE,
+        ], true)
+            ? $strategy
+            : \App\Support\InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE;
+    }
+
+    public function supportsApprovedPool(): bool
+    {
+        return \App\Support\InventoryFulfillmentStrategy::supportsApprovedPool(
+            $this->defaultFulfillmentStrategy()
+        );
+    }
+
     public function isInterimDistributionStore(): bool
     {
         return $this->distribution_type === self::DISTRIBUTION_INTERIM;
@@ -390,9 +437,8 @@ class Store extends Model
     public static function crashCartStatusOptions(): array
     {
         return [
-            self::CRASH_CART_READY => 'Ready',
-            self::CRASH_CART_DEPLOYED => 'Deployed',
-            self::CRASH_CART_RECONCILING => 'Reconciling',
+            self::CRASH_CART_READY => 'Sealed',
+            self::CRASH_CART_OPEN => 'Seal broken',
         ];
     }
 
@@ -408,8 +454,7 @@ class Store extends Model
     public function crashCartStatusBadgeColor(): string
     {
         return match ($this->crash_cart_status) {
-            self::CRASH_CART_DEPLOYED => 'danger',
-            self::CRASH_CART_RECONCILING => 'warning',
+            self::CRASH_CART_OPEN => 'danger',
             self::CRASH_CART_READY => 'success',
             default => 'gray',
         };
@@ -690,8 +735,7 @@ class Store extends Model
 
             if (! in_array($this->crash_cart_status, [
                 self::CRASH_CART_READY,
-                self::CRASH_CART_DEPLOYED,
-                self::CRASH_CART_RECONCILING,
+                self::CRASH_CART_OPEN,
             ], true)) {
                 $this->crash_cart_status = self::CRASH_CART_READY;
             }

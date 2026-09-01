@@ -2,6 +2,7 @@
 
 namespace App\Services\Inventory;
 
+use App\Models\Client;
 use App\Models\InventoryDailyConsumption;
 use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
@@ -23,7 +24,7 @@ class InventoryRecordUsageService
     ) {}
 
     /**
-     * Record bedside / floor usage (SRD §5.2).
+     * Record bedside / floor usage.
      *
      * Patient: use Approved Pool first; any shortfall comes from selected floor stock
      * (End / Satellite) and is billed to Main Module asynchronously.
@@ -129,6 +130,10 @@ class InventoryRecordUsageService
             ]);
         }
 
+        if ($meta['bill'] && $clientId) {
+            $this->assertClientForBusiness($businessId, $clientId);
+        }
+
         $event = $this->recordPhysicalStockUsage(
             businessId: $businessId,
             context: $context,
@@ -151,7 +156,6 @@ class InventoryRecordUsageService
         }
 
         if ($context === InventoryUsageEvent::CONTEXT_CRASH_CART) {
-            // Outbox signal only — IR draft is created once on Seal Ready (SRD §6 step 4–5).
             $this->mainModule->enqueueCrashCartReplenishment($event);
         }
 
@@ -364,22 +368,19 @@ class InventoryRecordUsageService
                 ]);
             }
 
-            // SRD §6: Deploy first (no docs); Record Usage only while Reconciling.
-            if ($store->crash_cart_status === Store::CRASH_CART_READY) {
+            if (! $store->isCrashCartOpen()) {
                 throw ValidationException::withMessages([
-                    'store_id' => 'Deploy this crash cart before recording usage. Use Crash Carts → Deploy, then Start reconcile.',
+                    'store_id' => 'Break the cart seal before recording usage. Use Crash Carts → Break seal.',
                 ]);
             }
 
-            if ($store->crash_cart_status === Store::CRASH_CART_DEPLOYED) {
-                throw ValidationException::withMessages([
-                    'store_id' => 'Crash cart is deployed for emergency use — no inventory documentation yet. Start reconcile first.',
-                ]);
-            }
+            app(InventoryCrashCartService::class)->assertManifestItem($store, $itemId);
 
-            if ($store->crash_cart_status !== Store::CRASH_CART_RECONCILING) {
+            $remaining = app(InventoryCrashCartService::class)->remainingManifestQuantity($store, $itemId);
+            if ($quantity > $remaining + 0.0001) {
                 throw ValidationException::withMessages([
-                    'store_id' => 'Crash cart must be in Reconciling status to record usage.',
+                    'quantity' => 'Cannot use more than the manifest balance. Remaining: '
+                        .rtrim(rtrim(number_format($remaining, 2), '0'), '.').'.',
                 ]);
             }
         } elseif (! in_array($store->distribution_type, [
@@ -487,5 +488,19 @@ class InventoryRecordUsageService
             ->first();
 
         return $config?->floorStockEnabled() ?? true;
+    }
+
+    protected function assertClientForBusiness(int $businessId, int $clientId): void
+    {
+        $valid = Client::query()
+            ->where('business_id', $businessId)
+            ->whereKey($clientId)
+            ->exists();
+
+        if (! $valid) {
+            throw ValidationException::withMessages([
+                'client_id' => 'Select a valid '.strtolower(inventory_label('client')).' for this organisation.',
+            ]);
+        }
     }
 }

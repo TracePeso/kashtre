@@ -7,7 +7,10 @@
                     <p class="text-sm text-gray-600 mt-1">
                         {{ $route['store']?->name ?? 'End Store' }}
                         @if(($route['scope'] ?? 'basket') === 'ward')
-                            · Ward run: {{ $route['client_space']?->name ?? inventory_label('client_space') }}
+                            · Ward / store reservoir
+                            @if(!empty($route['visit_id']))
+                                · Visit {{ $route['visit_id'] }}
+                            @endif
                         @else
                             · Basket {{ $route['basket_key'] }}
                         @endif

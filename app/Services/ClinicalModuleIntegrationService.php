@@ -355,7 +355,7 @@ class ClinicalModuleIntegrationService
     }
 
     /**
-     * SRD §4.5 step 1 — notify Clinical ward that a tote is staged for nurse collection.
+     * notify Clinical ward that a tote is staged for nurse collection.
      */
     public function notifyToteStaged(InventoryHandoffToken $token): void
     {
@@ -371,7 +371,6 @@ class ClinicalModuleIntegrationService
 
         $token->loadMissing([
             'store:id,uuid,name',
-            'clientSpace:id,uuid,name',
         ]);
 
         $payload = $this->toteChecklistPayload($token);
@@ -450,7 +449,7 @@ class ClinicalModuleIntegrationService
     }
 
     /**
-     * SRD §4.5 step 4 — validate nurse 5-digit code with Clinical Module.
+     * validate nurse 5-digit code with Clinical Module.
      *
      * @return array{valid: bool, message: ?string, clinical_session_id: ?string}
      */

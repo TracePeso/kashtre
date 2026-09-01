@@ -40,7 +40,7 @@ class EditInventoryOrderLines extends Component implements HasForms, HasTable
 
     public string $budgetCapNotice = '';
 
-    /** Quantity Mode (default) vs Days Mode (SRD §7.5). */
+    /** Quantity Mode (default) vs Days Mode. */
     public string $editMode = 'quantity';
 
     /**

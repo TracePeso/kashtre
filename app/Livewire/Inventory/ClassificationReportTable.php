@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Inventory;
 
+use App\Models\Branch;
 use App\Models\InventoryUsageEvent;
 use App\Models\Store;
 use App\Support\InventoryBusinessContext;
@@ -29,11 +30,14 @@ class ClassificationReportTable extends Component implements HasForms, HasTable
                 InventoryUsageEvent::query()
                     ->where('business_id', $businessId)
                     ->with([
-                        'store:id,name',
+                        'store:id,name,branch_id',
+                        'store.branch:id,name',
                         'item:id,name,code',
                         'client:id,name',
                         'invoice:id,client_space_id',
                         'invoice.clientSpace:id,name',
+                        'recordedBy:id,name,department_id',
+                        'recordedBy.department:id,name',
                     ])
             )
             ->columns([
@@ -42,17 +46,32 @@ class ClassificationReportTable extends Component implements HasForms, HasTable
                     ->dateTime('Y-m-d H:i')
                     ->sortable(),
                 TextColumn::make('store.name')
-                    ->label('Store')
+                    ->label(inventory_label('store'))
                     ->placeholder('—')
                     ->sortable(),
+                TextColumn::make('store.branch.name')
+                    ->label('Department / Branch')
+                    ->placeholder('—')
+                    ->toggleable()
+                    ->sortable(),
+                TextColumn::make('client_space')
+                    ->label(inventory_label('client_space'))
+                    ->state(fn (InventoryUsageEvent $record): string => $record->invoice?->clientSpace?->name ?? '—')
+                    ->toggleable(),
+                TextColumn::make('recordedBy.department.name')
+                    ->label('Recorder department')
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('client.name')
+                    ->label(inventory_label('client'))
+                    ->placeholder('—')
+                    ->toggleable()
+                    ->searchable(),
                 TextColumn::make('item.name')
-                    ->label('Item')
+                    ->label(inventory_label('item'))
                     ->description(fn (InventoryUsageEvent $record): ?string => $record->item?->code)
                     ->searchable()
                     ->wrap(),
-                TextColumn::make('client_space')
-                    ->label('Client Space')
-                    ->state(fn (InventoryUsageEvent $record): string => $record->invoice?->clientSpace?->name ?? '—'),
                 TextColumn::make('classification')
                     ->label('Classification')
                     ->badge()
@@ -76,8 +95,23 @@ class ClassificationReportTable extends Component implements HasForms, HasTable
                         InventoryUsageEvent::CLASSIFICATION_WASTAGE_EXPIRED => 'WASTAGE_EXPIRED',
                     ]),
                 SelectFilter::make('store_id')
-                    ->label('Store')
+                    ->label(inventory_label('store'))
                     ->options(fn (): array => Store::optionsForSelect($businessId)),
+                SelectFilter::make('branch')
+                    ->label('Department / Branch')
+                    ->options(fn (): array => Branch::query()
+                        ->where('business_id', $businessId)
+                        ->orderBy('name')
+                        ->pluck('name', 'id')
+                        ->all())
+                    ->query(function ($query, array $data) {
+                        $value = $data['value'] ?? null;
+                        if (! $value) {
+                            return $query;
+                        }
+
+                        return $query->whereHas('store', fn ($q) => $q->where('branch_id', $value));
+                    }),
             ])
             ->defaultSort('occurred_at', 'desc')
             ->striped()

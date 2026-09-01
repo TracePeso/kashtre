@@ -14,7 +14,7 @@ class InventoryDaysOfStockService
     public const FORECAST_DEMAND = 'demand';
 
     /**
-     * Window selection matrix (SRD §7.4).
+     * Window selection matrix.
      */
     public function forecastWindowDays(float $requestedCoverageDays): int
     {
@@ -39,6 +39,7 @@ class InventoryDaysOfStockService
         if ($basis === self::FORECAST_DEMAND) {
             $total = (float) InventoryDemandLedger::query()
                 ->where('business_id', $businessId)
+                ->where('store_id', $storeId)
                 ->where('item_id', $itemId)
                 ->where('occurred_at', '>=', $from)
                 ->sum('quantity');
@@ -58,7 +59,7 @@ class InventoryDaysOfStockService
     }
 
     /**
-     * Current stock days (SRD §7.3): always on-hand ÷ 15-day MA.
+     * Current stock days: always on-hand ÷ 15-day MA.
      * $coverageHint is accepted for call-site compatibility but ignored for display —
      * use forecastWindowDays() only when sizing order-generation windows.
      */
@@ -85,14 +86,16 @@ class InventoryDaysOfStockService
     }
 
     /**
-     * Suggested units to reach max stock days from current on-hand.
+     * Suggested units to reach a coverage horizon from current on-hand.
+     * $maxDaysOverride wins over the store profile (e.g. form coverage days).
      */
     public function suggestedUnitsToMax(
         Store $store,
         int $itemId,
-        string $basis = self::FORECAST_CONSUMPTION
+        string $basis = self::FORECAST_CONSUMPTION,
+        ?float $maxDaysOverride = null
     ): float {
-        $maxDays = (float) ($store->max_stock_days ?? 0);
+        $maxDays = (float) ($maxDaysOverride ?? $store->max_stock_days ?? 0);
         if ($maxDays <= 0) {
             return 0;
         }
@@ -105,6 +108,10 @@ class InventoryDaysOfStockService
             $window,
             $basis
         );
+
+        if ($ma <= 0) {
+            return 0;
+        }
 
         $target = round($ma * $maxDays, 4);
         $onHand = (float) (InventoryStockLevel::query()

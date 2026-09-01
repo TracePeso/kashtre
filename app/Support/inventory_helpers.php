@@ -2,7 +2,7 @@
 
 if (! function_exists('inventory_label')) {
     /**
-     * Tenant terminology override (SRD §2.4). Falls back to platform defaults.
+     * Tenant terminology override. Falls back to platform defaults.
      *
      * @param  'client'|'client_space'|'item'|'store'|'usage_record'  $key
      */

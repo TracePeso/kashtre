@@ -34,7 +34,7 @@
                    class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-60">
             <span>
                 <span class="font-medium text-gray-900">Crash cart management</span>
-                <span class="block text-xs text-gray-500">Satellite stores with role Crash cart (Ready → Deployed → Reconciling), plus Crash cart usage on Record Usage. Not EndStore queue nodes.</span>
+                <span class="block text-xs text-gray-500">Satellite stores with role Crash cart: fixed manifest, break seal, record usage. Not EndStore queue nodes.</span>
             </span>
         </label>
     </div>
@@ -126,7 +126,7 @@
     <div class="border-t border-gray-200 pt-6 space-y-4">
         <div>
             <h4 class="text-sm font-semibold text-gray-900">Label dictionary</h4>
-            <p class="text-xs text-gray-500 mt-0.5">Tenant terminology overrides (SRD §2.4). Leave blank for platform defaults.</p>
+            <p class="text-xs text-gray-500 mt-0.5">Tenant terminology overrides. Leave blank for platform defaults.</p>
         </div>
         @php $dict = old('label_dictionary', $config->label_dictionary ?? []); @endphp
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">

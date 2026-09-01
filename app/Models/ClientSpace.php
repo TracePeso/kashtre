@@ -20,6 +20,7 @@ class ClientSpace extends Model
         'space_head_id',
         'deputy_space_head_id',
         'alternate_space_head_id',
+        'is_default',
     ];
 
     protected $casts = [
@@ -29,6 +30,7 @@ class ClientSpace extends Model
         'space_head_id' => 'integer',
         'deputy_space_head_id' => 'integer',
         'alternate_space_head_id' => 'integer',
+        'is_default' => 'boolean',
     ];
 
     public function business()
@@ -74,7 +76,7 @@ class ClientSpace extends Model
     }
 
     /**
-     * Active End Store routing for fulfillment queue ingestion (SRD §4.1).
+     * Active End Store routing for fulfillment queue ingestion.
      */
     public function resolveEndStoreAssignment(): ?ClientSpaceStoreAssignment
     {
@@ -85,6 +87,19 @@ class ClientSpace extends Model
     {
         static::creating(function ($clientSpace) {
             $clientSpace->uuid = (string) Str::uuid();
+        });
+
+        static::saving(function (self $clientSpace) {
+            if (! $clientSpace->is_default) {
+                return;
+            }
+
+            // One default Client Space per business (POS auto-select).
+            static::query()
+                ->where('business_id', $clientSpace->business_id)
+                ->when($clientSpace->exists, fn ($q) => $q->where('id', '!=', $clientSpace->id))
+                ->where('is_default', true)
+                ->update(['is_default' => false]);
         });
     }
     public function getRouteKeyName()

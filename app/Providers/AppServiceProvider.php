@@ -4,15 +4,12 @@ namespace App\Providers;
 
 
 use App\Models\Business;
-use App\Models\CallingModuleConfig;
 use App\Models\InventoryModuleConfig;
 use App\Models\KashtreCashTraySetting;
 use App\Support\BusinessBranding;
 use App\Support\DocumentViewData;
 use App\Support\InventoryBusinessContext;
-use App\Models\Caller;
 use App\Models\Transaction;
-use App\Services\EmergencyAlertService;
 
 
 // Import models and observers
@@ -72,7 +69,7 @@ class AppServiceProvider extends ServiceProvider
             static $sharedKey = null;
 
             $user = Auth::user();
-            $key = ($user?->id ?? 0).'|'.(string) session(InventoryBusinessContext::SESSION_KEY, '').'|'.(string) session('caller_id', '');
+            $key = ($user?->id ?? 0).'|'.(string) session(InventoryBusinessContext::SESSION_KEY, '');
 
             if ($shared === null || $sharedKey !== $key) {
                 $sharedKey = $key;
@@ -105,30 +102,11 @@ class AppServiceProvider extends ServiceProvider
      */
     private function sharedLayoutViewData(?User $user): array
     {
-        $callingModuleEnabled = false;
-        $callingModuleConfig = null;
-        $userIsACaller = false;
         $inventoryModuleEnabled = false;
         $inventoryModuleConfig = null;
         $inventoryAdminContextBusiness = null;
-        $activeEmergencyAlert = null;
 
         if ($user) {
-            $callingModuleConfig = CallingModuleConfig::query()
-                ->where('business_id', $user->business_id)
-                ->where('is_active', true)
-                ->first();
-            $callingModuleEnabled = (bool) $callingModuleConfig;
-
-            if ($callingModuleEnabled) {
-                $sessionCallerId = session('caller_id');
-                $userIsACaller = $sessionCallerId && Caller::query()
-                    ->where('id', $sessionCallerId)
-                    ->where('business_id', $user->business_id)
-                    ->where('status', 'active')
-                    ->exists();
-            }
-
             $inventoryBusinessId = InventoryBusinessContext::isKashtreAdmin() && InventoryBusinessContext::hasContext()
                 ? InventoryBusinessContext::effectiveBusinessId()
                 : (int) $user->business_id;
@@ -143,10 +121,6 @@ class AppServiceProvider extends ServiceProvider
                 $inventoryAdminContextBusiness = InventoryBusinessContext::contextBusiness();
             }
 
-            if ($callingModuleEnabled) {
-                $activeEmergencyAlert = app(EmergencyAlertService::class)
-                    ->resolveActiveAlertForBusiness((int) $user->business_id);
-            }
         }
 
         $hrModuleUrl     = rtrim(config('services.hr_module.url', ''), '/');
@@ -163,14 +137,14 @@ class AppServiceProvider extends ServiceProvider
             'business' => $user?->business,
             'businessBranding' => BusinessBranding::for($user?->business),
             'permissions' => (array) ($user?->permissions ?? []),
-            'callingModuleEnabled' => $callingModuleEnabled,
-            'callingModuleConfig' => $callingModuleConfig,
-            'userIsACaller' => $userIsACaller,
+            'callingModuleEnabled' => false,
+            'callingModuleConfig' => null,
+            'userIsACaller' => false,
             'inventoryModuleEnabled' => $inventoryModuleEnabled,
             'inventoryModuleConfig' => $inventoryModuleConfig,
             'inventoryAdminContextBusiness' => $inventoryAdminContextBusiness,
-            'globalActiveEmergency' => (bool) $activeEmergencyAlert,
-            'activeEmergencyAlert' => $activeEmergencyAlert,
+            'globalActiveEmergency' => false,
+            'activeEmergencyAlert' => null,
             'cashTraySettings' => KashtreCashTraySetting::resolved(),
             'hrModuleUrl' => $hrModuleUrl,
             'hrModuleEnabled' => $hrModuleEnabled,

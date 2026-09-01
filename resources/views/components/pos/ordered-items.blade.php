@@ -10,6 +10,13 @@
         $client->load('business');
     }
     $business = $client->business ?? null;
+    $inventoryModuleEnabled = $inventoryModuleEnabled
+        ?? (isset($client) && $client->business_id
+            ? \App\Models\InventoryModuleConfig::query()
+                ->where('business_id', $client->business_id)
+                ->where('is_active', true)
+                ->exists()
+            : false);
 @endphp
 
 <!-- Section 5: Ordered Items (Requests/Orders) -->
@@ -84,7 +91,23 @@
                                     @else
                                         {{-- Show normal status actions for other service points --}}
                                         <div class="flex flex-col space-y-2">
-                                            @if($item->status === 'pending')
+                                            @php $isGood = ($item->item->type ?? null) === 'good'; @endphp
+                                            @if($isGood && !empty($inventoryModuleEnabled))
+                                                <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                                                    Goods: complete via <strong>EndStore</strong> (Pending until dispensed/released).
+                                                </p>
+                                                @if($item->status === 'pending')
+                                                    <label class="flex items-center">
+                                                        <input type="radio" name="item_statuses[{{ $item->id }}]" value="not_done" class="mr-2">
+                                                        <span class="text-sm">Not Offered</span>
+                                                    </label>
+                                                @elseif($item->status === 'completed')
+                                                    <label class="flex items-center">
+                                                        <input type="radio" name="item_statuses[{{ $item->id }}]" value="completed" class="mr-2" checked>
+                                                        <span class="text-sm">Completed (EndStore)</span>
+                                                    </label>
+                                                @endif
+                                            @elseif($item->status === 'pending')
                                                 <label class="flex items-center">
                                                     <input type="radio" name="item_statuses[{{ $item->id }}]" value="not_done" class="mr-2">
                                                     <span class="text-sm">Not Offered</span>

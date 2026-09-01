@@ -96,11 +96,6 @@ trait AccessTrait
         "Refund Workflows" => ['View Credit Note Workflows', 'Edit Credit Note Workflows', 'Add Credit Note Workflows'],
     ];
 
-    public static $callers = [
-        "Calling Module" => ['View Calling Module', 'Add Calling Module', 'Edit Calling Module', 'Manage Calling Module', 'Delete Calling Module'],
-        "Callers" => ['View Callers', 'Add Callers', 'Edit Callers', 'Manage Callers', 'Broadcast Announcements'],
-    ];
-
     public static $inventoryModule = [
         "Inventory Module" => ['View Inventory Module', 'Add Inventory Module', 'Edit Inventory Module', 'Manage Inventory Module', 'Delete Inventory Module'],
         "Inventory" => [
@@ -220,7 +215,6 @@ trait AccessTrait
                 static::$modules,
                 static::$stock,
                 static::$masters,
-                static::$callers,
                 static::$inventoryModule,
                 static::$adminAccess,
                 static::$businessAccess,
@@ -256,7 +250,6 @@ trait AccessTrait
         "Modules" => self::$modules,
         "Stock" => self::$stock,
         "Masters" => self::$masters,
-        "Callers" => self::$callers,
         "Inventory" => self::$inventoryModule,
         "Admin" => self::$adminAccess,
         "Business" => self::$businessAccess,

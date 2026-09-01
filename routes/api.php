@@ -1,62 +1,6 @@
 <?php
 
-use App\Http\Controllers\EmergencyController;
-use App\Http\Controllers\API\DisplayBoardController;
-use Illuminate\Routing\Middleware\ThrottleRequests;
-
-// Queue display board — migrated to standalone Calling Service
-// API endpoints for TV are no longer served from the Kashtre monolith
-
-Route::withoutMiddleware([ThrottleRequests::class])
-    ->middleware('throttle:240,1')
-    ->group(function () {
-        // Public token-authenticated endpoint for the display board to get emergency color
-        Route::get('/display/emergency-status', [EmergencyController::class, 'displayEmergencyStatus']);
-        Route::get('/display/latest-calls', [DisplayBoardController::class, 'latestCalls']);
-        Route::get('/display/audio', [DisplayBoardController::class, 'streamAudio']);
-        Route::get('/display/emergency-audio', [DisplayBoardController::class, 'streamEmergencyAudio']);
-        Route::get('/display/announcement-audio', [DisplayBoardController::class, 'streamAnnouncementAudio']);
-        Route::options('/display/latest-calls', fn () => response()->noContent()->withHeaders([
-            'Access-Control-Allow-Origin' => '*',
-            'Access-Control-Allow-Methods' => 'GET, OPTIONS',
-            'Access-Control-Allow-Headers' => 'Content-Type',
-        ]));
-        Route::options('/display/audio', fn () => response()->noContent()->withHeaders([
-            'Access-Control-Allow-Origin' => '*',
-            'Access-Control-Allow-Methods' => 'GET, OPTIONS',
-            'Access-Control-Allow-Headers' => 'Content-Type',
-        ]));
-        Route::options('/display/emergency-audio', fn () => response()->noContent()->withHeaders([
-            'Access-Control-Allow-Origin' => '*',
-            'Access-Control-Allow-Methods' => 'GET, OPTIONS',
-            'Access-Control-Allow-Headers' => 'Content-Type',
-        ]));
-        Route::options('/display/announcement-audio', fn () => response()->noContent()->withHeaders([
-            'Access-Control-Allow-Origin' => '*',
-            'Access-Control-Allow-Methods' => 'GET, OPTIONS',
-            'Access-Control-Allow-Headers' => 'Content-Type',
-        ]));
-
-        // Public token-authenticated endpoint for the display board to get PA config (sections + Reverb details)
-        Route::get('/display/pa-config', [\App\Http\Controllers\PaAnnouncementController::class, 'displayPaConfig']);
-        Route::get('/display/pa-stream', [\App\Http\Controllers\PaAnnouncementController::class, 'displayPaStream']);
-        Route::post('/display/pa-signal', [\App\Http\Controllers\PaAnnouncementController::class, 'displaySignal']);
-        Route::options('/display/pa-config', fn () => response()->noContent()->withHeaders([
-            'Access-Control-Allow-Origin' => '*',
-            'Access-Control-Allow-Methods' => 'GET, OPTIONS',
-            'Access-Control-Allow-Headers' => 'Content-Type',
-        ]));
-        Route::options('/display/pa-stream', fn () => response()->noContent()->withHeaders([
-            'Access-Control-Allow-Origin' => '*',
-            'Access-Control-Allow-Methods' => 'GET, OPTIONS',
-            'Access-Control-Allow-Headers' => 'Content-Type',
-        ]));
-        Route::options('/display/pa-signal', fn () => response()->noContent()->withHeaders([
-            'Access-Control-Allow-Origin' => '*',
-            'Access-Control-Allow-Methods' => 'POST, OPTIONS',
-            'Access-Control-Allow-Headers' => 'Content-Type',
-        ]));
-    });
+use Illuminate\Support\Facades\Route;
 
 // Public API routes for client registration and open enrollment checks (no auth required)
 Route::get('/insurance-company/by-code/{code}', [\App\Http\Controllers\ClientController::class, 'getInsuranceCompanyByCode'])->name('api.insurance-company.by-code');

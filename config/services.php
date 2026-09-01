@@ -44,18 +44,6 @@ return [
         'timeout' => env('THIRD_PARTY_API_TIMEOUT', 30),
     ],
 
-    'calling_service' => [
-        'url'         => env('CALLING_SERVICE_URL', 'http://127.0.0.1:8001'),
-        'sync_secret' => env('CALLING_SERVICE_SYNC_SECRET', ''),
-    ],
-
-    'hr_module' => [
-        // Prefer Settings → HR Module Settings (superadmin UI). Env values seed defaults only.
-        'api_key' => env('HR_MODULE_API_KEY'),
-        'url' => rtrim((string) env('HR_MODULE_URL', ''), '/'),
-        'sync_enabled' => (bool) env('HR_MODULE_SYNC_ENABLED', true),
-    ],
-
     'clinical_module' => [
         // Prefer Settings → Clinical Module Settings (superadmin UI). Env seeds defaults only.
         'url' => rtrim((string) env('CLINICAL_MODULE_URL', ''), '/'),

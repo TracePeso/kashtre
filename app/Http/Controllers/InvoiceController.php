@@ -326,7 +326,6 @@ class InvoiceController extends Controller
                 'client_id' => 'required|exists:clients,id',
                 'business_id' => 'required|exists:businesses,id',
                 'branch_id' => 'required|exists:branches,id',
-                'client_space_id' => 'nullable|exists:client_spaces,id',
                 'created_by' => 'required|exists:users,id',
                 'client_name' => 'required|string',
                 'client_phone' => 'required|string',
@@ -346,21 +345,10 @@ class InvoiceController extends Controller
                 'notes' => 'nullable|string',
                 'third_party_payer_id' => 'nullable|exists:third_party_payers,id',
                 'deductible_remaining' => 'nullable|numeric|min:0',
+                'fulfillment_strategy' => 'nullable|in:DISCRETE_IMMEDIATE,BATCH_AND_STAGE',
+                'end_store_id' => 'nullable|exists:stores,id',
+                'client_space_id' => 'nullable|exists:client_spaces,id',
             ]);
-
-            if (! empty($validated['client_space_id'])) {
-                $spaceOk = \App\Models\ClientSpace::query()
-                    ->whereKey($validated['client_space_id'])
-                    ->where('business_id', $validated['business_id'])
-                    ->exists();
-
-                if (! $spaceOk) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Selected Client Space does not belong to this organisation.',
-                    ], 422);
-                }
-            }
 
             // Get client
             $client = Client::find($validated['client_id']);
@@ -616,6 +604,8 @@ class InvoiceController extends Controller
                 'business_id' => $validated['business_id'],
                 'branch_id' => $validated['branch_id'],
                 'client_space_id' => $validated['client_space_id'] ?? null,
+                'fulfillment_strategy' => $validated['fulfillment_strategy'] ?? null,
+                'end_store_id' => $validated['end_store_id'] ?? null,
                 'created_by' => $validated['created_by'],
                 'currency' => $invoiceCurrency,
                 'client_name' => $validated['client_name'],
@@ -666,7 +656,7 @@ class InvoiceController extends Controller
                 throw new \RuntimeException('Could not allocate a unique invoice number after repeated attempts.');
             }
 
-            // SRD A-02 — capture demand intent as soon as invoice items exist (before payment / stock fulfillment).
+            // capture demand intent as soon as invoice items exist (before payment / stock fulfillment).
             try {
                 app(\App\Services\Inventory\InventoryDemandLedgerService::class)
                     ->recordFromInvoice($invoice, $itemsCollection->toArray());
@@ -4109,7 +4099,7 @@ class InvoiceController extends Controller
             return;
         }
 
-        // SRD §4.1 — paid goods land on the mapped End Store fulfillment queue (independent of service-point mapping).
+        // paid goods land on the mapped End Store fulfillment queue (independent of service-point mapping).
         try {
             app(\App\Services\Inventory\InventoryFulfillmentIngestService::class)
                 ->ingestFromInvoice($invoice, $filteredItems->all());

@@ -312,17 +312,6 @@ class ServiceDeliveryQueue extends Model
             $queue->uuid = (string) Str::uuid();
         });
 
-        static::saved(function ($queueItem) {
-            if (app()->bound(\App\Services\CallingServiceClient::class) || class_exists(\App\Services\CallingServiceClient::class)) {
-                app(\App\Services\CallingServiceClient::class)->syncQueue($queueItem);
-            }
-        });
-
-        static::deleted(function ($queueItem) {
-            if (app()->bound(\App\Services\CallingServiceClient::class) || class_exists(\App\Services\CallingServiceClient::class)) {
-                app(\App\Services\CallingServiceClient::class)->deleteQueueItem($queueItem->uuid);
-            }
-        });
     }
 
     public function getRouteKeyName()

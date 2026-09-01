@@ -282,6 +282,20 @@ class InventoryStockCountService
                     'recorded_by_user_id' => $user->id,
                     'occurred_at' => $count->counted_at ?? now(),
                 ]);
+
+                app(InventoryForensicAuditService::class)->recordStockDelta(
+                    $stock->fresh(),
+                    'STOCK_COUNT',
+                    $balanceBefore,
+                    $physical,
+                    (int) $user->id,
+                    null,
+                    [
+                        'inventory_stock_count_id' => $count->id,
+                        'reference' => $count->reference,
+                        'variance' => $variance,
+                    ]
+                );
             }
 
             $this->analytics->recalculateForStockLevel($stock->fresh());

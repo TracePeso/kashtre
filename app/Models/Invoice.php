@@ -19,6 +19,8 @@ class Invoice extends Model
         'business_id',
         'branch_id',
         'client_space_id',
+        'fulfillment_strategy',
+        'end_store_id',
         'created_by',
         'client_name',
         'client_phone',

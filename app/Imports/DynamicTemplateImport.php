@@ -18,7 +18,6 @@ use App\Models\PatientCategory;
 use App\Models\InsuranceCompany;
 use App\Models\Supplier;
 use App\Models\Store;
-use App\Models\ClientSpace;
 
 class DynamicTemplateImport implements ToModel, WithHeadingRow
 {
@@ -30,7 +29,6 @@ class DynamicTemplateImport implements ToModel, WithHeadingRow
         'service_point',
         'room',
         'store',
-        'client_space',
     ];
 
     protected $mapping = [
@@ -47,7 +45,6 @@ class DynamicTemplateImport implements ToModel, WithHeadingRow
         'insurance_company' => InsuranceCompany::class,
         'supplier' => Supplier::class,
         'store' => Store::class,
-        'client_space' => ClientSpace::class,
     ];
 
     public function __construct($businessId, $branchId)

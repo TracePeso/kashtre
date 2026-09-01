@@ -11,6 +11,7 @@ class InventoryDemandLedger extends Model
     protected $fillable = [
         'uuid',
         'business_id',
+        'store_id',
         'item_id',
         'quantity',
         'source',
@@ -46,6 +47,11 @@ class InventoryDemandLedger extends Model
     public function item(): BelongsTo
     {
         return $this->belongsTo(Item::class);
+    }
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
     }
 
     public function client(): BelongsTo

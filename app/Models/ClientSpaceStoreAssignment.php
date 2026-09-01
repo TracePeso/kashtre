@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\InventoryFulfillmentStrategy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
@@ -62,11 +63,11 @@ class ClientSpaceStoreAssignment extends Model
     }
 
     /**
-     * When false, End Store dispense completes the ticket without adding Approved Pool balance.
+     * Approved Pool follows strategy: only Batch & Stage credits the pool.
      */
     public function supportsApprovedPool(): bool
     {
-        return (bool) ($this->supports_approved_pool ?? true);
+        return InventoryFulfillmentStrategy::supportsApprovedPool($this->fulfillment_strategy);
     }
 
     public function business(): BelongsTo
@@ -90,7 +91,7 @@ class ClientSpaceStoreAssignment extends Model
     }
 
     /**
-     * Resolve the active End Store routing for a Client Space (SRD §4.1).
+     * Resolve the active End Store routing for a Client Space.
      */
     public static function resolveForClientSpace(int $clientSpaceId): ?self
     {
@@ -137,5 +138,10 @@ class ClientSpaceStoreAssignment extends Model
                 'fulfillment_strategy' => 'Choose a valid fulfillment strategy.',
             ]);
         }
+
+        // Persist derived flag so snapshots / table columns stay aligned with strategy.
+        $this->supports_approved_pool = InventoryFulfillmentStrategy::supportsApprovedPool(
+            $this->fulfillment_strategy
+        );
     }
 }

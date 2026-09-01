@@ -10,7 +10,7 @@ class ProcessInventoryMainModuleOutboxCommand extends Command
 {
     protected $signature = 'inventory:process-main-outbox {--limit=50}';
 
-    protected $description = 'Process pending/failed Inventory → Main Module outbox rows (SRD §8.3)';
+    protected $description = 'Process pending/failed Inventory → Main Module outbox rows';
 
     public function handle(): int
     {

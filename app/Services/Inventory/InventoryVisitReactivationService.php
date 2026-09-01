@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Log;
 class InventoryVisitReactivationService
 {
     /**
-     * When a client receives a new visitor/visit_id, reattach historical open fulfillment lines (SRD §8.2).
+     * When a client receives a new visitor/visit_id, reattach historical open fulfillment lines.
      */
     public function reactivateForClient(Client $client, ?string $previousVisitId = null): int
     {

@@ -9,6 +9,7 @@ use App\Models\User;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\Toggle;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Notifications\Notification;
@@ -56,6 +57,17 @@ class ListClientSpaces extends Component implements HasForms, HasTable
                     ->label('Branch')
                     ->sortable()
                     ->searchable(),
+
+                Tables\Columns\IconColumn::make('is_default')
+                    ->label('Default')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-star')
+                    ->falseIcon('heroicon-o-minus')
+                    ->trueColor('warning')
+                    ->falseColor('gray')
+                    ->tooltip(fn (ClientSpace $record): string => $record->is_default
+                        ? 'Selected by default on POS for this business.'
+                        : 'Not the default POS Client Space.'),
 
                 Tables\Columns\TextColumn::make('spaceHead.name')
                     ->label('Space Head')
@@ -228,6 +240,11 @@ class ListClientSpaces extends Component implements HasForms, HasTable
                 ->searchable()
                 ->nullable()
                 ->reactive(),
+
+            Toggle::make('is_default')
+                ->label('Default Client Space')
+                ->default(false)
+                ->helperText('When on, this space is pre-selected on POS for the business (only one default per business).'),
 
             Textarea::make('description')
                 ->label('Description')

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\InventoryFulfillmentStrategy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -128,8 +129,7 @@ class InventoryFulfillmentLine extends Model
 
     public function strategyLabel(): string
     {
-        return ClientSpaceStoreAssignment::strategyOptions()[$this->fulfillment_strategy]
-            ?? $this->fulfillment_strategy;
+        return InventoryFulfillmentStrategy::label($this->fulfillment_strategy);
     }
 
     public function isOpen(): bool
@@ -149,12 +149,12 @@ class InventoryFulfillmentLine extends Model
 
     public function isInpatient(): bool
     {
-        return $this->fulfillment_strategy === ClientSpaceStoreAssignment::STRATEGY_BATCH_AND_STAGE;
+        return $this->fulfillment_strategy === InventoryFulfillmentStrategy::BATCH_AND_STAGE;
     }
 
     public function isOutpatient(): bool
     {
-        return $this->fulfillment_strategy === ClientSpaceStoreAssignment::STRATEGY_DISCRETE_IMMEDIATE;
+        return $this->fulfillment_strategy === InventoryFulfillmentStrategy::DISCRETE_IMMEDIATE;
     }
 
     public function isStageable(): bool
@@ -172,11 +172,11 @@ class InventoryFulfillmentLine extends Model
     }
 
     /**
-     * When false, dispense completes Main Module / SDQ without creating Approved Pool balance.
+     * Approved Pool only for Batch & Stage lines.
      */
     public function supportsApprovedPool(): bool
     {
-        return (bool) ($this->supports_approved_pool ?? true);
+        return InventoryFulfillmentStrategy::supportsApprovedPool($this->fulfillment_strategy);
     }
 
     public function business(): BelongsTo

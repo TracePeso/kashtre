@@ -3,13 +3,13 @@
 namespace App\Services\Inventory;
 
 use App\Jobs\NotifyClinicalToteStaged;
-use App\Models\ClientSpaceStoreAssignment;
 use App\Models\InventoryFulfillmentLine;
 use App\Models\InventoryHandoffToken;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use App\Support\InventoryFulfillmentStrategy;
 
 class InventoryFulfillmentStageService
 {
@@ -26,7 +26,7 @@ class InventoryFulfillmentStageService
         ?string $toteBarcode = null
     ): array
     {
-        $seedLine->loadMissing(['store', 'client', 'clientSpace']);
+        $seedLine->loadMissing(['store', 'client']);
 
         if (! $seedLine->isInpatient()) {
             throw ValidationException::withMessages([
@@ -97,7 +97,7 @@ class InventoryFulfillmentStageService
             }
 
             return [
-                'token' => $token->fresh(['clientSpace', 'store']),
+                'token' => $token->fresh(['store', 'clientSpace']),
                 'lines' => $toStage->map->fresh(),
             ];
         });
@@ -115,7 +115,7 @@ class InventoryFulfillmentStageService
         return InventoryFulfillmentLine::query()
             ->where('business_id', $seedLine->business_id)
             ->where('store_id', $seedLine->store_id)
-            ->where('fulfillment_strategy', ClientSpaceStoreAssignment::STRATEGY_BATCH_AND_STAGE)
+            ->where('fulfillment_strategy', InventoryFulfillmentStrategy::BATCH_AND_STAGE)
             ->where('basket_key', (string) $seedLine->basket_key)
             ->whereIn('status', [
                 InventoryFulfillmentLine::STATUS_PENDING,
