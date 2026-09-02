@@ -69,23 +69,17 @@ class InsurerPortalVendorSummaryService
             ];
         }
 
-        $totalCredits = (float) ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-            ->where('transaction_type', 'credit')
-            ->sum('change_amount');
-
-        $totalDebits = abs((float) ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-            ->where('transaction_type', 'debit')
-            ->sum('change_amount'));
-
-        $currentBalance = (float) (ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-            ->orderBy('created_at', 'desc')
-            ->value('new_balance') ?? 0);
+        $balanceSummary = app(AccountBalanceSummaryService::class)->forThirdPartyPayer($thirdPartyPayer);
+        $chronological = app(ThirdPartyPayerChronologicalPaymentService::class);
+        $outstandingEntries = $chronological->previewAllocation($thirdPartyPayer, 0)['entries'];
 
         $recent = ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-            ->with(['invoice', 'client', 'business', 'branch', 'user'])
+            ->with(['invoice', 'client', 'business', 'branch', 'user', 'thirdPartyPayer'])
             ->orderBy('created_at', 'desc')
             ->limit(10)
             ->get();
+
+        app(AccountBalanceSummaryService::class)->enrichThirdPartyPayerHistories($recent);
 
         $invoices = $this->buildInvoicesForVendor(
             $businessId,
@@ -111,10 +105,15 @@ class InsurerPortalVendorSummaryService
         return [
             'payer' => $this->serializePayer($thirdPartyPayer),
             'financial' => [
-                'total_credits' => $totalCredits,
-                'total_debits' => $totalDebits,
-                'total_balance' => abs($totalDebits - $totalCredits),
-                'current_balance' => $currentBalance,
+                'total_credits' => $balanceSummary['total_credits'],
+                'total_debits' => $balanceSummary['total_debits'],
+                'available_balance' => $balanceSummary['available_balance'],
+                'total_balance' => $balanceSummary['total_balance'],
+                'suspense_balance' => $balanceSummary['suspense_balance'],
+                'current_balance' => $balanceSummary['available_balance'],
+                'ledger_balance' => $balanceSummary['ledger_balance'],
+                'total_outstanding' => $chronological->totalOutstanding($thirdPartyPayer),
+                'outstanding_entries' => $outstandingEntries,
             ],
             'recent_transactions' => $recent->map(fn ($h) => $this->serializeBalanceHistory($h))->values()->all(),
             'invoices' => $invoices->values()->all(),
@@ -139,7 +138,7 @@ class InsurerPortalVendorSummaryService
         }
 
         return ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $payer->id)
-            ->with(['invoice', 'client', 'business', 'branch', 'user'])
+            ->with(['invoice', 'client', 'business', 'branch', 'user', 'thirdPartyPayer'])
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
     }
@@ -149,6 +148,8 @@ class InsurerPortalVendorSummaryService
      */
     public function formatBalanceHistoryPage(LengthAwarePaginator $paginator): array
     {
+        app(AccountBalanceSummaryService::class)->enrichThirdPartyPayerHistories($paginator);
+
         return [
             'rows' => $paginator->getCollection()
                 ->map(fn (ThirdPartyPayerBalanceHistory $h) => $this->serializeBalanceHistory($h))
@@ -216,10 +217,13 @@ class InsurerPortalVendorSummaryService
             ? InsurerStatementInvoiceItems::linesPayableByPayer($invoice, $payer)
             : (is_array($invoice?->items) ? $invoice->items : []);
 
+        $settlement = \App\Support\InsurerPortalPaymentSettlementNotes::decode($history->notes);
+
         return [
             'id' => $history->id,
             'created_at' => $history->created_at?->toIso8601String(),
             'description' => $history->description,
+            'notes' => $history->notes,
             'client' => $history->client ? [
                 'name' => $history->client->name,
                 'client_id' => $history->client->client_id,
@@ -232,8 +236,12 @@ class InsurerPortalVendorSummaryService
             'transaction_type' => $history->transaction_type,
             'change_amount' => (float) $history->change_amount,
             'new_balance' => (float) $history->new_balance,
+            'available_balance_after' => (float) ($history->available_balance_after ?? $history->new_balance ?? 0),
             'payment_method' => $history->payment_method,
             'payment_status' => $history->payment_status,
+            'insurer_portal_payment' => $settlement['insurer_portal_payment'],
+            'settled_lines' => $settlement['settled_lines'],
+            'service_charge' => $settlement['service_charge'],
         ];
     }
 

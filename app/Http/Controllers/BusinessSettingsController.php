@@ -2,17 +2,21 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\HandlesBusinessBranding;
 use App\Models\Business;
 use App\Models\User;
 use App\Models\CreditLimitApprovalApprover;
 use App\Models\Item;
 use App\Models\Country;
+use App\Support\BusinessBranding;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class BusinessSettingsController extends Controller
 {
+    use HandlesBusinessBranding;
+
     /**
      * Show the form for editing business settings.
      */
@@ -38,7 +42,9 @@ class BusinessSettingsController extends Controller
 
         $countries = Country::with('currency')->orderedDefaultUsFirst()->get();
 
-        return view('business-settings.edit', compact('business', 'users', 'items', 'countries'));
+        $documentBranding = BusinessBranding::for($business);
+
+        return view('business-settings.edit', compact('business', 'users', 'items', 'countries', 'documentBranding'));
     }
 
     /**
@@ -57,12 +63,16 @@ class BusinessSettingsController extends Controller
             $request->merge(['exchange_rate_to_usd' => null]);
         }
 
-        $validated = $request->validate([
-            'max_third_party_credit_limit' => 'nullable|numeric|min:0',
+        $validated = $request->validate(array_merge(
+            BusinessBranding::validationRules($business->id),
+            [
+                'max_third_party_credit_limit' => 'nullable|numeric|min:0',
             'max_first_party_credit_limit' => 'nullable|numeric|min:0',
             'country_id' => 'nullable|exists:countries,id',
             'currency_code' => 'nullable|string|max:10',
             'exchange_rate_to_usd' => 'nullable|numeric|min:0.000001',
+            'financial_year_start_month' => 'required|integer|min:1|max:12',
+            'financial_year_start_day' => 'required|integer|min:1|max:31',
             'admit_button_label' => 'nullable|string|max:255',
             'discharge_button_label' => 'nullable|string|max:255',
             'default_payment_terms_days' => 'nullable|integer|min:1|max:365',
@@ -80,7 +90,11 @@ class BusinessSettingsController extends Controller
             'credit_excluded_items.*' => 'integer|exists:items,id',
             'third_party_excluded_items' => 'nullable|array',
             'third_party_excluded_items.*' => 'integer|exists:items,id',
-        ]);
+            'grn_technical_supervisor_required' => 'nullable|boolean',
+            ]
+        ));
+
+        $validated = $this->applyBrandingFromRequest($request, $business, $validated);
 
         $countryId = $validated['country_id'] ?? null;
         $currencyCode = strtoupper((string) ($validated['currency_code'] ?? ''));
@@ -96,11 +110,18 @@ class BusinessSettingsController extends Controller
             : null;
 
         $business->update([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'phone' => $validated['phone'],
+            'address' => $validated['address'],
+            'logo' => $validated['logo'] ?? $business->logo,
             'max_third_party_credit_limit' => $validated['max_third_party_credit_limit'] ?? null,
             'max_first_party_credit_limit' => $validated['max_first_party_credit_limit'] ?? null,
             'country_id' => $countryId,
             'currency_code' => $currencyCode,
             'exchange_rate_to_usd' => $exchangeRate,
+            'financial_year_start_month' => (int) $validated['financial_year_start_month'],
+            'financial_year_start_day' => (int) $validated['financial_year_start_day'],
             'admit_button_label' => $validated['admit_button_label'] ?? 'Admit Patient',
             'discharge_button_label' => $validated['discharge_button_label'] ?? 'Discharge Patient',
             'default_payment_terms_days' => $validated['default_payment_terms_days'] ?? 30,
@@ -110,6 +131,7 @@ class BusinessSettingsController extends Controller
             'discharge_remove_long_stay' => $request->has('discharge_remove_long_stay') ? (bool)$validated['discharge_remove_long_stay'] : true,
             'credit_excluded_items' => $validated['credit_excluded_items'] ?? [],
             'third_party_excluded_items' => $validated['third_party_excluded_items'] ?? [],
+            'grn_technical_supervisor_required' => $request->boolean('grn_technical_supervisor_required'),
         ]);
 
         // Handle credit limit approval approvers

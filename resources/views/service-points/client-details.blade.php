@@ -285,6 +285,10 @@
                                                         }
 
                                                         // Add category if available
+                                                        if ($item->generic_name && !empty(trim($item->generic_name))) {
+                                                            $descriptionParts[] = "Generic: {$item->generic_name}";
+                                                        }
+
                                                         if ($item->category && !empty(trim($item->category))) {
                                                             $descriptionParts[] = "Category: {$item->category}";
                                                         }
@@ -310,7 +314,7 @@
                                                     @if(isset($item->final_price) && $item->final_price != $item->default_price)
                                                         <span class="text-green-600">(Branch Price)</span>
                                                     @else
-                                                        <span class="text-gray-500">(Default Price)</span>
+                                                        <span class="text-gray-500">(Sale price)</span>
                                                     @endif
                                                     @if($item->vat_rate && $item->vat_rate > 0)
                                                         <span class="text-orange-600">(VAT: {{ $item->vat_rate }}%)</span>
@@ -1426,25 +1430,6 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    // Explicitly stop serving to clear the display screen, as requested.
-                    try {
-                        await fetch('{{ route('calling.announce') }}', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                            },
-                            body: JSON.stringify({
-                                client_id: {{ $client->id }},
-                                client_name: '{{ addslashes($client->name) }}',
-                                service_point_id: {{ $servicePoint->id ?? 'null' }},
-                                type: 'stop-serving'
-                            })
-                        });
-                    } catch (e) {
-                        console.error('Failed to stop serving on display:', e);
-                    }
-
                     // Clear cart
                     cart = [];
                     updateRequestOrderSummaryDisplay();
@@ -1969,23 +1954,7 @@
         }
 
         function cancelAndExit() {
-            fetch('{{ route('calling.announce') }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                },
-                body: JSON.stringify({
-                    client_id: {{ $client->id }},
-                    client_name: '{{ addslashes($client->name) }}',
-                    service_point_id: {{ $servicePoint->id ?? 'null' }},
-                    type: 'stop-serving'
-                })
-            }).then(() => {
-                window.location.href = '{{ route('service-points.show', $servicePoint) }}';
-            }).catch(() => {
-                window.location.href = '{{ route('service-points.show', $servicePoint) }}';
-            });
+            window.location.href = '{{ route('service-points.show', $servicePoint) }}';
         }
 
         function saveAndExit() {

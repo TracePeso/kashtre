@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Support\BusinessBranding;
 
 class Business extends Model
 {
@@ -25,6 +26,10 @@ class Business extends Model
         'minimum_amount',
         'type',
         'account_number',
+        'entity_code',
+        'registered_as_supplier',
+        'supplier_industry_id',
+        'supplier_sub_category_id',
         'account_balance',
         'mode',
         'date',
@@ -34,12 +39,15 @@ class Business extends Model
         'admit_button_label',
         'discharge_button_label',
         'default_payment_terms_days',
+        'financial_year_start_month',
+        'financial_year_start_day',
         'admit_enable_credit',
         'admit_enable_long_stay',
         'discharge_remove_credit',
         'discharge_remove_long_stay',
         'credit_excluded_items',
         'third_party_excluded_items',
+        'grn_technical_supervisor_required',
     ];
 
     protected $casts = [
@@ -54,6 +62,12 @@ class Business extends Model
         'discharge_remove_long_stay' => 'boolean',
         'credit_excluded_items' => 'array',
         'third_party_excluded_items' => 'array',
+        'grn_technical_supervisor_required' => 'boolean',
+        'financial_year_start_month' => 'integer',
+        'financial_year_start_day' => 'integer',
+        'registered_as_supplier' => 'boolean',
+        'supplier_industry_id' => 'integer',
+        'supplier_sub_category_id' => 'integer',
     ];
 
     // a businness has many users
@@ -122,6 +136,41 @@ class Business extends Model
         return $this->hasMany(Branch::class);
     }
 
+    public function supplierProfiles()
+    {
+        return $this->hasMany(Supplier::class, 'linked_business_id');
+    }
+
+    public function supplierIndustry()
+    {
+        return $this->belongsTo(SupplierIndustry::class, 'supplier_industry_id');
+    }
+
+    public function supplierSubCategory()
+    {
+        return $this->belongsTo(SupplierSubCategory::class, 'supplier_sub_category_id');
+    }
+
+    public function scopeKashtreEntities($query)
+    {
+        return $query->where('id', '!=', 1);
+    }
+
+    public function scopeRegisteredAsSupplier($query)
+    {
+        return $query->where('registered_as_supplier', true);
+    }
+
+    public function scopeActivelyUtilizing($query)
+    {
+        return $query->whereHas('users', fn ($userQuery) => $userQuery->where('status', 'active'));
+    }
+
+    public function isRegisteredAsSupplier(): bool
+    {
+        return (bool) $this->registered_as_supplier;
+    }
+
     public function qualifications()
     {
         return $this->hasMany(Qualification::class);
@@ -175,6 +224,26 @@ class Business extends Model
     public function creditLimitApprovers()
     {
         return $this->hasMany(CreditLimitApprovalApprover::class);
+    }
+
+    public function isGrnTechnicalSupervisorRequired(): bool
+    {
+        return (bool) ($this->grn_technical_supervisor_required ?? false);
+    }
+
+    public function inventoryModuleConfig()
+    {
+        return $this->hasOne(InventoryModuleConfig::class);
+    }
+
+    public function branding(): BusinessBranding
+    {
+        return new BusinessBranding($this);
+    }
+
+    public function getLogoUrlAttribute(): ?string
+    {
+        return $this->branding()->logoUrl();
     }
 
 }

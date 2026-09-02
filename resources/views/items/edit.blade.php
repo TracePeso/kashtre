@@ -40,6 +40,39 @@
                             <input type="text" name="name" id="name" value="{{ old('name', $item->name) }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required placeholder="Enter item name">
                         </div>
 
+                        <div>
+                            <label for="generic_name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Generic Name</label>
+                            <input type="text" name="generic_name" id="generic_name" value="{{ old('generic_name', $item->generic_name) }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="e.g. Paracetamol">
+                        </div>
+
+                        <div>
+                            <label for="strength" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Strength</label>
+                            <input type="text" name="strength" id="strength" value="{{ old('strength', $item->strength) }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="e.g. 500mg">
+                        </div>
+
+                        <!-- Type -->
+                        <div>
+                            <label for="type" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type <span class="text-red-500">*</span></label>
+                            <select name="type" id="type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
+                                <option value="service" {{ old('type', $item->type) == 'service' ? 'selected' : '' }}>Service</option>
+                                <option value="good" {{ old('type', $item->type) == 'good' ? 'selected' : '' }}>Good</option>
+                                <option value="package" {{ old('type', $item->type) == 'package' ? 'selected' : '' }}>Package</option>
+                                <option value="bulk" {{ old('type', $item->type) == 'bulk' ? 'selected' : '' }}>Bulk</option>
+                            </select>
+                        </div>
+
+                        <!-- Category (importance) — goods only -->
+                        <div class="good-only inventory-good-fields">
+                            <label for="importance_category" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Category <span class="text-red-500">*</span></label>
+                            <select name="importance_category" id="importance_category" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
+                                <option value="" disabled {{ old('importance_category', $item->importance_category) ? '' : 'selected' }}>Select category</option>
+                                @foreach($importanceOptions as $value => $label)
+                                    <option value="{{ $value }}" {{ old('importance_category', $item->importance_category) === $value ? 'selected' : '' }}>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            @error('importance_category')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                        </div>
+
                         <!-- Code -->
                         <div>
                             <label for="code" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Code</label>
@@ -52,17 +85,6 @@
                                 </button>
                             </div>
                             <p class="mt-1 text-sm text-gray-500">Click the refresh button to generate a new code</p>
-                        </div>
-
-                        <!-- Type -->
-                        <div>
-                            <label for="type" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type <span class="text-red-500">*</span></label>
-                            <select name="type" id="type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
-                                <option value="service" {{ old('type', $item->type) == 'service' ? 'selected' : '' }}>Service</option>
-                                <option value="good" {{ old('type', $item->type) == 'good' ? 'selected' : '' }}>Good</option>
-                                <option value="package" {{ old('type', $item->type) == 'package' ? 'selected' : '' }}>Package</option>
-                                <option value="bulk" {{ old('type', $item->type) == 'bulk' ? 'selected' : '' }}>Bulk</option>
-                            </select>
                         </div>
 
                         <!-- Group -->
@@ -106,15 +128,38 @@
 
                         <!-- Unit of Measure -->
                         <div class="service-good-only">
-                            <label for="uom_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Unit of Measure <span class="text-red-500">*</span></label>
+                            <label for="uom_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Sale unit <span class="text-red-500">*</span></label>
                             <select name="uom_id" id="uom_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
-                                <option value="" disabled>Select unit of measure</option>
+                                <option value="" disabled>Select sale unit</option>
                                 @foreach($itemUnits as $itemUnit)
                                     <option value="{{ $itemUnit->id }}" {{ old('uom_id', $item->uom_id) == $itemUnit->id ? 'selected' : '' }}>
                                         {{ $itemUnit->name }}
                                     </option>
                                 @endforeach
                             </select>
+                            <p class="mt-1 text-xs text-gray-500">Unit in which the business sells or issues this item.</p>
+                        </div>
+
+                        <div class="good-only inventory-good-fields">
+                            <label for="order_unit_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Order unit</label>
+                            <select name="order_unit_id" id="order_unit_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                <option value="">Same as sale unit</option>
+                                @foreach($itemUnits as $itemUnit)
+                                    <option value="{{ $itemUnit->id }}" {{ old('order_unit_id', $item->order_unit_id) == $itemUnit->id ? 'selected' : '' }}>
+                                        {{ $itemUnit->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <p class="mt-1 text-xs text-gray-500">Supplier quote unit. The delivery unit is chosen per receipt.</p>
+                        </div>
+
+                        <div class="good-only inventory-good-fields">
+                            <label for="suom_per_ouom" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Sale units per order unit</label>
+                            <input type="number" name="suom_per_ouom" id="suom_per_ouom" step="0.0001" min="0.0001"
+                                   value="{{ old('suom_per_ouom', $item->suom_per_ouom) }}"
+                                   placeholder="e.g. 100"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                            <p class="mt-1 text-xs text-gray-500">How many sale units are in one order unit (e.g. 100 tablets per box).</p>
                         </div>
 
                         <!-- Branch Service Points Section -->
@@ -176,7 +221,7 @@
                                     <input type="radio" name="pricing_type" value="default" id="default_pricing" 
                                            {{ old('pricing_type', $item->branchPrices->count() == 0 ? 'default' : 'custom') == 'default' ? 'checked' : '' }} 
                                            class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300">
-                                    <span class="ml-3 text-sm font-medium text-gray-700 dark:text-gray-300">Use default price for all branches</span>
+                                    <span class="ml-3 text-sm font-medium text-gray-700 dark:text-gray-300">Use sale price for all branches</span>
                                 </label>
                                 <label class="flex items-center">
                                     <input type="radio" name="pricing_type" value="custom" id="custom_pricing" 
@@ -191,7 +236,6 @@
                     <!-- Branch Pricing Section -->
                     <div class="mt-8 branch-pricing-section" id="branch_pricing_section" style="display: {{ $item->branchPrices->count() > 0 ? 'block' : 'none' }};">
                         <h3 class="text-lg font-semibold text-gray-800 dark:text-white mb-4">Branch-Specific Pricing</h3>
-                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Set different prices for specific branches</p>
                         
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             @foreach($branches as $branch)
@@ -199,21 +243,34 @@
                                 $branchPrice = $item->branchPrices->where('branch_id', $branch->id)->first();
                             @endphp
                             <div class="border rounded-lg p-4 bg-gray-50 dark:bg-gray-700">
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                                     {{ $branch->name }}
                                 </label>
-                                <input type="number" 
-                                       name="branch_prices[{{ $loop->index }}][branch_id]" 
-                                       value="{{ $branch->id }}" 
-                                       style="display: none;">
-                                <input type="number" 
-                                       name="branch_prices[{{ $loop->index }}][price]" 
-                                       step="0.01" 
-                                       min="0" 
-                                       value="{{ $branchPrice ? $branchPrice->price : '' }}"
-                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
-                                       placeholder="Use default price">
-                                <p class="mt-1 text-xs text-gray-500">Leave empty to use default price. At least one branch must have a custom price.</p>
+                                <input type="hidden"
+                                       name="branch_prices[{{ $loop->index }}][branch_id]"
+                                       value="{{ $branch->id }}">
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sale price</label>
+                                        <input type="number"
+                                               name="branch_prices[{{ $loop->index }}][price]"
+                                               step="0.01"
+                                               min="0"
+                                               value="{{ old('branch_prices.'.$loop->index.'.price', $branchPrice?->price) }}"
+                                               class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                               placeholder="0.00">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Purchase price</label>
+                                        <input type="number"
+                                               name="branch_prices[{{ $loop->index }}][purchase_price]"
+                                               step="0.01"
+                                               min="0"
+                                               value="{{ old('branch_prices.'.$loop->index.'.purchase_price', $branchPrice?->purchase_price) }}"
+                                               class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                               placeholder="0.00">
+                                    </div>
+                                </div>
                             </div>
                             @endforeach
                         </div>
@@ -332,10 +389,19 @@
                         </button>
                     </div>
 
-                    <!-- Default Price -->
+                    <!-- Sale Price -->
                     <div class="mt-8">
-                        <label for="default_price" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Default Price <span class="text-red-500">*</span></label>
+                        <label for="default_price" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Sale price <span class="text-red-500">*</span></label>
                         <input type="number" name="default_price" id="default_price" step="0.01" min="0" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required placeholder="0.00" value="{{ old('default_price', $item->default_price) }}">
+                    </div>
+
+                    <div class="mt-6">
+                        <label for="purchase_price" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Purchase price <span class="text-red-500">*</span></label>
+                        <input type="number" name="purchase_price" id="purchase_price" step="0.01" min="0"
+                               value="{{ old('purchase_price', $item->purchase_price) }}"
+                               placeholder="0.00"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                               required>
                     </div>
 
                     <!-- VAT Rate -->
@@ -452,6 +518,7 @@
                 
                 // Get service/good only elements
                 const serviceGoodOnlyElements = document.querySelectorAll('.service-good-only');
+                const goodOnlyElements = document.querySelectorAll('.good-only');
                 
                 // Hide both sections initially
                 if (packageItemsSection) packageItemsSection.style.display = 'none';
@@ -476,12 +543,20 @@
                     // Hide service/good specific fields
                     serviceGoodOnlyElements.forEach(element => {
                         element.style.display = 'none';
-                        // Remove required attribute from inputs in hidden sections
                         const inputs = element.querySelectorAll('input, select');
                         inputs.forEach(input => {
                             input.required = false;
                         });
                     });
+                    goodOnlyElements.forEach(element => {
+                        element.style.display = 'none';
+                    });
+
+                    const importanceSelect = document.getElementById('importance_category');
+                    if (importanceSelect) {
+                        importanceSelect.required = false;
+                        importanceSelect.value = '';
+                    }
                     
                     // Set hospital share to 100 for packages and bulk
                     document.getElementById('hospital_share').value = '100';
@@ -494,13 +569,24 @@
                     // Show service/good specific fields
                     serviceGoodOnlyElements.forEach(element => {
                         element.style.display = 'block';
-                        // Restore required attributes where needed
                         const requiredInputs = element.querySelectorAll('input[data-required="true"], select[data-required="true"]');
                         requiredInputs.forEach(input => {
                             input.required = true;
                         });
                     });
-                    
+
+                    goodOnlyElements.forEach(element => {
+                        element.style.display = selectedType === 'good' ? 'block' : 'none';
+                    });
+
+                    const importanceSelect = document.getElementById('importance_category');
+                    if (importanceSelect) {
+                        importanceSelect.required = selectedType === 'good';
+                        if (selectedType !== 'good') {
+                            importanceSelect.value = '';
+                        }
+                    }
+
                     // Re-trigger contractor toggle
                     toggleContractor();
                 }
@@ -537,6 +623,7 @@
                         
                         // Update item units
                         updateSelect('uom_id', data.itemUnits);
+                        updateImportanceCategories(data.importanceCategories || []);
                         
                         // Update service points - show all service points grouped by branch
                         updateServicePointsByBranch(data.servicePoints);
@@ -573,6 +660,27 @@
 
                 // Restore value if it still exists in new options
                 if (currentValue && data.some(item => item.id == currentValue)) {
+                    select.value = currentValue;
+                } else {
+                    select.value = '';
+                }
+            }
+
+            function updateImportanceCategories(categories) {
+                const select = document.getElementById('importance_category');
+                if (!select) return;
+
+                const currentValue = select.value;
+                select.innerHTML = '<option value="" disabled selected>Select category</option>';
+
+                categories.forEach(category => {
+                    const option = document.createElement('option');
+                    option.value = category.slug;
+                    option.textContent = category.name;
+                    select.appendChild(option);
+                });
+
+                if (currentValue && categories.some(category => category.slug === currentValue)) {
                     select.value = currentValue;
                 } else {
                     select.value = '';

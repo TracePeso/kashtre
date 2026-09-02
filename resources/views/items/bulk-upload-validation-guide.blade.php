@@ -16,11 +16,11 @@
                         <ul class="space-y-2 text-sm text-blue-700 dark:text-blue-300">
                             <li class="flex items-start">
                                 <span class="text-red-500 mr-2">•</span>
-                                <span><strong>Required Fields:</strong> Name, Type, Default Price, Hospital Share (for goods/services)</span>
+                                <span><strong>Required Fields:</strong> Name, Type, Sale Price, Purchase Price, Hospital Share (for goods/services)</span>
                             </li>
                             <li class="flex items-start">
                                 <span class="text-red-500 mr-2">•</span>
-                                <span><strong>Optional Fields:</strong> Code (auto-generated if empty), Description, VAT Rate, Other Names</span>
+                                <span><strong>Optional Fields:</strong> Code (auto-generated if empty), Generic Name, Category, Description, VAT Rate, Other Names</span>
                             </li>
                             <li class="flex items-start">
                                 <span class="text-red-500 mr-2">•</span>
@@ -77,7 +77,11 @@
                                     <p class="text-sm text-green-600 dark:text-green-400">Optional, auto-generated if empty, must be unique</p>
                                 </div>
                                 <div>
-                                    <h4 class="font-semibold text-green-700 dark:text-green-300">Default Price</h4>
+                                    <h4 class="font-semibold text-green-700 dark:text-green-300">Sale Price</h4>
+                                    <p class="text-sm text-green-600 dark:text-green-400">Required, numeric, minimum 0</p>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold text-green-700 dark:text-green-300">Purchase Price</h4>
                                     <p class="text-sm text-green-600 dark:text-green-400">Required, numeric, minimum 0</p>
                                 </div>
                                 <div>

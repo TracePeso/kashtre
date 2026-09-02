@@ -19,6 +19,11 @@
                         <div class="text-right">
                             <div class="space-y-2">
                                 @php
+                                    $statementBalances = $statementBalances ?? \App\Services\ClientBalanceStatementPresenter::summaryBalances($client);
+                                    $headerAvailableBalance = (float) ($statementBalances['available_balance'] ?? 0);
+                                    $headerSuspenseBalance = (float) ($statementBalances['suspense_balance'] ?? 0);
+                                    $headerTotalBalance = (float) ($statementBalances['total_balance'] ?? 0);
+
                                     // Check if client is paying via insurance
                                     $isInsuranceClient = false;
                                     $hasInsuranceInvoices = $client->balanceHistories()
@@ -45,37 +50,20 @@
                                         }
                                     }
                                     
-                                    // Available Balance = credits − debits; insurance line items are informational only
-                                    $credits = $client->balanceHistories()
-                                        ->where('transaction_type', 'credit')
-                                        ->affectingClientBalance()
-                                        ->sum('change_amount');
-                                    $debits = abs($client->balanceHistories()
-                                        ->where('transaction_type', 'debit')
-                                        ->affectingClientBalance()
-                                        ->sum('change_amount'));
-                                    $availableBalance = $credits - $debits;
-                                    
-                                    // Suspense Balance = credits - debits in suspense accounts (from MoneyAccount balances)
-                                    // This represents money in suspense accounts that hasn't been moved to final accounts yet
-                                    $suspenseBalance = $client->suspense_balance ?? 0;
-                                    
-                                    // Total Balance = Available Balance + Suspense Balance
-                                    // For pure insurance clients with no client-side responsibility, balance can be forced to 0.
-                                    if ($isInsuranceClient && !$client->has_deductible && !$client->copay_amount && !$client->coinsurance_percentage) {
+                                    $availableBalance = $headerAvailableBalance;
+                                    $suspenseBalance = $headerSuspenseBalance;
+                                    $totalBalance = $headerTotalBalance;
+
+                                    if ($isInsuranceClient && ! $client->has_deductible && ! $client->copay_amount && ! $client->coinsurance_percentage) {
                                         $availableBalance = 0;
                                         $suspenseBalance = 0;
                                         $totalBalance = 0;
-                                    } else {
-                                        $totalBalance = $availableBalance + $suspenseBalance;
                                     }
 
-                                    
-                                    // Credit Remaining calculation for credit clients
                                     $creditLimit = $client->max_credit ?? 0;
                                     $amountOwed = $availableBalance < 0 ? abs($availableBalance) : 0;
                                     $creditRemaining = max(0, $creditLimit - $amountOwed);
-                                    
+
                                     $availableBalanceColor = $availableBalance < 0 ? 'text-red-600' : ($availableBalance > 0 ? 'text-green-600' : 'text-gray-700');
                                     $totalBalanceColor = $totalBalance < 0 ? 'text-red-600' : ($totalBalance > 0 ? 'text-green-600' : 'text-gray-700');
                                     $creditRemainingColor = $creditRemaining > 0 ? 'text-green-600' : 'text-red-600';
@@ -162,6 +150,8 @@
                         <h3 class="text-lg font-medium text-gray-900">Client Account Statement</h3>
                         <div class="flex space-x-2">
                             @php
+                                $credits = (float) ($statementBalances['total_credits'] ?? 0);
+                                $debits = (float) ($statementBalances['total_debits'] ?? 0);
                                 $calculatedBalance = $credits - $debits;
                                 $isInitiator = \App\Models\CreditLimitApprovalApprover::where('business_id', auth()->user()->business_id)
                                     ->where('approver_id', auth()->user()->id)
@@ -216,7 +206,10 @@
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Debit</th>
+                                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Credit</th>
+                                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Available balance</th>
+                                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total balance</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reference</th>
                                     </tr>
                                 </thead>
@@ -301,65 +294,30 @@
                                                 @endphp
                                                 {{ $description }}
                                             </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                @php
-                                                    // For insurance tracking entries, prefer the stored change_amount.
-                                                    $displayAmount = 0;
-                                                    if ($isInsuranceTracking) {
-                                                        if (abs((float) $history->change_amount) > 0) {
-                                                            $displayAmount = abs((float) $history->change_amount);
-                                                        } elseif ($history->invoice) {
-                                                        $description = $history->description;
-                                                        $invoice = $history->invoice;
-                                                        $items = $invoice->items ?? [];
-                                                        
-                                                        // Extract item name and quantity from description (e.g., "Acinone S (x5) [Insurance]")
-                                                        if (preg_match('/^(.+?)\s*\(x(\d+)\)\s*\[Insurance\]$/', $description, $matches)) {
-                                                            $itemName = trim($matches[1]);
-                                                            $quantity = (int)$matches[2];
-                                                            
-                                                            // Find matching item in invoice by name
-                                                            foreach ($items as $item) {
-                                                                $itemNameFromInvoice = trim($item['name'] ?? '');
-                                                                // Match item name (case-insensitive, partial match)
-                                                                if (stripos($itemNameFromInvoice, $itemName) !== false || 
-                                                                    stripos($itemName, $itemNameFromInvoice) !== false ||
-                                                                    $itemNameFromInvoice === $itemName) {
-                                                                    $itemPrice = (float)($item['price'] ?? 0);
-                                                                    $itemQty = (int)($item['quantity'] ?? $quantity);
-                                                                    $displayAmount = $itemPrice * $itemQty;
-                                                                    break;
-                                                                }
-                                                            }
-                                                        } elseif (stripos($description, 'Service Fee') !== false || 
-                                                                  stripos($description, 'Service Charge') !== false) {
-                                                            // For service fee entries
-                                                            $displayAmount = (float)($invoice->service_charge ?? 0);
-                                                        } elseif (preg_match('/Client UGX ([0-9,]+(?:\.[0-9]+)?) \+ Insurance UGX ([0-9,]+(?:\.[0-9]+)?)/', $description, $matches)) {
-                                                            // Fallback for vendor breakdown descriptions.
-                                                            $clientAmount = (float) str_replace(',', '', $matches[1]);
-                                                            $insuranceAmount = (float) str_replace(',', '', $matches[2]);
-                                                            $displayAmount = $clientAmount + $insuranceAmount;
-                                                        } else {
-                                                            // Fallback: if we can't match, try to get from invoice items total
-                                                            // This handles cases where description format doesn't match
-                                                            $totalFromItems = 0;
-                                                            foreach ($items as $item) {
-                                                                $itemPrice = (float)($item['price'] ?? 0);
-                                                                $itemQty = (int)($item['quantity'] ?? 1);
-                                                                $totalFromItems += $itemPrice * $itemQty;
-                                                            }
-                                                            $displayAmount = $totalFromItems > 0 ? $totalFromItems : (float)($invoice->total_amount ?? 0);
-                                                        }
-                                                        }
-                                                    } else {
-                                                        // For non-insurance entries, use change_amount
-                                                        $displayAmount = abs($history->change_amount ?? 0);
+                                            @php
+                                                $ledgerDebit = 0.0;
+                                                $ledgerCredit = 0.0;
+                                                if (! $isInsuranceTracking) {
+                                                    if ($history->transaction_type === 'credit' || ($history->change_amount ?? 0) > 0) {
+                                                        $ledgerCredit = abs((float) ($history->change_amount ?? 0));
+                                                    } elseif ($history->transaction_type === 'debit' || ($history->change_amount ?? 0) < 0) {
+                                                        $ledgerDebit = abs((float) ($history->change_amount ?? 0));
                                                     }
-                                                @endphp
-                                                <span class="@if($isInsuranceTracking) text-purple-600 @elseif($history->transaction_type === 'package') text-blue-600 @elseif($history->change_amount > 0) text-green-600 @else text-red-600 @endif">
-                                                    UGX {{ number_format($displayAmount, 2) }}
-                                                </span>
+                                                }
+                                                $availableAfter = (float) ($history->available_balance_after ?? $history->new_balance ?? 0);
+                                                $totalAfter = (float) ($history->total_balance_after ?? $availableAfter);
+                                            @endphp
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-red-600">
+                                                {{ $ledgerDebit > 0 ? 'UGX '.number_format($ledgerDebit, 2) : '—' }}
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-green-600">
+                                                {{ $ledgerCredit > 0 ? 'UGX '.number_format($ledgerCredit, 2) : '—' }}
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">
+                                                UGX {{ number_format($availableAfter, 2) }}
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">
+                                                UGX {{ number_format($totalAfter, 2) }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                                 {{ $history->reference_number ?? '-' }}
@@ -369,6 +327,12 @@
                                 </tbody>
                             </table>
                         </div>
+
+                        @if(($headerSuspenseBalance ?? 0) > 0)
+                            <p class="mt-3 text-xs text-gray-500">
+                                Total balance includes UGX {{ number_format($headerSuspenseBalance, 2) }} currently held in suspense (added to each row’s available balance).
+                            </p>
+                        @endif
 
                         <!-- Pagination -->
                         <div class="mt-4">

@@ -109,3 +109,6 @@ php artisan payments:simulate-success
 
 
 ALTER TABLE `bot_configurations` ADD `image` VARCHAR(200) NULL DEFAULT NULL AFTER `login`;
+
+
+php artisan items:backfill-purchase-prices --overwrite

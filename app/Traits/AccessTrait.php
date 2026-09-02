@@ -76,14 +76,17 @@ trait AccessTrait
         "Departments" => ['View Departments', 'Edit Departments', 'Add Departments', 'Bulky Update Departments'],
         "Qualifications" => ['View Qualifications', 'Edit Qualifications', 'Add Qualifications', 'Bulky Update Qualifications'],
         "Titles" => ['View Titles', 'Edit Titles', 'Add Titles', 'Bulky Update Titles'],
+        "Staff Categories" => ['View Staff Categories', 'Edit Staff Categories', 'Add Staff Categories', 'Bulky Update Staff Categories'],
+        "Supplier Industries" => ['View Supplier Industries', 'Edit Supplier Industries', 'Add Supplier Industries', 'Bulky Update Supplier Industries'],
+        "Supplier Sub Categories" => ['View Supplier Sub Categories', 'Edit Supplier Sub Categories', 'Add Supplier Sub Categories', 'Bulky Update Supplier Sub Categories'],
         "Rooms" => ['View Rooms', 'Edit Rooms', 'Add Rooms', 'Bulky Update Rooms'],
         "Sections" => ['View Sections', 'Edit Sections', 'Add Sections', 'Bulky Update Sections'],
         "Item Units" => ['View Item Units', 'Edit Item Units', 'Add Item Units', 'Bulky Update Item Units'],
         "Groups" => ['View Groups', 'Edit Groups', 'Add Groups', 'Bulky Update Groups'],
         "Patient Categories" => ['View Patient Categories', 'Edit Patient Categories', 'Add Patient Categories', 'Bulky Update Patient Categories'],
-        "Client Spaces" => ['View Client Spaces', 'Edit Client Spaces', 'Add Client Spaces', 'Delete Client Spaces'],
         "Suppliers" => ['View Suppliers', 'Edit Suppliers', 'Add Suppliers', 'Bulky Update Suppliers'],
         "Stores" => ['View Stores', 'Edit Stores', 'Add Stores', 'Bulky Update Stores'],
+        "Item Categories" => ['View Item Categories', 'Edit Item Categories', 'Add Item Categories', 'Delete Item Categories'],
         "Insurance Companies" => ['View Insurance Companies', 'Edit Insurance Companies', 'Add Insurance Companies', 'Bulky Update Insurance Companies'],
         "Sub Groups" => ['View Sub Groups', 'Edit Sub Groups', 'Add Sub Groups', 'Bulky Update Sub Groups'],
         "Maturation Periods" => ['View Maturation Periods', 'Edit Maturation Periods', 'Add Maturation Periods', 'Manage Maturation Periods'],
@@ -93,9 +96,18 @@ trait AccessTrait
         "Refund Workflows" => ['View Credit Note Workflows', 'Edit Credit Note Workflows', 'Add Credit Note Workflows'],
     ];
 
-    public static $callers = [
-        "Calling Module" => ['View Calling Module', 'Add Calling Module', 'Edit Calling Module', 'Manage Calling Module', 'Delete Calling Module'],
-        "Callers" => ['View Callers', 'Add Callers', 'Edit Callers', 'Manage Callers', 'Broadcast Announcements'],
+    public static $inventoryModule = [
+        "Inventory Module" => ['View Inventory Module', 'Add Inventory Module', 'Edit Inventory Module', 'Manage Inventory Module', 'Delete Inventory Module'],
+        "Inventory" => [
+            'View Inventory',
+            'Add Inventory',
+            'Edit Inventory',
+            'Manage Inventory',
+            'View End Store Queue',
+            'Dispense End Store Queue',
+            'View Approved Pool',
+            'Record Inventory Usage',
+        ],
     ];
 
     public static $adminAccess = [
@@ -203,7 +215,7 @@ trait AccessTrait
                 static::$modules,
                 static::$stock,
                 static::$masters,
-                static::$callers,
+                static::$inventoryModule,
                 static::$adminAccess,
                 static::$businessAccess,
                 static::$clientAccess,
@@ -238,7 +250,7 @@ trait AccessTrait
         "Modules" => self::$modules,
         "Stock" => self::$stock,
         "Masters" => self::$masters,
-        "Callers" => self::$callers,
+        "Inventory" => self::$inventoryModule,
         "Admin" => self::$adminAccess,
         "Business" => self::$businessAccess,
         "Client" => self::$clientAccess,

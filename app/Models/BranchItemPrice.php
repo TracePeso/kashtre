@@ -18,10 +18,12 @@ class BranchItemPrice extends Model
         'branch_id',
         'item_id',
         'price',
+        'purchase_price',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
+        'purchase_price' => 'decimal:2',
     ];
 
     protected static function booted()

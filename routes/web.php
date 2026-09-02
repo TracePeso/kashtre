@@ -14,19 +14,22 @@ use App\Http\Controllers\QualificationController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\ServicePointController;
 use App\Http\Controllers\SectionController;
+use App\Http\Controllers\StaffCategoryController;
+use App\Http\Controllers\SupplierIndustryController;
+use App\Http\Controllers\SupplierSubCategoryController;
 use App\Http\Controllers\ItemUnitController;
 use App\Http\Controllers\ItemController;
 use App\Http\Controllers\ItemBulkUploadController;
 use App\Http\Controllers\PackageBulkUploadController;
-use App\Http\Controllers\GroupController;
+use App\Http\Controllers\ItemImportanceCategoryController;
 use App\Http\Controllers\PatientCategoryController;
-use App\Http\Controllers\ClientSpaceController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\ContractorProfileController;
 use App\Http\Controllers\ContractorProfileBulkUploadController;
 use App\Http\Controllers\InsuranceCompanyController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StoreController;
+use App\Http\Controllers\GroupController;
 use App\Http\Controllers\SubGroupController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuditLogController;
@@ -40,6 +43,8 @@ use App\Http\Controllers\ContractorServiceChargeController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\QuotationController;
 use App\Http\Controllers\LocalPaymentController;
+use App\Http\Controllers\ClientSpaceController;
+use App\Http\Controllers\HrModuleSettingsController;
 
 use App\Http\Controllers\PackageTrackingController;
 use App\Http\Controllers\PackageSalesController;
@@ -58,16 +63,35 @@ use App\Http\Controllers\AutomatedTestController;
 use App\Http\Controllers\MaturationPeriodController;
 use App\Http\Controllers\ServiceChargeMaturationPeriodController;
 use App\Http\Controllers\PaymentMethodAccountController;
-use App\Http\Controllers\CallingModuleConfigController;
-use App\Http\Controllers\ServicePointCallerController;
-use App\Http\Controllers\CallingController;
-use App\Http\Controllers\EmergencyController;
+use App\Http\Controllers\InventoryModuleConfigController;
+use App\Http\Controllers\InventoryContextController;
+use App\Http\Controllers\GoodsReceivedNoteController;
+use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\InventoryFulfillmentController;
+use App\Http\Controllers\InventoryApprovedPoolController;
+use App\Http\Controllers\InventoryRecordUsageController;
+use App\Http\Controllers\InventoryCrashCartController;
+use App\Http\Controllers\InventoryPickRouteController;
+use App\Http\Controllers\InventoryInternalReplenishmentController;
+use App\Http\Controllers\InventorySettingsController;
+use App\Http\Controllers\InventoryDailyConsumptionController;
+use App\Http\Controllers\InventoryOrderController;
+use App\Http\Controllers\InventoryIncomingRfqController;
+use App\Http\Controllers\InventorySuppliedQuotationController;
+use App\Http\Controllers\InventoryPurchaseOrderController;
+use App\Http\Controllers\InventorySupplierQuotationController;
+use App\Http\Controllers\InventoryStockTransferController;
+use App\Http\Controllers\InventoryGoodsReturnController;
+use App\Http\Controllers\InventoryReportsController;
+use App\Http\Controllers\InventoryStockCountController;
+use App\Http\Controllers\InventoryEscrowController;
 use App\Http\Controllers\BankScheduleController;
 use App\Http\Controllers\WithdrawalSettingController;
 use App\Http\Controllers\BusinessWithdrawalSettingController;
+use App\Http\Controllers\CashTraySettingsController;
+use App\Http\Controllers\ClinicalModuleSettingsController;
 use App\Http\Controllers\WithdrawalRequestController;
 use App\Http\Controllers\BusinessSettingsController;
-use App\Http\Controllers\BroadcastAuthController;
 use App\Http\Controllers\ThirdPartyPayerController;
 use App\Http\Controllers\CreditNoteWorkflowController;
 use App\Http\Controllers\CreditNoteWorkflowBulkUploadController;
@@ -97,13 +121,6 @@ use Illuminate\Http\Request;
 
 Route::redirect('/', 'login');
 
-Route::match(['get', 'post'], '/reverb/auth', BroadcastAuthController::class)
-    ->middleware(['auth'])
-    ->withoutMiddleware([
-        \App\Http\Middleware\RequireTwoFactorForKashtre::class,
-        \App\Http\Middleware\VerifyCsrfToken::class,
-    ])
-    ->name('reverb.auth');
 
 // Third-party payer authentication routes (public)
 Route::prefix('third-party-payer')->name('third-party-payer.')->group(function () {
@@ -134,11 +151,26 @@ Route::middleware(['auth', 'cashier'])->prefix('cashier-dashboard')->name('cashi
 
 Route::middleware(['auth', 'verified'])->group(function () {
 
+    // ── HR Module routes (UI lives in kashtre, data comes from HR API) ──────
+    Route::prefix('hr')->name('hr.')->group(function () {
+        Route::get('/',            [\App\Http\Controllers\Hr\HrController::class, 'stats'])->name('dashboard');
+        Route::get('/employees',        [\App\Http\Controllers\Hr\HrController::class, 'employees'])->name('employees');
+        Route::get('/employee-records', [\App\Http\Controllers\Hr\HrController::class, 'employeeRecords'])->name('employee-records');
+        Route::get('/attendance',  [\App\Http\Controllers\Hr\HrController::class, 'attendance'])->name('attendance');
+        Route::get('/leave',       [\App\Http\Controllers\Hr\HrController::class, 'leave'])->name('leave');
+        Route::get('/payroll',     [\App\Http\Controllers\Hr\HrController::class, 'payroll'])->name('payroll');
+        Route::get('/performance',  [\App\Http\Controllers\Hr\HrController::class, 'performance'])->name('performance');
+        Route::get('/recognition',  [\App\Http\Controllers\Hr\HrController::class, 'recognition'])->name('recognition');
+        Route::get('/reports',     [\App\Http\Controllers\Hr\HrController::class, 'reports'])->name('reports');
+        Route::get('/settings',    [\App\Http\Controllers\Hr\HrController::class, 'settings'])->name('settings');
+        Route::get('/embed',       [\App\Http\Controllers\Hr\HrController::class, 'embed'])->name('embed');
+    });
+
     // Route for the getting the data feed
     // Route::get('/json-data-feed', [DataFeedController::class, 'getDataFeed'])->name('json_data_feed');
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-    Route::post('/dashboard/yo-payment-test', [DashboardController::class, 'testYoPayment'])->name('dashboard.yo-payment-test');
+    Route::get('/hr-module/open', [\App\Http\Controllers\HrSsoController::class, 'redirect'])->name('hr-module.open');
     Route::post('/dashboard/testing-environment-reset', [DashboardController::class, 'clearTestingEnvironment'])
         ->name('dashboard.testing-environment-reset')
         ->middleware('throttle:5,1');
@@ -153,6 +185,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::resource("businesses", BusinessController::class);
     Route::resource("branches", BranchController::class);
+    Route::resource("client-spaces", ClientSpaceController::class);
     Route::resource("support", SupportController::class);
     Route::resource("transactions", TransactionController::class);
     Route::get('/sales', [SalesController::class, 'index'])->name('sales.index');
@@ -161,8 +194,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource("users", UserController::class);
     Route::resource("roles", RoleController::class);
     Route::resource("departments", DepartmentController::class);
-    Route::resource("client-spaces", ClientSpaceController::class);
     Route::resource("titles", TitleController::class);
+    Route::resource("staff-categories", StaffCategoryController::class)->only(['index']);
+    Route::resource("supplier-industries", SupplierIndustryController::class)->only(['index']);
+    Route::resource("supplier-sub-categories", SupplierSubCategoryController::class)->only(['index']);
     Route::resource("qualifications", QualificationController::class);
     Route::resource("rooms", RoomController::class);
     Route::resource("service-points", ServicePointController::class);
@@ -214,7 +249,6 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     
     Route::resource("groups", GroupController::class);
     Route::resource("patient-categories", PatientCategoryController::class);
-    Route::resource("client-spaces", ClientSpaceController::class);
     Route::resource("suppliers", SupplierController::class);
     Route::resource("contractor-profiles", ContractorProfileController::class);
     
@@ -234,6 +268,12 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     Route::delete('/settings/countries/{country}', [SettingsController::class, 'destroyCountry'])->name('settings.countries.destroy');
     Route::post('/settings/vendor-service-charge-defaults', [SettingsController::class, 'updateVendorServiceChargeDefaults'])
         ->name('settings.vendor-service-charge-defaults.update');
+    Route::get('/settings/kashtre', [CashTraySettingsController::class, 'edit'])->name('settings.kashtre.edit');
+    Route::put('/settings/kashtre', [CashTraySettingsController::class, 'update'])->name('settings.kashtre.update');
+    Route::get('/settings/clinical-module', [ClinicalModuleSettingsController::class, 'edit'])->name('settings.clinical-module.edit');
+    Route::put('/settings/clinical-module', [ClinicalModuleSettingsController::class, 'update'])->name('settings.clinical-module.update');
+    Route::get('/settings/hr-module', [HrModuleSettingsController::class, 'edit'])->name('settings.hr-module.edit');
+    Route::put('/settings/hr-module', [HrModuleSettingsController::class, 'update'])->name('settings.hr-module.update');
 
     // Insurance Companies routes (redirect index to settings)
     Route::get('/insurance-companies', function() {
@@ -243,6 +283,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     Route::post('/insurance-companies', [InsuranceCompanyController::class, 'store'])->name('insurance-companies.store');
     Route::get('/insurance-companies/{insuranceCompany}', [InsuranceCompanyController::class, 'show'])->name('insurance-companies.show');
     Route::resource("stores", StoreController::class);
+    Route::resource("item-importance-categories", ItemImportanceCategoryController::class)->only(['index']);
     Route::resource("suppliers", SupplierController::class);
     Route::resource("contractor-profiles", ContractorProfileController::class);
     Route::resource("sub-groups", SubGroupController::class);
@@ -263,11 +304,129 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     Route::post('service-charge-maturation-periods/{service_charge_maturation_period}/toggle-status', [ServiceChargeMaturationPeriodController::class, 'toggleStatus'])
         ->name('service-charge-maturation-periods.toggle-status');
 
-    // Calling Module Config (Kashtre admin only)
-    Route::resource("calling-module-configs", CallingModuleConfigController::class)->except(['show']);
-    Route::post("calling-module-configs/{callingModuleConfig}/toggle-status", [CallingModuleConfigController::class, 'toggleStatus'])->name('calling-module-configs.toggle-status');
-    Route::post("calling-module-configs/{callingModuleConfig}/toggle-audio", [CallingModuleConfigController::class, 'toggleAudio'])->name('calling-module-configs.toggle-audio');
-    Route::post("calling-module-configs/{callingModuleConfig}/toggle-video", [CallingModuleConfigController::class, 'toggleVideo'])->name('calling-module-configs.toggle-video');
+    // Inventory Module Config (Kashtre admin only)
+    Route::resource("inventory-module-configs", InventoryModuleConfigController::class);
+    Route::post("inventory-module-configs/{inventoryModuleConfig}/toggle-status", [InventoryModuleConfigController::class, 'toggleStatus'])->name('inventory-module-configs.toggle-status');
+    Route::post("inventory-module-configs/{inventoryModuleConfig}/enter-inventory", [InventoryModuleConfigController::class, 'enterInventory'])->name('inventory-module-configs.enter-inventory');
+    Route::post('inventory-context/exit', [InventoryContextController::class, 'exit'])->name('inventory.context.exit');
+
+    Route::prefix('inventory')->name('inventory.')->group(function () {
+        Route::get('/', [InventoryController::class, 'index'])->name('index');
+        Route::get('/receive', [InventoryController::class, 'receive'])->name('receive');
+        Route::get('/receive/create', [GoodsReceivedNoteController::class, 'create'])->name('receive.create');
+        Route::get('/receive/bulk-upload', [GoodsReceivedNoteController::class, 'bulkUpload'])->name('receive.bulk-upload');
+        Route::get('/receive/bulk-template', [GoodsReceivedNoteController::class, 'downloadBulkTemplate'])->name('receive.bulk-template');
+        Route::get('/receive/items-reference', [GoodsReceivedNoteController::class, 'downloadItemsReference'])->name('receive.items-reference');
+        Route::post('/receive/bulk-import', [GoodsReceivedNoteController::class, 'bulkImport'])->name('receive.bulk-import');
+        Route::get('/receive/catalogue-lines', [GoodsReceivedNoteController::class, 'catalogueLines'])->name('receive.catalogue-lines');
+        Route::post('/receive', [GoodsReceivedNoteController::class, 'store'])->name('receive.store');
+        Route::get('/receive/{goodsReceivedNote}', [GoodsReceivedNoteController::class, 'show'])->name('receive.show');
+        Route::post('/receive/{goodsReceivedNote}/submit', [GoodsReceivedNoteController::class, 'submit'])->name('receive.submit');
+        Route::post('/receive/{goodsReceivedNote}/approve', [GoodsReceivedNoteController::class, 'approve'])->name('receive.approve');
+        Route::post('/receive/{goodsReceivedNote}/reject', [GoodsReceivedNoteController::class, 'reject'])->name('receive.reject');
+        Route::get('/monitor', [InventoryController::class, 'monitor'])->name('monitor');
+        Route::get('/monitor/items/{item}/history', [InventoryController::class, 'stockHistory'])->name('monitor.history');
+        Route::get('/fulfillment', [InventoryFulfillmentController::class, 'index'])->name('fulfillment.index');
+        Route::get('/fulfillment/ward-pick/{store}/{client_space}', [InventoryPickRouteController::class, 'ward'])->name('fulfillment.ward-pick-route');
+        Route::get('/fulfillment/ward-pick/{store}', [InventoryPickRouteController::class, 'ward'])->name('fulfillment.ward-pick');
+        Route::get('/fulfillment/{fulfillmentLine}/pick-route', [InventoryPickRouteController::class, 'show'])->name('fulfillment.pick-route');
+        Route::get('/approved-pool', [InventoryApprovedPoolController::class, 'index'])->name('approved-pool.index');
+        Route::get('/usage', [InventoryRecordUsageController::class, 'index'])->name('usage.index');
+        Route::get('/usage/{usageEvent}', [InventoryRecordUsageController::class, 'show'])->name('usage.show');
+        Route::post('/usage/{usageEvent}/retry-billing', [InventoryRecordUsageController::class, 'retryBilling'])->name('usage.retry-billing');
+        Route::post('/usage/{usageEvent}/collect-payment', [InventoryRecordUsageController::class, 'collectPayment'])->name('usage.collect-payment');
+        Route::get('/crash-carts', [InventoryCrashCartController::class, 'index'])->name('crash-carts.index');
+        Route::get('/crash-carts/{store}', [InventoryCrashCartController::class, 'show'])->name('crash-carts.show');
+        Route::post('/crash-carts/{store}/break-seal', [InventoryCrashCartController::class, 'breakSeal'])->name('crash-carts.break-seal');
+        Route::post('/crash-carts/{store}/restock-reseal', [InventoryCrashCartController::class, 'restockAndReseal'])->name('crash-carts.restock-reseal');
+        Route::post('/crash-carts/{store}/usage', [InventoryCrashCartController::class, 'recordUsage'])->name('crash-carts.usage');
+        Route::get('/replenishment', [InventoryInternalReplenishmentController::class, 'index'])->name('replenishment.index');
+        Route::get('/replenishment/create', [InventoryInternalReplenishmentController::class, 'create'])->name('replenishment.create');
+        Route::post('/replenishment', [InventoryInternalReplenishmentController::class, 'store'])->name('replenishment.store');
+        Route::get('/stock-counts', [InventoryStockCountController::class, 'index'])->name('stock-counts.index');
+        Route::get('/stock-counts/create', [InventoryStockCountController::class, 'create'])->name('stock-counts.create');
+        Route::post('/stock-counts', [InventoryStockCountController::class, 'store'])->name('stock-counts.store');
+        Route::get('/stock-counts/{stockCount}', [InventoryStockCountController::class, 'show'])->name('stock-counts.show');
+        Route::post('/stock-counts/{stockCount}/submit', [InventoryStockCountController::class, 'submit'])->name('stock-counts.submit');
+        Route::post('/stock-counts/{stockCount}/approve', [InventoryStockCountController::class, 'approve'])->name('stock-counts.approve');
+        Route::post('/stock-counts/{stockCount}/reject', [InventoryStockCountController::class, 'reject'])->name('stock-counts.reject');
+        Route::get('/escrow', [InventoryEscrowController::class, 'index'])->name('escrow.index');
+        Route::post('/escrow/write-off', [InventoryEscrowController::class, 'writeOff'])->name('escrow.write-off');
+        Route::get('/consumption', [InventoryDailyConsumptionController::class, 'index'])->name('consumption.index');
+        Route::get('/consumption/export/excel', [InventoryDailyConsumptionController::class, 'exportExcel'])
+            ->name('consumption.export.excel');
+        Route::get('/consumption/export/pdf', [InventoryDailyConsumptionController::class, 'exportPdf'])
+            ->name('consumption.export.pdf');
+        Route::get('/consumption/items/{item}/months/{month}', [InventoryDailyConsumptionController::class, 'showMonth'])
+            ->name('consumption.month')
+            ->where('month', '[0-9]{4}-[0-9]{2}');
+        Route::get('/consumption/items/{item}/days/{date}', [InventoryDailyConsumptionController::class, 'showDay'])
+            ->name('consumption.day')
+            ->where('date', '[0-9]{4}-[0-9]{2}-[0-9]{2}');
+        Route::get('/orders', [InventoryOrderController::class, 'index'])->name('orders.index');
+        Route::get('/incoming-rfqs', [InventoryIncomingRfqController::class, 'index'])->name('incoming-rfqs.index');
+        Route::get('/incoming-rfqs/{invitation}', [InventoryIncomingRfqController::class, 'show'])->name('incoming-rfqs.show');
+        Route::get('/incoming-rfqs/{invitation}/pdf', [InventoryIncomingRfqController::class, 'pdf'])->name('incoming-rfqs.pdf');
+        Route::post('/incoming-rfqs/{invitation}/quotation', [InventoryIncomingRfqController::class, 'storeQuotation'])->name('incoming-rfqs.quotation.store');
+        Route::get('/supplied-quotations', [InventorySuppliedQuotationController::class, 'index'])->name('supplied-quotations.index');
+        Route::get('/supplied-quotations/{quotation}', [InventorySuppliedQuotationController::class, 'show'])->name('supplied-quotations.show');
+        Route::get('/orders/how-it-works', [InventoryOrderController::class, 'howItWorks'])->name('orders.how-it-works');
+        Route::get('/orders/create', [InventoryOrderController::class, 'create'])->name('orders.create');
+        Route::post('/orders', [InventoryOrderController::class, 'store'])->name('orders.store');
+        Route::get('/orders/{order}', [InventoryOrderController::class, 'show'])->name('orders.show');
+        Route::get('/orders/{order}/calculations', [InventoryOrderController::class, 'calculations'])->name('orders.calculations');
+        Route::post('/orders/{order}/submit', [InventoryOrderController::class, 'submit'])->name('orders.submit');
+        Route::post('/orders/{order}/approve', [InventoryOrderController::class, 'approve'])->name('orders.approve');
+        Route::post('/orders/{order}/reject', [InventoryOrderController::class, 'reject'])->name('orders.reject');
+        Route::post('/orders/{order}/create-transfer', [InventoryOrderController::class, 'createTransfer'])->name('orders.create-transfer');
+        Route::get('/orders/{order}/receive', [InventoryOrderController::class, 'receive'])->name('orders.receive');
+        Route::get('/orders/{order}/pdf', [InventoryOrderController::class, 'pdf'])->name('orders.pdf');
+        Route::post('/orders/{order}/regenerate', [InventoryOrderController::class, 'regenerate'])->name('orders.regenerate');
+        Route::post('/orders/{order}/quotations', [InventorySupplierQuotationController::class, 'store'])->name('orders.quotations.store');
+        Route::post('/orders/{order}/rfq-suppliers', [InventorySupplierQuotationController::class, 'invite'])->name('orders.rfq-suppliers.invite');
+        Route::get('/orders/{order}/quotations/compare', [InventorySupplierQuotationController::class, 'compare'])->name('orders.quotations.compare');
+        Route::post('/orders/{order}/quotations/awards', [InventorySupplierQuotationController::class, 'saveAwards'])->name('orders.quotations.awards.store');
+        Route::post('/orders/{order}/quotations/line-comments', [InventorySupplierQuotationController::class, 'saveLineComments'])->name('orders.quotations.line-comments.store');
+        Route::post('/orders/{order}/purchase-orders/generate-accepted', [InventoryPurchaseOrderController::class, 'generateAccepted'])->name('orders.purchase-orders.generate-accepted');
+        Route::get('/orders/{order}/purchase-orders/preview-awards', [InventoryPurchaseOrderController::class, 'previewFromAwards'])->name('orders.purchase-orders.preview-awards');
+        Route::post('/orders/{order}/purchase-orders/generate-awards', [InventoryPurchaseOrderController::class, 'generateFromAwards'])->name('orders.purchase-orders.generate-awards');
+        Route::post('/quotations/{quotation}/accept', [InventorySupplierQuotationController::class, 'accept'])->name('quotations.accept');
+        Route::post('/quotations/{quotation}/reject', [InventorySupplierQuotationController::class, 'reject'])->name('quotations.reject');
+        Route::post('/quotations/{quotation}/purchase-order', [InventoryPurchaseOrderController::class, 'createFromQuotation'])->name('quotations.purchase-order');
+        Route::get('/purchase-orders', [InventoryPurchaseOrderController::class, 'index'])->name('purchase-orders.index');
+        Route::get('/purchase-orders/{purchaseOrder}', [InventoryPurchaseOrderController::class, 'show'])->name('purchase-orders.show');
+        Route::get('/purchase-orders/{purchaseOrder}/pdf', [InventoryPurchaseOrderController::class, 'pdf'])->name('purchase-orders.pdf');
+        Route::post('/purchase-orders/{purchaseOrder}/issue', [InventoryPurchaseOrderController::class, 'issue'])->name('purchase-orders.issue');
+        Route::get('/purchase-orders/{purchaseOrder}/receive', [InventoryPurchaseOrderController::class, 'receive'])->name('purchase-orders.receive');
+        Route::get('/settings', [InventorySettingsController::class, 'edit'])->name('settings.edit');
+        Route::put('/settings', [InventorySettingsController::class, 'update'])->name('settings.update');
+        Route::put('/settings/approvers', [InventorySettingsController::class, 'updateApprovers'])->name('settings.approvers.update');
+        Route::put('/settings/evaluation-committee', [InventorySettingsController::class, 'updateEvaluationCommittee'])->name('settings.evaluation-committee.update');
+        Route::put('/settings/capabilities', [InventorySettingsController::class, 'updateCapabilities'])->name('settings.capabilities.update');
+        Route::get('/approvers', fn () => redirect()->route('inventory.settings.edit', ['tab' => 'approvers']))->name('approvers');
+        Route::put('/approvers', [InventorySettingsController::class, 'updateApprovers'])->name('approvers.update');
+        Route::get('/transfers', [InventoryStockTransferController::class, 'index'])->name('transfers.index');
+        Route::get('/transfers/create', [InventoryStockTransferController::class, 'create'])->name('transfers.create');
+        Route::post('/transfers', [InventoryStockTransferController::class, 'store'])->name('transfers.store');
+        Route::get('/transfers/{transfer}', [InventoryStockTransferController::class, 'show'])->name('transfers.show');
+        Route::post('/transfers/{transfer}/submit', [InventoryStockTransferController::class, 'submit'])->name('transfers.submit');
+        Route::post('/transfers/{transfer}/approve', [InventoryStockTransferController::class, 'approve'])->name('transfers.approve');
+        Route::post('/transfers/{transfer}/receive', [InventoryStockTransferController::class, 'receive'])->name('transfers.receive');
+        Route::post('/transfers/{transfer}/reject', [InventoryStockTransferController::class, 'reject'])->name('transfers.reject');
+        Route::get('/returns', [InventoryGoodsReturnController::class, 'index'])->name('returns.index');
+        Route::get('/returns/create', [InventoryGoodsReturnController::class, 'create'])->name('returns.create');
+        Route::post('/returns', [InventoryGoodsReturnController::class, 'store'])->name('returns.store');
+        Route::get('/returns/{returnNote}', [InventoryGoodsReturnController::class, 'show'])->name('returns.show');
+        Route::post('/returns/{returnNote}/submit', [InventoryGoodsReturnController::class, 'submit'])->name('returns.submit');
+        Route::get('/reports', [InventoryReportsController::class, 'index'])->name('reports.index');
+        Route::get('/reports/aging', [InventoryReportsController::class, 'aging'])->name('reports.aging');
+        Route::get('/reports/reorder', [InventoryReportsController::class, 'reorder'])->name('reports.reorder');
+        Route::get('/reports/valuation', [InventoryReportsController::class, 'valuation'])->name('reports.valuation');
+        Route::get('/reports/shrinkage', [InventoryReportsController::class, 'shrinkage'])->name('reports.shrinkage');
+        Route::get('/reports/demand', [InventoryReportsController::class, 'demand'])->name('reports.demand');
+        Route::get('/reports/classification', [InventoryReportsController::class, 'classification'])->name('reports.classification');
+        Route::get('/network', [InventoryController::class, 'network'])->name('network');
+    });
     
     // Payment Method Account Transactions
     Route::get("payment-method-accounts/{paymentMethodAccount}/transactions", [PaymentMethodAccountController::class, 'transactions'])->name('payment-method-accounts.transactions');
@@ -279,8 +438,8 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     })->name('bank-schedules.index');
     Route::resource("bank-schedules", BankScheduleController::class)->only(['show']);
     
-    // API route for fetching branches by business
-    Route::get('/api/branches', function (Request $request) {
+    // AJAX helper for fetching branches by business (session auth)
+    Route::get('/ajax/branches', function (Request $request) {
         $businessId = $request->query('business_id');
         if (!$businessId) {
             return response()->json([], 400);
@@ -289,7 +448,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
             ->orderBy('name')
             ->get(['id', 'name']);
         return response()->json($branches);
-    })->name('api.branches');
+    })->name('ajax.branches');
     
     // Credit Note Workflow Settings (Kashtre only)
     Route::get('credit-note-workflows/bulk-upload', [CreditNoteWorkflowBulkUploadController::class, 'index'])->name('credit-note-workflows.bulk-upload.index');
@@ -465,66 +624,6 @@ Route::get('/service-delivery/statement/{invoice}', [ServiceDeliveryController::
 // Money Tracking routes
 Route::get('/money-tracking/dashboard', [MoneyTrackingController::class, 'dashboard'])->name('money-tracking.dashboard');
 Route::get('/money-tracking/client-account/{client}', [MoneyTrackingController::class, 'getClientAccount'])->name('money-tracking.client-account');
-
-// Calling Module — Named caller management (business admin, calling must be enabled)
-// NOTE: static nested routes must be before the resource to avoid {caller} capturing them
-Route::get('service-point-callers/call-settings/voices', [ServicePointCallerController::class, 'getVoices'])->name('service-point-callers.get-voices');
-Route::get('service-point-callers/call-settings/preview', [ServicePointCallerController::class, 'previewVoice'])->name('service-point-callers.preview-voice');
-Route::get('service-point-callers/call-settings', [ServicePointCallerController::class, 'callSettingsIndex'])->name('service-point-callers.call-settings-index');
-Route::post('service-point-callers/call-settings', [ServicePointCallerController::class, 'saveGlobalCallSettings'])->name('service-point-callers.save-global-call-settings');
-Route::get('service-point-callers/emergency-settings', [ServicePointCallerController::class, 'emergencySettingsIndex'])->name('service-point-callers.emergency-settings-index');
-Route::post('service-point-callers/emergency-settings', [ServicePointCallerController::class, 'saveEmergencySettings'])->name('service-point-callers.save-emergency-settings');
-Route::get('service-point-callers/p2p-settings', [ServicePointCallerController::class, 'p2pSettingsIndex'])->name('service-point-callers.p2p-settings');
-Route::post('service-point-callers/p2p-settings', [ServicePointCallerController::class, 'saveP2pSettings'])->name('service-point-callers.save-p2p-settings');
-Route::delete('service-point-callers/{caller}/service-points/{servicePoint}', [ServicePointCallerController::class, 'removeServicePoint'])->name('service-point-callers.remove-service-point');
-Route::post('service-point-callers/{caller}/generate-token', [ServicePointCallerController::class, 'generateToken'])->name('service-point-callers.generate-token');
-Route::post('service-point-callers/{caller}/call-settings', [ServicePointCallerController::class, 'updateCallSettings'])->name('service-point-callers.update-call-settings');
-Route::resource('service-point-callers', ServicePointCallerController::class)->only(['index', 'create', 'store', 'edit', 'update', 'destroy'])->parameters(['service-point-callers' => 'caller']);
-
-// PA (Public Announcement) sections — settings
-Route::get('pa-sections', [\App\Http\Controllers\PaAnnouncementController::class, 'index'])->name('pa-sections.index');
-Route::post('pa-sections', [\App\Http\Controllers\PaAnnouncementController::class, 'store'])->name('pa-sections.store');
-Route::put('pa-sections/{paSection}', [\App\Http\Controllers\PaAnnouncementController::class, 'update'])->name('pa-sections.update');
-Route::delete('pa-sections/{paSection}', [\App\Http\Controllers\PaAnnouncementController::class, 'destroy'])->name('pa-sections.destroy');
-Route::get('pa/console', [\App\Http\Controllers\PaAnnouncementController::class, 'console'])->name('pa.console');
-
-// PA broadcasting — used from the calling page
-Route::post('pa/start', [\App\Http\Controllers\PaAnnouncementController::class, 'start'])->name('pa.start');
-Route::post('pa/stop', [\App\Http\Controllers\PaAnnouncementController::class, 'stop'])->name('pa.stop');
-Route::post('pa/chunk', [\App\Http\Controllers\PaAnnouncementController::class, 'chunk'])->name('pa.chunk');
-Route::post('pa/signal/caller', [\App\Http\Controllers\PaAnnouncementController::class, 'signalToCaller'])->name('pa.signal.caller');
-Route::get('pa/status', [\App\Http\Controllers\PaAnnouncementController::class, 'status'])->name('pa.status');
-
-// Calling Module — Staff calling page
-Route::get('/calling', [CallingController::class, 'index'])->name('calling.index');
-Route::post('/calling/select', [CallingController::class, 'selectCaller'])->name('calling.select');
-Route::post('/calling/deselect', [CallingController::class, 'deselectCaller'])->name('calling.deselect');
-Route::post('/calling/announce', [CallingController::class, 'announce'])->name('calling.announce');
-Route::get('/callers/log', [CallingController::class, 'log'])->name('callers.log');
-
-// Emergency alerts
-Route::post('/service-points/{servicePoint}/emergency', [EmergencyController::class, 'trigger'])->name('emergency.trigger');
-
-// P2P Audio Calling
-Route::prefix('calls')->name('calls.')->group(function () {
-    Route::post('/initiate', [\App\Http\Controllers\P2PCallController::class, 'initiateCall'])->name('initiate');
-    Route::post('/{callUuid}/accept', [\App\Http\Controllers\P2PCallController::class, 'acceptCall'])->name('accept');
-    Route::post('/{callUuid}/reject', [\App\Http\Controllers\P2PCallController::class, 'rejectCall'])->name('reject');
-    Route::post('/{callUuid}/cancel', [\App\Http\Controllers\P2PCallController::class, 'cancelCall'])->name('cancel');
-    Route::post('/{callUuid}/end', [\App\Http\Controllers\P2PCallController::class, 'endCall'])->name('end');
-    Route::post('/{callUuid}/signal', [\App\Http\Controllers\P2PCallController::class, 'signal'])->name('signal');
-    Route::get('/{callUuid}/signals', [\App\Http\Controllers\P2PCallController::class, 'pollSignals'])->name('signals');
-    Route::get('/{callUuid}/status', [\App\Http\Controllers\P2PCallController::class, 'callStatus'])->name('status');
-    Route::get('/incoming', [\App\Http\Controllers\P2PCallController::class, 'incomingCall'])->name('incoming');
-    Route::get('/history', [\App\Http\Controllers\P2PCallController::class, 'callHistory'])->name('history');
-    Route::get('/online-users', [\App\Http\Controllers\P2PCallController::class, 'onlineUsers'])->name('online-users');
-});
-
-Route::post('/service-points/{servicePoint}/emergency/resolve', [EmergencyController::class, 'resolve'])->name('emergency.resolve');
-Route::post('/emergency/trigger', [EmergencyController::class, 'triggerGlobal'])->name('emergency.trigger.global');
-Route::post('/emergency/resolve', [EmergencyController::class, 'resolveGlobal'])->name('emergency.resolve.global');
-Route::get('/emergency/status', [EmergencyController::class, 'status'])->name('emergency.status');
-Route::get('/emergency/log', [EmergencyController::class, 'log'])->name('emergency.log');
 
 // Payment Review routes (for reviewing third-party payer payments)
 Route::get('/payment-reviews', [PaymentReviewController::class, 'index'])->name('payment-reviews.index');

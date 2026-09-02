@@ -12,12 +12,15 @@ use App\Models\ItemUnit;
 use App\Models\ServicePoint;
 use App\Models\ContractorProfile;
 use App\Models\Item;
+use App\Models\ItemImportanceCategory;
 use App\Models\Branch;
 use App\Models\BranchItemPrice;
 use App\Models\PackageItem;
 use App\Models\BulkItem;
 use App\Models\BranchServicePoint;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class ItemController extends Controller
 {
@@ -89,18 +92,21 @@ class ItemController extends Controller
             Log::info("Available items (all): " . $availableItems->pluck('name', 'id')->toJson());
         }
 
+        $importanceOptions = Item::importanceOptions($selectedBusinessId);
+
         return view('items.create', compact(
-            'businesses', 
-            'groups', 
+            'businesses',
+            'groups',
             'subGroups',
-            'departments', 
-            'itemUnits', 
-            'servicePoints', 
+            'departments',
+            'itemUnits',
+            'servicePoints',
             'contractors',
             'branches',
             'availableItems',
             'canSelectBusiness',
-            'selectedBusinessId'
+            'selectedBusinessId',
+            'importanceOptions',
         ));
     }
 
@@ -111,6 +117,9 @@ class ItemController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'generic_name' => 'nullable|string|max:255',
+            'strength' => 'nullable|string|max:255',
+            'category' => 'nullable|string|max:255',
             'code' => 'nullable|string|unique:items,code',
             'type' => 'required|in:service,good,package,bulk',
             'description' => 'nullable|string',
@@ -118,7 +127,11 @@ class ItemController extends Controller
             'subgroup_id' => 'required_if:type,service,good|nullable|exists:sub_groups,id',
             'department_id' => 'required_if:type,service,good|nullable|exists:departments,id',
             'uom_id' => 'required_unless:type,package,bulk|nullable|exists:item_units,id',
+            'importance_category' => 'nullable|string|max:64',
+            'order_unit_id' => 'nullable|exists:item_units,id',
+            'suom_per_ouom' => 'nullable|numeric|min:0.0001',
             'default_price' => 'required|numeric|min:0',
+            'purchase_price' => 'required|numeric|min:0',
             'vat_rate' => 'nullable|numeric|min:0|max:100',
             'hospital_share' => 'required_if:type,service,good|integer|between:0,100',
             'contractor_account_id' => 'nullable|exists:contractor_profiles,id',
@@ -130,6 +143,7 @@ class ItemController extends Controller
             'branch_prices' => 'nullable|array',
             'branch_prices.*.branch_id' => 'nullable|exists:branches,id',
             'branch_prices.*.price' => 'nullable|numeric|min:0',
+            'branch_prices.*.purchase_price' => 'nullable|numeric|min:0',
             'branch_service_points' => 'nullable|array',
             'branch_service_points.*' => 'nullable|exists:service_points,id',
             'package_items' => 'nullable|array',
@@ -146,6 +160,8 @@ class ItemController extends Controller
             $validated['business_id'] = Auth::user()->business_id;
         }
 
+        $this->validateImportanceCategory($request, (int) $validated['business_id'], $validated['type']);
+
         // Set hospital_share to 100 for package and bulk types
         if (in_array($validated['type'], ['package', 'bulk'])) {
             $validated['hospital_share'] = 100;
@@ -155,11 +171,23 @@ class ItemController extends Controller
             $validated['subgroup_id'] = null;
             $validated['department_id'] = null;
             $validated['uom_id'] = null;
+            $validated['importance_category'] = null;
+            $validated['order_unit_id'] = null;
+            $validated['suom_per_ouom'] = null;
             // Set max_qty default to 1 for package types if not provided
             if ($validated['type'] === 'package' && (!isset($validated['max_qty']) || empty($validated['max_qty']))) {
                 $validated['max_qty'] = 1;
             }
         }
+
+        // Inventory unit fields apply to goods only
+        if ($validated['type'] !== 'good') {
+            $validated['importance_category'] = null;
+            $validated['order_unit_id'] = null;
+            $validated['suom_per_ouom'] = null;
+        }
+
+        $this->applyImportanceCategoryToItem($validated);
 
         // Validate contractor selection when hospital share is not 100% for goods and services
         if (in_array($validated['type'], ['service', 'good']) && $validated['hospital_share'] != 100 && empty($validated['contractor_account_id'])) {
@@ -168,20 +196,18 @@ class ItemController extends Controller
 
         // Validate that at least one branch has a custom price when custom pricing is selected
         if ($validated['pricing_type'] === 'custom' && isset($validated['branch_prices'])) {
-            $branches = Branch::where('business_id', $validated['business_id'])->get();
-            $providedPrices = collect($validated['branch_prices'])->pluck('price', 'branch_id');
-            
-            // Check if at least one branch has a custom price
             $hasCustomPrices = false;
-            foreach ($branches as $branch) {
-                if ($providedPrices->has($branch->id) && !empty($providedPrices->get($branch->id))) {
+            foreach ($validated['branch_prices'] as $branchPrice) {
+                $hasSalePrice = !empty($branchPrice['branch_id']) && isset($branchPrice['price']) && $branchPrice['price'] !== '';
+                $hasPurchasePrice = !empty($branchPrice['branch_id']) && isset($branchPrice['purchase_price']) && $branchPrice['purchase_price'] !== '';
+                if ($hasSalePrice || $hasPurchasePrice) {
                     $hasCustomPrices = true;
                     break;
                 }
             }
-            
+
             if (!$hasCustomPrices) {
-                return back()->withErrors(['branch_prices' => 'At least one branch must have a custom price when custom pricing is selected']);
+                return back()->withErrors(['branch_prices' => 'At least one branch must have a custom sale or purchase price when custom pricing is selected']);
             }
         }
 
@@ -191,14 +217,28 @@ class ItemController extends Controller
         // Handle branch item prices only if custom pricing is selected
         if ($validated['pricing_type'] === 'custom' && isset($validated['branch_prices'])) {
             foreach ($validated['branch_prices'] as $branchPrice) {
-                if (!empty($branchPrice['branch_id']) && !empty($branchPrice['price'])) {
-                    BranchItemPrice::create([
-                        'business_id' => $validated['business_id'],
-                        'branch_id' => $branchPrice['branch_id'],
-                        'item_id' => $item->id,
-                        'price' => $branchPrice['price'],
-                    ]);
+                if (empty($branchPrice['branch_id'])) {
+                    continue;
                 }
+
+                $salePrice = isset($branchPrice['price']) && $branchPrice['price'] !== ''
+                    ? $branchPrice['price']
+                    : null;
+                $purchasePrice = isset($branchPrice['purchase_price']) && $branchPrice['purchase_price'] !== ''
+                    ? $branchPrice['purchase_price']
+                    : null;
+
+                if ($salePrice === null && $purchasePrice === null) {
+                    continue;
+                }
+
+                BranchItemPrice::create([
+                    'business_id' => $validated['business_id'],
+                    'branch_id' => $branchPrice['branch_id'],
+                    'item_id' => $item->id,
+                    'price' => $salePrice ?? $validated['default_price'],
+                    'purchase_price' => $purchasePrice ?? $validated['purchase_price'],
+                ]);
             }
         }
 
@@ -311,13 +351,15 @@ class ItemController extends Controller
             ->where('id', '!=', $item->id)
             ->get();
 
+        $importanceOptions = Item::importanceOptions($selectedBusinessId);
+
         return view('items.edit', compact(
-            'item', 
-            'businesses', 
-            'groups', 
-            'departments', 
-            'itemUnits', 
-            'servicePoints', 
+            'item',
+            'businesses',
+            'groups',
+            'departments',
+            'itemUnits',
+            'servicePoints',
             'contractors',
             'branches',
             'branchPrices',
@@ -326,7 +368,8 @@ class ItemController extends Controller
             'bulkItems',
             'availableItems',
             'canSelectBusiness',
-            'selectedBusinessId'
+            'selectedBusinessId',
+            'importanceOptions',
         ));
     }
 
@@ -337,6 +380,9 @@ class ItemController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'generic_name' => 'nullable|string|max:255',
+            'strength' => 'nullable|string|max:255',
+            'category' => 'nullable|string|max:255',
             'code' => 'nullable|string|unique:items,code,' . $item->id,
             'type' => 'required|in:service,good,package,bulk',
             'description' => 'nullable|string',
@@ -344,7 +390,11 @@ class ItemController extends Controller
             'subgroup_id' => 'required_if:type,service,good|nullable|exists:sub_groups,id',
             'department_id' => 'required_if:type,service,good|nullable|exists:departments,id',
             'uom_id' => 'required_unless:type,package,bulk|nullable|exists:item_units,id',
+            'importance_category' => 'nullable|string|max:64',
+            'order_unit_id' => 'nullable|exists:item_units,id',
+            'suom_per_ouom' => 'nullable|numeric|min:0.0001',
             'default_price' => 'required|numeric|min:0',
+            'purchase_price' => 'required|numeric|min:0',
             'vat_rate' => 'nullable|numeric|min:0|max:100',
             'hospital_share' => 'required_if:type,service,good|integer|between:0,100',
             'contractor_account_id' => 'nullable|exists:contractor_profiles,id',
@@ -356,6 +406,7 @@ class ItemController extends Controller
             'branch_prices' => 'nullable|array',
             'branch_prices.*.branch_id' => 'nullable|exists:branches,id',
             'branch_prices.*.price' => 'nullable|numeric|min:0',
+            'branch_prices.*.purchase_price' => 'nullable|numeric|min:0',
             'branch_service_points' => 'nullable|array',
             'branch_service_points.*' => 'nullable|exists:service_points,id',
             'package_items' => 'nullable|array',
@@ -372,6 +423,8 @@ class ItemController extends Controller
             $validated['business_id'] = Auth::user()->business_id;
         }
 
+        $this->validateImportanceCategory($request, (int) $validated['business_id'], $validated['type']);
+
         // Set hospital_share to 100 for package and bulk types
         if (in_array($validated['type'], ['package', 'bulk'])) {
             $validated['hospital_share'] = 100;
@@ -381,11 +434,23 @@ class ItemController extends Controller
             $validated['subgroup_id'] = null;
             $validated['department_id'] = null;
             $validated['uom_id'] = null;
+            $validated['importance_category'] = null;
+            $validated['order_unit_id'] = null;
+            $validated['suom_per_ouom'] = null;
             // Set max_qty default to 1 for package types if not provided
             if ($validated['type'] === 'package' && (!isset($validated['max_qty']) || empty($validated['max_qty']))) {
                 $validated['max_qty'] = 1;
             }
         }
+
+        // Inventory unit fields apply to goods only
+        if ($validated['type'] !== 'good') {
+            $validated['importance_category'] = null;
+            $validated['order_unit_id'] = null;
+            $validated['suom_per_ouom'] = null;
+        }
+
+        $this->applyImportanceCategoryToItem($validated);
 
         // Validate contractor selection when hospital share is not 100% for goods and services
         if (in_array($validated['type'], ['service', 'good']) && $validated['hospital_share'] != 100 && empty($validated['contractor_account_id'])) {
@@ -394,20 +459,18 @@ class ItemController extends Controller
 
         // Validate that at least one branch has a custom price when custom pricing is selected
         if ($validated['pricing_type'] === 'custom' && isset($validated['branch_prices'])) {
-            $branches = Branch::where('business_id', $validated['business_id'])->get();
-            $providedPrices = collect($validated['branch_prices'])->pluck('price', 'branch_id');
-            
-            // Check if at least one branch has a custom price
             $hasCustomPrices = false;
-            foreach ($branches as $branch) {
-                if ($providedPrices->has($branch->id) && !empty($providedPrices->get($branch->id))) {
+            foreach ($validated['branch_prices'] as $branchPrice) {
+                $hasSalePrice = !empty($branchPrice['branch_id']) && isset($branchPrice['price']) && $branchPrice['price'] !== '';
+                $hasPurchasePrice = !empty($branchPrice['branch_id']) && isset($branchPrice['purchase_price']) && $branchPrice['purchase_price'] !== '';
+                if ($hasSalePrice || $hasPurchasePrice) {
                     $hasCustomPrices = true;
                     break;
                 }
             }
-            
+
             if (!$hasCustomPrices) {
-                return back()->withErrors(['branch_prices' => 'At least one branch must have a custom price when custom pricing is selected']);
+                return back()->withErrors(['branch_prices' => 'At least one branch must have a custom sale or purchase price when custom pricing is selected']);
             }
         }
 
@@ -416,17 +479,31 @@ class ItemController extends Controller
 
         // Handle branch item prices - delete existing and create new ones only if custom pricing is selected
         $item->branchPrices()->delete();
-        
+
         if ($validated['pricing_type'] === 'custom' && isset($validated['branch_prices'])) {
             foreach ($validated['branch_prices'] as $branchPrice) {
-                if (!empty($branchPrice['branch_id']) && !empty($branchPrice['price'])) {
-                    BranchItemPrice::create([
-                        'business_id' => $validated['business_id'],
-                        'branch_id' => $branchPrice['branch_id'],
-                        'item_id' => $item->id,
-                        'price' => $branchPrice['price'],
-                    ]);
+                if (empty($branchPrice['branch_id'])) {
+                    continue;
                 }
+
+                $salePrice = isset($branchPrice['price']) && $branchPrice['price'] !== ''
+                    ? $branchPrice['price']
+                    : null;
+                $purchasePrice = isset($branchPrice['purchase_price']) && $branchPrice['purchase_price'] !== ''
+                    ? $branchPrice['purchase_price']
+                    : null;
+
+                if ($salePrice === null && $purchasePrice === null) {
+                    continue;
+                }
+
+                BranchItemPrice::create([
+                    'business_id' => $validated['business_id'],
+                    'branch_id' => $branchPrice['branch_id'],
+                    'item_id' => $item->id,
+                    'price' => $salePrice ?? $validated['default_price'],
+                    'purchase_price' => $purchasePrice ?? $validated['purchase_price'],
+                ]);
             }
         }
 
@@ -511,9 +588,12 @@ class ItemController extends Controller
                 'servicePoints' => [],
                 'contractors' => [],
                 'branches' => [],
-                'availableItems' => []
+                'availableItems' => [],
+                'importanceCategories' => [],
             ]);
         }
+
+        $importanceCategories = ItemImportanceCategory::optionsForBusiness((int) $businessId);
 
         // Validate that the user has permission to access this business
         if (Auth::user()->business_id != 1 && Auth::user()->business_id != $businessId) {
@@ -569,8 +649,46 @@ class ItemController extends Controller
             'servicePoints' => $servicePoints,
             'contractors' => $contractors,
             'branches' => $branches,
-            'availableItems' => $availableItems
+            'availableItems' => $availableItems,
+            'importanceCategories' => collect($importanceCategories)
+                ->map(fn (string $name, string $slug) => ['slug' => $slug, 'name' => $name])
+                ->values(),
         ]);
+    }
+
+    private function validateImportanceCategory(Request $request, int $businessId, string $type): void
+    {
+        if ($type !== 'good') {
+            return;
+        }
+
+        Validator::make(
+            $request->only('importance_category'),
+            [
+                'importance_category' => [
+                    'required',
+                    Rule::exists('item_importance_categories', 'slug')->where('business_id', $businessId),
+                ],
+            ],
+            [
+                'importance_category.required' => 'Choose an importance category for this good.',
+                'importance_category.exists' => 'The selected importance category is invalid for this organisation.',
+            ]
+        )->validate();
+    }
+
+    private function applyImportanceCategoryToItem(array &$validated): void
+    {
+        if (($validated['type'] ?? null) === 'good' && ! empty($validated['importance_category'])) {
+            $validated['category'] = ItemImportanceCategory::labelForSlug(
+                (int) $validated['business_id'],
+                $validated['importance_category']
+            );
+
+            return;
+        }
+
+        $validated['category'] = null;
     }
 
     /**

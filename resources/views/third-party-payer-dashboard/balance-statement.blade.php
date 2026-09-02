@@ -7,6 +7,10 @@
 
     <div class="py-12">
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            @php
+                $availableBalance = (float) ($balanceSummary['available_balance'] ?? 0);
+                $totalBalance = (float) ($balanceSummary['total_balance'] ?? 0);
+            @endphp
             <!-- Third-Party Payer Information Card -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
                 <div class="p-6">
@@ -24,17 +28,22 @@
                         <div class="text-right">
                             <div class="space-y-2">
                                 <div>
-                                    <p class="text-sm text-gray-500">Total Balance</p>
-                                    <p class="text-lg font-semibold {{ $currentBalance < 0 ? 'text-red-600' : ($currentBalance > 0 ? 'text-green-600' : 'text-gray-700') }}">
-                                        UGX {{ number_format(abs($currentBalance), 2) }}
+                                    <p class="text-sm text-gray-500">Available balance</p>
+                                    <p class="text-lg font-semibold {{ $availableBalance < 0 ? 'text-red-600' : ($availableBalance > 0 ? 'text-green-600' : 'text-gray-700') }}">
+                                        UGX {{ number_format($availableBalance, 2) }}
                                     </p>
-                                    @if($currentBalance < 0)
-                                        <p class="text-xs text-red-500">(Amount Owed)</p>
-                                    @elseif($currentBalance > 0)
-                                        <p class="text-xs text-green-500">(Credit Available)</p>
+                                    @if($availableBalance < 0)
+                                        <p class="text-xs text-red-500">(Amount owed)</p>
+                                    @elseif($availableBalance > 0)
+                                        <p class="text-xs text-green-500">(Credit available)</p>
                                     @endif
                                 </div>
-                                
+                                <div>
+                                    <p class="text-sm text-gray-500">Total balance</p>
+                                    <p class="text-lg font-semibold text-gray-700">
+                                        UGX {{ number_format($totalBalance, 2) }}
+                                    </p>
+                                </div>
                                 <div>
                                     <p class="text-sm text-gray-500">Credit Limit</p>
                                     <p class="text-lg font-semibold text-gray-700">
@@ -50,25 +59,32 @@
             </div>
 
             <!-- Summary Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6">
-                        <h3 class="text-sm font-medium text-gray-500 mb-2">Total Credits</h3>
-                        <p class="text-2xl font-bold text-green-600">UGX {{ number_format($totalCredits, 2) }}</p>
+                        <h3 class="text-sm font-medium text-gray-500 mb-2">Total credits</h3>
+                        <p class="text-2xl font-bold text-green-600">UGX {{ number_format($balanceSummary['total_credits'] ?? 0, 2) }}</p>
                     </div>
                 </div>
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6">
-                        <h3 class="text-sm font-medium text-gray-500 mb-2">Total Debits</h3>
-                        <p class="text-2xl font-bold text-red-600">UGX {{ number_format($totalDebits, 2) }}</p>
+                        <h3 class="text-sm font-medium text-gray-500 mb-2">Total debits</h3>
+                        <p class="text-2xl font-bold text-red-600">UGX {{ number_format($balanceSummary['total_debits'] ?? 0, 2) }}</p>
                     </div>
                 </div>
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6">
-                        <h3 class="text-sm font-medium text-gray-500 mb-2">Current Balance</h3>
-                        <p class="text-2xl font-bold {{ $currentBalance < 0 ? 'text-red-600' : ($currentBalance > 0 ? 'text-green-600' : 'text-gray-700') }}">
-                            UGX {{ number_format(abs($currentBalance), 2) }}
+                        <h3 class="text-sm font-medium text-gray-500 mb-2">Available balance</h3>
+                        <p class="text-2xl font-bold {{ $availableBalance < 0 ? 'text-red-600' : ($availableBalance > 0 ? 'text-green-600' : 'text-gray-700') }}">
+                            UGX {{ number_format($availableBalance, 2) }}
                         </p>
+                        <p class="text-xs text-gray-500 mt-1">Total credits minus total debits</p>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                    <div class="p-6">
+                        <h3 class="text-sm font-medium text-gray-500 mb-2">Total balance</h3>
+                        <p class="text-2xl font-bold text-gray-700">UGX {{ number_format($totalBalance, 2) }}</p>
                     </div>
                 </div>
             </div>
@@ -92,7 +108,8 @@
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reference</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Available balance</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total balance</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Method</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                                 </tr>
@@ -143,7 +160,10 @@
                                         {{ $history->transaction_type === 'credit' ? '+' : '-' }}{{ number_format(abs($history->change_amount), 2) }} UGX
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        {{ number_format($history->new_balance, 2) }} UGX
+                                        UGX {{ number_format((float) ($history->available_balance_after ?? $history->new_balance ?? 0), 2) }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        UGX {{ number_format((float) ($history->total_balance_after ?? $history->new_balance ?? 0), 2) }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {{ $history->payment_method ? ucwords(str_replace('_', ' ', $history->payment_method)) : 'N/A' }}
@@ -176,5 +196,4 @@
             </div>
         </div>
     </div>
-</x-app-layout>
-
+</x-third-party-payer-layout>

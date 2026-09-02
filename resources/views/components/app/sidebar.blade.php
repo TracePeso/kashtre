@@ -18,12 +18,9 @@
             <!-- Logo and Business Info -->
             <div class="flex flex-col items-center w-full">
                 <h1 class="text-[#011478] font-extrabold text-xl mb-1">{{ env('APP_NAME') }}</h1>
-                @php
-                $logoPath = $business->logo ?? null;
-                @endphp
                 <div class="w-16 h-16 rounded-lg overflow-hidden">
-                    @if ($logoPath && file_exists(public_path('storage/' . $logoPath)))
-                    <img src="{{ asset('storage/' . $logoPath) }}" alt="Business Logo" class="w-full h-full object-contain">
+                    @if ($business?->logo_url)
+                    <img src="{{ $business->logo_url }}" alt="{{ $business->name }} logo" class="w-full h-full object-contain">
                     @else
                     <img src="{{ asset('images/kashtre_logo.svg') }}" alt="Default Logo" class="w-full h-full object-contain">
                     @endif
@@ -45,7 +42,7 @@
         <!-- Links -->
         <div class="space-y-8">
             <div>
-                <ul class="mt-3 space-y-2" x-data="{ openGroup: '' }">
+                <ul class="mt-3 space-y-2" x-data="{ openGroup: '{{ request()->routeIs('inventory.*') ? 'inventory' : '' }}' }">
 
                     <!-- Dashboard: usually visible to all -->
                     <li>
@@ -70,53 +67,110 @@
                     </li>
                     @endif
 
-                    <!-- Callers dropdown: for business admins with calling module enabled -->
-                    @php
-                        $callerPerms = ['View Callers', 'Add Callers', 'Edit Callers', 'Manage Callers'];
-                        $canBroadcastAnnouncements = in_array('Broadcast Announcements', (array) $permissions);
-                        $hasAnyCallerPerm = count(array_intersect($callerPerms, (array) $permissions)) > 0 || $canBroadcastAnnouncements;
-                    @endphp
-                    @if(Auth::user()->business_id != 1 && isset($callingModuleEnabled) && $callingModuleEnabled && $hasAnyCallerPerm)
+                    @if($inventoryModuleEnabled)
                     <li>
-                        <button @click="openGroup === 'callers' ? openGroup = '' : openGroup = 'callers'"
-                                :class="openGroup === 'callers' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'"
+                        <button @click="openGroup === 'inventory' ? openGroup = '' : openGroup = 'inventory'"
+                                :class="openGroup === 'inventory' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'"
                                 class="flex items-center justify-between w-full text-left pl-4 pr-3 py-2 rounded-md">
                             <span class="flex items-center">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.129a11.042 11.042 0 005.516 5.516l1.129-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                                 </svg>
-                                <span class="ml-3 text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">Calling Service</span>
+                                <span class="ml-3 text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">Inventory</span>
                             </span>
-                            <svg class="w-4 h-4 transform transition-transform duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100" :class="{ 'rotate-180': openGroup === 'callers' }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <svg class="w-4 h-4 transform transition-transform duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100" :class="{ 'rotate-180': openGroup === 'inventory' }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                 <path d="M19 9l-7 7-7-7" />
                             </svg>
                         </button>
-                        <ul x-show="openGroup === 'callers'" x-collapse class="mt-1 space-y-1 pl-10">
+                        <ul x-show="openGroup === 'inventory'" x-collapse class="mt-1 space-y-1 pl-10">
                             <li>
-                                <a href="{{ route('service-point-callers.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
-                                    Manage Callers
+                                <a href="{{ route('inventory.receive') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.receive') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Receive Goods
                                 </a>
                             </li>
                             <li>
-                                <a href="{{ route('service-point-callers.call-settings-index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
-                                    Call Settings
-                                </a>
-                            </li>
-                            @if($canBroadcastAnnouncements)
-                            <li>
-                                <a href="{{ route('pa.console') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
-                                    Public Announcements
-                                </a>
-                            </li>
-                            @endif
-                            <li>
-                                <a href="{{ route('service-point-callers.p2p-settings') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
-                                    P2P Calling
+                                <a href="{{ route('inventory.monitor') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.monitor*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Monitor Stock
                                 </a>
                             </li>
                             <li>
-                                <a href="{{ route('service-point-callers.emergency-settings-index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
-                                    Emergency Calling
+                                <a href="{{ route('inventory.fulfillment.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.fulfillment*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    EndStore
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.crash-carts.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.crash-carts*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Crash Carts
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.replenishment.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.replenishment*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Internal Replenishment
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.approved-pool.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.approved-pool*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Approved Pool
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.usage.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.usage*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Record Usage
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.stock-counts.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.stock-counts*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Stock Counts
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.escrow.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.escrow*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Expired Escrow
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.consumption.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.consumption*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Consumption
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.orders.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.orders*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Orders
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.incoming-rfqs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.incoming-rfqs*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Incoming RFQs
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.supplied-quotations.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.supplied-quotations*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Supplied quotations
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.purchase-orders.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.purchase-orders*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    LPOs
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.transfers.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.transfers*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Transfers
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.returns.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.returns*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Returns
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.reports.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.reports*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Reports
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.settings.edit') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.settings*') || request()->routeIs('inventory.approvers') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Settings
                                 </a>
                             </li>
                         </ul>
@@ -186,6 +240,35 @@
                             @if(in_array('View Contractor Profile', (array) $permissions))
                             <li><a href="{{ route('contractor-profiles.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Contractors</a></li>
                             @endif
+                        </ul>
+                    </li>
+                    @endif
+
+                    <!-- HR (always shown when enabled; extra nav items added once API cache warms) -->
+                    @if($hrModuleEnabled)
+                    <li>
+                        <button @click="openGroup === 'hr' ? openGroup = '' : openGroup = 'hr'"
+                                :class="openGroup === 'hr' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'"
+                                class="flex items-center justify-between w-full text-left pl-4 pr-3 py-2 rounded-md">
+                            <span class="flex items-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                </svg>
+                                <span class="ml-3 text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">HR</span>
+                            </span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100" :class="{ 'rotate-180': openGroup === 'hr' }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        <ul x-show="openGroup === 'hr'" x-collapse class="mt-1 space-y-1 pl-10">
+                            @foreach($hrNavigation as $hrNavItem)
+                            <li>
+                                <a href="{{ route('hr.embed', ['path' => $hrNavItem['path']]) }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    {{ $hrNavItem['label'] }}
+                                </a>
+                            </li>
+                            @endforeach
                         </ul>
                     </li>
                     @endif
@@ -531,10 +614,6 @@
                         </button>
                         <ul x-show="openGroup === 'reports'" x-collapse class="mt-1 space-y-1 pl-10">
                             <li><a href="{{ route('dashboard') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>View Reports</a></li>
-                            @if(Auth::user()->business_id != 1 && isset($callingModuleEnabled) && $callingModuleEnabled)
-                            <li><a href="{{ route('callers.log') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Called List</a></li>
-                            <li><a href="{{ route('emergency.log') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Emergency Log</a></li>
-                            @endif
                         </ul>
                     </li>
                     @endif
@@ -583,6 +662,11 @@
                                     Business Settings
                                 </a>
                             </li>
+                            <li>
+                                <a href="{{ route('business-settings.edit') }}#document-letterhead" class="block text-sm text-gray-600 hover:text-blue-700 py-1.5 pl-2 border-l-2 border-transparent hover:border-blue-400" @click.stop>
+                                    Document letterhead preview
+                                </a>
+                            </li>
                             @endif
 
                             @php
@@ -621,12 +705,24 @@
                             <li><a href="{{ route('titles.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Titles</a></li>
                             @endif
 
+                            @if(in_array('View Staff Categories', $permissions))
+                            <li><a href="{{ route('staff-categories.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Staff Categories</a></li>
+                            @endif
+
+                            @if(in_array('View Supplier Industries', $permissions))
+                            <li><a href="{{ route('supplier-industries.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Supplier Industries</a></li>
+                            @endif
+
+                            @if(in_array('View Supplier Sub Categories', $permissions))
+                            <li><a href="{{ route('supplier-sub-categories.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Supplier Sub Categories</a></li>
+                            @endif
+
                             @if(Auth::user()->business_id == 1)
                             <li><a href="{{ route('maturation-periods.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Payment Methods and Maturation Periods</a></li>
                             @endif
 
-                            @if(in_array('View Calling Module', $permissions))
-                            <li><a href="{{ route('calling-module-configs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Calling</a></li>
+                            @if(in_array('View Inventory Module', $permissions))
+                            <li><a href="{{ route('inventory-module-configs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Inventory</a></li>
                             @endif
 
                             @if(in_array('View Credit Note Workflows', $permissions))
@@ -653,16 +749,16 @@
                             <li><a href="{{ route('patient-categories.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Client Categories</a></li>
                             @endif
 
-                            @if(in_array('View Client Spaces', $permissions))
-                            <li><a href="{{ route('client-spaces.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Client Spaces</a></li>
-                            @endif
-
                             @if(in_array('View Suppliers', $permissions))
                             <li><a href="{{ route('suppliers.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Suppliers</a></li>
                             @endif
 
                             @if(in_array('View Stores', $permissions))
                             <li><a href="{{ route('stores.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Stores</a></li>
+                            @endif
+
+                            @if(in_array('View Item Categories', $permissions))
+                            <li><a href="{{ route('item-importance-categories.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Item Categories</a></li>
                             @endif
 
 
@@ -675,6 +771,27 @@
                                 <a href="{{ route('settings.countries.index') }}"
                                    class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
                                     Manage Countries & Currencies
+                                </a>
+                            </li>
+                            @endif
+
+                            @if((int) Auth::user()->business_id === 1)
+                            <li>
+                                <a href="{{ route('settings.kashtre.edit') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    Kashtre Settings
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('settings.hr-module.edit') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    HR Settings
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('settings.clinical-module.edit') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    Clinical Module Settings
                                 </a>
                             </li>
                             @endif

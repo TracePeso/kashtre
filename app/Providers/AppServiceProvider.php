@@ -4,26 +4,33 @@ namespace App\Providers;
 
 
 use App\Models\Business;
-use App\Models\CallingModuleConfig;
-use App\Models\Caller;
+use App\Models\InventoryModuleConfig;
+use App\Models\KashtreCashTraySetting;
+use App\Support\BusinessBranding;
+use App\Support\DocumentViewData;
+use App\Support\InventoryBusinessContext;
 use App\Models\Transaction;
-use App\Services\EmergencyAlertService;
 
 
 // Import models and observers
 use App\Models\User;
+use App\Models\InventoryOrder;
+use App\Models\InventoryPurchaseOrder;
+use App\Models\InventorySupplierQuotation;
+use App\Models\GoodsReceivedNote;
+use App\Models\StockTransfer;
+use App\Observers\ClientClinicalEncounterObserver;
+use App\Observers\ClientInventoryVisitObserver;
 use App\Observers\ModelActivityObserver;
+use App\Observers\UserHrSyncObserver;
+use App\Models\Client;
+use Dedoc\Scramble\Scramble;
+use Dedoc\Scramble\Support\Generator\OpenApi;
+use Dedoc\Scramble\Support\Generator\SecurityScheme;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
-use Livewire\Livewire;
-use App\Livewire\Items\SimpleItems;
-use App\Livewire\Items\CompositeItems;
-use App\Livewire\Admins;
-use App\Livewire\AuditLogs;
-use App\Livewire\Transactions\Transactions;
-
-
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -32,7 +39,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(\App\Services\Inventory\InventoryStockAnalyticsService::class);
+        $this->app->singleton(\App\Services\Inventory\InventoryStockAgingService::class);
+        $this->app->singleton(\App\Services\Inventory\InventoryStockCountShrinkageService::class);
+        $this->app->singleton(\App\Services\FinancialYearService::class);
     }
 
     /**
@@ -40,60 +50,105 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Scramble::configure()
+            ->withDocumentTransformers(function (OpenApi $openApi): void {
+                $openApi->components->addSecurityScheme(
+                    'bearer',
+                    SecurityScheme::http('bearer')
+                );
+            });
+
         // View::composer('*', function ($view) {
         //     $view->with('business', Auth::check() ? Auth::user()->business : null);
         // });
 
+        // Filament/Livewire pages can render hundreds of nested views. Resolve
+        // shared layout data once per request so we do not re-query on every view.
         View::composer('*', function ($view) {
+            static $shared = null;
+            static $sharedKey = null;
+
             $user = Auth::user();
+            $key = ($user?->id ?? 0).'|'.(string) session(InventoryBusinessContext::SESSION_KEY, '');
 
-            $view->with('business', $user?->business);
-            $view->with('permissions', (array) ($user?->permissions ?? []));
-
-            // Calling module flags
-            $callingModuleEnabled = false;
-            $callingModuleConfig  = null;
-            $userIsACaller = false;
-            if ($user) {
-                $callingModuleConfig  = CallingModuleConfig::where('business_id', $user->business_id)
-                    ->where('is_active', true)
-                    ->first();
-                $callingModuleEnabled = (bool) $callingModuleConfig;
-
-                if ($callingModuleEnabled) {
-                    $sessionCallerId = session('caller_id');
-
-                    // User is a caller if they have a session caller_id pointing to an active Caller
-                    $userIsACaller = $sessionCallerId && Caller::where('id', $sessionCallerId)
-                        ->where('business_id', $user->business_id)
-                        ->where('status', 'active')
-                        ->exists();
-                }
+            if ($shared === null || $sharedKey !== $key) {
+                $sharedKey = $key;
+                $shared = $this->sharedLayoutViewData($user);
             }
-            $view->with('callingModuleEnabled', $callingModuleEnabled);
-            $view->with('callingModuleConfig', $callingModuleConfig);
-            $view->with('userIsACaller', $userIsACaller);
 
-            $activeEmergencyAlert = ($user && $callingModuleEnabled)
-                ? app(EmergencyAlertService::class)->resolveActiveAlertForBusiness($user->business_id)
-                : null;
-            $globalActiveEmergency = (bool) $activeEmergencyAlert;
-            $view->with('globalActiveEmergency', $globalActiveEmergency);
-            $view->with('activeEmergencyAlert', $activeEmergencyAlert);
+            $view->with($shared);
+        });
+
+        View::composer(\App\Support\DocumentViewData::documentViewNames(), function ($view): void {
+            $view->with(\App\Support\DocumentViewData::merge($view->getData()));
         });
 
          // Register observers
          User::observe(ModelActivityObserver::class);
+         User::observe(UserHrSyncObserver::class);
+         Client::observe(ClientClinicalEncounterObserver::class);
+         Client::observe(ClientInventoryVisitObserver::class);
          Business::observe(ModelActivityObserver::class);
          Transaction::observe(ModelActivityObserver::class);
-         
-         // Register Livewire components
-         Livewire::component('items.simple-items', SimpleItems::class);
-         Livewire::component('items.composite-items', CompositeItems::class);
-         Livewire::component('admins', Admins::class);
-         Livewire::component('audit-logs', AuditLogs::class);
-         Livewire::component('transactions.transactions', Transactions::class);
-         
+         InventoryOrder::observe(ModelActivityObserver::class);
+         InventoryPurchaseOrder::observe(ModelActivityObserver::class);
+         InventorySupplierQuotation::observe(ModelActivityObserver::class);
+         GoodsReceivedNote::observe(ModelActivityObserver::class);
+         StockTransfer::observe(ModelActivityObserver::class);
+    }
 
+    /**
+     * @return array<string, mixed>
+     */
+    private function sharedLayoutViewData(?User $user): array
+    {
+        $inventoryModuleEnabled = false;
+        $inventoryModuleConfig = null;
+        $inventoryAdminContextBusiness = null;
+
+        if ($user) {
+            $inventoryBusinessId = InventoryBusinessContext::isKashtreAdmin() && InventoryBusinessContext::hasContext()
+                ? InventoryBusinessContext::effectiveBusinessId()
+                : (int) $user->business_id;
+
+            $inventoryModuleConfig = InventoryModuleConfig::query()
+                ->where('business_id', $inventoryBusinessId)
+                ->where('is_active', true)
+                ->first();
+            $inventoryModuleEnabled = (bool) $inventoryModuleConfig;
+
+            if (InventoryBusinessContext::isAdminBrowsing()) {
+                $inventoryAdminContextBusiness = InventoryBusinessContext::contextBusiness();
+            }
+
+        }
+
+        $hrModuleUrl     = rtrim(config('services.hr_module.url', ''), '/');
+        $hrModuleEnabled = $hrModuleUrl !== '' && config('services.hr_module.api_key') !== null;
+
+        $hrNavigation = [];
+        if ($hrModuleEnabled && $user) {
+            // Only reads from cache — never makes an outbound HTTP call on the request path.
+            // Warm the cache manually via: php artisan hr:refresh-navigation
+            $hrNavigation = Cache::get('hr.navigation', []);
+        }
+
+        return [
+            'business' => $user?->business,
+            'businessBranding' => BusinessBranding::for($user?->business),
+            'permissions' => (array) ($user?->permissions ?? []),
+            'callingModuleEnabled' => false,
+            'callingModuleConfig' => null,
+            'userIsACaller' => false,
+            'inventoryModuleEnabled' => $inventoryModuleEnabled,
+            'inventoryModuleConfig' => $inventoryModuleConfig,
+            'inventoryAdminContextBusiness' => $inventoryAdminContextBusiness,
+            'globalActiveEmergency' => false,
+            'activeEmergencyAlert' => null,
+            'cashTraySettings' => KashtreCashTraySetting::resolved(),
+            'hrModuleUrl' => $hrModuleUrl,
+            'hrModuleEnabled' => $hrModuleEnabled,
+            'hrNavigation' => $hrNavigation,
+        ];
     }
 }

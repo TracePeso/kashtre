@@ -149,10 +149,7 @@
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <h1>QUOTATION</h1>
-            <p>{{ $quotation->business->name ?? 'Business Name' }}</p>
-            <p>{{ $quotation->business->address ?? 'Business Address' }}</p>
-            <p>Phone: {{ $quotation->business->phone ?? 'Business Phone' }}</p>
+            @include('partials.document-shell-header')
         </div>
 
         <!-- Quotation and Client Information -->
@@ -293,12 +290,7 @@
         </div>
         @endif
 
-        <!-- Footer -->
-        <div class="footer">
-            <p><strong>Thank you for your business!</strong></p>
-            <p>Generated on {{ now()->format('M d, Y H:i:s') }}</p>
-            <p>Quotation Number: {{ $quotation->quotation_number }}</p>
-        </div>
+        @include('partials.document-shell-footer')
     </div>
 
     <script>

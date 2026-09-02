@@ -44,13 +44,15 @@ return [
         'timeout' => env('THIRD_PARTY_API_TIMEOUT', 30),
     ],
 
-    'calling_service' => [
-        'url'         => env('CALLING_SERVICE_URL', 'http://127.0.0.1:8001'),
-        'sync_secret' => env('CALLING_SERVICE_SYNC_SECRET', ''),
-    ],
-
-    'hr_module' => [
-        'api_key' => env('HR_MODULE_API_KEY'),
+    'clinical_module' => [
+        // Prefer Settings → Clinical Module Settings (superadmin UI). Env seeds defaults only.
+        'url' => rtrim((string) env('CLINICAL_MODULE_URL', ''), '/'),
+        'service_key' => env('CLINICAL_MODULE_SERVICE_KEY'),
+        'inbound_api_key' => env('CLINICAL_MODULE_INBOUND_API_KEY'),
+        'encounter_webhook_enabled' => (bool) env('CLINICAL_MODULE_ENCOUNTER_WEBHOOK_ENABLED', true),
+        // When Clinical outbound is not configured, allow a fixed 5-digit bypass for EndStore release.
+        'handoff_bypass_enabled' => (bool) env('INVENTORY_HANDOFF_BYPASS_ENABLED', true),
+        'handoff_bypass_code' => env('INVENTORY_HANDOFF_BYPASS_CODE', '00000'),
     ],
 
     'vendor' => [

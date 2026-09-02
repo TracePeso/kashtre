@@ -1,0 +1,124 @@
+<?php
+
+namespace App\Livewire\Inventory;
+
+use App\Models\GoodsReceivedNote;
+use App\Support\InventoryBusinessContext;
+use Filament\Forms\Concerns\InteractsWithForms;
+use Filament\Forms\Contracts\HasForms;
+use Filament\Tables\Actions\Action;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Table;
+use Illuminate\Contracts\View\View;
+use Livewire\Component;
+
+class ListGoodsReceivedNotes extends Component implements HasForms, HasTable
+{
+    use InteractsWithForms;
+    use InteractsWithTable;
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query(
+                GoodsReceivedNote::query()
+                    ->select([
+                        'id',
+                        'business_id',
+                        'supplier_id',
+                        'entry_by_user_id',
+                        'grn_number',
+                        'date_of_delivery',
+                        'lead_time_days',
+                        'status',
+                        'created_at',
+                    ])
+                    ->where('business_id', InventoryBusinessContext::effectiveBusinessId())
+                    ->with([
+                        'supplier:id,name',
+                        'entryBy:id,name',
+                    ])
+                    ->withCount('lines')
+                    ->latest('created_at')
+            )
+            ->columns([
+                TextColumn::make('grn_number')
+                    ->label('Note #')
+                    ->searchable()
+                    ->sortable(),
+
+                TextColumn::make('supplier.name')
+                    ->label('Supplier')
+                    ->placeholder('—')
+                    ->searchable(),
+
+                TextColumn::make('date_of_delivery')
+                    ->label('Delivery date')
+                    ->date('M d, Y')
+                    ->sortable(),
+
+                TextColumn::make('lead_time_days')
+                    ->label('Lead time (days)')
+                    ->alignEnd(),
+
+                TextColumn::make('entryBy.name')
+                    ->label('Entry by')
+                    ->placeholder('—'),
+
+                TextColumn::make('status')
+                    ->badge()
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'draft' => 'Draft',
+                        'pending_approval' => 'Pending approval',
+                        'approved' => 'Approved',
+                        'rejected' => 'Rejected',
+                        default => ucfirst($state),
+                    })
+                    ->color(fn (string $state): string => match ($state) {
+                        'draft' => 'gray',
+                        'pending_approval' => 'warning',
+                        'approved' => 'success',
+                        'rejected' => 'danger',
+                        default => 'gray',
+                    }),
+
+                TextColumn::make('lines_count')
+                    ->label('Lines')
+                    ->alignEnd(),
+            ])
+            ->filters([
+                SelectFilter::make('status')
+                    ->options([
+                        GoodsReceivedNote::STATUS_DRAFT => 'Draft',
+                        GoodsReceivedNote::STATUS_PENDING => 'Pending approval',
+                        GoodsReceivedNote::STATUS_APPROVED => 'Approved',
+                        GoodsReceivedNote::STATUS_REJECTED => 'Rejected',
+                    ]),
+            ])
+            ->actions([
+                Action::make('view')
+                    ->label('View')
+                    ->url(fn (GoodsReceivedNote $record): string => route('inventory.receive.show', $record)),
+            ])
+            ->headerActions([
+                Action::make('create')
+                    ->label('Goods receive note')
+                    ->url(route('inventory.receive.create'))
+                    ->icon('heroicon-o-plus'),
+            ])
+            ->defaultSort('created_at', 'desc')
+            ->striped()
+            ->paginated([10, 25, 50])
+            ->defaultPaginationPageOption(10)
+            ->emptyStateHeading('No goods receive notes yet')
+            ->emptyStateDescription('Create a goods receive note to record incoming stock from a supplier.');
+    }
+
+    public function render(): View
+    {
+        return view('livewire.inventory.list-goods-received-notes');
+    }
+}

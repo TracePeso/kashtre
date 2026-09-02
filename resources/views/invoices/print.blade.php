@@ -227,29 +227,23 @@
             }
             
             .no-print {
-                display: none;
+                display: none !important;
             }
         }
     </style>
 </head>
 <body>
+    @php
+        $branding = $branding ?? \App\Support\BusinessBranding::for($invoice->business);
+        $generatedAt = $generatedAt ?? now();
+        $forPdf = $forPdf ?? false;
+    @endphp
     <div class="invoice-container">
-        <!-- Invoice Header -->
+        <!-- Institution header -->
         <div class="invoice-header">
-            <div class="invoice-title">INVOICE</div>
-            <div class="invoice-number">{{ $invoice->invoice_number }}</div>
-            
-            <div class="company-info">
-                <div class="company-details">
-                    <h3>{{ $invoice->business->name ?? 'Business Name' }}</h3>
-                    @if($invoice->branch)
-                        <p><strong>Branch:</strong> {{ $invoice->branch->name }}</p>
-                    @endif
-                    <p>{{ $invoice->business->address ?? '' }}</p>
-                    <p>{{ $invoice->business->phone ?? '' }}</p>
-                    <p>{{ $invoice->business->email ?? '' }}</p>
-                </div>
-                
+            @include('partials.document-shell-header')
+
+            <div class="company-info" style="justify-content: flex-end;">
                 <div class="invoice-details">
                     <h4>Invoice Details</h4>
                     <p><strong>Date:</strong> {{ $invoice->created_at->format('M d, Y') }}</p>
@@ -420,14 +414,11 @@
             @endif
         </div>
         
-        <!-- Footer -->
-        <div class="footer">
-            <p>Thank you for your business!</p>
-            <p>Generated on {{ now()->format('M d, Y H:i') }}</p>
-        </div>
+        @include('partials.document-shell-footer')
     </div>
     
-    <!-- Print Controls (hidden when printing) -->
+    <!-- Print Controls (hidden when printing / PDF) -->
+    @unless($forPdf)
     <div class="no-print" style="text-align: center; margin: 20px 0;">
         <button onclick="window.print()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">
             Print Invoice
@@ -436,6 +427,7 @@
             Close
         </button>
     </div>
+    @endunless
     
     <script>
         // Auto-print when page loads (optional)

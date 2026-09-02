@@ -7,13 +7,18 @@ use App\Models\Business;
 use App\Mail\ClientReceipt;
 use App\Mail\BusinessReceipt;
 use App\Mail\KashTreReceipt;
-use Illuminate\Support\Facades\Mail;
+use App\Services\DocumentPdfService;
 use Illuminate\Support\Facades\Log;
-use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 
 class ReceiptService
 {
+    public function __construct(
+        private readonly DocumentPdfService $documents,
+    ) {
+    }
+
     /**
      * Send electronic receipts to all parties upon payment clearance
      */
@@ -128,8 +133,16 @@ class ReceiptService
                 'view_file' => 'invoices.print'
             ]);
 
-            // Generate PDF using the existing invoice print view
-            $pdf = Pdf::loadView('invoices.print', compact('invoice'));
+            $invoice->loadMissing('business');
+
+            $pdf = $this->documents->render(
+                'invoices.print',
+                [
+                    'invoice' => $invoice,
+                    'forPdf' => true,
+                ],
+                $invoice->business,
+            );
             
             Log::info("=== PDF GENERATION - PDF OBJECT CREATED ===", [
                 'invoice_id' => $invoice->id,

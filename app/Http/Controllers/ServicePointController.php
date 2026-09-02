@@ -2,11 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Caller;
-use App\Models\CallingModuleConfig;
-use App\Models\EmergencyAlert;
 use App\Models\ServicePoint;
-use App\Services\EmergencyAlertService;
 use Illuminate\Http\Request;
 
 class ServicePointController extends Controller
@@ -157,16 +153,7 @@ class ServicePointController extends Controller
             return $a['earliest_queue_time'] <=> $b['earliest_queue_time'];
         });
 
-        // Load global call settings (shared across all callers for this business).
-        $callerSettings = Caller::where('business_id', $servicePoint->business_id)
-            ->first(['announcement_message', 'speech_rate', 'speech_volume']);
-
-        $activeEmergency = app(EmergencyAlertService::class)->resolveActiveAlertForBusiness($servicePoint->business_id);
-
-        $callingModuleConfig = CallingModuleConfig::where('business_id', $servicePoint->business_id)->first();
-        $defaultEmergencyMessage = $callingModuleConfig?->default_emergency_message;
-
-        return view('service-points.show', compact('servicePoint', 'clientsWithItems', 'callerSettings', 'activeEmergency', 'defaultEmergencyMessage'));
+        return view('service-points.show', compact('servicePoint', 'clientsWithItems'));
     }
 
     /**
@@ -538,6 +525,21 @@ class ServicePointController extends Controller
                 }
 
                 if (in_array($status, ['partially_done', 'completed']) && $item->status !== $status) {
+                    // goods cannot enter In Progress / partially_done on the service-point dashboard.
+                    $item->loadMissing('item');
+                    if (($item->item?->type ?? null) === 'good') {
+                        $inventoryOn = \App\Models\InventoryModuleConfig::query()
+                            ->where('business_id', $item->business_id)
+                            ->where('is_active', true)
+                            ->exists();
+                        if ($inventoryOn && in_array($status, ['partially_done', 'completed'], true)) {
+                            return response()->json([
+                                'success' => false,
+                                'message' => 'Goods cannot be marked In Progress or Completed here. Dispense/release them from EndStore.',
+                            ], 422);
+                        }
+                    }
+
                     // Set the invoice if not already set
                     if (!$invoice) {
                         $invoice = $item->invoice;
@@ -575,8 +577,28 @@ class ServicePointController extends Controller
                             'money_moved_at' => $item->money_moved_at
                         ]);
                         if ($status === 'partially_done' && $item->status !== 'partially_done') {
+                            $item->loadMissing('item');
+                            if (($item->item?->type ?? null) === 'good') {
+                                return response()->json([
+                                    'success' => false,
+                                    'message' => 'Goods cannot be marked In Progress. Dispense them from EndStore.',
+                                ], 422);
+                            }
                             $item->markAsPartiallyDone(auth()->id());
                         } elseif ($status === 'completed' && $item->status !== 'completed') {
+                            $item->loadMissing('item');
+                            if (($item->item?->type ?? null) === 'good') {
+                                $inventoryOn = \App\Models\InventoryModuleConfig::query()
+                                    ->where('business_id', $item->business_id)
+                                    ->where('is_active', true)
+                                    ->exists();
+                                if ($inventoryOn) {
+                                    return response()->json([
+                                        'success' => false,
+                                        'message' => 'Goods cannot be marked Completed here. Dispense/release them from EndStore.',
+                                    ], 422);
+                                }
+                            }
                             $item->markAsCompleted(auth()->id());
                         } else {
                             $item->status = $status;

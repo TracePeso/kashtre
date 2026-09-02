@@ -3,8 +3,11 @@
 namespace App\Providers;
 
 use App\Actions\Jetstream\DeleteUser;
+use App\Livewire\Profile\PrimaryTwoFactorMethodForm;
+use App\Livewire\Profile\SecurityQuestionsForm;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Jetstream\Jetstream;
+use Livewire\Livewire;
 
 class JetstreamServiceProvider extends ServiceProvider
 {
@@ -24,6 +27,9 @@ class JetstreamServiceProvider extends ServiceProvider
         $this->configurePermissions();
 
         Jetstream::deleteUsersUsing(DeleteUser::class);
+
+        Livewire::component('profile.security-questions-form', SecurityQuestionsForm::class);
+        Livewire::component('profile.primary-two-factor-method-form', PrimaryTwoFactorMethodForm::class);
     }
 
     /**
