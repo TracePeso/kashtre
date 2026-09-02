@@ -59,4 +59,10 @@ return [
         'api_url' => env('VENDOR_API_URL', 'http://localhost:8001'),
     ],
 
+    'hr_module' => [
+        'url' => rtrim((string) env('HR_MODULE_URL', ''), '/'),
+        'api_key' => env('HR_MODULE_API_KEY', ''),
+        'sync_enabled' => (bool) env('HR_MODULE_SYNC_ENABLED', true),
+    ],
+
 ];

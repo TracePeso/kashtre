@@ -112,14 +112,12 @@ class HrController extends Controller
     {
         $user    = Auth::user();
         $apiKey  = config('services.hr_module.api_key', '');
-        $hrUrl   = rtrim(config('services.hr_module.url', ''), '/');
+        $hrUrl   = rtrim((string) config('services.hr_module.url', ''), '/');
 
-        // Mirror the host the user is on so the iframe is same-site:
-        // avoids SameSite=Lax cookie blocking for cross-host iframes.
-        $parsed  = parse_url($hrUrl);
-        $hrPort  = $parsed['port'] ?? 8001;
-        $hrUrl   = ($parsed['scheme'] ?? 'http') . '://' . $request->getHost() . ':' . $hrPort;
-
+        // SameSite=Lax cookies only care about scheme + registrable domain,
+        // not port, so a subdomain (hr.kashtre.com) or a different local
+        // port (localhost:8001) are both already same-site as this app —
+        // no host substitution needed, just use the configured URL as-is.
         $path    = $request->input('path', '/hr/dashboard');
         $payload = $user->email . '|' . ($user->business_id ?? '') . '|' . time();
         $sig     = hash_hmac('sha256', $payload, $apiKey);
