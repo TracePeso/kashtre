@@ -190,6 +190,19 @@
                                 <option value="suspended" {{ old('status', $user->status) == 'suspended' ? 'selected' : '' }}>Suspended</option>
                             </select>
                         </div>
+                        <div>
+                            <label for="hr_role">HR module role <span class="text-gray-500 text-sm">(optional)</span></label>
+                            @php $hrRole = old('hr_role', $user->hr_role); @endphp
+                            <select name="hr_role" id="hr_role" class="form-select w-full">
+                                <option value="" {{ !$hrRole ? 'selected' : '' }}>Default (Staff)</option>
+                                <option value="staff" {{ $hrRole == 'staff' ? 'selected' : '' }}>Staff</option>
+                                <option value="supervisor" {{ $hrRole == 'supervisor' ? 'selected' : '' }}>Supervisor</option>
+                                <option value="roster_manager" {{ $hrRole == 'roster_manager' ? 'selected' : '' }}>Roster Manager</option>
+                                <option value="hr_manager" {{ $hrRole == 'hr_manager' ? 'selected' : '' }}>HR Manager</option>
+                                <option value="admin" {{ $hrRole == 'admin' ? 'selected' : '' }}>Admin</option>
+                                <option value="super_admin" {{ $hrRole == 'super_admin' ? 'selected' : '' }}>Super Admin</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
 

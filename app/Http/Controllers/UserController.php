@@ -119,6 +119,7 @@ class UserController extends Controller
             'service_points.*' => 'exists:service_points,id',
             'allowed_branches' => 'nullable|array',
             'permissions_menu' => 'required|array|min:1',
+            'hr_role' => 'nullable|in:staff,supervisor,roster_manager,hr_manager,admin,super_admin',
             // Contractor profile fields (conditionally required)
             'bank_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
             'account_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
@@ -167,6 +168,7 @@ class UserController extends Controller
                 'service_points' => $validated['service_points'] ?? [],
                 'allowed_branches' => $validated['allowed_branches'] ?? [],
                 'permissions' => $validated['permissions_menu'],
+                'hr_role' => $validated['hr_role'] ?? null,
                 'password' => '',
                 // Keep balances non-null for all users (DB constraint on some environments).
                 'total_balance' => 0.00,
@@ -288,6 +290,7 @@ class UserController extends Controller
             'allowed_branches' => 'nullable|array',
             'allowed_branches.*' => 'exists:branches,id',
             'permissions_menu' => 'required|array|min:1',
+            'hr_role' => 'nullable|in:staff,supervisor,roster_manager,hr_manager,admin,super_admin',
             // Contractor profile fields (conditionally required)
             'bank_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
             'account_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
@@ -329,6 +332,7 @@ class UserController extends Controller
                 'service_points' => $validated['service_points'] ?? [],
                 'allowed_branches' => $validated['allowed_branches'] ?? [],
                 'permissions' => $validated['permissions_menu'],
+                'hr_role' => $validated['hr_role'] ?? $user->hr_role,
             ]);
             // Contractor profile logic
             if (in_array('Contractor', $validated['permissions_menu'])) {

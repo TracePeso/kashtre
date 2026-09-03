@@ -35,6 +35,7 @@ class HrModuleSyncService
             'gender' => $user->gender,
             'business_id' => $user->business_id,
             'branch_id' => $user->branch_id,
+            'role' => $user->hr_role,
             'department_id' => $user->department_id,
             'qualification_id' => $user->qualification_id,
             'staff_category_id' => $user->staff_category_id,

@@ -39,6 +39,7 @@ class User extends Authenticatable
         'default_store_id',
         'service_points',
         'permissions',
+        'hr_role',
         'allowed_branches',
         'qualification_id',
         'department_id',
