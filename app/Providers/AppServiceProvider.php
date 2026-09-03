@@ -128,9 +128,22 @@ class AppServiceProvider extends ServiceProvider
 
         $hrNavigation = [];
         if ($hrModuleEnabled && $user) {
-            // Only reads from cache — never makes an outbound HTTP call on the request path.
-            // Warm the cache manually via: php artisan hr:refresh-navigation
-            $hrNavigation = Cache::get('hr.navigation', []);
+            // Normally just a cache read — the scheduled `hr:refresh-navigation`
+            // command (routes/console.php, every 4 minutes) keeps this warm from
+            // the HR module's live navigation endpoint. But that requires
+            // Laravel's scheduler to actually be running (schedule:work locally,
+            // or a cron hitting schedule:run in production), so on a cold cache
+            // we self-heal by fetching live, once, and re-warming the cache —
+            // no hardcoded copy of the HR module's nav list to keep in sync.
+            $hrNavigation = Cache::get('hr.navigation');
+            if ($hrNavigation === null) {
+                try {
+                    $hrNavigation = app(\App\Services\HrModuleApiClient::class)->navigation();
+                    Cache::put('hr.navigation', $hrNavigation, 300);
+                } catch (\Throwable $e) {
+                    $hrNavigation = [];
+                }
+            }
         }
 
         return [
