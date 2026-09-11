@@ -18,6 +18,9 @@ class Invoice extends Model
         'client_id',
         'business_id',
         'branch_id',
+        'client_space_id',
+        'fulfillment_strategy',
+        'end_store_id',
         'created_by',
         'client_name',
         'client_phone',
@@ -83,6 +86,11 @@ class Invoice extends Model
     public function branch()
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function clientSpace()
+    {
+        return $this->belongsTo(ClientSpace::class);
     }
 
     public function createdBy()
@@ -261,5 +269,14 @@ class Invoice extends Model
         ];
         
         return $badges[$this->payment_status] ?? 'bg-gray-100 text-gray-800';
+    }
+
+    public function isInventoryUsagePostpaid(): bool
+    {
+        $items = collect(is_array($this->items) ? $this->items : []);
+
+        return $items->contains(
+            fn ($item): bool => is_array($item) && ($item['source'] ?? null) === 'inventory_usage'
+        );
     }
 }

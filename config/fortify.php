@@ -153,7 +153,8 @@ return [
         Features::twoFactorAuthentication([
             'confirm' => true,
             'confirmPassword' => true,
-            // 'window' => 0,
+            // Allow ±2 time steps (~60s) for mild clock skew between phone and server.
+            'window' => 2,
         ]),
     ],
 

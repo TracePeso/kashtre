@@ -6,6 +6,7 @@ use App\Models\PackageTracking;
 use App\Models\PackageTrackingItem;
 use App\Models\Invoice;
 use App\Models\Item;
+use App\Services\ClinicalModuleIntegrationService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
@@ -145,6 +146,19 @@ class PackageTrackingService
                 'tracking_number' => $trackingNumber,
                 'included_items_count' => $packageItems->count()
             ]);
+
+            // Hand the allocation to the Clinical Module so it can decrement on
+            // clinical use. Its own try/catch matters: we are past DB::commit(),
+            // so letting this reach the outer catch would rethrow and fail a
+            // sale that has already been paid for and written.
+            try {
+                app(ClinicalModuleIntegrationService::class)->notifyEntitlementsGranted($packageTracking);
+            } catch (\Throwable $e) {
+                Log::warning("Clinical entitlement notification failed", [
+                    'package_tracking_id' => $packageTracking->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             return $packageTracking;
 

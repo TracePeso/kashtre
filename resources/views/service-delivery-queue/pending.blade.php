@@ -58,11 +58,17 @@
                                                 </span>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                <button 
-                                                    onclick="moveToPartiallyDone({{ $item->id }})"
-                                                    class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded text-xs">
-                                                    Move to In Progress
-                                                </button>
+                                                @if(($item->item->type ?? null) === 'good')
+                                                    <span class="text-xs text-gray-500" title="Goods stay Pending until End Store dispense">
+                                                        End Store dispense only
+                                                    </span>
+                                                @else
+                                                    <button
+                                                        onclick="moveToPartiallyDone({{ $item->id }})"
+                                                        class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded text-xs">
+                                                        Move to In Progress
+                                                    </button>
+                                                @endif
                                             </td>
                                         </tr>
                                     @endforeach

@@ -3,11 +3,13 @@ use App\Models\Business;
 use App\Models\ServicePoint;
 
 
+
 $businessId = 1;
 $business = Business::with('branches')->findOrFail($businessId);
 $branch = $business->branches->first();
 $servicePoints = ServicePoint::where('business_id', $businessId)->get();
 @endphp
+
 
 
 <x-app-layout>

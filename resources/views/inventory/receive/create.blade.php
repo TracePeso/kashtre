@@ -1,0 +1,932 @@
+<x-app-layout>
+@include('partials.inventory.supplier-category-filter-script')
+<div class="min-h-screen bg-gray-50 py-6" x-data="grnCreateForm(
+    @js($itemUnits->pluck('name')->values()),
+    @js($grnFormItems),
+    @js($supplierItemIds),
+    @js($prefillLines ?? []),
+    @js($prefillStoreId),
+    @js($prefillSupplierId),
+    @js(old('inventory_order_id', $inventoryOrder?->id)),
+    @js(old('inventory_purchase_order_id', $purchaseOrder?->id)),
+    @js((int) \App\Support\InventoryBusinessContext::effectiveBusinessId()),
+    @js(is_array(old('lines')) && count(old('lines')) > 0),
+    @js(old('date_of_order', now()->toDateString())),
+    @js(old('date_of_delivery', now()->toDateString())),
+    @js($supplierCatalog ?? []),
+    @js($supplierIndustries ?? []),
+    @js($supplierSubCategoriesByIndustry ?? [])
+)" x-init="initDraftPersistence()">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="mb-6">
+            <a href="{{ route('inventory.receive') }}"
+               class="text-sm text-blue-600 hover:text-blue-800">&larr; Back to Receive Goods</a>
+        </div>
+
+        <div class="md:flex md:items-center md:justify-between mb-6">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-900">Goods receive note</h2>
+                @if(!empty($purchaseOrder))
+                    <p class="mt-1 text-sm text-gray-500">
+                        Receiving against LPO <strong>{{ $purchaseOrder->po_number }}</strong>
+                        @if($purchaseOrder->inventoryOrder)
+                            · RFQ <strong>{{ $purchaseOrder->inventoryOrder->order_number }}</strong>
+                        @endif
+                        · {{ $purchaseOrder->supplier?->name }}
+                    </p>
+                @elseif(!empty($inventoryOrder))
+                    <p class="mt-1 text-sm text-gray-500">
+                        Receiving against RFQ <strong>{{ $inventoryOrder->order_number }}</strong>.
+                    </p>
+                @else
+                    <p class="mt-1 text-sm text-gray-500">Record goods received from a supplier, or load an issued LPO to auto-fill the form.</p>
+                @endif
+            </div>
+            @if(empty($inventoryOrder) && empty($purchaseOrder))
+                <a href="{{ route('inventory.receive.bulk-upload') }}" class="mt-4 md:mt-0 text-sm text-blue-600 hover:text-blue-800">
+                    Bulk upload instead
+                </a>
+            @endif
+        </div>
+
+        @include('inventory.partials.subnav')
+
+        @if ($itemUnits->isEmpty())
+            <div class="mt-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded text-sm">
+                Add item units for your organisation before creating a goods receive note (delivery unit and sale unit on each line).
+                <a href="{{ route('item-units.index') }}" class="font-medium underline hover:text-amber-950">Manage Item Units</a>
+            </div>
+        @endif
+
+        @if ($errors->any())
+            <div class="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+                <ul class="list-disc list-inside text-sm">
+                    @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
+
+        <div x-show="draftRestored" x-cloak class="mt-4 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm flex flex-wrap items-center justify-between gap-3">
+            <p>
+                <strong>Progress restored.</strong> Your entries were recovered from this browser.
+                Re-attach the delivery note if you had selected one.
+            </p>
+            <button type="button" @click="discardSavedDraft()"
+                    class="shrink-0 text-sm font-medium text-blue-800 hover:text-blue-950 underline">
+                Discard saved progress
+            </button>
+        </div>
+
+        <div class="mt-4 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
+            <p>Complete all fields on this form. Compulsory fields are marked with <span class="text-red-500 font-medium">*</span>.</p>
+            <p class="mt-1 text-gray-500">Your progress is saved automatically in this browser as you work.</p>
+        </div>
+
+        @if(($receivableLpos ?? collect())->isNotEmpty())
+            <div class="mt-6 bg-white shadow sm:rounded-lg border border-indigo-100 overflow-hidden">
+                <div class="px-5 py-4 border-b border-indigo-100 bg-indigo-50/50">
+                    <h3 class="text-sm font-semibold text-gray-900">Receive from LPO</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">
+                        Select an issued local purchase order to auto-fill supplier, store, and line items with remaining quantities and prices.
+                    </p>
+                </div>
+                <div class="px-5 py-4 flex flex-wrap items-end gap-3">
+                    <div class="flex-1 min-w-[16rem]">
+                        <label for="lpo_selector" class="block text-sm font-medium text-gray-700">Local purchase order</label>
+                        <select id="lpo_selector"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                onchange="if (this.value) { window.location.href = '{{ route('inventory.receive.create') }}?inventory_purchase_order_id=' + encodeURIComponent(this.value); }">
+                            <option value="">— Select an LPO —</option>
+                            @foreach($receivableLpos as $lpo)
+                                <option value="{{ $lpo->id }}" @selected(($purchaseOrder?->id ?? null) == $lpo->id)>
+                                    {{ $lpo->po_number }}
+                                    · {{ $lpo->supplier?->name ?? 'Supplier' }}
+                                    @if($lpo->inventoryOrder)
+                                        · {{ $lpo->inventoryOrder->order_number }}
+                                    @endif
+                                    · {{ $lpo->store?->name ?? 'Store' }}
+                                    · {{ $lpo->statusLabel() }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @if(!empty($purchaseOrder))
+                        <a href="{{ route('inventory.receive.create') }}"
+                           class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">
+                            Clear LPO selection
+                        </a>
+                        <a href="{{ route('inventory.purchase-orders.show', $purchaseOrder) }}"
+                           class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100">
+                            View LPO
+                        </a>
+                    @else
+                        <p class="text-xs text-gray-500 pb-2">Or continue below without linking an LPO.</p>
+                    @endif
+                </div>
+            </div>
+        @elseif(empty($purchaseOrder) && empty($inventoryOrder))
+            <div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                No issued LPOs with remaining quantities are available. You can still create a manual goods receive note below, or
+                <a href="{{ route('inventory.purchase-orders.index') }}" class="font-medium underline hover:text-amber-950">open LPOs</a>
+                to issue one first.
+            </div>
+        @endif
+
+        <form method="POST" action="{{ route('inventory.receive.store') }}" enctype="multipart/form-data" class="mt-6 space-y-6" novalidate @submit="handleFormSubmit($event)">
+            <input type="hidden" name="action" value="submit">
+            @csrf
+            <input type="hidden" name="inventory_order_id" :value="inventoryOrderId ?? ''">
+            <input type="hidden" name="inventory_purchase_order_id" :value="inventoryPurchaseOrderId ?? ''">
+
+            <div x-show="formError" x-cloak class="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800" x-text="formError"></div>
+
+            <div class="bg-white shadow sm:rounded-lg p-6 space-y-5">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div class="md:col-span-2">
+                        @include('partials.inventory.supplier-category-filter-fields', ['class' => 'mb-1'])
+                    </div>
+                    <div>
+                        <label for="supplier_id" class="block text-sm font-medium text-gray-700">Supplier <span class="text-red-500">*</span></label>
+                        <select name="supplier_id" id="supplier_id" required x-model="supplierId" @change="onSupplierChange()"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                            <option value="">— Select supplier —</option>
+                            <template x-for="supplier in filteredSupplierCatalog()" :key="supplier.id">
+                                <option :value="supplier.id" x-text="supplier.name"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="store_id" class="block text-sm font-medium text-gray-700">Receiving store <span class="text-red-500">*</span></label>
+                        <select name="store_id" id="store_id" required x-model="storeId"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                            <option value="">— Select store —</option>
+                            @foreach($stores as $store)
+                                <option value="{{ $store->id }}" @selected(old('store_id', $prefillStoreId ?? null) == $store->id)>{{ $store->selectLabel() }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label for="date_of_order" class="block text-sm font-medium text-gray-700">Date of order <span class="text-red-500">*</span></label>
+                        <input type="date" name="date_of_order" id="date_of_order" required x-model="dateOfOrder"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="date_of_delivery" class="block text-sm font-medium text-gray-700">Date of delivery <span class="text-red-500">*</span></label>
+                        <input type="date" name="date_of_delivery" id="date_of_delivery" required x-model="dateOfDelivery"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Entry by</label>
+                        <p class="mt-2 text-sm text-gray-900">{{ auth()->user()->name }}</p>
+                    </div>
+                    <div class="md:col-span-2">
+                        <span class="block text-sm font-medium text-gray-700">Attach Delivery note</span>
+                        <div class="mt-1 flex flex-wrap items-center gap-3">
+                            <label for="delivery_note"
+                                   class="cursor-pointer inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200">
+                                Attach Delivery note
+                            </label>
+                            <input type="file" name="delivery_note" id="delivery_note" accept=".pdf,.jpg,.jpeg,.png"
+                                   class="sr-only"
+                                   @change="deliveryNoteName = $el.files[0]?.name ?? ''">
+                            <span class="text-sm text-gray-500" x-text="deliveryNoteName || 'No file selected'"></span>
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">PDF or image, max 10 MB.</p>
+                    </div>
+                </div>
+
+                @if(isset($grnApprovers) && $grnApprovers->isNotEmpty())
+                    <div class="mt-5 rounded-md border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-sm text-indigo-950">
+                        <p class="font-medium text-indigo-900">Organisation approvers for this GRN</p>
+                        <p class="mt-1 text-xs text-indigo-800">Approver 1 and Approver 2 are set under Inventory → Settings → Approvers.</p>
+                        <ol class="mt-2 list-decimal list-inside space-y-1 text-indigo-900/90">
+                            @foreach($grnApprovers as $approver)
+                                <li>
+                                    <span class="font-medium">{{ $approver->roleLabel() }}:</span>
+                                    {{ $approver->user->name ?? '—' }}
+                                </li>
+                            @endforeach
+                        </ol>
+                    </div>
+                @endif
+
+                <div class="mt-5 rounded-md border border-gray-200 bg-gray-50 px-4 py-4">
+                    <label for="technical_supervisor_user_id" class="block text-sm font-medium text-gray-900">
+                        Technical supervisor
+                        @if($grnTechnicalSupervisorRequired)
+                            <span class="text-red-500">*</span>
+                        @else
+                            <span class="text-gray-400 font-normal">(optional, per goods receive note)</span>
+                        @endif
+                    </label>
+                    <p class="mt-1 text-xs text-gray-500">
+                        @if($grnTechnicalSupervisorRequired)
+                            Your organisation requires a technical supervisor on every goods receive note. They must approve before Approver 1 and Approver 2.
+                        @else
+                            Choose a technical supervisor for this delivery only. When set, they must approve before Approver 1 and Approver 2.
+                        @endif
+                    </p>
+                    <select name="technical_supervisor_user_id" id="technical_supervisor_user_id"
+                            @if($grnTechnicalSupervisorRequired) required @endif
+                            class="mt-2 block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                        @unless($grnTechnicalSupervisorRequired)
+                            <option value="">— None —</option>
+                        @else
+                            <option value="" disabled @selected(! old('technical_supervisor_user_id'))>Select technical supervisor</option>
+                        @endunless
+                        @foreach($businessUsers as $user)
+                            <option value="{{ $user->id }}" @selected(old('technical_supervisor_user_id') == $user->id)>
+                                {{ $user->name }} ({{ $user->email }})
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('technical_supervisor_user_id')
+                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+            </div>
+
+            <div class="bg-white shadow sm:rounded-lg p-6">
+                <div class="flex items-center justify-between border-b border-gray-200 pb-3 mb-4">
+                    <h3 class="text-lg font-medium text-gray-900">Line items</h3>
+                </div>
+
+                <div x-show="lines.length > 0" x-cloak
+                     class="mb-6 rounded-lg border border-blue-200 bg-blue-50/60 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-blue-200/80 flex flex-wrap items-center justify-between gap-2">
+                        <h4 class="text-sm font-semibold text-blue-900">
+                            Summary
+                            <span class="font-normal text-blue-700" x-text="'(' + lines.length + ' item' + (lines.length === 1 ? '' : 's') + ')'"></span>
+                        </h4>
+                        <dl class="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                            <div class="flex gap-1.5">
+                                <dt class="text-blue-700">Sale units:</dt>
+                                <dd class="font-semibold text-blue-900 tabular-nums" x-text="formatNumber(totals().saleUnits)"></dd>
+                            </div>
+                            <div class="flex gap-1.5">
+                                <dt class="text-blue-700">Total amount:</dt>
+                                <dd class="font-semibold text-blue-900 tabular-nums" x-text="'UGX ' + formatMoney(totals().purchaseValue)"></dd>
+                            </div>
+                        </dl>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-blue-100/50 text-xs tracking-wide text-blue-800">
+                                <tr>
+                                    <th class="px-4 py-2 text-left font-medium">#</th>
+                                    <th class="px-4 py-2 text-left font-medium">Item</th>
+                                    <th class="px-4 py-2 text-right font-medium">Delivery qty</th>
+                                    <th class="px-4 py-2 text-left font-medium">Delivery unit</th>
+                                    <th class="px-4 py-2 text-left font-medium">Sale unit</th>
+                                    <th class="px-4 py-2 text-right font-medium">Sale units</th>
+                                    <th class="px-4 py-2 text-right font-medium">Total amount</th>
+                                    <th class="px-4 py-2 text-left font-medium">Batch</th>
+                                    <th class="px-4 py-2 text-left font-medium">Expiry</th>
+                                    <th class="px-4 py-2 text-right font-medium">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-blue-100 bg-white/80">
+                                <template x-for="(line, index) in lines" :key="'summary-' + index">
+                                    <tr class="hover:bg-blue-50/50" :class="editingIndex === index ? 'ring-2 ring-inset ring-blue-400' : ''">
+                                        <td class="px-4 py-2 text-gray-500 tabular-nums" x-text="index + 1"></td>
+                                        <td class="px-4 py-2">
+                                            <div class="font-medium text-gray-900" x-text="itemForLine(line)?.name || '—'"></div>
+                                            <div class="text-xs text-gray-500" x-text="itemForLine(line)?.code || ''"></div>
+                                        </td>
+                                        <td class="px-4 py-2 text-right tabular-nums text-gray-900" x-text="formatNumber(line.quantity)"></td>
+                                        <td class="px-4 py-2 text-gray-700" x-text="line.duom || '—'"></td>
+                                        <td class="px-4 py-2 text-gray-700" x-text="line.suom || '—'"></td>
+                                        <td class="px-4 py-2 text-right tabular-nums font-medium text-emerald-800" x-text="formatNumber(saleUnits(line))"></td>
+                                        <td class="px-4 py-2 text-right tabular-nums font-medium text-gray-900" x-text="'UGX ' + formatMoney(lineTotalAmount(line))"></td>
+                                        <td class="px-4 py-2 text-gray-600" x-text="line.batch_number || '—'"></td>
+                                        <td class="px-4 py-2 text-gray-600 whitespace-nowrap" x-text="line.expiry_date ? formatDate(line.expiry_date) : '—'"></td>
+                                        <td class="px-4 py-2 text-right whitespace-nowrap">
+                                            <button type="button" @click="editLine(index)"
+                                                    class="text-xs font-medium text-blue-600 hover:text-blue-800">Edit</button>
+                                            <span class="text-gray-300 mx-1">|</span>
+                                            <button type="button" @click="deleteLine(index)"
+                                                    class="text-xs font-medium text-red-600 hover:text-red-800">Delete</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                            <tfoot class="bg-blue-100/40 text-sm font-semibold text-blue-900">
+                                <tr>
+                                    <td colspan="5" class="px-4 py-2 text-right">Totals</td>
+                                    <td class="px-4 py-2 text-right tabular-nums" x-text="formatNumber(totals().saleUnits)"></td>
+                                    <td class="px-4 py-2 text-right tabular-nums" x-text="'UGX ' + formatMoney(totals().purchaseValue)"></td>
+                                    <td colspan="3"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <div class="px-4 py-3 border-t border-blue-200/80 bg-white/80 flex flex-wrap justify-end gap-3">
+                        <button type="button" @click="cancelForm()"
+                                class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
+                        <button type="submit" @disabled($itemUnits->isEmpty())
+                                class="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                            Submit for approval
+                        </button>
+                    </div>
+                </div>
+
+                <p x-show="lines.length === 0" class="mb-4 text-sm text-gray-500 text-center py-2">No items yet. Add an item below.</p>
+
+                <div class="border border-gray-200 rounded-lg bg-gray-50/50 overflow-hidden" x-ref="draftForm">
+                    <div class="px-4 py-3 border-b border-gray-200 bg-white flex flex-wrap items-center justify-between gap-2">
+                        <h4 class="text-sm font-semibold text-gray-900" x-text="editingIndex !== null ? 'Edit item' : 'Add item'"></h4>
+                        <button type="button" x-show="editingIndex !== null" @click="cancelEdit()" x-cloak
+                                class="text-xs font-medium text-gray-600 hover:text-gray-800">Cancel edit</button>
+                    </div>
+                    <div class="px-4 py-4 space-y-3 bg-white">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+                            <div class="sm:col-span-2 lg:col-span-3">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Item <span class="text-red-500">*</span></label>
+                                <select x-model="draftLine.item_id" @change="onDraftItemChange()" required
+                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <option value="">Select item</option>
+                                    <template x-for="item in filteredItems()" :key="item.id">
+                                        <option :value="item.id"
+                                                :disabled="isItemTaken(item.id)"
+                                                x-text="itemLabel(item)"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div class="lg:col-span-1">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Qty <span class="text-red-500">*</span></label>
+                                <input type="number" step="1" min="1" x-model.number="draftLine.quantity" required
+                                       class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Batch no.</label>
+                                <input type="text" x-model="draftLine.batch_number"
+                                       class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Expiry date</label>
+                                <input type="date" x-model="draftLine.expiry_date"
+                                       class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Total amount <span class="text-red-500">*</span></label>
+                                <input type="number" step="0.01" min="0" x-model="draftLine.total_amount" required
+                                       placeholder="UGX" autocomplete="off"
+                                       class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end pt-3 border-t border-gray-100">
+                            <div class="lg:col-span-3">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Delivery unit <span class="text-red-500">*</span></label>
+                                <select x-model="draftLine.duom" required
+                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500"
+                                        :disabled="itemUnits.length === 0">
+                                    <option value="">Select delivery unit</option>
+                                    <template x-for="name in itemUnits" :key="'draft-duom-' + name">
+                                        <option :value="name" x-text="name"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Sale unit</label>
+                                <div class="flex h-[38px] items-center rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800">
+                                    <span x-text="draftLine.suom || 'Select an item first'"></span>
+                                </div>
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Sale units per delivery <span class="text-red-500">*</span></label>
+                                <input type="number" step="1" min="1" x-model.number="draftLine.conversion" required
+                                       placeholder="e.g. 100"
+                                       class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Sale units</label>
+                                <div class="flex h-[38px] items-center rounded-md border border-emerald-200 bg-emerald-50 px-3">
+                                    <span class="text-lg font-semibold text-emerald-900 tabular-nums"
+                                          x-text="saleUnits(draftLine).toLocaleString(undefined, {maximumFractionDigits: 0})"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div x-show="draftError" x-cloak class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-800" x-text="draftError"></div>
+
+                        <div class="flex justify-end pt-1">
+                            <button type="button" @click="saveDraftLine()"
+                                    class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                                <span x-text="editingIndex !== null ? 'Update item' : 'Add item'"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <template x-for="(line, index) in lines" :key="'post-' + index">
+                    <div class="hidden" aria-hidden="true">
+                        <input type="hidden" :name="'lines[' + index + '][item_id]'" :value="line.item_id">
+                        <input type="hidden" :name="'lines[' + index + '][inventory_order_line_id]'" :value="line.inventory_order_line_id || ''">
+                        <input type="hidden" :name="'lines[' + index + '][suom]'" :value="line.suom">
+                        <input type="hidden" :name="'lines[' + index + '][quantity]'" :value="line.quantity">
+                        <input type="hidden" :name="'lines[' + index + '][batch_number]'" :value="line.batch_number || ''">
+                        <input type="hidden" :name="'lines[' + index + '][expiry_date]'" :value="line.expiry_date || ''">
+                        <input type="hidden" :name="'lines[' + index + '][duom]'" :value="line.duom">
+                        <input type="hidden" :name="'lines[' + index + '][purchase_price]'" :value="line.purchase_price">
+                        <input type="hidden" :name="'lines[' + index + '][sale_units_per_purchase_unit]'" :value="line.conversion">
+                    </div>
+                </template>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function grnCreateForm(itemUnits, items, supplierItemIds, prefillLines, prefillStoreId, prefillSupplierId, inventoryOrderId, inventoryPurchaseOrderId, businessId, hasServerOldState, defaultDateOfOrder, defaultDateOfDelivery, supplierCatalog, supplierIndustries, supplierSubCategoriesByIndustry) {
+    const blankLine = () => ({
+        item_id: '', inventory_order_line_id: '', suom: '', duom: '', item_suom: '', quantity: 1, batch_number: '', expiry_date: '',
+        purchase_price: 0, total_amount: '', conversion: 1,
+    });
+
+    const mapPrefill = (row) => {
+        const quantity = row.quantity || 1;
+
+        return {
+            item_id: String(row.item_id || ''),
+            inventory_order_line_id: row.inventory_order_line_id || '',
+            suom: row.suom || '',
+            duom: row.duom || row.suom || '',
+            item_suom: row.suom || '',
+            quantity,
+            batch_number: row.batch_number || '',
+            expiry_date: row.expiry_date || '',
+            purchase_price: row.purchase_price || 0,
+            total_amount: row.total_amount ?? '',
+            conversion: row.conversion || 1,
+        };
+    };
+
+    const initialLines = (prefillLines && prefillLines.length)
+        ? prefillLines.map(mapPrefill)
+        : [];
+
+    const initialFormState = () => ({
+        supplierId: prefillSupplierId ? String(prefillSupplierId) : '',
+        storeId: prefillStoreId ? String(prefillStoreId) : '',
+        dateOfOrder: defaultDateOfOrder || '',
+        dateOfDelivery: defaultDateOfDelivery || '',
+        lines: initialLines.map(line => ({ ...line })),
+    });
+
+    const draftStorageKey = () => {
+        const orderKey = inventoryOrderId ? String(inventoryOrderId) : 'standalone';
+        const poKey = inventoryPurchaseOrderId ? `:po-${inventoryPurchaseOrderId}` : '';
+        return `kashtre:grn-create-draft:${businessId}:${orderKey}${poKey}`;
+    };
+
+    return {
+        ...supplierCategoryFilterMixin(supplierCatalog, supplierIndustries, supplierSubCategoriesByIndustry),
+        itemUnits,
+        items,
+        supplierItemIds: supplierItemIds || {},
+        supplierId: prefillSupplierId ? String(prefillSupplierId) : '',
+        storeId: prefillStoreId ? String(prefillStoreId) : '',
+        dateOfOrder: defaultDateOfOrder || '',
+        dateOfDelivery: defaultDateOfDelivery || '',
+        inventoryOrderId: inventoryOrderId || null,
+        inventoryPurchaseOrderId: inventoryPurchaseOrderId || null,
+        deliveryNoteName: '',
+        lines: initialLines,
+        draftLine: blankLine(),
+        editingIndex: null,
+        draftError: '',
+        formError: '',
+        draftRestored: false,
+        _persistTimer: null,
+        _draftAbandoned: false,
+        onSupplierCategoryFilterChange() {
+            if (this.supplierId && ! this.filteredSupplierCatalog().some((supplier) => String(supplier.id) === String(this.supplierId))) {
+                this.supplierId = '';
+                this.onSupplierChange();
+            }
+        },
+        initDraftPersistence() {
+            const hasPrefill = prefillLines && prefillLines.length > 0;
+
+            if (! hasServerOldState && ! hasPrefill) {
+                const saved = this.loadDraft();
+                if (saved && this.hasDraftContent(saved)) {
+                    this.applyDraft(saved);
+                    this.draftRestored = true;
+                }
+            }
+
+            this.setupDraftWatchers();
+            this.flushPersist();
+        },
+        setupDraftWatchers() {
+            this.$watch('supplierId', () => this.schedulePersist());
+            this.$watch('storeId', () => this.schedulePersist());
+            this.$watch('dateOfOrder', () => this.schedulePersist());
+            this.$watch('dateOfDelivery', () => this.schedulePersist());
+            this.$watch('lines', () => this.flushPersist(), { deep: true });
+            this.$watch('draftLine', () => this.schedulePersist(), { deep: true });
+            this.$watch('editingIndex', () => this.schedulePersist());
+
+            const flushOnExit = () => this.flushPersist();
+            window.addEventListener('beforeunload', flushOnExit);
+            window.addEventListener('pagehide', flushOnExit);
+        },
+        hasDraftContent(saved) {
+            return (saved.lines && saved.lines.length > 0)
+                || saved.supplierId
+                || saved.storeId
+                || saved.draftLine?.item_id;
+        },
+        draftSnapshot() {
+            return {
+                supplierId: this.supplierId,
+                storeId: this.storeId,
+                dateOfOrder: this.dateOfOrder,
+                dateOfDelivery: this.dateOfDelivery,
+                inventoryOrderId: this.inventoryOrderId,
+                inventoryPurchaseOrderId: this.inventoryPurchaseOrderId,
+                lines: this.lines.map(line => ({ ...line })),
+                draftLine: { ...this.draftLine },
+                editingIndex: this.editingIndex,
+                savedAt: new Date().toISOString(),
+            };
+        },
+        schedulePersist() {
+            clearTimeout(this._persistTimer);
+            this._persistTimer = setTimeout(() => this.persistDraft(), 350);
+        },
+        flushPersist() {
+            clearTimeout(this._persistTimer);
+            this.persistDraft();
+        },
+        persistDraft() {
+            if (this._draftAbandoned) {
+                return;
+            }
+
+            if (! this.hasDraftContent(this.draftSnapshot())) {
+                this.clearDraft();
+                return;
+            }
+
+            try {
+                localStorage.setItem(draftStorageKey(), JSON.stringify(this.draftSnapshot()));
+            } catch (error) {
+                // localStorage unavailable or quota exceeded
+            }
+        },
+        loadDraft() {
+            try {
+                const raw = localStorage.getItem(draftStorageKey());
+                return raw ? JSON.parse(raw) : null;
+            } catch (error) {
+                return null;
+            }
+        },
+        applyDraft(saved) {
+            this.supplierId = saved.supplierId ? String(saved.supplierId) : '';
+            this.storeId = saved.storeId ? String(saved.storeId) : '';
+            this.dateOfOrder = saved.dateOfOrder || this.dateOfOrder;
+            this.dateOfDelivery = saved.dateOfDelivery || this.dateOfDelivery;
+
+            if (Array.isArray(saved.lines) && saved.lines.length > 0) {
+                this.lines = saved.lines.map(line => ({
+                    ...blankLine(),
+                    ...line,
+                    item_id: String(line.item_id || ''),
+                }));
+            }
+
+            if (saved.editingIndex !== null && saved.editingIndex !== undefined) {
+                this.editingIndex = saved.editingIndex;
+                if (this.lines[this.editingIndex]) {
+                    this.draftLine = this.cloneLine(this.lines[this.editingIndex]);
+                } else {
+                    this.editingIndex = null;
+                    this.draftLine = blankLine();
+                }
+            } else if (saved.draftLine) {
+                this.draftLine = {
+                    ...blankLine(),
+                    ...saved.draftLine,
+                    item_id: String(saved.draftLine.item_id || ''),
+                };
+                if (this.editingIndex === null && ! this.draftLine.total_amount && this.draftLine.item_id) {
+                    this.prefillTotalAmountFromLastGrn(this.draftLine);
+                }
+            }
+        },
+        clearDraft() {
+            try {
+                localStorage.removeItem(draftStorageKey());
+            } catch (error) {
+                // ignore
+            }
+        },
+        discardSavedDraft() {
+            if (! confirm('Discard saved progress and reset this form?')) {
+                return;
+            }
+
+            this.clearDraft();
+            window.location.reload();
+        },
+        cancelForm() {
+            if (this.hasFormContent() && ! confirm('Clear this goods receive note and start over?')) {
+                return;
+            }
+
+            const initial = initialFormState();
+            this.supplierId = initial.supplierId;
+            this.storeId = initial.storeId;
+            this.dateOfOrder = initial.dateOfOrder;
+            this.dateOfDelivery = initial.dateOfDelivery;
+            this.lines = initial.lines.map(line => ({ ...line }));
+            this.resetDraft();
+            this.draftRestored = false;
+            this.draftError = '';
+            this.deliveryNoteName = '';
+
+            const deliveryInput = document.getElementById('delivery_note');
+            if (deliveryInput) {
+                deliveryInput.value = '';
+            }
+
+            this.clearDraft();
+            this._draftAbandoned = false;
+            this.flushPersist();
+        },
+        hasFormContent() {
+            return this.lines.length > 0
+                || Boolean(this.supplierId)
+                || Boolean(this.storeId)
+                || Boolean(this.draftLine.item_id);
+        },
+        cloneLine(line) {
+            return { ...line };
+        },
+        resetDraft() {
+            this.draftLine = blankLine();
+            this.editingIndex = null;
+            this.draftError = '';
+        },
+        filteredItems() {
+            if (!this.supplierId) {
+                return this.items;
+            }
+            const allowed = this.supplierItemIds[this.supplierId] || [];
+            if (!allowed.length) {
+                return this.items;
+            }
+            const allowedSet = new Set(allowed.map(String));
+            return this.items.filter(item => allowedSet.has(String(item.id)));
+        },
+        onSupplierChange() {
+            const allowed = this.filteredItems().map(item => String(item.id));
+            this.lines = this.lines.filter(line => !line.item_id || allowed.includes(String(line.item_id)));
+            if (this.draftLine.item_id && !allowed.includes(String(this.draftLine.item_id))) {
+                this.resetDraft();
+            }
+            this.flushPersist();
+        },
+        isItemTaken(itemId) {
+            const id = String(itemId);
+            if (!id) {
+                return false;
+            }
+            return this.lines.some((line, index) => {
+                if (this.editingIndex !== null && index === this.editingIndex) {
+                    return false;
+                }
+                return String(line.item_id) === id;
+            });
+        },
+        itemLabel(item) {
+            const label = item.name + (item.code ? ' (' + item.code + ')' : '');
+            return this.isItemTaken(item.id) ? label + ' — already added' : label;
+        },
+        onDraftItemChange() {
+            const line = this.draftLine;
+            const item = this.items.find(i => String(i.id) === String(line.item_id));
+            if (!item) {
+                line.item_suom = '';
+                return;
+            }
+            if (this.isItemTaken(item.id)) {
+                line.item_id = '';
+                line.item_suom = '';
+                this.draftError = 'That item is already in the summary.';
+                return;
+            }
+
+            const conversion = (parseFloat(item.suom_per_ouom) || 0) > 0 ? parseFloat(item.suom_per_ouom) : 1;
+            const suom = item.suom || '';
+            let duom = item.order_unit || suom;
+            if (duom && !this.itemUnits.includes(duom)) {
+                duom = suom && this.itemUnits.includes(suom) ? suom : '';
+            }
+
+            line.item_suom = suom;
+            line.suom = suom;
+            if (!line.duom && duom) {
+                line.duom = duom;
+            }
+            line.conversion = conversion;
+            if (this.editingIndex === null) {
+                this.prefillTotalAmountFromLastGrn(line);
+            }
+            this.draftError = '';
+        },
+        prefillTotalAmountFromLastGrn(line) {
+            const item = this.items.find(i => String(i.id) === String(line.item_id));
+            if (! item) {
+                line.total_amount = '';
+                return;
+            }
+
+            const lastTotal = parseFloat(item.last_grn_total_amount) || 0;
+
+            if (lastTotal > 0) {
+                line.total_amount = lastTotal;
+                return;
+            }
+
+            const qty = parseFloat(line.quantity) || 1;
+            const unitPrice = parseFloat(item.default_purchase_price_per_ouom) || 0;
+            line.total_amount = unitPrice > 0 ? Math.round(unitPrice * qty * 100) / 100 : '';
+        },
+        purchasePriceFromTotal(line) {
+            const qty = parseFloat(line.quantity) || 0;
+            const total = parseFloat(line.total_amount) || 0;
+
+            if (qty <= 0) {
+                return 0;
+            }
+
+            return Math.round((total / qty) * 100) / 100;
+        },
+        validateDraft() {
+            const line = this.draftLine;
+
+            if (!line.item_id) {
+                return 'Select an item.';
+            }
+            if (this.isItemTaken(line.item_id)) {
+                return 'That item is already in the summary.';
+            }
+            if (!line.quantity || parseFloat(line.quantity) <= 0) {
+                return 'Enter a quantity greater than zero.';
+            }
+            if (!line.duom) {
+                return 'Select a delivery unit.';
+            }
+            if (!line.conversion || parseFloat(line.conversion) <= 0) {
+                return 'Sale units per delivery must be greater than zero.';
+            }
+            if (line.total_amount === '' || line.total_amount === null || parseFloat(line.total_amount) <= 0) {
+                return 'Enter a total amount greater than zero.';
+            }
+
+            return '';
+        },
+        saveDraftLine() {
+            const error = this.validateDraft();
+            if (error) {
+                this.draftError = error;
+                return;
+            }
+
+            const saved = this.cloneLine(this.draftLine);
+            saved.purchase_price = this.purchasePriceFromTotal(saved);
+
+            if (this.editingIndex !== null) {
+                this.lines.splice(this.editingIndex, 1, saved);
+            } else {
+                this.lines.push(saved);
+            }
+
+            this.resetDraft();
+            this.flushPersist();
+            this.$nextTick(() => this.$refs.draftForm?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+        },
+        editLine(index) {
+            this.draftLine = this.cloneLine(this.lines[index]);
+            this.editingIndex = index;
+            this.draftError = '';
+            this.$nextTick(() => this.$refs.draftForm?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+        },
+        deleteLine(index) {
+            if (! confirm('Remove this item from the goods receive note?')) {
+                return;
+            }
+
+            if (this.editingIndex === index) {
+                this.resetDraft();
+            } else if (this.editingIndex !== null && this.editingIndex > index) {
+                this.editingIndex -= 1;
+            }
+
+            this.lines.splice(index, 1);
+            this.flushPersist();
+        },
+        cancelEdit() {
+            this.resetDraft();
+        },
+        handleFormSubmit(event) {
+            this.formError = '';
+
+            if (! this.supplierId) {
+                event.preventDefault();
+                this.formError = 'Select a supplier before submitting.';
+                document.getElementById('supplier_id')?.focus();
+                return;
+            }
+
+            if (! this.storeId) {
+                event.preventDefault();
+                this.formError = 'Select a receiving store before submitting.';
+                document.getElementById('store_id')?.focus();
+                return;
+            }
+
+            if (! this.dateOfOrder || ! this.dateOfDelivery) {
+                event.preventDefault();
+                this.formError = 'Order date and delivery date are required.';
+                return;
+            }
+
+            if (this.dateOfDelivery < this.dateOfOrder) {
+                event.preventDefault();
+                this.formError = 'Delivery date cannot be before the order date.';
+                return;
+            }
+
+            if (this.lines.length === 0) {
+                event.preventDefault();
+                this.formError = 'Add at least one item before submitting.';
+                this.$refs.draftForm?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return;
+            }
+
+            this.lines.forEach((line) => {
+                line.purchase_price = this.purchasePriceFromTotal(line);
+            });
+
+            this._draftAbandoned = true;
+            this.clearDraft();
+        },
+        saleUnits(line) {
+            const q = parseFloat(line.quantity) || 0;
+            const c = parseFloat(line.conversion) || 0;
+            return Math.round(q * c * 10000) / 10000;
+        },
+        itemForLine(line) {
+            if (! line.item_id) {
+                return null;
+            }
+            return this.items.find(i => String(i.id) === String(line.item_id)) || null;
+        },
+        lineTotalAmount(line) {
+            const total = parseFloat(line.total_amount);
+
+            if (! Number.isNaN(total) && total >= 0) {
+                return Math.round(total * 100) / 100;
+            }
+
+            const q = parseFloat(line.quantity) || 0;
+            const p = parseFloat(line.purchase_price) || 0;
+
+            return Math.round(q * p * 100) / 100;
+        },
+        totals() {
+            return {
+                saleUnits: this.lines.reduce((sum, line) => sum + this.saleUnits(line), 0),
+                purchaseValue: this.lines.reduce((sum, line) => sum + this.lineTotalAmount(line), 0),
+            };
+        },
+        formatNumber(value) {
+            const n = parseFloat(value) || 0;
+            return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        },
+        formatMoney(value) {
+            const n = parseFloat(value) || 0;
+            return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        },
+        formatDate(value) {
+            if (! value) {
+                return '—';
+            }
+            const date = new Date(value + 'T00:00:00');
+            if (Number.isNaN(date.getTime())) {
+                return value;
+            }
+            return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        },
+    };
+}
+</script>
+</x-app-layout>

@@ -32,21 +32,28 @@ class User extends Authenticatable
         'p2p_display_name',
         'p2p_ringtone',
         'email',
+        'presentation_timezone',
         'password',
         'status',
         'business_id',
         'branch_id', // Uncomment if you want to allow branch assignment,
+        'default_store_id',
         'service_points',
         'permissions',
+        'hr_role',
         'allowed_branches',
         'qualification_id',
         'department_id',
         'section_id',
         'title_id',
+        'staff_category_id',
         'gender',
         'phone',
         'nin',
         'birth_date',
+        'hire_date',
+        'employment_type',
+        'employee_code',
         'marital_status',
         'profile_photo_path',
         'email_verified_at',
@@ -73,6 +80,7 @@ class User extends Authenticatable
      * @var array<string, string>
      */
     protected $casts = [
+        'security_questions_enabled_at' => 'datetime',
         'email_verified_at' => 'datetime',
         'service_points' => 'array',
         'permissions' => 'array',
@@ -87,6 +95,7 @@ class User extends Authenticatable
         'total_balance' => 'decimal:2',
         'current_balance' => 'decimal:2',
         'birth_date' => 'date',
+        'hire_date' => 'date',
     ];
 
     /**
@@ -113,6 +122,11 @@ class User extends Authenticatable
         return $this->belongsTo(Branch::class);
     }
 
+    public function defaultStore()
+    {
+        return $this->belongsTo(Store::class, 'default_store_id');
+    }
+
     public function qualification()
     {
         return $this->belongsTo(\App\Models\Qualification::class);
@@ -121,6 +135,11 @@ class User extends Authenticatable
     public function title()
     {
         return $this->belongsTo(\App\Models\Title::class);
+    }
+
+    public function staffCategory()
+    {
+        return $this->belongsTo(StaffCategory::class);
     }
 
     public function department()
@@ -136,6 +155,48 @@ class User extends Authenticatable
     public function contractorProfile()
     {
         return $this->hasOne(ContractorProfile::class);
+    }
+
+    public function securityQuestions()
+    {
+        return $this->hasMany(UserSecurityQuestion::class);
+    }
+
+    public function hasSecurityQuestionsConfigured(): bool
+    {
+        return $this->security_questions_enabled_at !== null
+            && $this->securityQuestions()->count() >= (int) config('security_questions.required_count', 3);
+    }
+
+    public function hasAuthenticatorConfigured(): bool
+    {
+        return $this->two_factor_confirmed_at !== null;
+    }
+
+    public function effectivePrimaryTwoFactorMethod(): string
+    {
+        $preferred = $this->primary_two_factor_method ?? 'authenticator';
+
+        if ($preferred === 'security_questions' && $this->hasSecurityQuestionsConfigured()) {
+            return 'security_questions';
+        }
+
+        if ($this->hasAuthenticatorConfigured()) {
+            return 'authenticator';
+        }
+
+        if ($this->hasSecurityQuestionsConfigured()) {
+            return 'security_questions';
+        }
+
+        return 'authenticator';
+    }
+
+    public function loginChallengeDefaultMode(): string
+    {
+        return $this->effectivePrimaryTwoFactorMethod() === 'security_questions'
+            ? 'security'
+            : 'code';
     }
 
     /**

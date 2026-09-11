@@ -1,9 +1,29 @@
 <x-app-layout>
+@php
+    $activeTab = request()->query('tab', 'general');
+    if (! in_array($activeTab, ['general', 'time'], true)) {
+        $activeTab = 'general';
+    }
+    $generalTabUrl = route('business-settings.edit', ['tab' => 'general']);
+    $timeTabUrl = route('business-settings.edit', ['tab' => 'time']);
+@endphp
     <div class="container mx-auto px-4 py-8">
         <div class="max-w-4xl mx-auto">
             <div class="flex justify-between items-center mb-6">
                 <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Business Settings</h1>
             </div>
+
+            @if(session('success'))
+                <div class="bg-green-100 border border-green-400 text-green-800 px-4 py-3 rounded mb-4">
+                    {{ session('success') }}
+                </div>
+            @endif
+
+            @if(session('error'))
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                    {{ session('error') }}
+                </div>
+            @endif
 
             @if($errors->any())
                 <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
@@ -15,9 +35,60 @@
                 </div>
             @endif
 
-            <form action="{{ route('business-settings.update') }}" method="POST" class="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6">
+            <div class="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
+                <div class="border-b border-gray-200 dark:border-gray-700">
+                    <nav class="-mb-px flex" aria-label="Business settings tabs">
+                        <a href="{{ $generalTabUrl }}"
+                           class="flex-1 py-4 px-3 text-center border-b-2 font-medium text-sm {{ $activeTab === 'general' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
+                            General Settings
+                        </a>
+                        <a href="{{ $timeTabUrl }}"
+                           class="flex-1 py-4 px-3 text-center border-b-2 font-medium text-sm {{ $activeTab === 'time' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
+                            Time Settings
+                        </a>
+                    </nav>
+                </div>
+
+            @if($activeTab === 'general')
+            <form action="{{ route('business-settings.update') }}" method="POST" enctype="multipart/form-data" class="p-6">
                 @csrf
                 @method('PUT')
+                <input type="hidden" name="settings_section" value="general">
+
+                <!-- Document letterhead -->
+                <div id="document-letterhead" class="mb-6 scroll-mt-24">
+                    <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Document letterhead</h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                Logo, company name, and address appear in the header of all system-generated PDFs and exports.
+                            </p>
+                        </div>
+                        <a
+                            href="#document-letterhead-preview"
+                            class="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50"
+                        >
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            Preview header &amp; footer
+                        </a>
+                    </div>
+
+                    <h4 class="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3">Branding &amp; contact details</h4>
+                    @include('partials.business-branding-fields', [
+                        'business' => $business,
+                        'logoRequired' => false,
+                        'showLogoPreview' => true,
+                    ])
+
+                    <div id="document-letterhead-preview" class="mt-8 scroll-mt-24">
+                        @include('partials.document-letterhead-preview', [
+                            'branding' => $documentBranding,
+                        ])
+                    </div>
+                </div>
 
                 <!-- Location & Currency -->
                 <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">
@@ -95,9 +166,18 @@
                         </p>
                     </div>
                 </div>
+
+                <!-- Financial year -->
+                <div id="financial-year" class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6 scroll-mt-24">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Financial Year</h3>
+                    @include('partials.financial-year-fields', [
+                        'business' => $business,
+                        'showCurrentPeriod' => true,
+                    ])
+                </div>
                 
                 <!-- Credit Limits -->
-                <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                <div id="credit-limits" class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6 scroll-mt-24">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Credit Limits</h3>
                     
                     <!-- Maximum Third Party Credit Limit -->
@@ -167,7 +247,7 @@
                 </div>
 
                 <!-- Admission & Discharge Configuration -->
-                <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                <div id="admission-discharge" class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6 scroll-mt-24">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Admission & Discharge Settings</h3>
                     
                     <!-- Admit Button Label -->
@@ -251,8 +331,53 @@
                     </div>
                 </div>
 
+                <!-- Goods receive note approvers -->
+                <div id="grn-approvers" class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6 scroll-mt-24">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Goods Receive Note Approvers</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                        Configure whether staff must select a technical supervisor (end-user approver) on each goods receive note before it can be submitted.
+                        Approver 1 and Approver 2 are configured under Inventory → Settings → Approvers.
+                    </p>
+
+                    <div class="p-4 bg-indigo-50 dark:bg-gray-700 rounded-lg border border-indigo-200 dark:border-gray-600">
+                        <p class="text-sm font-medium text-gray-900 dark:text-white mb-3">Technical supervisor requirement</p>
+                        <div class="space-y-3">
+                            <label class="flex items-start">
+                                <input
+                                    type="radio"
+                                    name="grn_technical_supervisor_required"
+                                    value="0"
+                                    {{ old('grn_technical_supervisor_required', $business->grn_technical_supervisor_required ? '1' : '0') === '0' ? 'checked' : '' }}
+                                    class="mt-1 mr-3 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                                >
+                                <div>
+                                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Optional</span>
+                                    <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                        Technical supervisor can be left blank on a goods receive note. When selected, they approve before Approver 1 and Approver 2.
+                                    </p>
+                                </div>
+                            </label>
+                            <label class="flex items-start">
+                                <input
+                                    type="radio"
+                                    name="grn_technical_supervisor_required"
+                                    value="1"
+                                    {{ old('grn_technical_supervisor_required', $business->grn_technical_supervisor_required ? '1' : '0') === '1' ? 'checked' : '' }}
+                                    class="mt-1 mr-3 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                                >
+                                <div>
+                                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Mandatory</span>
+                                    <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                        Every goods receive note must name a technical supervisor before submission.
+                                    </p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Credit Exclusions -->
-                <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                <div id="credit-exclusions" class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6 scroll-mt-24">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Credit Service Exclusions</h3>
                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
                         Select items from your price list that should be excluded from credit terms. Invoices containing excluded items will not be saved for credit clients.
@@ -358,7 +483,7 @@
                 </div>
 
                 <!-- Credit Limit Approval Workflow -->
-                <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                <div id="credit-approval-workflow" class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6 scroll-mt-24">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Credit Limit Approval Workflow</h3>
                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
                         Select users who will be part of the 3-step approval process for credit limit changes (for both clients and third-party payers).
@@ -452,6 +577,173 @@
                     </button>
                 </div>
             </form>
+            @else
+            <div class="p-6 space-y-8">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Time Settings</h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        Operational timezone, day rollover, branch overrides, and financial periods for this organisation.
+                    </p>
+                </div>
+
+                @if(($timeZones ?? collect())->isEmpty())
+                    <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                        Timezone catalogue is empty. Run <code class="font-mono">php artisan time:install</code>, then reload this page.
+                    </div>
+                @else
+                    @php
+                        $selectedTz = old('operational_timezone', $currentTimezone ?? 'UTC');
+                        $grouped = ($timeZones ?? collect())->groupBy(fn ($z) => $z->region_code ?: 'Other');
+                    @endphp
+
+                    <form action="{{ route('business-settings.update') }}" method="POST" class="space-y-6 border-b border-gray-200 dark:border-gray-700 pb-8">
+                        @csrf
+                        @method('PUT')
+                        <input type="hidden" name="settings_section" value="time">
+                        <input type="hidden" name="time_action" value="save_timezone">
+
+                        <div>
+                            <label for="operational_timezone" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Operational timezone</label>
+                            <select name="operational_timezone" id="operational_timezone" class="w-full max-w-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md shadow-sm">
+                                @foreach($grouped as $region => $zones)
+                                    <optgroup label="{{ $region }}">
+                                        @foreach($zones as $zone)
+                                            <option value="{{ $zone->iana_id }}" {{ $selectedTz === $zone->iana_id ? 'selected' : '' }}>
+                                                {{ $zone->display_name }} ({{ $zone->iana_id }})
+                                            </option>
+                                        @endforeach
+                                    </optgroup>
+                                @endforeach
+                            </select>
+                            <p class="mt-2 text-sm text-gray-500">
+                                @if(!empty($timezoneResolution['usedFallback']))
+                                    Currently using platform fallback (<span class="font-mono">{{ $timezoneResolution['ianaId'] }}</span>).
+                                @elseif(!empty($timezoneResolution))
+                                    Active policy: <span class="font-mono">{{ $timezoneResolution['ianaId'] }}</span> ({{ $timezoneResolution['scopeType'] ?? 'TENANT' }}).
+                                @endif
+                            </p>
+                        </div>
+
+                        <div class="grid sm:grid-cols-2 gap-4 max-w-xl">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Day rollover offset (minutes)</label>
+                                <input type="number" min="0" max="1439" name="day_rollover_offset_minutes"
+                                       value="{{ old('day_rollover_offset_minutes', $tenantSettings->day_rollover_offset_minutes ?? 0) }}"
+                                       class="w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md shadow-sm">
+                                <p class="mt-1 text-xs text-gray-500">Minutes after local midnight before the next business day starts.</p>
+                            </div>
+                            <div class="space-y-3 pt-6">
+                                <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                    <input type="checkbox" name="enforce_financial_periods" value="1" class="rounded border-gray-300"
+                                           {{ old('enforce_financial_periods', $tenantSettings->enforce_financial_periods ?? false) ? 'checked' : '' }}>
+                                    Enforce open financial periods on posting
+                                </label>
+                                <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                    <input type="checkbox" name="allow_user_presentation_timezone" value="1" class="rounded border-gray-300"
+                                           {{ old('allow_user_presentation_timezone', $tenantSettings->allow_user_presentation_timezone ?? true) ? 'checked' : '' }}>
+                                    Allow user presentation timezone (display only)
+                                </label>
+                            </div>
+                        </div>
+
+                        @if(($branches ?? collect())->isNotEmpty())
+                            <div class="grid sm:grid-cols-2 gap-4 max-w-3xl pt-2">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Branch override</label>
+                                    <select name="branch_id" class="w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md shadow-sm">
+                                        <option value="">— none —</option>
+                                        @foreach($branches as $branch)
+                                            <option value="{{ $branch->id }}">{{ $branch->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Branch timezone</label>
+                                    <select name="branch_timezone" class="w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md shadow-sm">
+                                        <option value="">— inherit business —</option>
+                                        @foreach($grouped as $region => $zones)
+                                            <optgroup label="{{ $region }}">
+                                                @foreach($zones as $zone)
+                                                    <option value="{{ $zone->iana_id }}">{{ $zone->iana_id }}</option>
+                                                @endforeach
+                                            </optgroup>
+                                        @endforeach
+                                    </select>
+                                </div>
+                            </div>
+                            @if(!empty($branchTimezones))
+                                <ul class="text-xs text-gray-500 list-disc pl-5">
+                                    @foreach($branches as $branch)
+                                        @php $bt = $branchTimezones[$branch->id] ?? null; @endphp
+                                        <li>{{ $branch->name }}:
+                                            <span class="font-mono">{{ $bt['ianaId'] ?? '—' }}</span>
+                                            @if(!empty($bt['scopeType'])) ({{ $bt['scopeType'] }}) @endif
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            @endif
+                        @endif
+
+                        <div class="flex justify-end">
+                            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                                Save Time Settings
+                            </button>
+                        </div>
+                    </form>
+
+                    <form action="{{ route('business-settings.update') }}" method="POST" class="space-y-4">
+                        @csrf
+                        @method('PUT')
+                        <input type="hidden" name="settings_section" value="time">
+                        <input type="hidden" name="time_action" value="open_period">
+                        <input type="hidden" name="operational_timezone" value="{{ $selectedTz }}">
+
+                        <h4 class="text-base font-semibold text-gray-900 dark:text-white">Financial periods</h4>
+                        <div class="grid sm:grid-cols-4 gap-3">
+                            <input name="period_code" placeholder="Code (2026-09)" class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm" value="{{ now()->format('Y-m') }}">
+                            <input name="period_name" placeholder="Name" class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm" value="{{ now()->format('F Y') }}">
+                            <input type="date" name="period_start" class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm" value="{{ now()->startOfMonth()->format('Y-m-d') }}">
+                            <input type="date" name="period_end" class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm" value="{{ now()->endOfMonth()->format('Y-m-d') }}">
+                        </div>
+                        <button type="submit" class="text-sm px-3 py-1.5 bg-blue-600 text-white rounded">Open period</button>
+
+                        <table class="min-w-full text-sm border border-gray-200 rounded mt-3">
+                            <thead class="bg-gray-50 text-left text-gray-500">
+                                <tr><th class="px-3 py-2">Code</th><th class="px-3 py-2">Range</th><th class="px-3 py-2">Status</th><th class="px-3 py-2"></th></tr>
+                            </thead>
+                            <tbody>
+                                @forelse(($openPeriods ?? collect()) as $p)
+                                    <tr class="border-t">
+                                        <td class="px-3 py-2 font-mono">{{ $p->code }}</td>
+                                        <td class="px-3 py-2">{{ $p->local_start_date?->format('Y-m-d') }} → {{ $p->local_end_date?->format('Y-m-d') }}</td>
+                                        <td class="px-3 py-2">{{ $p->status }}</td>
+                                        <td class="px-3 py-2">
+                                            @if($p->isOpen())
+                                                <button form="close-period-{{ $p->id }}" type="submit" class="text-xs text-red-600">Close</button>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr><td colspan="4" class="px-3 py-3 text-gray-500">No periods yet.</td></tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </form>
+
+                    @foreach(($openPeriods ?? collect())->filter(fn ($p) => $p->isOpen()) as $p)
+                        <form id="close-period-{{ $p->id }}" action="{{ route('business-settings.update') }}" method="POST" class="hidden">
+                            @csrf
+                            @method('PUT')
+                            <input type="hidden" name="settings_section" value="time">
+                            <input type="hidden" name="time_action" value="close_period">
+                            <input type="hidden" name="period_id" value="{{ $p->id }}">
+                            <input type="hidden" name="operational_timezone" value="{{ $selectedTz }}">
+                        </form>
+                    @endforeach
+                @endif
+            </div>
+            @endif
+            </div>
         </div>
     </div>
 

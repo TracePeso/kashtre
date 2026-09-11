@@ -105,7 +105,6 @@
                     { label: 'Qualifications', value: 'qualifications' },
                     { label: 'Sections', value: 'sections' },
                     { label: 'Client Category', value: 'patient_category' },
-                    { label: 'Client Space', value: 'client_space' },
                     { label: 'Insurance Company', value: 'insurance_company' },
                     { label: 'Supplier', value: 'supplier' },
                     { label: 'Store', value: 'store' },

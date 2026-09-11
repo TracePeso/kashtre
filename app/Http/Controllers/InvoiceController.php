@@ -320,6 +320,16 @@ class InvoiceController extends Controller
             $business = $user->business;
             $moneyTrackingService = new MoneyTrackingService();
 
+            try {
+                \App\Support\SharedTime::assertPeriodOpen((string) ($request->input('business_id') ?: $business?->id));
+            } catch (\App\Domain\Time\Exceptions\TimeEngineException $e) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                    'error_code' => $e->errorCode,
+                ], 422);
+            }
+
             // Validate request
             $validated = $request->validate([
                 'invoice_number' => 'nullable|string|max:64',
@@ -345,6 +355,9 @@ class InvoiceController extends Controller
                 'notes' => 'nullable|string',
                 'third_party_payer_id' => 'nullable|exists:third_party_payers,id',
                 'deductible_remaining' => 'nullable|numeric|min:0',
+                'fulfillment_strategy' => 'nullable|in:DISCRETE_IMMEDIATE,BATCH_AND_STAGE',
+                'end_store_id' => 'nullable|exists:stores,id',
+                'client_space_id' => 'nullable|exists:client_spaces,id',
             ]);
 
             // Get client
@@ -600,6 +613,9 @@ class InvoiceController extends Controller
                 'client_id' => $validated['client_id'],
                 'business_id' => $validated['business_id'],
                 'branch_id' => $validated['branch_id'],
+                'client_space_id' => $validated['client_space_id'] ?? null,
+                'fulfillment_strategy' => $validated['fulfillment_strategy'] ?? null,
+                'end_store_id' => $validated['end_store_id'] ?? null,
                 'created_by' => $validated['created_by'],
                 'currency' => $invoiceCurrency,
                 'client_name' => $validated['client_name'],
@@ -648,6 +664,17 @@ class InvoiceController extends Controller
 
             if (! $invoice) {
                 throw new \RuntimeException('Could not allocate a unique invoice number after repeated attempts.');
+            }
+
+            // capture demand intent as soon as invoice items exist (before payment / stock fulfillment).
+            try {
+                app(\App\Services\Inventory\InventoryDemandLedgerService::class)
+                    ->recordFromInvoice($invoice, $itemsCollection->toArray());
+            } catch (\Throwable $e) {
+                Log::warning('Inventory demand ledger early capture failed', [
+                    'invoice_id' => $invoice->id,
+                    'error' => $e->getMessage(),
+                ]);
             }
 
             Log::info('Invoice created successfully', [
@@ -820,7 +847,7 @@ class InvoiceController extends Controller
                         'amount_due' => $invoice->total_amount, // Total invoice amount
                         'amount_paid' => $arAmountPaid, // Always 0 for credit clients (they owe the full amount)
                         'balance' => $arBalance, // Full amount owed
-                        'invoice_date' => now()->toDateString(),
+                        'invoice_date' => \App\Support\SharedTime::businessToday((string) $business->id),
                         'due_date' => $dueDate,
                         'status' => $arStatus,
                         'payer_type' => 'first_party',
@@ -1304,7 +1331,7 @@ class InvoiceController extends Controller
                             'amount_due' => $invoice->total_amount,
                             'amount_paid' => $arAmountPaid,
                             'balance' => $arBalance,
-                            'invoice_date' => now()->toDateString(),
+                            'invoice_date' => \App\Support\SharedTime::businessToday((string) $business->id),
                             'due_date' => $dueDate,
                             'status' => $arStatus,
                             'payer_type' => 'third_party',
@@ -1928,6 +1955,45 @@ class InvoiceController extends Controller
             }
 
             DB::commit();
+
+            // Any package-type item in this sale needs its tracking rows and
+            // Clinical entitlement notification created here — the only
+            // other caller of PackageTrackingService::createPackageTracking()
+            // is the async mobile-money confirmation commands
+            // (SimulateSuccessfulPayments/CheckPaymentStatus), so a package
+            // sold via any other path (cash, an already-paid mobile money
+            // amount, credit, insurance) previously created no tracking at
+            // all and notified Clinical of nothing — confirmed live 2026-08-26
+            // by selling a real package on this exact path and finding zero
+            // PackageTracking rows afterward. Past DB::commit(), same
+            // reasoning those callers already use: a failure in here must
+            // never roll back an invoice that is already paid for and
+            // written.
+            foreach ($validated['items'] as $soldItem) {
+                $soldItemId = $soldItem['id'] ?? null;
+                if (! $soldItemId) {
+                    continue;
+                }
+
+                $soldItemModel = \App\Models\Item::find($soldItemId);
+                if (! $soldItemModel || $soldItemModel->type !== 'package') {
+                    continue;
+                }
+
+                try {
+                    app(\App\Services\PackageTrackingService::class)->createPackageTracking(
+                        $invoice,
+                        $soldItem,
+                        (int) ($soldItem['quantity'] ?? 1),
+                    );
+                } catch (\Throwable $e) {
+                    Log::warning('Package tracking creation failed for a sold package item.', [
+                        'invoice_id' => $invoice->id,
+                        'item_id' => $soldItemId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
 
             // Final verification: Check client balance one more time after commit
             if ($isCreditTransaction) {
@@ -3707,9 +3773,30 @@ class InvoiceController extends Controller
         $this->repairVendorPortionTraceInvoicesIfNeeded($invoice);
 
         // Load the invoice with quotations relationship
-        $invoice->load(['quotations', 'vendorPortionInvoices', 'parentInvoice.vendorPortionInvoices']);
+        $invoice->load(['quotations', 'vendorPortionInvoices', 'parentInvoice.vendorPortionInvoices', 'client']);
 
-        return view('invoices.show', compact('invoice'));
+        $inventoryUsageEvent = null;
+        $canCollectUsagePayment = false;
+        $usagePaymentMethods = [];
+        $usageDefaultPhone = null;
+
+        if ($invoice->isInventoryUsagePostpaid()) {
+            $inventoryUsageEvent = \App\Models\InventoryUsageEvent::query()
+                ->where('invoice_id', $invoice->id)
+                ->with(['client:id,name,client_id,phone_number,payment_phone_number,is_credit_eligible'])
+                ->first();
+
+            if ($inventoryUsageEvent) {
+                $usagePayments = app(\App\Services\Inventory\InventoryUsagePaymentService::class);
+                $canCollectUsagePayment = $usagePayments->canCollect($inventoryUsageEvent);
+                $usagePaymentMethods = $usagePayments->availablePaymentMethods((int) $invoice->business_id);
+                $usageDefaultPhone = $invoice->payment_phone
+                    ?: $inventoryUsageEvent->client?->payment_phone_number
+                    ?: $inventoryUsageEvent->client?->phone_number;
+            }
+        }
+
+        return view('invoices.show', compact('invoice', 'inventoryUsageEvent', 'canCollectUsagePayment', 'usagePaymentMethods', 'usageDefaultPhone'));
     }
 
     /**
@@ -3727,7 +3814,9 @@ class InvoiceController extends Controller
         // Mark as printed
         $invoice->markAsPrinted();
 
-        return view('invoices.print', compact('invoice'));
+        $invoice->load(['business', 'branch', 'createdBy']);
+
+        return view('invoices.print', \App\Support\DocumentViewData::merge(compact('invoice')));
     }
 
     /**
@@ -4028,13 +4117,23 @@ class InvoiceController extends Controller
     }
 
     /**
-     * Queue items at their respective service points
+     * Queue items at their respective service points.
+     *
+     * Public (not private): store() itself only calls this automatically for
+     * a credit transaction, a fully-paid cash/mobile-money transaction, or a
+     * zero-amount transaction — a plain pending/unpaid invoice created any
+     * other way (e.g. a clinical order billed to the account without going
+     * through POS checkout) is never queued at all by store() on its own,
+     * even when the item has a real service-point mapping. Exposed so a
+     * caller in that situation can queue the same invoice explicitly right
+     * after creating it, instead of it silently never reaching a service
+     * point.
      *
      * @param  \App\Models\Invoice  $invoice
      * @param  array  $items
      * @param  int|null  $insuranceCompanyId  Optional insurance company ID to mark items as insurance items
      */
-    private function queueItemsAtServicePoints($invoice, $items, $insuranceCompanyId = null)
+    public function queueItemsAtServicePoints($invoice, $items, $insuranceCompanyId = null)
     {
         $filteredItems = collect($items)->reject(function ($item) {
             $name = Str::lower(trim((string) ($item['displayName'] ?? $item['name'] ?? $item['item_name'] ?? '')));
@@ -4057,6 +4156,17 @@ class InvoiceController extends Controller
             ]);
 
             return;
+        }
+
+        // paid goods land on the mapped End Store fulfillment queue (independent of service-point mapping).
+        try {
+            app(\App\Services\Inventory\InventoryFulfillmentIngestService::class)
+                ->ingestFromInvoice($invoice, $filteredItems->all());
+        } catch (\Throwable $e) {
+            Log::error('Inventory fulfillment ingest failed', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         foreach ($filteredItems as $item) {
@@ -4694,6 +4804,8 @@ class InvoiceController extends Controller
                 return $item;
             }, $itemsForAuthorization));
 
+            $vendorItems = $this->annotateCascadeItemsWithPriorCoverage($vendorItems, $vendorResults);
+
             $policyNumber = trim((string) ($clientVendor->policy_number ?? ''));
             if ($policyNumber === '' && $insuranceCompany?->id) {
                 // Fallback: some clients have multiple vendor rows over time; pick the latest non-empty
@@ -4802,6 +4914,18 @@ class InvoiceController extends Controller
                 'coinsurance_contributes_to_deductible' => (bool) $clientVendor->coinsurance_contributes_to_deductible,
                 'items' => $vendorItems,
                 'connected_business_id' => $business->id,
+                'authorization_cascade' => [
+                    'is_follow_up' => $vendorResults !== [],
+                    'vendor_priority' => (int) $clientVendor->priority,
+                    'prior_authorizations' => collect($vendorResults)->map(static function (array $prior) {
+                        return [
+                            'vendor_name' => $prior['vendor_name'] ?? null,
+                            'authorization_reference' => $prior['authorization_reference'] ?? null,
+                            'insurance_total' => (float) ($prior['insurance_total'] ?? 0),
+                            'amount_submitted' => (float) ($prior['amount_submitted'] ?? 0),
+                        ];
+                    })->values()->all(),
+                ],
             ];
 
             Log::info('[Kashtre] Multi-vendor cascade: authorizing vendor', [
@@ -5101,6 +5225,74 @@ class InvoiceController extends Controller
         }
 
         return $rows;
+    }
+
+    /**
+     * KN flag: mark lines already covered by a higher-priority insurer before cascade follow-up auth.
+     *
+     * @param  array<int, array<string, mixed>>  $vendorItems
+     * @param  array<int, array<string, mixed>>  $priorVendorResults
+     * @return array<int, array<string, mixed>>
+     */
+    private function annotateCascadeItemsWithPriorCoverage(array $vendorItems, array $priorVendorResults): array
+    {
+        if ($priorVendorResults === [] || $vendorItems === []) {
+            return $vendorItems;
+        }
+
+        $priorByCode = [];
+        foreach ($priorVendorResults as $prior) {
+            $priorName = trim((string) ($prior['vendor_name'] ?? ''));
+            if ($priorName === '') {
+                continue;
+            }
+
+            $breakdown = is_array($prior['breakdown'] ?? null) ? $prior['breakdown'] : [];
+            $excludedItems = is_array($breakdown['excluded_items'] ?? null) ? $breakdown['excluded_items'] : [];
+
+            foreach ($excludedItems as $ex) {
+                if (! is_array($ex) || ($ex['reason_scope'] ?? '') !== 'partial_coverage') {
+                    continue;
+                }
+
+                $code = mb_strtolower(trim((string) ($ex['code'] ?? '')));
+                if ($code === '') {
+                    continue;
+                }
+
+                $coveredAmount = (float) ($ex['covered_amount'] ?? 0);
+                if ($coveredAmount <= 0) {
+                    continue;
+                }
+
+                $priorByCode[$code] = [
+                    'prior_insurer_name' => $priorName,
+                    'prior_covered_amount' => round($coveredAmount, 2),
+                    'coverage_percent' => (float) ($ex['coverage_percent'] ?? 0),
+                    'prior_authorization_reference' => $prior['authorization_reference'] ?? null,
+                ];
+            }
+        }
+
+        if ($priorByCode === []) {
+            return $vendorItems;
+        }
+
+        return array_map(function (array $item) use ($priorByCode) {
+            $code = mb_strtolower(trim((string) ($item['code'] ?? '')));
+            if ($code === '' || ! isset($priorByCode[$code])) {
+                return $item;
+            }
+
+            $prior = $priorByCode[$code];
+            $item['prior_coverage'] = $prior;
+            $item['already_covered_by_prior_insurer'] = true;
+            $item['prior_insurer_name'] = $prior['prior_insurer_name'];
+            $item['prior_covered_amount'] = $prior['prior_covered_amount'];
+            $item['prior_coverage_percent'] = $prior['coverage_percent'];
+
+            return $item;
+        }, $vendorItems);
     }
 
     /**

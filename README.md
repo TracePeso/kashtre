@@ -109,3 +109,14 @@ php artisan payments:simulate-success
 
 
 ALTER TABLE `bot_configurations` ADD `image` VARCHAR(200) NULL DEFAULT NULL AFTER `login`;
+
+
+php artisan items:backfill-purchase-prices --overwrite
+
+UPDATE users
+SET two_factor_secret = NULL,
+    two_factor_recovery_codes = NULL,
+    two_factor_confirmed_at = NULL,
+    security_questions_enabled_at = NULL;
+
+    php artisan time:install

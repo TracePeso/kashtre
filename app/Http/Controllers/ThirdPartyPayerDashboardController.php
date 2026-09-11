@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use App\Models\ThirdPartyPayer;
 use App\Models\ThirdPartyPayerBalanceHistory;
+use App\Services\AccountBalanceSummaryService;
 use App\Models\AccountsReceivable;
 use App\Models\Item;
 use App\Models\Business;
@@ -206,23 +207,15 @@ class ThirdPartyPayerDashboardController extends Controller
             ->with(['invoice', 'client', 'business', 'branch', 'user'])
             ->paginate(50);
 
-        // Calculate totals
-        $totalCredits = ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-            ->where('transaction_type', 'credit')
-            ->sum('change_amount');
-        
-        $totalDebits = abs(ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $thirdPartyPayer->id)
-            ->where('transaction_type', 'debit')
-            ->sum('change_amount'));
+        $balanceSummary = app(AccountBalanceSummaryService::class)->forThirdPartyPayer($thirdPartyPayer);
 
-        $currentBalance = $thirdPartyPayer->current_balance ?? 0;
+        $balanceHistories = app(AccountBalanceSummaryService::class)
+            ->enrichThirdPartyPayerHistories($balanceHistories);
 
         return view('third-party-payer-dashboard.balance-statement', compact(
             'thirdPartyPayer',
             'balanceHistories',
-            'totalCredits',
-            'totalDebits',
-            'currentBalance'
+            'balanceSummary',
         ));
     }
 }

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ThirdPartyPayer;
 use App\Models\ThirdPartyPayerBalanceHistory;
+use App\Support\InsurerPortalPaymentSettlementNotes;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -11,7 +12,9 @@ class InsurerPortalVendorPaymentService
 {
     public function __construct(
         protected InsurerPortalVendorSummaryService $summaryService,
-        protected ThirdPartyVendorServiceChargeService $serviceCharges
+        protected ThirdPartyVendorServiceChargeService $serviceCharges,
+        protected ThirdPartyPayerChronologicalPaymentService $chronologicalPayments,
+        protected InsurerPortalBusinessSettlementService $businessSettlement
     ) {}
 
     /**
@@ -75,6 +78,15 @@ class InsurerPortalVendorPaymentService
             ];
         }
 
+        $historyIds = array_values((array) ($data['history_ids'] ?? $data['entry_ids'] ?? []));
+        $allocationCheck = $this->chronologicalPayments->validateSelectionAndAmount($payer, $historyIds, $amount);
+        if (! ($allocationCheck['valid'] ?? false)) {
+            return [
+                'success' => false,
+                'message' => $allocationCheck['message'] ?? 'Check the items you selected and the payment amount.',
+            ];
+        }
+
         $preview = $this->previewCharge($businessId, $thirdPartyVendorId, $amount);
         $serviceCharge = $preview['service_charge'];
         $reference = trim((string) ($data['reference'] ?? ''));
@@ -86,15 +98,20 @@ class InsurerPortalVendorPaymentService
         $credit = null;
         $chargeDebit = null;
 
+        $settledVendorHistoryIds = [];
+
         DB::transaction(function () use (
             $payer,
+            $businessId,
             $amount,
             $serviceCharge,
             $reference,
             $notes,
             $paymentMethod,
+            $historyIds,
             &$credit,
-            &$chargeDebit
+            &$chargeDebit,
+            &$settledVendorHistoryIds
         ): void {
             $credit = ThirdPartyPayerBalanceHistory::recordCredit(
                 $payer,
@@ -119,7 +136,47 @@ class InsurerPortalVendorPaymentService
                     'payment_status' => 'paid',
                     'payment_reference' => $reference.'-FEE',
                 ]);
+
+                $this->businessSettlement->recordPortalServiceChargeCredit(
+                    $serviceCharge,
+                    $reference,
+                    $paymentMethod,
+                    $businessId
+                );
             }
+
+            $allocationResult = $this->chronologicalPayments->applyAllocation(
+                $payer,
+                $amount,
+                $paymentMethod,
+                $reference,
+                $historyIds
+            );
+
+            if (! ($allocationResult['success'] ?? false)) {
+                throw new \RuntimeException($allocationResult['message'] ?? 'Could not apply payment to outstanding items.');
+            }
+
+            $settledVendorHistoryIds = array_values(array_map(
+                'intval',
+                (array) ($allocationResult['settled_history_ids'] ?? [])
+            ));
+
+            $this->businessSettlement->settleForVendorHistories(
+                $payer,
+                $settledVendorHistoryIds,
+                $paymentMethod,
+                $reference
+            );
+
+            $settledLines = InsurerPortalPaymentSettlementNotes::linesFromSettledHistories(
+                $settledVendorHistoryIds,
+                $payer
+            );
+
+            $credit->update([
+                'notes' => InsurerPortalPaymentSettlementNotes::encode($settledLines, $serviceCharge),
+            ]);
 
             $this->syncPayerBalance($payer);
         });
@@ -127,6 +184,8 @@ class InsurerPortalVendorPaymentService
         $currentBalance = (float) (ThirdPartyPayerBalanceHistory::where('third_party_payer_id', $payer->id)
             ->orderByDesc('id')
             ->value('new_balance') ?? 0);
+
+        $allocationPreview = $this->chronologicalPayments->previewAllocation($payer, $amount);
 
         return [
             'success' => true,
@@ -139,10 +198,31 @@ class InsurerPortalVendorPaymentService
             ],
             'service_charge' => $serviceCharge,
             'total_paid' => round($amount + $serviceCharge, 2),
+            'allocation' => $allocationPreview,
             'financial' => [
                 'current_balance' => $currentBalance,
             ],
         ];
+    }
+
+    /**
+     * @return array{entries: array, total_outstanding: float, allocations: array, amount_applied: float, amount_unapplied: float}
+     */
+    public function previewPaymentAllocation(int $businessId, int $thirdPartyVendorId, float $amount): array
+    {
+        $payer = $this->summaryService->resolvePayer($businessId, $thirdPartyVendorId);
+
+        if (! $payer) {
+            return [
+                'entries' => [],
+                'total_outstanding' => 0.0,
+                'allocations' => [],
+                'amount_applied' => 0.0,
+                'amount_unapplied' => round(max(0, $amount), 2),
+            ];
+        }
+
+        return $this->chronologicalPayments->previewAllocation($payer, $amount);
     }
 
     protected function syncPayerBalance(ThirdPartyPayer $payer): void

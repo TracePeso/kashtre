@@ -288,6 +288,19 @@ class ThirdPartyVendorBalanceStatementTable extends Component implements HasForm
                     ->color(fn (ThirdPartyPayerBalanceHistory $record): string => $record->transaction_type === 'credit' ? 'success' : 'danger')
                     ->sortable(),
 
+                TextColumn::make('available_balance_after')
+                    ->label('Available balance')
+                    ->getStateUsing(fn (ThirdPartyPayerBalanceHistory $record): float => (float) ($record->new_balance ?? 0))
+                    ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2))
+                    ->sortable(query: function ($query, string $direction) {
+                        return $query->orderBy('new_balance', $direction);
+                    }),
+
+                TextColumn::make('total_balance_after')
+                    ->label('Total balance')
+                    ->getStateUsing(fn (ThirdPartyPayerBalanceHistory $record): float => (float) ($record->new_balance ?? 0))
+                    ->formatStateUsing(fn ($state): string => 'UGX '.number_format((float) $state, 2)),
+
                 TextColumn::make('payment_method')
                     ->label('Payment method')
                     ->formatStateUsing(fn (?string $state): string => $state ? ucwords(str_replace('_', ' ', $state)) : 'N/A'),

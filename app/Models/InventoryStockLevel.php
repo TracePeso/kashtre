@@ -1,0 +1,207 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class InventoryStockLevel extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'business_id',
+        'store_id',
+        'item_id',
+        'location_layer_3',
+        'location_layer_2',
+        'location_layer_1',
+        'stock_zone',
+        'quantity_suom',
+        'quantity_in_transit_suom',
+        'physical_quantity_suom',
+        'physical_counted_at',
+        'damaged_quantity_suom',
+        'expired_quantity_suom',
+        'opening_quantity_suom',
+        'daily_usage_suom',
+        'safety_stock_days',
+        'buffer_stock_days',
+        'ma_15_days',
+        'ma_30_days',
+        'ma_90_days',
+        'ma_180_days',
+        'ma_360_days',
+        'last_purchase_price',
+        'weighted_avg_cost',
+    ];
+
+    protected $casts = [
+        'quantity_suom' => 'decimal:4',
+        'quantity_in_transit_suom' => 'decimal:4',
+        'physical_quantity_suom' => 'decimal:4',
+        'physical_counted_at' => 'datetime',
+        'damaged_quantity_suom' => 'decimal:4',
+        'expired_quantity_suom' => 'decimal:4',
+        'opening_quantity_suom' => 'decimal:4',
+        'daily_usage_suom' => 'decimal:4',
+        'safety_stock_days' => 'decimal:2',
+        'buffer_stock_days' => 'decimal:2',
+        'ma_15_days' => 'decimal:4',
+        'ma_30_days' => 'decimal:4',
+        'ma_90_days' => 'decimal:4',
+        'ma_180_days' => 'decimal:4',
+        'ma_360_days' => 'decimal:4',
+        'last_purchase_price' => 'decimal:2',
+        'weighted_avg_cost' => 'decimal:2',
+    ];
+
+    public function systemQuantitySuom(): float
+    {
+        return (float) $this->quantity_suom;
+    }
+
+    /** Physical stock — kept equal to quantity_suom on every stock update. */
+    public function physicalStockSuom(): float
+    {
+        return (float) $this->quantity_suom;
+    }
+
+    /** @deprecated Use physicalStockSuom() */
+    public function onHandQuantitySuom(): float
+    {
+        return $this->physicalStockSuom();
+    }
+
+    /** Updates on-hand ledger (Excel M after movements). AS snapshot is set only on stock count. */
+    public function applyOnHandBalance(float $balance): float
+    {
+        $qty = max(0, round($balance, 4));
+        $this->quantity_suom = $qty;
+
+        return $qty;
+    }
+
+    public function snapshotPhysicalCount(float $physicalQuantity, ?\DateTimeInterface $countedAt = null): void
+    {
+        $qty = max(0, round($physicalQuantity, 4));
+        $this->quantity_suom = $qty;
+        $this->physical_quantity_suom = $qty;
+        $this->physical_counted_at = $countedAt ?? now();
+    }
+
+    public function verifiableLossSuom(): float
+    {
+        return round(
+            (float) ($this->damaged_quantity_suom ?? 0) + (float) ($this->expired_quantity_suom ?? 0),
+            4
+        );
+    }
+
+    public function physicalUsableQuantitySuom(): float
+    {
+        return max(0, round($this->physicalStockSuom() - $this->verifiableLossSuom(), 4));
+    }
+
+    /** @deprecated Use physicalUsableQuantitySuom() */
+    public function usableQuantitySuom(): float
+    {
+        return $this->physicalUsableQuantitySuom();
+    }
+
+    public function totalShrinkageAmountSuom(): ?float
+    {
+        if ($this->physical_quantity_suom === null) {
+            return null;
+        }
+
+        return max(0, round((float) $this->quantity_suom - (float) $this->physical_quantity_suom, 4));
+    }
+
+    public function unverifiedShrinkageAmountSuom(): ?float
+    {
+        if ($this->physical_quantity_suom === null) {
+            return null;
+        }
+
+        return max(0, round(
+            (float) $this->quantity_suom
+            - (float) $this->physical_quantity_suom
+            - $this->verifiableLossSuom(),
+            4
+        ));
+    }
+
+    public function verifiableShrinkagePercent(): ?float
+    {
+        $system = (float) $this->quantity_suom;
+
+        if ($system <= 0) {
+            return null;
+        }
+
+        return round(($this->verifiableLossSuom() / $system) * 100, 2);
+    }
+
+    public function unverifiedShrinkagePercent(): ?float
+    {
+        $system = (float) $this->quantity_suom;
+        $amount = $this->unverifiedShrinkageAmountSuom();
+
+        if ($amount === null || $system <= 0) {
+            return null;
+        }
+
+        return round(($amount / $system) * 100, 2);
+    }
+
+    public function shrinkagePercent(): ?float
+    {
+        $system = (float) $this->quantity_suom;
+
+        if ($this->physical_quantity_suom === null || $system <= 0) {
+            return null;
+        }
+
+        return round((($system - (float) $this->physical_quantity_suom) / $system) * 100, 2);
+    }
+
+    public function shrinkageAmountSuom(): ?float
+    {
+        return $this->totalShrinkageAmountSuom();
+    }
+
+    public function valuationTotal(): float
+    {
+        $qty = $this->physicalUsableQuantitySuom();
+        $avgCost = (float) ($this->weighted_avg_cost ?? $this->last_purchase_price ?? 0);
+
+        return round($qty * $avgCost, 2);
+    }
+
+    public function stockDays(?float $dailyUsage = null): ?float
+    {
+        $usage = (float) ($dailyUsage ?? $this->daily_usage_suom ?? 0);
+
+        if ($usage <= 0) {
+            return null;
+        }
+
+        return round($this->physicalUsableQuantitySuom() / $usage, 1);
+    }
+
+    public function business()
+    {
+        return $this->belongsTo(Business::class);
+    }
+
+    public function store()
+    {
+        return $this->belongsTo(Store::class);
+    }
+
+    public function item()
+    {
+        return $this->belongsTo(Item::class);
+    }
+}

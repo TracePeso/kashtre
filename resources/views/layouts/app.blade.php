@@ -91,7 +91,6 @@
         <x-calling.outgoing-call-modal />
         <x-calling.active-call-overlay />
 
-
         <x-app.sidebar :variant="$attributes['sidebarVariant']" />
 
         <!-- Content area -->
@@ -101,27 +100,15 @@
             <x-app.header :variant="$attributes['headerVariant']" />
 
             <main class="grow">
+                @include('partials.inventory-admin-context-banner')
                 {{ $slot }}
             </main>
             <!-- Footer -->
-            <footer class="w-full bg-gray-100 text-gray-600 py-2 border-t border-gray-200">
-                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-                    <p class="text-sm text-gray-500">© Copyright {{ date('Y') }} Kashtre. All Rights Reserved</p>
-                    <p class="text-sm text-gray-500">Kashtre is a product of Kashtre Ltd</p>
-                </div>
-            </footer>
+            <x-kashtre.cash-tray />
 
         </div>
 
     </div>
-    @livewire('notifications')
-    @filamentScripts
-    @livewireScriptConfig
-</body>
-
-<div class="w-full bg-black text-white text-sm overflow-hidden fixed top-0 z-50">
-
-</div>
 
 @if($callingModuleEnabled)
 <script>
@@ -350,6 +337,15 @@
 })();
 </script>
 @endif
+
+    @livewire('notifications')
+    @filamentScripts
+    @livewireScriptConfig
+</body>
+
+<div class="w-full bg-black text-white text-sm overflow-hidden fixed top-0 z-50">
+
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script type="text/javascript">

@@ -18,12 +18,9 @@
             <!-- Logo and Business Info -->
             <div class="flex flex-col items-center w-full">
                 <h1 class="text-[#011478] font-extrabold text-xl mb-1">{{ env('APP_NAME') }}</h1>
-                @php
-                $logoPath = $business->logo ?? null;
-                @endphp
                 <div class="w-16 h-16 rounded-lg overflow-hidden">
-                    @if ($logoPath && file_exists(public_path('storage/' . $logoPath)))
-                    <img src="{{ asset('storage/' . $logoPath) }}" alt="Business Logo" class="w-full h-full object-contain">
+                    @if ($business?->logo_url)
+                    <img src="{{ $business->logo_url }}" alt="{{ $business->name }} logo" class="w-full h-full object-contain">
                     @else
                     <img src="{{ asset('images/kashtre_logo.svg') }}" alt="Default Logo" class="w-full h-full object-contain">
                     @endif
@@ -45,7 +42,7 @@
         <!-- Links -->
         <div class="space-y-8">
             <div>
-                <ul class="mt-3 space-y-2" x-data="{ openGroup: '' }">
+                <ul class="mt-3 space-y-2" x-data="{ openGroup: '{{ request()->routeIs('inventory.*') ? 'inventory' : '' }}' }">
 
                     <!-- Dashboard: usually visible to all -->
                     <li>
@@ -123,6 +120,121 @@
                     </li>
                     @endif
 
+                    @if($inventoryModuleEnabled)
+                    <li>
+                        <button @click="openGroup === 'inventory' ? openGroup = '' : openGroup = 'inventory'"
+                                :class="openGroup === 'inventory' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'"
+                                class="flex items-center justify-between w-full text-left pl-4 pr-3 py-2 rounded-md">
+                            <span class="flex items-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                                </svg>
+                                <span class="ml-3 text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">Inventory</span>
+                            </span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100" :class="{ 'rotate-180': openGroup === 'inventory' }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        <ul x-show="openGroup === 'inventory'" x-collapse class="mt-1 space-y-1 pl-10">
+                            <li>
+                                <a href="{{ route('inventory.receive') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.receive') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Receive Goods
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.monitor') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.monitor*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Monitor Stock
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.fulfillment.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.fulfillment*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    EndStore
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.crash-carts.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.crash-carts*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Crash Carts
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.replenishment.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.replenishment*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Internal Replenishment
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.approved-pool.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.approved-pool*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Approved Pool
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.usage.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.usage*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Record Usage
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.stock-counts.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.stock-counts*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Stock Counts
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.escrow.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.escrow*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Expired Escrow
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.consumption.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.consumption*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Consumption
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.orders.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.orders*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Orders
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.incoming-rfqs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.incoming-rfqs*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Incoming RFQs
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.supplied-quotations.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.supplied-quotations*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Supplied quotations
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.purchase-orders.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.purchase-orders*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    LPOs
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.transfers.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.transfers*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Transfers
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.returns.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.returns*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Returns
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.reports.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.reports*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Reports
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.units.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.units*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Units
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('inventory.settings.edit') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.settings*') || request()->routeIs('inventory.approvers') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Settings
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                    @endif
+
 
                     @if(Auth::user()->business_id == 1 && in_array('View Sales', $permissions))
                     <li>
@@ -190,6 +302,35 @@
                     </li>
                     @endif
 
+                    <!-- HR (always shown when enabled; extra nav items added once API cache warms) -->
+                    @if($hrModuleEnabled)
+                    <li>
+                        <button @click="openGroup === 'hr' ? openGroup = '' : openGroup = 'hr'"
+                                :class="openGroup === 'hr' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'"
+                                class="flex items-center justify-between w-full text-left pl-4 pr-3 py-2 rounded-md">
+                            <span class="flex items-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                </svg>
+                                <span class="ml-3 text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">HR</span>
+                            </span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100" :class="{ 'rotate-180': openGroup === 'hr' }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        <ul x-show="openGroup === 'hr'" x-collapse class="mt-1 space-y-1 pl-10">
+                            @foreach($hrNavigation as $hrNavItem)
+                            <li>
+                                <a href="{{ route('hr.embed', ['path' => $hrNavItem['path']]) }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    {{ $hrNavItem['label'] }}
+                                </a>
+                            </li>
+                            @endforeach
+                        </ul>
+                    </li>
+                    @endif
+
                     <!-- Businesses Group -->
                     @if(in_array('View Business', (array) $permissions))
                     <li>
@@ -210,6 +351,74 @@
                             @endif
                             @if(in_array('View Branches', (array) $permissions))
                             <li><a href="{{ route('branches.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Branches</a></li>
+                            @endif
+                        </ul>
+                    </li>
+                    @endif
+
+                    <!-- Imaging Group -->
+                    @if(in_array('View Imaging Orders', $permissions) || in_array('View Imaging Studies', $permissions) || in_array('View Peer Review Cases', $permissions) || in_array('View My Imaging Queue', $permissions) || in_array('View Imaging Audit Log', $permissions) || in_array('View Imaging Analytics', $permissions) || in_array('View Contrast Vials', $permissions) || in_array('View Consumption Exceptions', $permissions))
+                    <li>
+                        <button @click="openGroup === 'imaging' ? openGroup = '' : openGroup = 'imaging'" :class="openGroup === 'imaging' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'" class="flex items-center justify-between w-full text-left pl-4 pr-3 py-2 rounded-md">
+                            <span class="flex items-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7l9-4 9 4M4 10v9a1 1 0 001 1h4a1 1 0 001-1v-4h4v4a1 1 0 001 1h4a1 1 0 001-1v-9"></path>
+                                </svg>
+                                <span class="ml-3">Imaging</span>
+                            </span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200" :class="{ 'rotate-180': openGroup === 'imaging' }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        <ul x-show="openGroup === 'imaging'" x-collapse class="mt-1 space-y-1 pl-10">
+                            @if(in_array('View Imaging Orders', $permissions))
+                            <li><a href="{{ route('imaging-orders.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Imaging Orders</a></li>
+                            @endif
+                            @if(in_array('View Imaging Studies', $permissions))
+                            <li><a href="{{ route('imaging-studies.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Imaging Worklist</a></li>
+                            @endif
+                            @if(in_array('View Peer Review Cases', $permissions))
+                            <li><a href="{{ route('peer-review-cases.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Peer Review</a></li>
+                            @endif
+                            @if(in_array('View My Imaging Queue', $permissions))
+                            <li><a href="{{ route('imaging-my-queue.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>My Queue</a></li>
+                            @endif
+                            @if(in_array('View Imaging Audit Log', $permissions))
+                            <li><a href="{{ route('imaging-audit-log.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Audit Log</a></li>
+                            @endif
+                            @if(in_array('View Imaging Analytics', $permissions))
+                            <li><a href="{{ route('imaging-analytics.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Analytics</a></li>
+                            @endif
+                            @if(in_array('View Contrast Vials', $permissions))
+                            <li><a href="{{ route('contrast-vials.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Contrast Vials</a></li>
+                            @endif
+                            @if(in_array('View Consumption Exceptions', $permissions))
+                            <li><a href="{{ route('imaging-consumption-exceptions.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Consumption Exceptions</a></li>
+                            @endif
+                        </ul>
+                    </li>
+                    @endif
+
+                    <!-- Clinical Group -->
+                    @if(in_array('View Ward Census', $permissions) || in_array('View Clinical Process Registry', $permissions) || in_array('View Clinical Audit Trail', $permissions) || in_array('View Clinical Dictionaries', $permissions))
+                    <li>
+                        <button @click="openGroup === 'clinical' ? openGroup = '' : openGroup = 'clinical'" :class="openGroup === 'clinical' ? 'border border-blue-500 text-blue-700 bg-blue-50' : 'text-gray-700 hover:text-blue-700'" class="flex items-center justify-between w-full text-left pl-4 pr-3 py-2 rounded-md">
+                            <span class="flex items-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20l7.682-7.318a4.5 4.5 0 00-6.364-6.364L12 7.5l-1.318-1.182a4.5 4.5 0 00-6.364 0z"></path>
+                                </svg>
+                                <span class="ml-3">Clinical</span>
+                            </span>
+                            <svg class="w-4 h-4 transform transition-transform duration-200" :class="{ 'rotate-180': openGroup === 'clinical' }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        <ul x-show="openGroup === 'clinical'" x-collapse class="mt-1 space-y-1 pl-10">
+                            @if(in_array('View Ward Census', $permissions))
+                            <li><a href="{{ route('clinical.ward-census.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Ward Census</a></li>
+                            <li><a href="{{ route('clinical.my-tasks.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>My Patient Tasks</a></li>
+                            <li><a href="{{ route('clinical.handover.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Shift Handover</a></li>
+                            <li><a href="{{ route('clinical.recalls.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Recall Worklist</a></li>
                             @endif
                         </ul>
                     </li>
@@ -533,7 +742,6 @@
                             <li><a href="{{ route('dashboard') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>View Reports</a></li>
                             @if(Auth::user()->business_id != 1 && isset($callingModuleEnabled) && $callingModuleEnabled)
                             <li><a href="{{ route('callers.log') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Called List</a></li>
-                            <li><a href="{{ route('emergency.log') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Emergency Log</a></li>
                             @endif
                         </ul>
                     </li>
@@ -583,6 +791,11 @@
                                     Business Settings
                                 </a>
                             </li>
+                            <li>
+                                <a href="{{ route('business-settings.edit', ['tab' => 'general']) }}#document-letterhead" class="block text-sm text-gray-600 hover:text-blue-700 py-1.5 pl-2 border-l-2 border-transparent hover:border-blue-400" @click.stop>
+                                    Document letterhead preview
+                                </a>
+                            </li>
                             @endif
 
                             @php
@@ -597,6 +810,19 @@
                             @endphp
                             @if($canAccessClientSpaces)
                             <li><a href="{{ route('client-spaces.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Client Spaces</a></li>
+                            @endif
+
+                            {{-- A facility with the permission administers its own
+                                 dictionaries. Kept above the business_id==1 block —
+                                 the unconditional Kashtre-wide entry lives there,
+                                 next to Kashtre/HR/Clinical Module Settings. --}}
+                            @if(Auth::user()->business_id != 1 && in_array('View Clinical Dictionaries', (array) $permissions))
+                            <li>
+                                <a href="{{ route('clinical.dictionaries.index') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    Clinical Dictionaries
+                                </a>
+                            </li>
                             @endif
 
                             <!-- Settings only for business_id == 1 (Kashtre) -->
@@ -621,12 +847,24 @@
                             <li><a href="{{ route('titles.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Titles</a></li>
                             @endif
 
+                            @if(in_array('View Staff Categories', $permissions))
+                            <li><a href="{{ route('staff-categories.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Staff Categories</a></li>
+                            @endif
+
+                            @if(in_array('View Supplier Industries', $permissions))
+                            <li><a href="{{ route('supplier-industries.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Supplier Industries</a></li>
+                            @endif
+
+                            @if(in_array('View Supplier Sub Categories', $permissions))
+                            <li><a href="{{ route('supplier-sub-categories.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Supplier Sub Categories</a></li>
+                            @endif
+
                             @if(Auth::user()->business_id == 1)
                             <li><a href="{{ route('maturation-periods.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Payment Methods and Maturation Periods</a></li>
                             @endif
 
-                            @if(in_array('View Calling Module', $permissions))
-                            <li><a href="{{ route('calling-module-configs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Calling</a></li>
+                            @if(in_array('View Inventory Module', $permissions))
+                            <li><a href="{{ route('inventory-module-configs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Inventory</a></li>
                             @endif
 
                             @if(in_array('View Credit Note Workflows', $permissions))
@@ -653,10 +891,6 @@
                             <li><a href="{{ route('patient-categories.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Client Categories</a></li>
                             @endif
 
-                            @if(in_array('View Client Spaces', $permissions))
-                            <li><a href="{{ route('client-spaces.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Client Spaces</a></li>
-                            @endif
-
                             @if(in_array('View Suppliers', $permissions))
                             <li><a href="{{ route('suppliers.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Suppliers</a></li>
                             @endif
@@ -665,6 +899,36 @@
                             <li><a href="{{ route('stores.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Stores</a></li>
                             @endif
 
+                            @if(in_array('View Item Categories', $permissions))
+                            <li><a href="{{ route('item-importance-categories.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Item Categories</a></li>
+                            @endif
+
+                            {{-- Imaging settings, kept clustered together rather than
+                                 interleaved alphabetically with the rest of Settings. --}}
+                            @if(in_array('View Imaging Protocols', $permissions) || in_array('View Imaging Readiness Checks', $permissions) || in_array('View Imaging Critical Findings', $permissions) || in_array('View Imaging Module', $permissions) || in_array('View Imaging Service Point Configs', $permissions) || in_array('View Imaging Modalities', $permissions) || in_array('View Imaging Workflow Steps', $permissions))
+                            <li class="pt-2 pb-1 pl-0 text-xs font-semibold text-gray-400 uppercase tracking-wide">Imaging</li>
+                            @if(in_array('View Imaging Protocols', $permissions))
+                            <li><a href="{{ route('imaging-protocols.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Protocols</a></li>
+                            @endif
+                            @if(in_array('View Imaging Readiness Checks', $permissions))
+                            <li><a href="{{ route('imaging-readiness-check-types.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Readiness Checks</a></li>
+                            @endif
+                            @if(in_array('View Imaging Critical Findings', $permissions))
+                            <li><a href="{{ route('imaging-critical-finding-types.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Critical Findings</a></li>
+                            @endif
+                            @if(in_array('View Imaging Module', $permissions))
+                            <li><a href="{{ route('imaging-module-configs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Module</a></li>
+                            @endif
+                            @if(in_array('View Imaging Service Point Configs', $permissions))
+                            <li><a href="{{ route('imaging-service-point-configs.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Rooms</a></li>
+                            @endif
+                            @if(in_array('View Imaging Modalities', $permissions))
+                            <li><a href="{{ route('imaging-modalities.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Imaging Modalities</a></li>
+                            @endif
+                            @if(in_array('View Imaging Workflow Steps', $permissions))
+                            <li><a href="{{ route('imaging-workflow-steps.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Workflow Steps</a></li>
+                            @endif
+                            @endif
 
                             @if(in_array('View Insurance Companies', $permissions))
                             <li><a href="{{ route('settings.index', ['tab' => 'insurance-companies']) }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>Manage Third Party Vendors</a></li>
@@ -675,6 +939,39 @@
                                 <a href="{{ route('settings.countries.index') }}"
                                    class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
                                     Manage Countries & Currencies
+                                </a>
+                            </li>
+                            @endif
+
+                            @if((int) Auth::user()->business_id === 1)
+                            <li>
+                                <a href="{{ route('platform.time.index') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('platform.time*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Time Engine
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('settings.kashtre.edit') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    Kashtre Settings
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('settings.hr-module.edit') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    HR Settings
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('settings.clinical-module.edit') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    Clinical Module Settings
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ route('clinical.dictionaries.index') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5" @click.stop>
+                                    Clinical Dictionaries
                                 </a>
                             </li>
                             @endif

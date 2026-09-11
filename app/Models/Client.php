@@ -72,6 +72,7 @@ class Client extends Model
     protected $casts = [
         'payment_methods' => 'array',
         'date_of_birth' => 'date',
+        'deceased_at' => 'datetime',
         'visit_expires_at' => 'datetime',
         'visit_authorization_sessions' => 'array',
         'max_credit' => 'decimal:2',

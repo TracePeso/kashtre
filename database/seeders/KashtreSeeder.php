@@ -35,27 +35,33 @@ class KashtreSeeder extends Seeder
     private function createBusinessWithData($businessName, $email, $phone, $address)
     {
         // 1. Create the Business
-        $business = Business::create([
-            'name' => $businessName,
-            'email' => $email,
-            'phone' => $phone,
-            'address' => $address,
-            'logo' => 'logos/default.png',
-            'account_number' => 'KS' . Str::random(8),
-            'date' => now(),
-        ]);
+        $business = Business::firstOrCreate(
+            ['email' => $email],
+            [
+                'name' => $businessName,
+                'phone' => $phone,
+                'address' => $address,
+                'logo' => 'logos/default.png',
+                'account_number' => 'KS' . Str::random(8),
+                'date' => now(),
+            ]
+        );
 
         // 2. Create 2 Branches
         $branches = [];
         for ($i = 1; $i <= 2; $i++) {
-            $branches[] = Branch::create([
-                'uuid' => Str::uuid(),
-                'business_id' => $business->id,
-                'name' => $businessName . ' - Branch ' . $i,
-                'email' => 'branch' . $i . '@' . strtolower(str_replace(' ', '', $businessName)) . '.com',
-                'phone' => '2567000000' . (10 + $i),
-                'address' => $address . ' - Branch ' . $i,
-            ]);
+            $branches[] = Branch::firstOrCreate(
+                [
+                    'business_id' => $business->id,
+                    'email' => 'branch' . $i . '@' . strtolower(str_replace(' ', '', $businessName)) . '.com',
+                ],
+                [
+                    'uuid' => Str::uuid(),
+                    'name' => $businessName . ' - Branch ' . $i,
+                    'phone' => '2567000000' . (10 + $i),
+                    'address' => $address . ' - Branch ' . $i,
+                ]
+            );
         }
 
         // 3. Create Qualifications
@@ -249,16 +255,23 @@ class KashtreSeeder extends Seeder
             ];
 
             foreach ($contractors as $name) {
-                ContractorProfile::firstOrCreate([
-                    'business_id' => $business->id,
-                    'user_id' => null, // Will be linked when user is created
-                    'bank_name' => 'Stanbic Bank',
-                    'account_name' => $name,
-                    'account_number' => 'ACC' . Str::random(8),
-                    'account_balance' => 0.00,
-                    'kashtre_account_number' => 'KASH' . Str::random(6),
-                    'signing_qualifications' => 'MBChB, PhD',
-                ]);
+                // Match on business + account name only — the random account
+                // numbers below would never match an existing row, so keying on
+                // them would insert a fresh profile on every re-seed.
+                ContractorProfile::firstOrCreate(
+                    [
+                        'business_id' => $business->id,
+                        'account_name' => $name,
+                    ],
+                    [
+                        'user_id' => null, // Will be linked when user is created
+                        'bank_name' => 'Stanbic Bank',
+                        'account_number' => 'ACC' . Str::random(8),
+                        'account_balance' => 0.00,
+                        'kashtre_account_number' => 'KASH' . Str::random(6),
+                        'signing_qualifications' => 'MBChB, PhD',
+                    ]
+                );
             }
         }
 
@@ -281,30 +294,32 @@ class KashtreSeeder extends Seeder
             ->toArray();
 
         // User 1 - Admin
-        User::create([
-            'uuid' => Str::uuid(),
-            'name' => $business->name . ' Admin',
-            'email' => 'admin@' . strtolower(str_replace(' ', '', $business->name)) . '.com',
-            'password' => Hash::make('password'),
-            'status' => 'active',
-            'phone' => '2567000000' . rand(10, 99),
-            'nin' => 'CF' . Str::random(12),
-            'profile_photo_path' => null,
-            'business_id' => $business->id,
-            'branch_id' => $branches[0]->id,
-            'service_points' => $servicePoints,
-            'permissions' => [
-                'View Dashboard', 'View Dashboard Cards', 'View Dashboard Charts',
-                'Manage Users', 'Manage Settings', 'View Reports', 'Manage Items',
-                'Manage Suppliers', 'Manage Insurance', 'Manage Patient Categories'
-            ],
-            'allowed_branches' => collect($branches)->pluck('id')->toArray(),
-            'qualification_id' => $qualificationId,
-            'department_id' => $departmentId,
-            'section_id' => $sectionId,
-            'title_id' => $titleId,
-            'gender' => 'male',
-        ]);
+        User::firstOrCreate(
+            ['email' => 'admin@' . strtolower(str_replace(' ', '', $business->name)) . '.com'],
+            [
+                'uuid' => Str::uuid(),
+                'name' => $business->name . ' Admin',
+                'password' => Hash::make('password'),
+                'status' => 'active',
+                'phone' => '2567000000' . rand(10, 99),
+                'nin' => 'CF' . Str::random(12),
+                'profile_photo_path' => null,
+                'business_id' => $business->id,
+                'branch_id' => $branches[0]->id,
+                'service_points' => $servicePoints,
+                'permissions' => [
+                    'View Dashboard', 'View Dashboard Cards', 'View Dashboard Charts',
+                    'Manage Users', 'Manage Settings', 'View Reports', 'Manage Items',
+                    'Manage Suppliers', 'Manage Insurance', 'Manage Patient Categories'
+                ],
+                'allowed_branches' => collect($branches)->pluck('id')->toArray(),
+                'qualification_id' => $qualificationId,
+                'department_id' => $departmentId,
+                'section_id' => $sectionId,
+                'title_id' => $titleId,
+                'gender' => 'male',
+            ]
+        );
 
         // User 2 - Staff
         $servicePoints2 = ServicePoint::where('business_id', $business->id)
@@ -312,29 +327,31 @@ class KashtreSeeder extends Seeder
             ->pluck('id')
             ->toArray();
 
-        User::create([
-            'uuid' => Str::uuid(),
-            'name' => $business->name . ' Staff',
-            'email' => 'staff@' . strtolower(str_replace(' ', '', $business->name)) . '.com',
-            'password' => Hash::make('password'),
-            'status' => 'active',
-            'phone' => '2567000000' . rand(10, 99),
-            'nin' => 'CF' . Str::random(12),
-            'profile_photo_path' => null,
-            'business_id' => $business->id,
-            'branch_id' => $branches[1]->id,
-            'service_points' => $servicePoints2,
-            'permissions' => [
-                'View Dashboard', 'View Dashboard Cards', 'View Reports',
-                'Manage Items', 'View Suppliers', 'View Insurance'
-            ],
-            'allowed_branches' => [$branches[1]->id],
-            'qualification_id' => $qualificationId,
-            'department_id' => $departmentId,
-            'section_id' => $sectionId,
-            'title_id' => $titleId,
-            'gender' => 'female',
-        ]);
+        User::firstOrCreate(
+            ['email' => 'staff@' . strtolower(str_replace(' ', '', $business->name)) . '.com'],
+            [
+                'uuid' => Str::uuid(),
+                'name' => $business->name . ' Staff',
+                'password' => Hash::make('password'),
+                'status' => 'active',
+                'phone' => '2567000000' . rand(10, 99),
+                'nin' => 'CF' . Str::random(12),
+                'profile_photo_path' => null,
+                'business_id' => $business->id,
+                'branch_id' => $branches[1]->id,
+                'service_points' => $servicePoints2,
+                'permissions' => [
+                    'View Dashboard', 'View Dashboard Cards', 'View Reports',
+                    'Manage Items', 'View Suppliers', 'View Insurance'
+                ],
+                'allowed_branches' => [$branches[1]->id],
+                'qualification_id' => $qualificationId,
+                'department_id' => $departmentId,
+                'section_id' => $sectionId,
+                'title_id' => $titleId,
+                'gender' => 'female',
+            ]
+        );
 
         // Create 3 Contractors who are also Staff (for City Health Clinic only)
         if ($business->name === 'City Health Clinic') {
@@ -343,30 +360,32 @@ class KashtreSeeder extends Seeder
             $contractorPhones = ['2567000001', '2567000002', '2567000003'];
             
             foreach ($contractorNames as $index => $name) {
-                $contractorUser = User::create([
-                    'uuid' => Str::uuid(),
-                    'name' => $name,
-                    'email' => $contractorEmails[$index],
-                    'password' => Hash::make('password'),
-                    'status' => 'active',
-                    'phone' => $contractorPhones[$index],
-                    'nin' => 'CF' . Str::random(12),
-                    'profile_photo_path' => null,
-                    'business_id' => $business->id,
-                    'branch_id' => $branches[0]->id, // Main branch
-                    'service_points' => $servicePoints,
-                    'permissions' => [
-                        'View Dashboard', 'View Dashboard Cards', 'View Reports',
-                        'Manage Items', 'View Suppliers', 'View Insurance',
-                        'Manage Contractor Profile'
-                    ],
-                    'allowed_branches' => collect($branches)->pluck('id')->toArray(),
-                    'qualification_id' => $qualificationId,
-                    'department_id' => $departmentId,
-                    'section_id' => $sectionId,
-                    'title_id' => $titleId,
-                    'gender' => $index === 1 ? 'female' : 'male',
-                ]);
+                $contractorUser = User::firstOrCreate(
+                    ['email' => $contractorEmails[$index]],
+                    [
+                        'uuid' => Str::uuid(),
+                        'name' => $name,
+                        'password' => Hash::make('password'),
+                        'status' => 'active',
+                        'phone' => $contractorPhones[$index],
+                        'nin' => 'CF' . Str::random(12),
+                        'profile_photo_path' => null,
+                        'business_id' => $business->id,
+                        'branch_id' => $branches[0]->id, // Main branch
+                        'service_points' => $servicePoints,
+                        'permissions' => [
+                            'View Dashboard', 'View Dashboard Cards', 'View Reports',
+                            'Manage Items', 'View Suppliers', 'View Insurance',
+                            'Manage Contractor Profile'
+                        ],
+                        'allowed_branches' => collect($branches)->pluck('id')->toArray(),
+                        'qualification_id' => $qualificationId,
+                        'department_id' => $departmentId,
+                        'section_id' => $sectionId,
+                        'title_id' => $titleId,
+                        'gender' => $index === 1 ? 'female' : 'male',
+                    ]
+                );
 
                 // Link the contractor profile to this user
                 ContractorProfile::where('business_id', $business->id)

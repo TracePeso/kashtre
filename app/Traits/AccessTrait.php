@@ -76,14 +76,17 @@ trait AccessTrait
         "Departments" => ['View Departments', 'Edit Departments', 'Add Departments', 'Bulky Update Departments'],
         "Qualifications" => ['View Qualifications', 'Edit Qualifications', 'Add Qualifications', 'Bulky Update Qualifications'],
         "Titles" => ['View Titles', 'Edit Titles', 'Add Titles', 'Bulky Update Titles'],
+        "Staff Categories" => ['View Staff Categories', 'Edit Staff Categories', 'Add Staff Categories', 'Bulky Update Staff Categories'],
+        "Supplier Industries" => ['View Supplier Industries', 'Edit Supplier Industries', 'Add Supplier Industries', 'Bulky Update Supplier Industries'],
+        "Supplier Sub Categories" => ['View Supplier Sub Categories', 'Edit Supplier Sub Categories', 'Add Supplier Sub Categories', 'Bulky Update Supplier Sub Categories'],
         "Rooms" => ['View Rooms', 'Edit Rooms', 'Add Rooms', 'Bulky Update Rooms'],
         "Sections" => ['View Sections', 'Edit Sections', 'Add Sections', 'Bulky Update Sections'],
         "Item Units" => ['View Item Units', 'Edit Item Units', 'Add Item Units', 'Bulky Update Item Units'],
         "Groups" => ['View Groups', 'Edit Groups', 'Add Groups', 'Bulky Update Groups'],
         "Patient Categories" => ['View Patient Categories', 'Edit Patient Categories', 'Add Patient Categories', 'Bulky Update Patient Categories'],
-        "Client Spaces" => ['View Client Spaces', 'Edit Client Spaces', 'Add Client Spaces', 'Delete Client Spaces'],
         "Suppliers" => ['View Suppliers', 'Edit Suppliers', 'Add Suppliers', 'Bulky Update Suppliers'],
         "Stores" => ['View Stores', 'Edit Stores', 'Add Stores', 'Bulky Update Stores'],
+        "Item Categories" => ['View Item Categories', 'Edit Item Categories', 'Add Item Categories', 'Delete Item Categories'],
         "Insurance Companies" => ['View Insurance Companies', 'Edit Insurance Companies', 'Add Insurance Companies', 'Bulky Update Insurance Companies'],
         "Sub Groups" => ['View Sub Groups', 'Edit Sub Groups', 'Add Sub Groups', 'Bulky Update Sub Groups'],
         "Maturation Periods" => ['View Maturation Periods', 'Edit Maturation Periods', 'Add Maturation Periods', 'Manage Maturation Periods'],
@@ -96,6 +99,20 @@ trait AccessTrait
     public static $callers = [
         "Calling Module" => ['View Calling Module', 'Add Calling Module', 'Edit Calling Module', 'Manage Calling Module', 'Delete Calling Module'],
         "Callers" => ['View Callers', 'Add Callers', 'Edit Callers', 'Manage Callers', 'Broadcast Announcements'],
+    ];
+
+    public static $inventoryModule = [
+        "Inventory Module" => ['View Inventory Module', 'Add Inventory Module', 'Edit Inventory Module', 'Manage Inventory Module', 'Delete Inventory Module'],
+        "Inventory" => [
+            'View Inventory',
+            'Add Inventory',
+            'Edit Inventory',
+            'Manage Inventory',
+            'View End Store Queue',
+            'Dispense End Store Queue',
+            'View Approved Pool',
+            'Record Inventory Usage',
+        ],
     ];
 
     public static $adminAccess = [
@@ -114,7 +131,26 @@ trait AccessTrait
         "Business" => ['View Business', 'Edit Business', 'Add Business'],
         "Branches" => ['View Branches', 'Edit Branches', 'Add Branches'],
         "Client Spaces" => ['View Client Spaces', 'Add Client Spaces', 'Edit Client Spaces', 'Delete Client Spaces'],
-        "Business Settings" => ['View Business Settings', 'Edit Business Settings'],
+        "Business Settings" => [
+            'View Business Settings',
+            'Edit Business Settings',
+            'View Time Settings',
+            'Edit Time Settings',
+        ],
+    ];
+
+    public static $timeEngineAccess = [
+        "Time Engine" => [
+            'View Time Engine',
+            'Manage Time Catalogue',
+            'Manage Time Policies',
+            'Approve Time Policies',
+            'Manage Time Periods',
+            'Manage Time Schedules',
+            'Manage Device Time',
+            'View Time Audit',
+            'Resolve Time Reconciliation',
+        ],
     ];
 
     public static $clientAccess = [
@@ -166,6 +202,91 @@ trait AccessTrait
         "Package Sales" => ['View Package Sales', 'Edit Package Sales', 'Add Package Sales', 'View Package Sales History', 'Export Package Sales'],
     ];
 
+    public static $imagingModule = [
+        "Imaging Orders" => ['View Imaging Orders', 'Add Imaging Orders'],
+        "Imaging Studies" => ['View Imaging Studies', 'Progress Imaging Studies'],
+        "Imaging Reports" => ['Report Imaging Studies', 'Verify Imaging Reports'],
+        "Peer Review" => ['View Peer Review Cases', 'Complete Peer Review Cases'],
+        "Critical Findings" => ['Receive Critical Imaging Alerts'],
+        "My Imaging Queue" => ['View My Imaging Queue', 'Claim Imaging Studies', 'Release Imaging Studies', 'Transfer Imaging Studies'],
+        "Imaging Audit Log" => ['View Imaging Audit Log'],
+        "Imaging Analytics" => ['View Imaging Analytics'],
+        "Contrast Vials" => ['View Contrast Vials', 'Manage Contrast Vials'],
+        "Consumption Exceptions" => ['View Consumption Exceptions', 'Resolve Consumption Exceptions'],
+        "Imaging Settings" => [
+            'View Imaging Protocols', 'Manage Imaging Protocols',
+            'View Imaging Readiness Checks', 'Manage Imaging Readiness Checks',
+            'View Imaging Critical Findings', 'Manage Imaging Critical Findings',
+            'View Imaging Module', 'Manage Imaging Module',
+            'View Imaging Service Point Configs', 'Manage Imaging Service Point Configs',
+            'View Imaging Modalities', 'Manage Imaging Modalities',
+            'View Imaging Workflow Steps', 'Manage Imaging Workflow Steps',
+        ],
+    ];
+
+
+    public static $clinicalModule = [
+        "Clinical Observations" => ['View Clinical Observations', 'Add Clinical Observations'],
+        "Ward Census" => ['View Ward Census', 'Manage Ward Census', 'Add Overflow Beds'],
+        "Care Assignments" => ['View Care Assignments', 'Manage Care Assignments'],
+        "Clinical Work Orders" => ['View Clinical Work Orders', 'Add Clinical Work Orders'],
+        "Clinical Process Registry" => ['View Clinical Process Registry', 'Progress Clinical Process Registry'],
+        // Rollout gap fix: clinical_process_steps.required_role ('WARD_NURSE',
+        // 'CONSULTANT') and the Claim Patient doctor/nurse choice were stored
+        // but never checked against anything. This app has no reliable
+        // "job role" concept (Title/Qualification are free-text, admin-typed,
+        // no canonical codes) — the only real, enforced access-control
+        // primitive here is User.permissions, so role gating is modeled the
+        // same way as everything else in this trait, not as string-matching
+        // against free text.
+        "Clinical Role Gates" => ['Act As Ward Nurse (Clinical)', 'Act As Consultant (Clinical)'],
+        "Medication Orders" => ['View Medication Orders', 'Prescribe Medication Orders', 'Override CDSS Safety Block'],
+        "Medication Administration" => ['View MAR', 'Administer MAR Doses'],
+        "Break Glass" => [
+            'Trigger Break Glass Override',
+            // Unlike every other permission in this file, this one has to be
+            // the literal string Clinical checks. v6.1 Volume 9's
+            // SecurityController::reviewBreakGlass() calls
+            // ClinicalIdentity::hasPermission('clinical.break_glass.review')
+            // directly against whatever Main sends in X-User-Permissions —
+            // there is no translation layer, only a case-insensitive string
+            // compare (confirmed live 2026-09-06: "Review Break-Glass
+            // Override" does not pass Clinical's own gate no matter what
+            // Main-side abort_unless() says). A nicer display label would be
+            // cosmetic and would break the one thing that has to work.
+            'clinical.break_glass.review',
+        ],
+        "Patient Messaging (v6.1)" => [
+            'clinical.patient_message.respond',
+        ],
+        "AI Governance (v6.1)" => [
+            // Literal string Clinical checks (AiUseCaseController), same
+            // reason as clinical.break_glass.review above.
+            'clinical.ai.govern',
+        ],
+        "Content Governance (v6.1)" => [
+            'clinical.content.create',
+            'clinical.content.validate',
+        ],
+        "Care Transitions (v6.1)" => [
+            // Main-only — no equivalent gate on Clinical's side for a read.
+            'View Care Transitions',
+            // These three must be the literal strings v6.1 Volume 8's
+            // ProcessWorkflow/CareTransitions controllers check via
+            // ClinicalIdentity::hasPermission() — same reason as
+            // clinical.break_glass.review above.
+            'clinical.transition.initiate',
+            'clinical.transition.authorize',
+            'clinical.discharge.attest',
+        ],
+        "Clinical Settings" => [
+            'View Clinical Dictionaries', 'Manage Clinical Dictionaries',
+            'View Clinical Module', 'Manage Clinical Module',
+        ],
+        "Clinical Diagnoses" => ['View Clinical Diagnoses', 'Add Clinical Diagnoses'],
+        "Clinical Interoperability" => ['Export FHIR Bundle'],
+        "Clinical Audit" => ['View Clinical Audit Trail'],
+    ];
 
     public static function spreadArrayKeys($assocArray)
     {
@@ -204,8 +325,10 @@ trait AccessTrait
                 static::$stock,
                 static::$masters,
                 static::$callers,
+                static::$inventoryModule,
                 static::$adminAccess,
                 static::$businessAccess,
+                static::$timeEngineAccess,
                 static::$clientAccess,
                 static::$staffAccess,
                 static::$hrModule,
@@ -213,7 +336,9 @@ trait AccessTrait
                 static::$bulkUpload,
                 static::$finance,
                 static::$packageTracking,
-                static::$packageSales
+                static::$packageSales,
+                static::$imagingModule,
+                static::$clinicalModule
             )
         );
         return $roles;
@@ -239,8 +364,10 @@ trait AccessTrait
         "Stock" => self::$stock,
         "Masters" => self::$masters,
         "Callers" => self::$callers,
+        "Inventory" => self::$inventoryModule,
         "Admin" => self::$adminAccess,
         "Business" => self::$businessAccess,
+        "Time Engine" => self::$timeEngineAccess,
         "Client" => self::$clientAccess,
         "Staff Access" => self::$staffAccess,
         "HR Module" => self::$hrModule,
@@ -249,6 +376,8 @@ trait AccessTrait
         "Finance" => self::$finance,
         "Package Tracking" => self::$packageTracking,
         "Package Sales" => self::$packageSales,
+        "Imaging" => self::$imagingModule,
+        "Clinical" => self::$clinicalModule,
     ];
 
     if (!empty($exclude)) {

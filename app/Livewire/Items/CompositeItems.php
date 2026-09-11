@@ -45,6 +45,18 @@ class CompositeItems extends Component implements HasForms, HasTable
                 TextColumn::make('name')
                     ->label('Name')
                     ->searchable(),
+                TextColumn::make('generic_name')
+                    ->label('Generic Name')
+                    ->searchable()
+                    ->toggleable(),
+                TextColumn::make('strength')
+                    ->label('Strength')
+                    ->searchable()
+                    ->toggleable(),
+                TextColumn::make('category')
+                    ->label('Category')
+                    ->searchable()
+                    ->toggleable(),
                 TextColumn::make('code')
                     ->searchable(),
                 TextColumn::make('type')
@@ -55,7 +67,11 @@ class CompositeItems extends Component implements HasForms, HasTable
                         default => 'gray',
                     }),
                 TextColumn::make('default_price')
-                    ->label('Default Price')
+                    ->label('Sale price')
+                    ->money('UGX')
+                    ->sortable(),
+                TextColumn::make('purchase_price')
+                    ->label('Purchase price')
                     ->money('UGX')
                     ->sortable(),
                 TextColumn::make('contractor.user.name')

@@ -105,6 +105,7 @@
                         }, 1000);
                     </script>
                 @endif
+
             </div>
 
             <!-- Header: Right side -->

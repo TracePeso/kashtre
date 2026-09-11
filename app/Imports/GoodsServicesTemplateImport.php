@@ -89,15 +89,27 @@ class GoodsServicesTemplateImport implements ToModel, WithHeadingRow, SkipsOnErr
             }
             
             
-            // Find default price column
-            $defaultPrice = $row['default_price'] ?? null;
+            // Find sale price column (accept legacy templates too)
+            $defaultPrice = $row['sale_price'] ?? $row['default_price'] ?? null;
             if (empty($defaultPrice) || !is_numeric($defaultPrice)) {
-                $error = "Row {$rowNumber}: Default price is required and must be a number";
+                $error = "Row {$rowNumber}: Sale price is required and must be a number";
                 Log::error($error);
                 $this->errors[] = $error;
                 $this->errorCount++;
                 return null;
             }
+
+            $purchasePriceRaw = $row['purchase_price']
+                ?? $row['purchase_price_per_suom']
+                ?? null;
+            if ($purchasePriceRaw === null || $purchasePriceRaw === '' || !is_numeric($purchasePriceRaw) || (float) $purchasePriceRaw < 0) {
+                $error = "Row {$rowNumber}: Purchase price is required and must be a number greater than or equal to 0";
+                Log::error($error);
+                $this->errors[] = $error;
+                $this->errorCount++;
+                return null;
+            }
+            $purchasePrice = round((float) $purchasePriceRaw, 2);
             
             // Find VAT rate column
             $vatRate = $row['vat_rate'] ?? null;
@@ -247,6 +259,8 @@ class GoodsServicesTemplateImport implements ToModel, WithHeadingRow, SkipsOnErr
             // Create the item with default pricing as fallback
             $description = $row['description'] ?? null;
             $otherNames = $row['other_names'] ?? null;
+            $genericName = $row['generic_name'] ?? null;
+            $category = $row['category'] ?? null;
             
             Log::info("Row {$rowNumber}: Creating item with data:");
             Log::info("  - Name: '{$row['name']}'");
@@ -258,12 +272,15 @@ class GoodsServicesTemplateImport implements ToModel, WithHeadingRow, SkipsOnErr
             Log::info("  - Department ID: " . ($department ? $department->id : 'null'));
             Log::info("  - Unit ID: " . ($itemUnit ? $itemUnit->id : 'null'));
             Log::info("  - Default Price: {$defaultPrice}");
+            Log::info("  - Purchase Price: " . ($purchasePrice !== null ? $purchasePrice : 'null'));
             Log::info("  - VAT Rate: {$vatRate}%");
             Log::info("  - Hospital Share: {$hospitalShare}%");
             Log::info("  - Contractor ID: " . ($contractor ? $contractor->id : 'null'));
             
             $item = new Item([
                 'name' => trim($row['name']),
+                'generic_name' => ! empty($genericName) ? trim($genericName) : null,
+                'category' => ! empty($category) ? trim($category) : null,
                 'code' => $code, // Will be auto-generated if empty
                 'type' => strtolower($typeValue),
                 'description' => !empty($description) ? trim($description) : null,
@@ -273,6 +290,7 @@ class GoodsServicesTemplateImport implements ToModel, WithHeadingRow, SkipsOnErr
                 'uom_id' => $itemUnit ? $itemUnit->id : null,
                 'service_point_id' => null, // Removed global service point
                 'default_price' => (float) $defaultPrice, // Default price as fallback
+                'purchase_price' => $purchasePrice,
                 'vat_rate' => $vatRate,
                 'hospital_share' => $hospitalShare,
                 'contractor_account_id' => $contractor ? $contractor->id : null,

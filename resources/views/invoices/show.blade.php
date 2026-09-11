@@ -299,6 +299,18 @@
                 </div>
             </div>
 
+            @if($inventoryUsageEvent ?? null)
+                <div class="mb-6">
+                    @include('inventory.usage.partials.collect-payment', [
+                        'event' => $inventoryUsageEvent,
+                        'canCollectPayment' => $canCollectUsagePayment ?? false,
+                        'paymentMethods' => $usagePaymentMethods ?? [],
+                        'defaultPhone' => $usageDefaultPhone ?? null,
+                        'redirectUrl' => route('invoices.show', $invoice),
+                    ])
+                </div>
+            @endif
+
             @php
                 $clientModel = $invoice->client;
             @endphp

@@ -3,6 +3,7 @@
 use App\Http\Controllers\EmergencyController;
 use App\Http\Controllers\API\DisplayBoardController;
 use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Support\Facades\Route;
 
 // Queue display board — migrated to standalone Calling Service
 // API endpoints for TV are no longer served from the Kashtre monolith
@@ -66,20 +67,190 @@ Route::post('/policies/verify/{insuranceCompanyId}', [\App\Http\Controllers\Clie
 
 
 
-// HR Module Integration API
+// Orthanc PACS integration — Lua OnStableStudy callback (pacs integration
+// files/stable-study.lua). Gated by the shared secret inside the
+// controller, not route middleware — Orthanc and Laravel share localhost
+// in this environment.
+Route::post('/orthanc/stable-study', [\App\Http\Controllers\OrthancWebhookController::class, 'stableStudy'])
+    ->middleware('throttle:120,1');
+
+// Clinical-to-LIMS ICD's inbound webhook — the real endpoint a genuinely
+// separate LIMS calls back into. HMAC-verified inside the controller
+// (same pattern as the Orthanc webhook above: the signature check IS the
+// auth, not route middleware).
+Route::post('/v1/clinical/lab-proxy/{eventType}', [\App\Http\Controllers\API\Clinical\LimsWebhookController::class, 'handle'])
+    ->middleware('throttle:120,1');
+
+/*
+|--------------------------------------------------------------------------
+| Clinical Module → Main (inbound)
+|--------------------------------------------------------------------------
+|
+| What a separate CLINICAL_ORCHESTRATOR calls on us, per the Clinical Module
+| API Integration Guide. Authenticated with the mirror of the X-Service-Key
+| we present to them (§3.1), keyed off CLINICAL_INBOUND_SERVICE_KEYS.
+|
+| /events           §12 — the at-least-once event stream. De-duplicated on
+|                   event_id; a redelivery is normal and does no work.
+| /catalogue/*      §14 — the lookup that currently blocks ALL ordering.
+|                   Clinical cannot resolve a generic drug term into a SKU
+|                   without it, so nothing can be prescribed until this is
+|                   reachable and configured on both sides.
+|
+| The throttle is generous because a Clinical outbox draining a backlog after
+| an outage is exactly when we least want to start refusing deliveries.
+*/
+Route::prefix('v1')->middleware(['clinical.service', 'throttle:600,1'])->group(function () {
+    Route::post('/events', [\App\Http\Controllers\API\Clinical\ClinicalEventsController::class, 'store']);
+
+    Route::post('/catalogue/resolve', [\App\Http\Controllers\API\Clinical\CatalogueLookupController::class, 'resolve']);
+    Route::get('/catalogue/items/{code}', [\App\Http\Controllers\API\Clinical\CatalogueLookupController::class, 'show']);
+});
+
+// Clinical Module Integration API (X-Service-Key or X-API-Key)
+Route::middleware('clinical.api')->group(function () {
+    Route::get('/catalogue/items', [\App\Http\Controllers\API\ClinicalIntegrationController::class, 'catalogueItems']);
+    Route::get('/clients/{id}', [\App\Http\Controllers\API\ClinicalIntegrationController::class, 'clientShow']);
+    Route::get('/queues', [\App\Http\Controllers\API\ClinicalIntegrationController::class, 'queues']);
+    Route::post('/events', [\App\Http\Controllers\API\ClinicalIntegrationController::class, 'events']);
+    Route::get('/pharmacy/totes/{ref}', [\App\Http\Controllers\API\ClinicalIntegrationController::class, 'toteShow']);
+
+    // Token introspection (§7 option b): Clinical asks "who is this Sanctum
+    // token" once and caches the answer, instead of trusting an X-User-Id
+    // header. Guarded by the shared module key, not auth:sanctum — the caller
+    // is the module, and the token being asked about belongs to someone else.
+    Route::post('/v1/auth/introspect', [\App\Http\Controllers\API\AuthController::class, 'introspect']);
+});
+
+// HR Module Integration API (X-API-Key or X-HR-API-Key)
+Route::middleware('hr.api')->group(function () {
+    Route::get('/businesses', [\App\Http\Controllers\API\HrIntegrationController::class, 'businesses']);
+    Route::get('/facilities', [\App\Http\Controllers\API\HrIntegrationController::class, 'facilities']);
+    Route::get('/branches', [\App\Http\Controllers\API\HrIntegrationController::class, 'branches']);
+    Route::get('/departments', [\App\Http\Controllers\API\HrIntegrationController::class, 'departments']);
+    Route::get('/titles', [\App\Http\Controllers\API\HrIntegrationController::class, 'titles']);
+    Route::get('/official-titles', [\App\Http\Controllers\API\HrIntegrationController::class, 'officialTitles']);
+    Route::get('/qualifications', [\App\Http\Controllers\API\HrIntegrationController::class, 'qualifications']);
+    Route::get('/staff-categories', [\App\Http\Controllers\API\HrIntegrationController::class, 'staffCategories']);
+    Route::get('/cadres', [\App\Http\Controllers\API\HrIntegrationController::class, 'cadres']);
+    Route::get('/designations', [\App\Http\Controllers\API\HrIntegrationController::class, 'designations']);
+    Route::get('/client-spaces', [\App\Http\Controllers\API\HrIntegrationController::class, 'clientSpaces']);
+    Route::get('/users', [\App\Http\Controllers\API\HrIntegrationController::class, 'users']);
+    Route::get('/users/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'userShow']);
+    Route::get('/employee-identities', [\App\Http\Controllers\API\HrIntegrationController::class, 'employeeIdentities']);
+    Route::get('/employee-identities/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'employeeIdentityShow']);
+});
+
+// Backwards-compatible HR aliases under /api/hr/*
 Route::prefix('hr')->middleware('hr.api')->group(function () {
     Route::get('/staff', [\App\Http\Controllers\API\HrIntegrationController::class, 'staff']);
     Route::get('/staff/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'staffShow']);
     Route::get('/businesses', [\App\Http\Controllers\API\HrIntegrationController::class, 'businesses']);
+    Route::get('/facilities', [\App\Http\Controllers\API\HrIntegrationController::class, 'facilities']);
+    Route::get('/kashtre-entities', [\App\Http\Controllers\API\KashtreEntityController::class, 'index']);
+    Route::get('/kashtre-entities/{uuid}', [\App\Http\Controllers\API\KashtreEntityController::class, 'show']);
     Route::get('/branches', [\App\Http\Controllers\API\HrIntegrationController::class, 'branches']);
     Route::get('/departments', [\App\Http\Controllers\API\HrIntegrationController::class, 'departments']);
+    Route::get('/titles', [\App\Http\Controllers\API\HrIntegrationController::class, 'titles']);
+    Route::get('/official-titles', [\App\Http\Controllers\API\HrIntegrationController::class, 'officialTitles']);
     Route::get('/qualifications', [\App\Http\Controllers\API\HrIntegrationController::class, 'qualifications']);
+    Route::get('/staff-categories', [\App\Http\Controllers\API\HrIntegrationController::class, 'staffCategories']);
+    Route::get('/cadres', [\App\Http\Controllers\API\HrIntegrationController::class, 'cadres']);
+    Route::get('/designations', [\App\Http\Controllers\API\HrIntegrationController::class, 'designations']);
     Route::get('/client-spaces', [\App\Http\Controllers\API\HrIntegrationController::class, 'clientSpaces']);
+    
+    
+    Route::get('/users', [\App\Http\Controllers\API\HrIntegrationController::class, 'users']);
+    Route::get('/users/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'userShow']);
+    Route::get('/employee-identities', [\App\Http\Controllers\API\HrIntegrationController::class, 'employeeIdentities']);
+    Route::get('/employee-identities/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'employeeIdentityShow']);
+});
+
+// RIS Amendment v2.6, Chunk 8 — Imaging Workflow Engine Integration API,
+// for the eventual Clinical Module (same shared-secret idiom as the HR
+// group above). Every endpoint is a thin wrapper over Chunks 1-6's
+// services/models — no logic lives here that doesn't already exist for
+// the web UI.
+Route::prefix('v1/imaging')->middleware('imaging.api')->group(function () {
+    Route::get('/workflow-steps', [\App\Http\Controllers\API\Imaging\WorkflowStepController::class, 'index']);
+    Route::get('/workflow-steps/{workflowStep}/users', [\App\Http\Controllers\API\Imaging\WorkflowStepController::class, 'users']);
+    Route::get('/workflow-steps/{workflowStep}/queue', [\App\Http\Controllers\API\Imaging\WorkflowStepController::class, 'queue']);
+    Route::get('/protocol-workflows', [\App\Http\Controllers\API\Imaging\ProtocolWorkflowController::class, 'index']);
+    Route::post('/studies/{study}/claim', [\App\Http\Controllers\API\Imaging\StudyController::class, 'claim']);
+    Route::post('/studies/{study}/complete-step', [\App\Http\Controllers\API\Imaging\StudyController::class, 'completeStep']);
+    Route::get('/consumption-exceptions', [\App\Http\Controllers\API\Imaging\ConsumptionExceptionController::class, 'index']);
+    Route::post('/consumption-exceptions/{consumptionException}/resolve', [\App\Http\Controllers\API\Imaging\ConsumptionExceptionController::class, 'resolve']);
+
+    // Clinical Module — the real endpoint HttpModuleDispatcher posts to
+    // (DISPATCH_DRIVER=http) instead of the in-process local driver, once
+    // Imaging moves off this box. See ImagingFactsController.
+    Route::post('/facts/{factType}', [\App\Http\Controllers\API\Imaging\ImagingFactsController::class, 'handle']);
+});
+
+// RIS Amendment v2.6, Chunk 8 — Imaging Workflow Engine Integration API,
+// for the eventual Clinical Module (same shared-secret idiom as the HR
+// group above). Every endpoint is a thin wrapper over Chunks 1-6's
+// services/models — no logic lives here that doesn't already exist for
+// the web UI.
+Route::prefix('v1/imaging')->middleware('imaging.api')->group(function () {
+    Route::get('/workflow-steps', [\App\Http\Controllers\API\Imaging\WorkflowStepController::class, 'index']);
+    Route::get('/workflow-steps/{workflowStep}/users', [\App\Http\Controllers\API\Imaging\WorkflowStepController::class, 'users']);
+    Route::get('/workflow-steps/{workflowStep}/queue', [\App\Http\Controllers\API\Imaging\WorkflowStepController::class, 'queue']);
+    Route::get('/protocol-workflows', [\App\Http\Controllers\API\Imaging\ProtocolWorkflowController::class, 'index']);
+    Route::post('/studies/{study}/claim', [\App\Http\Controllers\API\Imaging\StudyController::class, 'claim']);
+    Route::post('/studies/{study}/complete-step', [\App\Http\Controllers\API\Imaging\StudyController::class, 'completeStep']);
+    Route::get('/consumption-exceptions', [\App\Http\Controllers\API\Imaging\ConsumptionExceptionController::class, 'index']);
+    Route::post('/consumption-exceptions/{consumptionException}/resolve', [\App\Http\Controllers\API\Imaging\ConsumptionExceptionController::class, 'resolve']);
+
+    // Clinical Module — the real endpoint HttpModuleDispatcher posts to
+    // (DISPATCH_DRIVER=http) instead of the in-process local driver, once
+    // Imaging moves off this box. See ImagingFactsController.
+    Route::post('/facts/{factType}', [\App\Http\Controllers\API\Imaging\ImagingFactsController::class, 'handle']);
 });
 
 Route::prefix('v1')->group(function () {
     include_once __DIR__ . '/custom/airtel_routes.php';
     include_once __DIR__ . '/custom/mtn_routes.php';
+
+    // Auth (Sanctum token) — same email/password as web login
+    Route::post('/auth/login', [\App\Http\Controllers\API\AuthController::class, 'login']);
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/auth/logout', [\App\Http\Controllers\API\AuthController::class, 'logout']);
+        Route::get('/auth/me', [\App\Http\Controllers\API\AuthController::class, 'me']);
+
+        Route::get('/users', [\App\Http\Controllers\API\UserController::class, 'index']);
+        Route::get('/users/{uuid}', [\App\Http\Controllers\API\UserController::class, 'show']);
+
+        Route::get('/items', [\App\Http\Controllers\API\ItemController::class, 'list']);
+        Route::get('/items/{uuid}', [\App\Http\Controllers\API\ItemController::class, 'show']);
+
+        Route::prefix('unit-engine')->group(function () {
+            Route::get('/units', [\App\Http\Controllers\API\V1\Units\UnitEngineController::class, 'index']);
+            Route::get('/units/{unit}', [\App\Http\Controllers\API\V1\Units\UnitEngineController::class, 'show']);
+            Route::post('/conversions/execute', [\App\Http\Controllers\API\V1\Units\UnitEngineController::class, 'convert']);
+            Route::post('/conversions/preview', [\App\Http\Controllers\API\V1\Units\UnitEngineController::class, 'convert']);
+        });
+
+        Route::prefix('time-engine')->group(function () {
+            Route::get('/now', [\App\Http\Controllers\API\V1\Time\TimeEngineController::class, 'now']);
+            Route::get('/timezones', [\App\Http\Controllers\API\V1\Time\TimeEngineController::class, 'timezones']);
+            Route::post('/resolve', [\App\Http\Controllers\API\V1\Time\TimeEngineController::class, 'resolve']);
+            Route::post('/snapshot', [\App\Http\Controllers\API\V1\Time\TimeEngineController::class, 'snapshot']);
+            Route::post('/business-date', [\App\Http\Controllers\API\V1\Time\TimeEngineController::class, 'businessDate']);
+            Route::post('/day-window', [\App\Http\Controllers\API\V1\Time\TimeEngineController::class, 'dayWindow']);
+            Route::post('/convert/local-to-utc', [\App\Http\Controllers\API\V1\Time\TimeEngineController::class, 'convertLocal']);
+            Route::post('/devices/observe', [\App\Http\Controllers\API\V1\Time\TimeEngineController::class, 'observeDevice']);
+            Route::post('/snapshots/capture', [\App\Http\Controllers\API\V1\Time\TimeEngineController::class, 'captureSnapshot']);
+        });
+
+        Route::get('/businesses', [\App\Http\Controllers\API\BusinessController::class, 'index']);
+        Route::get('/businesses/{uuid}', [\App\Http\Controllers\API\BusinessController::class, 'show']);
+        Route::get('/businesses/{business}/branches', [\App\Http\Controllers\API\BusinessController::class, 'branches']);
+
+        Route::get('/branches', [\App\Http\Controllers\API\BranchController::class, 'index']);
+        Route::get('/branches/{uuid}', [\App\Http\Controllers\API\BranchController::class, 'show']);
+    });
 
     // Invoice API routes for third-party vendors
     Route::get('/invoices/insurance-company/{insuranceCompanyId}', [\App\Http\Controllers\API\InvoiceController::class, 'getInvoicesForInsuranceCompany']);

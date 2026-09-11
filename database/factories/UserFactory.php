@@ -29,7 +29,9 @@ class UserFactory extends Factory
             'two_factor_recovery_codes' => null,
             'remember_token' => Str::random(10),
             'profile_photo_path' => null,
-            'current_team_id' => null,
+            'status' => 'active',
+            'total_balance' => 0,
+            'current_balance' => 0,
         ];
     }
 

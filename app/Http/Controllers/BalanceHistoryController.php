@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BalanceHistory;
 use App\Models\Client;
+use App\Services\ClientBalanceStatementPresenter;
 use App\Support\YoDepositGate;
 use App\Support\YoExternalReference;
 use Illuminate\Http\Request;
@@ -67,7 +68,10 @@ class BalanceHistoryController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
-        return view('balance-statement.show', compact('balanceHistories', 'client'));
+        $statementBalances = ClientBalanceStatementPresenter::summaryBalances($client);
+        $balanceHistories = ClientBalanceStatementPresenter::enrichHistories($balanceHistories, $client);
+
+        return view('balance-statement.show', compact('balanceHistories', 'client', 'statementBalances'));
     }
 
     /**

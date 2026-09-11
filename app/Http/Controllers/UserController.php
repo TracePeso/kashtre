@@ -23,7 +23,7 @@ class UserController extends Controller
     protected function normalizeNullableUserEnrollment(Request $request): void
     {
         foreach ([
-            'branch_id', 'qualification_id', 'department_id', 'title_id',
+            'branch_id', 'qualification_id', 'department_id', 'title_id', 'staff_category_id',
             'phone', 'nin', 'gender', 'birth_date', 'marital_status',
             'surname', 'first_name', 'middle_name', 'status',
         ] as $key) {
@@ -114,10 +114,12 @@ class UserController extends Controller
             'qualification_id' => 'nullable|exists:qualifications,id',
             'department_id' => 'nullable|exists:departments,id',
             'title_id' => 'nullable|exists:titles,id',
+            'staff_category_id' => 'nullable|exists:staff_categories,id',
             'service_points' => 'nullable|array',
             'service_points.*' => 'exists:service_points,id',
             'allowed_branches' => 'nullable|array',
             'permissions_menu' => 'required|array|min:1',
+            'hr_role' => 'nullable|in:staff,supervisor,roster_manager,hr_manager,admin,super_admin',
             // Contractor profile fields (conditionally required)
             'bank_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
             'account_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
@@ -162,9 +164,11 @@ class UserController extends Controller
                 'qualification_id' => $validated['qualification_id'] ?? null,
                 'department_id' => $validated['department_id'] ?? null,
                 'title_id' => $validated['title_id'] ?? null,
+                'staff_category_id' => $validated['staff_category_id'] ?? null,
                 'service_points' => $validated['service_points'] ?? [],
                 'allowed_branches' => $validated['allowed_branches'] ?? [],
                 'permissions' => $validated['permissions_menu'],
+                'hr_role' => $validated['hr_role'] ?? null,
                 'password' => '',
                 // Keep balances non-null for all users (DB constraint on some environments).
                 'total_balance' => 0.00,
@@ -280,11 +284,13 @@ class UserController extends Controller
             'qualification_id' => 'nullable|exists:qualifications,id',
             'department_id' => 'nullable|exists:departments,id',
             'title_id' => 'nullable|exists:titles,id',
+            'staff_category_id' => 'nullable|exists:staff_categories,id',
             'service_points' => 'nullable|array',
             'service_points.*' => 'exists:service_points,id',
             'allowed_branches' => 'nullable|array',
             'allowed_branches.*' => 'exists:branches,id',
             'permissions_menu' => 'required|array|min:1',
+            'hr_role' => 'nullable|in:staff,supervisor,roster_manager,hr_manager,admin,super_admin',
             // Contractor profile fields (conditionally required)
             'bank_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
             'account_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
@@ -322,9 +328,11 @@ class UserController extends Controller
                 'qualification_id' => $validated['qualification_id'] ?? null,
                 'department_id' => $validated['department_id'] ?? null,
                 'title_id' => $validated['title_id'] ?? null,
+                'staff_category_id' => $validated['staff_category_id'] ?? null,
                 'service_points' => $validated['service_points'] ?? [],
                 'allowed_branches' => $validated['allowed_branches'] ?? [],
                 'permissions' => $validated['permissions_menu'],
+                'hr_role' => $validated['hr_role'] ?? $user->hr_role,
             ]);
             // Contractor profile logic
             if (in_array('Contractor', $validated['permissions_menu'])) {

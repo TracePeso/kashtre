@@ -40,6 +40,18 @@ class Items extends Component implements HasForms, HasTable
                 TextColumn::make('name')
                     ->label('Name')
                     ->searchable(),
+                TextColumn::make('generic_name')
+                    ->label('Generic Name')
+                    ->searchable()
+                    ->toggleable(),
+                TextColumn::make('strength')
+                    ->label('Strength')
+                    ->searchable()
+                    ->toggleable(),
+                TextColumn::make('category')
+                    ->label('Category')
+                    ->searchable()
+                    ->toggleable(),
                 TextColumn::make('code')
                     ->searchable(),
                 TextColumn::make('type'),
@@ -59,9 +71,15 @@ class Items extends Component implements HasForms, HasTable
                     ->label('Unit of Measure')
                     ->sortable(),
                 TextColumn::make('default_price')
-                    ->label('Default Price')
+                    ->label('Sale price')
                     ->money('UGX')
                     ->sortable(),
+                TextColumn::make('purchase_price')
+                    ->label('Purchase price')
+                    ->money('UGX')
+                    ->sortable()
+                    ->placeholder('—')
+                    ->toggleable(),
                 TextColumn::make('hospital_share')
                     ->label('Company/Entity')
                     ->formatStateUsing(fn (string $state): string => $state . '%')

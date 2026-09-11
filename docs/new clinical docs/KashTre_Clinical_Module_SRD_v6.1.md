@@ -1,0 +1,9446 @@
+de KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+# **KASHTRE** 
+
+## **CLINICAL MODULE** 
+
+**SYSTEMS REQUIREMENTS DOCUMENT v6.1 CONSOLIDATED DRAFT | PHASES 1 TO 10** 
+
+**COMPLETE CLINICAL FUNCTIONAL REQUIREMENTS BASELINE** 
+
+Module Key: CLINICAL_ORCHESTRATOR 
+
+Production Baseline: Laravel 10.48.x / PHP 8.3 (Composer requirement ^8.1) / MySQL 8+ / Vue 3 
+
+Document Classification: Controlled Detailed Functional Draft 
+
+Approval Status: Draft for Review 
+
+Production Status: Not Approved for Production 
+
+Issue Date: 28 August 2026 
+
+**This consolidated draft brings Phases 1 to 10 into one controlled Clinical Module specification. Phase 1 establishes the governing rules that every later Clinical workflow must obey. It does not authorize production implementation until the complete v6.1 SRD, companion Laravel EDD, traceability and acceptance testing are approved.** 
+
+This consolidated Systems Requirements Document defines the complete functional requirements for the KashTre Clinical Module across the patient-care lifecycle, from patient and encounter context, clinical documentation, diagnosis and care planning through ordering, medication administration, clinical observations, diagnostic-result review, transitions of care and production assurance. The Clinical Module serves as the clinical orchestration layer of the KashTre platform and operates through controlled integration with the Main Module, Inventory, Pharmacy, LIMS, Imaging, Theatre, Surgery and other authorized services. Particular emphasis is placed on patient safety, contextual authorization, clinical accountability, point-of-care usability, immutable provenance and the accurate translation of clinical activities into downstream operational events without requiring users to duplicate data entry or make inventory, coverage or financial decisions outside their clinical responsibilities. 
+
+Point-of-care governing principle: clinical users record or confirm what physically occurred during patient care. Clinical supplies the patient, encounter and clinical-event context; Inventory determines and records the physical stock consequence; and the Main Module determines any applicable Approved Pool, coverage or financial consequence. A clinical user shall not be required to duplicate information already captured during a medication administration, procedure or other clinical activity. 
+
+Controlled Draft | Not Approved for Production | Page 1 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **Document Control** 
+
+|**Field**|**Phase 1 Rule**|
+|---|---|
+|**Purpose**|Define the Clinical Module foundation, ownership boundaries,<br>authorization model and shared-service contracts.|
+|**Authority**|Applies to every later Clinical v6.1 phase and supersedes<br>conflicting local-unit, blanket-role and unrestricted-access<br>assumptions.|
+|**Baseline**|Clinical SRD v6.0 and addendum, reviewed and corrected<br>rather than copied blindly.|
+|**Companion contracts**|Main Module Shared Unit Engine Contract; Shared AI Services<br>Gateway SRD; Main Module identity, permissions and client-<br>space services.|
+|**Implementation status**|Functional draft only. Laravel engineering design follows after<br>functional approval.|
+|**Change control**|Changes to a Phase 1 governing rule require recorded impact<br>analysis across all later phases.|
+
+
+
+###### **Revision Intent** 
+
+- Retain valid v6.0 concepts including Laravel-native architecture, dynamic care assignment, CDEs, task projections, major transitions and shared AI integration. 
+
+- Correct the obsolete assumption that Clinical owns a writable unit master or conversion registry. 
+
+- Replace role-name checks with atomic permissions, configurable permission bundles and contextual authorization. 
+
+- Require active client-space assignment for ordinary client-space work. 
+
+- Define safe exceptions for consultation, cross-cover, remote services, governance and emergency access. 
+
+#### **1. Purpose, Scope and Outcomes** 
+
+- **CLN-FND-001** The Clinical Module shall orchestrate clinical documentation, decisions, observations, orders, medication 
+
+   - administration, results follow-up, care plans, clinical tasks and major clinical transitions across outpatient, inpatient and postdischarge workflows. 
+
+- **CLN-FND-002** Phase 1 shall govern every Clinical function, API, page, background task, integration and report, whether implemented now or in a later release. 
+
+- **CLN-FND-003** The Clinical Module shall not duplicate authoritative Main Module registries for users, official titles, facilities, client spaces, permissions or canonical units. 
+
+- **CLN-FND-004** Every later SRD feature shall define its permission, scope, client-space requirement, patient relationship, recordstate conditions, exceptions, audit events and safe-failure behavior. 
+
+- **CLN-FND-005** Routine bedside care shall remain responsive and task-driven; configurable process engines shall govern major transitions and other explicitly configured high-risk workflows, not every ordinary clinical action. 
+
+**Governing outcome: no developer should decide access, ownership or integration behavior by inference.** 
+
+#### **2. Definitions and Concept Separation** 
+
+|**Concept**|**Definition**|**Must Not Be Confused With**|
+|---|---|---|
+|**Tenant**|Top-level isolated customer or<br>governance domain.|Facility or client space|
+|**Entity**|Configured legal or operational<br>organization within a tenant.|Department|
+|**Facility**|Physical or virtual service-delivery site.|Tenant|
+|**Client space**|Operational work destination such as<br>ward, clinic, room, theatre or virtual<br>clinic.|Organizational node|
+|**Patient space**|The patient’s effective location or service<br>context within an encounter.|User assignment|
+
+
+
+Controlled Draft | Not Approved for Production | Page 2 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+|**Organizational assignment**|The user’s HR reporting and<br>administrative home.|Clinical client-space activation|
+|---|---|---|
+|**Client-space assignment**|Effective authorization context<br>permitting work in a client space.|Professional privilege|
+|**Official title**|Main Module employment title such as<br>Registered Nurse or Medical Officer.|Atomic permission|
+|**Permission**|A stable code allowing one system<br>action in principle.|Scope or patient relationship|
+|**Permission bundle**|Configurable group of atomic<br>permissions.|Hardcoded role|
+|**Clinical privilege**|Additional competence or legal authority<br>for a high-risk action.|Ordinary title bundle|
+|**Care relationship**|Active link between user/team/role and<br>patient/encounter.|Facility membership|
+|**Break glass**|Audited, time-limited emergency access<br>outside ordinary context.|Administrator access|
+|**Base unit**|Canonical Clinical normalization unit<br>selected from Main Module Unit Engine.|Preferred display unit|
+
+
+
+#### **3. Architectural and Source-of-Truth Boundaries** 
+
+###### **3.1 Main Module Authority** 
+
+- **CLN-OWN-001** The Main Module shall remain authoritative for user identity, authentication status, official titles, designations, cadres, qualifications, employment state, facilities, client spaces, roles, permissions, permission bundles and permission assignments. 
+
+- **CLN-OWN-002** The Main Module shall expose stable public identifiers and supported service contracts. Clinical shall not treat copied labels as authoritative identity. 
+
+- **CLN-OWN-003** The Main Module shall own the canonical Shared Unit Management, Composition and Conversion Engine. 
+
+- **CLN-OWN-004** The Main Module shall remain authoritative for inventory master items and the identifiers required by Clinical ordering and medication translation. 
+
+###### **3.2 Clinical Module Authority** 
+
+- **CLN-OWN-010** Clinical shall own patient-care relationships, clinical content, clinical record states, clinical workflow authority, CDE policy, clinical unit-usage policy, clinical tasks, warnings, overrides and clinical audit context. 
+
+- **CLN-OWN-011** Clinical shall publish the catalogue of atomic clinical permission codes required by its workflows; the Main Module shall register and assign those codes. 
+
+- **CLN-OWN-012** Clinical shall make the final contextual authorization decision for Clinical resources after consuming Main Module identity and entitlement data. 
+
+###### **3.2.1 Observation-First Clinical Documentation** 
+
+Observation-first governing principle: applicable forms and clinical context define what observations are required and how they are rendered; the system converts those requirements into due work; clinical users record each observation once; and the system automatically renders every applicable form, flowsheet, chart, score, report and summary from the authoritative observations. 
+
+**CLN-OWN-013** Clinical shall maintain atomic Observations as the authoritative patient-specific clinical facts used by observation worklists, forms, flowsheets, charts, scores, decision support, reports and exports. 
+
+**CLN-OWN-014** A Clinical Form Definition shall ordinarily define observation requirements and rendering rules and shall not become a competing source of observations already stored in the Clinical record. 
+
+**CLN-OWN-015** A clinical user shall record each observation once. Every authorized consuming view shall reuse that Observation where patient, encounter, CDE, occurrence time, status, quality and context are applicable. 
+
+**CLN-OWN-016** Clinical shall derive observation work from applicable client-space defaults, active forms, orders, protocols, care plans, medication-monitoring requirements and authorized patient-specific instructions. 
+
+Controlled Draft | Not Approved for Production | Page 3 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-OWN-017** The Clinical Form Engine shall be a requirements, composition and rendering capability and shall not operate as a parallel observation database. 
+
+###### **3.3 HR Module Relationship** 
+
+**CLN-OWN-020** Clinical shall consume effective employment, organizational, credential and client-space assignment information supplied by the authoritative platform and HR capabilities. 
+
+**CLN-OWN-021** An organizational assignment shall not by itself authorize access to a patient chart or activate work in a client space. 
+
+###### **3.4 Shared AI Gateway** 
+
+**CLN-OWN-030** Clinical shall consume AI exclusively through the Shared AI Gateway and shall not embed independent provider credentials or direct provider integrations. 
+
+**CLN-OWN-031** AI output shall remain draft, suggested or advisory until an authenticated authorized user reviews and accepts it. 
+
+###### **3.5 LIMS, Imaging, Inventory, Theatre and Surgery** 
+
+**CLN-OWN-040** Clinical shall create and track clinical intent and follow-up but shall not silently assume ownership of another 
+
+module’s fulfilment, result authorization, stock truth, image archive or theatre administration. 
+
+**CLN-OWN-041** Every cross-module object shall preserve source module, source public ID, version, status, timestamps and correlation ID. 
+
+###### **3.6 Point-of-Care Consumption Ownership** 
+
+**CLN-OWN-042** Clinical shall own the patient, encounter, clinical activity and source-event context used to initiate a patient-linked Consumption Session but shall not become the authoritative source of physical stock balances. 
+
+**CLN-OWN-043** Inventory shall remain authoritative for item resolution, packaging, batch or lot, expiry, stock location, physical quantity, stock depletion, wastage classification and inventory reconciliation. 
+
+**CLN-OWN-044** The Main Module shall remain authoritative for prior-payment verification, Approved Pool or entitlement evaluation, pricing, coverage, responsible-account determination and financial posting. 
+
+**CLN-OWN-045** The clinical user shall record or confirm physical usage and shall not be required to determine whether an item is prepaid, covered, included, billable or financially attributable. 
+
+#### **4. Tenancy, Facility and Client-Space Context** 
+
+**CLN-CTX-001** Every Clinical request and persisted Clinical record shall be tenant-scoped. 
+
+**CLN-CTX-002** Facility and client-space context shall be explicit where the workflow is location-dependent. 
+
+**CLN-CTX-003** A user shall not select a client space that the authoritative assignment service does not return as currently effective, except through an approved exceptional pathway. 
+
+**CLN-CTX-004** The patient’s effective client space shall be derived from the active encounter and patient-movement record, not from a stale page selection. 
+
+**CLN-CTX-005** Clinical shall reject cross-tenant identifiers even when an internal numeric identifier happens to exist. 
+
+**CLN-CTX-006** A facility-level permission shall not automatically become tenant-wide. 
+
+- **CLN-CTX-007** Client-space changes shall be effective-dated and shall not retrospectively rewrite who was authorized at the time of a historical action. 
+
+###### **4.1 Assignment Types** 
+
+|**Assignment Type**|**Ordinary Use**|**Activation Basis**|
+|---|---|---|
+|**PERMANENT**|Routine home work location|Effective-dated approved assignment|
+|**ROSTER_DRIVEN**|Scheduled work in one or more spaces|Published roster and active shift window|
+|**TEMPORARY**|Time-limited transfer or support|Approved start and end|
+|**ROTATIONAL**|Planned rotation|Rotation schedule|
+|**RELIEF**|Configured relief pool deployment|Accepted deployment|
+|**CROSS_COVER**|On-call or temporary cover|Cover assignment and time window|
+
+
+
+Controlled Draft | Not Approved for Production | Page 4 
+
+|||KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1|
+|---|---|---|
+|**REMOTE_SERVICE**|Authorized virtual clinical work|Remote-service assignment and patient<br>link|
+|**EMERGENCY**|Crisis deployment|Emergency assignment or break glass|
+
+
+
+**CLN-CTX-010** Each assignment shall record user, tenant, facility, client space, assignment type, permitted operational function, effective start, effective end, approving authority, source reference, status and audit metadata. 
+
+**CLN-CTX-011** Assignment expiry shall remove ordinary authority without deleting historical evidence. 
+
+#### **5. Clinical Authorization Model** 
+
+###### **5.1 Governing Formula** 
+
+**Effective Clinical Authority = Active authenticated user + atomic permission + qualifying scope + active client-space assignment where required + patient/encounter relationship where required + applicable privilege/credential + permitted record state + consent/confidentiality clearance - explicit restrictions.** 
+
+**CLN-AUTH-001** The system shall deny by default. 
+
+**CLN-AUTH-002** Authentication shall not be treated as authorization. 
+
+**CLN-AUTH-003** Possession of a permission shall be necessary but not sufficient where contextual checks apply. 
+
+**CLN-AUTH-004** Authorization shall be enforced server-side for web, mobile, API, queue and integration processing. 
+
+**CLN-AUTH-005** Hiding a button shall not substitute for server authorization. 
+
+**CLN-AUTH-006** If permission or context services are unavailable and no approved resilient cache can prove authority, the system shall fail closed for write and restricted-read actions. 
+
+**CLN-AUTH-007** Every authorization decision shall use stable identifiers rather than display labels. 
+
+**CLN-AUTH-008** Authorization policy versions shall be auditable and historically resolvable. 
+
+###### **5.2 Decision Order** 
+
+|**Order**|**Decision**|
+|---|---|
+|**1**|Authenticate actor and client application.|
+|**2**|Resolve tenant, entity and facility.|
+|**3**|Resolve requested atomic permission.|
+|**4**|Confirm Main Module entitlement and assignment<br>effectiveness.|
+|**5**|Resolve patient, encounter and effective patient space.|
+|**6**|Confirm client-space scope or a permitted exception.|
+|**7**|Confirm care relationship where required.|
+|**8**|Confirm credentials and additional privileges.|
+|**9**|Confirm resource state and workflow authority.|
+|**10**|Apply consent, confidentiality and security-label restrictions.|
+|**11**|Apply explicit denials and separation-of-duty rules.|
+|**12**|If denied, determine whether a defined break-glass pathway is<br>eligible.|
+|**13**|Return allow or structured deny reason.|
+|**14**|Audit the decision when required.|
+
+
+
+#### **6. Atomic Permissions, Bundles and Official Titles** 
+
+###### **6.1 Atomic Permission Rules** 
+
+**CLN-PERM-001** Each permission shall grant one clearly named action against one resource family. 
+
+**CLN-PERM-002** Permissions shall use stable namespaced codes beginning with clinical. 
+
+**CLN-PERM-003** Read, create, update, sign, approve, cancel, correct, override, export and administer shall be separate where the risk differs. 
+
+Controlled Draft | Not Approved for Production | Page 5 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-PERM-004** Clinical shall publish permission metadata including description, risk tier, default scope, credential requirement, break-glass eligibility and audit level. 
+
+**CLN-PERM-005** Retired permission codes shall remain resolvable for historical audit but shall not be newly assigned. 
+
+###### **6.2 Permission Bundles** 
+
+**CLN-PERM-010** A permission bundle shall be a configurable reusable collection of atomic permissions. 
+
+**CLN-PERM-011** A bundle shall be versioned, effective-dated, approved and auditable. 
+
+**CLN-PERM-012** Changing a bundle shall not silently rewrite the historical authority used for prior actions. 
+
+**CLN-PERM-013** A bundle shall not contain an unrestricted wildcard permission. 
+
+###### **6.3 Official Title Mapping** 
+
+**CLN-PERM-020** An official title may be mapped to one or more baseline Clinical permission bundles. 
+
+**CLN-PERM-021** Title-to-bundle mappings shall be configurable by authorized administrators and shall not be hardcoded in Laravel source code. 
+
+**CLN-PERM-022** A title-derived bundle shall describe ordinary professional activity but shall not provide unrestricted patient access. 
+
+**CLN-PERM-023** A title change, suspension or employment termination shall trigger recalculation of effective Clinical authority. **CLN-PERM-024** Higher-seniority wording in a title shall not be interpreted algorithmically as broader authority. 
+
+###### **6.4 Illustrative Baseline Bundles** 
+
+The following are suggested pre-seeded templates. They are not immutable legal statements and require institutional approval. 
+
+|**Template**|**Illustrative Ordinary Actions**|**Excluded Without Additional Authority**|
+|---|---|---|
+|**NURSING_GENERAL**|View assigned charts; record<br>observations; nursing assessments and<br>notes; care-plan actions; administer<br>permitted medication; handover.|Prescribe; authorize discharge;<br>independently alter medical orders;<br>high-risk overrides.|
+|**MEDICAL_OFFICER_GENERAL**|View assigned charts; history and<br>examination; progress notes; diagnoses;<br>routine orders; result review; discharge<br>preparation.|Restricted prescribing; specialist<br>procedures; final actions reserved to<br>configured senior authority.|
+|**CONSULTANT_GENERAL**|Consultant documentation; configured<br>order and approval actions; care-plan<br>oversight; configured discharge<br>authority.|Actions outside specialty, facility,<br>relationship or credential scope.|
+|**ALLIED_HEALTH_GENERAL**|View assigned chart sections;<br>assessments; profession-specific plans<br>and notes; task completion.|Medication prescribing and unrelated<br>clinical sections.|
+|**WARD_CLERK_LIMITED**|Operational lists, movement preparation<br>and configured administrative fields.|Clinical note content, observation entry,<br>orders or medication administration.|
+|**CLINICAL_ADMIN_CONFIGURATION**|Manage approved Clinical settings and<br>dictionaries.|Routine chart access unless separately<br>entitled.|
+
+
+
+###### **6.5 Initial Permission Families** 
+
+- clinical.patient.* 
+
+- clinical.encounter.* 
+
+- clinical.note.* 
+
+- clinical.problem.* 
+
+- clinical.diagnosis.* 
+
+- clinical.observation.* 
+
+- clinical.order.* 
+
+- clinical.medication.* 
+
+- clinical.result.* 
+
+Controlled Draft | Not Approved for Production | Page 6 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- clinical.careplan.* 
+
+- clinical.nursing.* 
+
+- clinical.transition.* 
+
+- clinical.task.* 
+
+- clinical.settings.* 
+
+- clinical.report.* 
+
+- clinical.audit.* 
+
+- clinical.break_glass.* 
+
+**CLN-PERM-030** Later phases shall expand every family into an action-level catalogue and shall not rely on the wildcard forms shown for grouping. 
+
+#### **7. Scope Model** 
+
+|**Scope**|**Meaning**|
+|---|---|
+|**SELF**|Only the user’s own non-patient records where applicable.|
+|**ASSIGNED_PATIENTS**|Patients explicitly assigned to the user.|
+|**CARE_TEAM**|Patients linked to an active care team containing the user.|
+|**CLIENT_SPACE**|Patients in one or more assigned client spaces.|
+|**DEPARTMENT**|Configured departmental oversight, not automatic chart-wide<br>write access.|
+|**FACILITY**|Configured facility oversight.|
+|**ENTITY**|Configured entity oversight.|
+|**TENANT**|Exceptional tenant-wide authority.|
+|**CROSS_ENTITY_GOVERNANCE**|Read or oversight functions explicitly approved across entities.|
+|**EMERGENCY_ONLY**|Authority usable only through emergency controls.|
+
+
+
+**CLN-SCOPE-001** The effective scope shall be the narrowest intersection of permission assignment, client-space assignment, patient relationship and resource restrictions. 
+
+**CLN-SCOPE-002** A broader organizational role shall not automatically override a narrower clinical scope. 
+
+**CLN-SCOPE-003** Write authority shall be narrower than or equal to read authority unless an explicitly designed workflow requires otherwise. 
+
+**CLN-SCOPE-004** Exports and bulk access shall require separate permissions and stronger scope evaluation. 
+
+#### **8. Patient and Encounter Relationships** 
+
+**CLN-REL-001** Clinical shall support individual, role-based, team-based and hybrid care assignments. 
+
+- **CLN-REL-002** A client-space assignment may establish ordinary eligibility to work in a location, while a patient relationship may further narrow which patients the user may access. 
+
+- **CLN-REL-003** Care assignments shall record patient, encounter, relationship type, actor or team, responsibility, effective time, source, status and handover information. 
+
+- **CLN-REL-004** The system shall support primary clinician, primary nurse, assigned nurse, covering clinician, consultant, alliedhealth provider, care-team member and accepted referral relationships. 
+
+**CLN-REL-005** Relationship expiry or handover shall not delete historical actions. 
+
+**CLN-REL-006** Opening a chart shall not itself create a care relationship. 
+
+**CLN-REL-007** A user shall not self-assign to a patient unless an authorized workflow allows it and records the reason. 
+
+###### **8.1 Ordinary Ward Example** 
+
+|**Condition**|**Required**|
+|---|---|
+|**User state**|Active and authenticated|
+|**Baseline authority**|clinical.observation.create|
+|**Title source**|Registered Nurse mapped to approved baseline bundle|
+|**User location**|Active assignment to Children’s Ward|
+
+
+
+Controlled Draft | Not Approved for Production | Page 7 
+
+||KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1|
+|---|---|
+|**Patient context**|Active encounter in Children’s Ward|
+|**Relationship**|Assigned nurse, ward care team, or policy-approved ward<br>coverage|
+|**Record state**|Encounter open and observation entry permitted|
+|**Outcome**|Observation entry allowed and audited|
+
+
+
+#### **9. Credentials, Privileges and Restrictions** 
+
+**CLN-PRIV-001** High-risk authority shall be represented separately from ordinary title-derived permissions. 
+
+**CLN-PRIV-002** A permission may require an active credential, competency, completed training, professional licence, specialty privilege or local authorization. 
+
+**CLN-PRIV-003** Credentials and privileges shall be effective-dated and shall support suspension and expiry. 
+
+**CLN-PRIV-004** Clinical shall verify the required privilege at action time, not only at login. 
+
+**CLN-PRIV-005** Explicit restrictions shall override grants unless a formally configured emergency rule applies. 
+
+- Controlled-medicine prescribing 
+
+- Chemotherapy verification or administration 
+
+- Blood-product authorization 
+
+- Independent procedure performance 
+
+- Sedation 
+
+- High-alert medication override 
+
+- Death validation 
+
+- Specialist result authorization 
+
+- Clinical record correction approval 
+
+#### **10. Delegation, Acting Roles and Cross-Cover** 
+
+**CLN-DEL-001** Delegation shall be explicit, time-limited, scoped and auditable. 
+
+**CLN-DEL-002** A delegator shall not delegate authority they do not possess. 
+
+**CLN-DEL-003** Delegated authority shall not outlive the delegator’s own authority or the stated expiry time. 
+
+- **CLN-DEL-004** Delegation shall identify delegator, delegate, permissions or bundle, scope, patient/client-space constraints, start, end, reason and approval where required. 
+
+- **CLN-DEL-005** Acting appointments shall consume authoritative Main Module or HR records and shall not be inferred from user activity. 
+
+**CLN-DEL-006** Cross-cover shall identify the covered service or client space and active time window. 
+
+**CLN-DEL-007** The UI shall make temporary authority visible to the user without implying permanent role change. 
+
+#### **11. Break-Glass Emergency Access** 
+
+**CLN-BTG-001** Break glass shall be available only for configured emergency categories and eligible permission families. 
+
+**CLN-BTG-002** The system shall capture reason code, free-text justification where required, patient or scope, duration, user, device, facility, client space and correlation ID. 
+
+- **CLN-BTG-003** Reauthentication shall be required before activation unless a documented emergency-mode policy states otherwise. 
+
+**CLN-BTG-004** Emergency access shall be time-limited and shall expire automatically. 
+
+**CLN-BTG-005** Emergency access shall grant the minimum configured actions required for the emergency. 
+
+**CLN-BTG-006** Every resource viewed or modified under break glass shall be linked to the emergency-access event. 
+
+**CLN-BTG-007** Configured reviewers shall receive notification and an after-action report. 
+
+**CLN-BTG-008** Break glass shall not permit silent deletion, audit suppression or retrospective alteration of the reason. 
+
+**CLN-BTG-009** Use of break glass shall not create a permanent care relationship or client-space assignment. 
+
+Controlled Draft | Not Approved for Production | Page 8 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+###### **11.1 Suggested Pre-Seeded Reasons** 
+
+- Emergency resuscitation or crash call 
+
+- On-call cross-cover when ordinary assignment is unavailable 
+
+- Urgent specialist consultation 
+
+- Cross-department surge or crisis response 
+
+- Primary responsible clinician unavailable 
+
+- Preoperative or postoperative stabilization 
+
+#### **12. Consent, Confidentiality and Sensitive Records** 
+
+**CLN-CONS-001** Clinical shall support consent and confidentiality directives that narrow access, disclosure or permitted purpose. 
+
+- **CLN-CONS-002** The system shall support sensitivity labels at chart, encounter, document, section or data-element level where configured. 
+
+- **CLN-CONS-003** Ordinary title, permission and client-space assignment shall not automatically override a sensitive-record restriction. 
+
+- **CLN-CONS-004** The interface shall avoid revealing restricted content through counts, snippets, alerts, search results, notifications or exports. 
+
+- **CLN-CONS-005** Access to restricted content shall require the configured additional permission, relationship, consent basis or emergency pathway. 
+
+**CLN-CONS-006** Consent changes shall be effective-dated and auditable without rewriting prior lawful access decisions. 
+
+- **CLN-CONS-007** The SRD shall not assume one jurisdiction’s consent law; deployers shall configure rules under approved organizational and legal policy. 
+
+#### **13. Shared Unit Engine Clinical Contract** 
+
+- **CLN-UOM-001** Clinical shall not create a writable clinical_uom_master or clinical_uom_conversions_master as competing sources of truth. 
+
+- **CLN-UOM-002** Clinical shall reference canonical Main Module unit public IDs for CDEs, medication fields, observations, charts and imported results. 
+
+- **CLN-UOM-003** Clinical may define effective-dated domain policies specifying base unit, permitted input units, permitted display units, preferred unit, precision, reference-range unit and physiological-limit unit for each Clinical concept. 
+
+- **CLN-UOM-004** Every quantitative entry shall preserve original value and original unit, normalized value and base unit, conversion rule ID, conversion-rule version and rounding policy where conversion occurs. 
+
+- **CLN-UOM-005** Molar-to-mass conversions shall require analyte context; product and package conversions shall require item or formulation context. 
+
+- **CLN-UOM-006** If a required conversion cannot be verified, Clinical shall block commit or stage the inbound result as an exception. It shall not silently preserve the number under a different unit. 
+
+- **CLN-UOM-007** Reference ranges, critical limits and physiological limits shall be evaluated against the verified normalized value, while the user interface may display a permitted alternative unit. 
+
+**CLN-UOM-008** Clinical shall provide high-visibility input-unit indicators and explicit unit switching at the point of capture. 
+
+**CLN-UOM-009** Historical observations shall remain reproducible after a unit or rule is deprecated. 
+
+###### **13.1 Glucose Policy Example** 
+
+|**Policy Field**|**Example**|
+|---|---|
+|**Clinical concept**|Blood glucose|
+|**Base unit**|mmol/L canonical Main Module unit ID|
+|**Permitted input**|mmol/L; mg/dL|
+|**Permitted display**|mmol/L; mg/dL|
+|**Required context**|Glucose analyte ID|
+|**Persist**|Original value/unit plus normalized value/base unit and rule<br>provenance|
+
+
+
+Controlled Draft | Not Approved for Production | Page 9 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**<mark>Failure</mark>** 
+
+<mark>Block manual save or stage inbound result; never guess</mark> 
+
+#### **14. Shared Time Engine and Clinical Temporal Provenance** 
+
+###### **14.1 Purpose and Governing Outcome** 
+
+This section defines how the Clinical Module shall acquire, interpret, preserve, display, exchange and audit dates and times across tenants, entities, facilities, client spaces, users, devices and external systems. 
+
+The Clinical Module operates as a formal consumer of the Main Module Shared Time Engine. The Main Module shall own authoritative timezone configuration and shared time-resolution services. Clinical shall own the immutable temporal provenance of Clinical records and events. 
+
+The shared platform architecture requires historical events to be persisted as unambiguous UTC timestamps, uses IANA timezone identifiers instead of hardcoded offsets, separates user presentation preferences from business time and prohibits dependence on application-server or database-server local time. [KashTre_SR...Time_Zones | PDF] 
+
+**Governing outcome:** An authorized reviewer shall be able to determine: 
+
+1. When a clinical or physical event actually occurred. 
+
+2. When the event was received by KashTre. 
+
+3. When the record was authored or entered. 
+
+4. When the record was durably committed. 
+
+5. When it was verified, signed, corrected or reconciled. 
+
+6. Which timezone and UTC offset applied to the event. 
+
+7. How that timezone was resolved. 
+
+8. Whether the time was exact, estimated, adjusted, retrospective, device-reported or otherwise uncertain. 
+
+9. Whether the event arrived late or out of sequence. 
+
+10. Whether the displayed time has been converted for the current viewer. 
+
+No developer shall infer these distinctions from a generic created_at or updated_at field. 
+
+###### **14.2 Companion Architecture and Authority** 
+
+The requirements in this section shall be read together with: 
+
+- <u>KashTre_SRD_Multi_Tenant_Time_Zones.pdf</u> 
+
+- <u>KashTre_EDD_Multi_Tenant_Time_Zones.pdf</u> 
+
+- The Main Module identity, tenant, entity, facility and client-space contracts 
+
+- The Clinical Module Shared Unit Engine contract 
+
+- Clinical Phase 2 patient, encounter and workspace requirements 
+
+- Clinical Phase 6 medication administration requirements 
+
+- Clinical Phase 7 observation and device-integration requirements 
+
+- Clinical Phase 9 transition and continuity requirements 
+
+- Clinical Phase 10 interoperability and production-assurance requirements 
+
+The shared timezone EDD establishes a centralized TimeEngineService, injectable clock abstraction, tenant and branch timezone resolution, UTC and local-time storage separation, offline drift estimation and time-confidence metadata. 
+
+<u>[KashTre_ED...Time_Zones | PDF]</u> 
+
+**CLN-TIME-001** The Clinical Module shall be registered as a formal consumer of the Main Module Shared Time Engine. 
+
+**CLN-TIME-002** The Main Module Shared Time Engine shall remain authoritative for: 
+
+- Trusted UTC acquisition 
+
+- Valid IANA timezone identifiers 
+
+- Tenant default timezone 
+
+- Entity or branch timezone 
+
+Controlled Draft | Not Approved for Production | Page 10 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Facility timezone 
+
+- Client-space timezone where supported 
+
+- User presentation-timezone preferences 
+
+- Timezone inheritance and resolution 
+
+- Shared timezone conversion rules 
+
+- Timezone configuration versions and effective periods 
+
+- Shared infrastructure clock policy 
+
+- • Timezone data updates and validation 
+
+**CLN-TIME-003** Clinical shall not create or maintain a competing writable timezone, daylight-saving, UTC-offset or timezoneconversion master. 
+
+**CLN-TIME-004** Clinical shall remain authoritative for the temporal meaning and provenance of Clinical records, including occurrence, effective, authored, recorded, received, verified, signed, corrected and reconciled times. 
+
+**CLN-TIME-005** Where Clinical applies a stricter timestamp, device-clock, ambiguity or confidence rule for patient safety, the stricter Clinical rule shall apply without changing Main Module ownership of shared timezone configuration. 
+
+###### **14.3 Definitions and Concept Separation** 
+
+|**Concept**|**Definition**|**Must Not Be Confused With**|
+|---|---|---|
+|**UTC instant**|Unambiguous point on the global timeline stored in Coordinated<br>Universal Time|Local wall-clock time|
+|**Local datetime**|Calendar date and clock time in a specified timezone|UTC instant without timezone<br>context|
+|**IANA timezone**|Region-based timezone identifier such as Africa/Freetown|Fixed offset or abbreviation|
+|**UTC offset**|Difference between local time and UTC at a particular instant|Permanent timezone identity|
+|**Occurrence time**|Time the clinical, operational or physical event actually<br>happened|Time the record was entered|
+|**Effective time**|Clinically meaningful time or period to which a record applies|Database creation time|
+|**Scheduled time**|Time at which an activity is intended to occur|Actual occurrence time|
+|**Authored time**|Time an author composed or submitted content|Event occurrence time|
+|**Recorded time**|Time KashTre durably committed the record|User-entered occurrence time|
+|**Received time**|Time KashTre received an inbound device or external-system<br>message|Device measurement time|
+|**Verified time**|Time an eligible user verified a record|Authored or recorded time|
+|**Signed time**|Time an eligible user finalized or authenticated a record|Occurrence time|
+|**Corrected time**|Time a formal correction was committed|Original event time|
+|**Source time**|Raw date and time supplied by a user, device or external system|Trusted server time|
+|**Device measurement**<br>**time**|Time reported by a device for the actual measurement|Device transmission or server<br>receipt time|
+|**Temporal snapshot**|Immutable timezone, offset, local-time and resolution context<br>stored with an event|Current timezone configuration|
+|**Presentation timezone**|Timezone used to display an event to a user|Timezone in which the event<br>occurred|
+|**Time precision**|Level actually known, such as date, minute, second or<br>millisecond|Assumed precision|
+|**Time confidence**|Structured assessment of the reliability of a reported or<br>estimated time|Clinical validity of the measured<br>value|
+|**Late entry**|Record entered materially after the event occurred|Correction of an erroneous record|
+
+
+
+Controlled Draft | Not Approved for Production | Page 11 
+
+||KA|SHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1|
+|---|---|---|
+|**Retrospective entry**|Entry in which the user states an earlier event time|Contemporaneous recording|
+|**Estimated time**|Time derived through a controlled estimation method|Exact observed time|
+|**Ambiguous local time**|Local datetime that maps to more than one UTC instant|Duplicate clinical event|
+|**Nonexistent local time**|Local datetime skipped during a timezone transition|Invalid calendar date|
+
+
+
+IANA timezone identifiers provide regional timezone context, while an explicit offset remains part of a precise dateTime or instant representation. [fhir.hl7.org] 
+
+###### **14.4 Core Temporal Principles** 
+
+**CLN-TIME-010** Every persisted Clinical record shall have a server-generated creation timestamp. 
+
+**CLN-TIME-011** Every mutable Clinical record shall have a server-generated last-update timestamp. 
+
+**CLN-TIME-012** Every clinically meaningful event shall have an occurrence or effective time in addition to its recorded time. 
+
+**CLN-TIME-013** Clinical shall not use one generic timestamp to represent multiple clinically distinct times. 
+
+**CLN-TIME-014** Where occurrence, effective, authored, recorded, received, verified, signed, corrected and processed times differ, they shall be preserved separately. 
+
+**CLN-TIME-015** Historical events shall be persistently ordered using unambiguous UTC instants and deterministic tie-breaking information. 
+
+**CLN-TIME-016** A display conversion shall not modify the persisted UTC instant or historical temporal snapshot. 
+
+**CLN-TIME-017** A timezone configuration change shall apply prospectively according to its approved effective period and shall not rewrite historical temporal facts. 
+
+**CLN-TIME-018** Clinical shall preserve the precision actually known and shall not fabricate missing hours, minutes, seconds, fractions or timezone context. 
+
+**CLN-TIME-019** Date-only, approximate, uncertain and exact date-time values shall remain structurally distinguishable. 
+
+###### **14.5 Trusted Clock and Infrastructure Independence** 
+
+The shared platform SRD requires synchronized infrastructure clocks, injectable clock abstraction and complete independence from server locality. [KashTre_SR...Time_Zones | PDF] 
+
+**CLN-TIME-020** Clinical application services shall obtain authoritative current UTC time exclusively from the approved shared injectable clock abstraction. 
+
+**CLN-TIME-021** Production infrastructure nodes shall use an approved synchronized clock source with monitored drift and operational alerting. 
+
+**CLN-TIME-022** Clinical business logic shall not call or rely directly on: 
+
+- Browser local time 
+
+- Mobile-device local time 
+
+- Application-server local timezone 
+
+- Database-server local timezone 
+
+- Queue-worker local timezone 
+
+- Container or hosting-region local timezone 
+
+- Bedside-device local time as authoritative server time 
+
+**CLN-TIME-023** Browser and mobile-device clocks may supply source-event metadata but shall not generate authoritative recorded, received, verified, signed or audit timestamps. 
+
+**CLN-TIME-024** Database defaults may support durable timestamp creation only when they use the approved UTC clock source and conform to the Clinical temporal contract. 
+
+**CLN-TIME-025** A change in web-server, application-server, queue-worker, container, database or hosting-region timezone shall not change Clinical outcomes. 
+
+**CLN-TIME-026** Clock health, last synchronization time and detected infrastructure drift shall be observable through authorized operational monitoring. 
+
+Controlled Draft | Not Approved for Production | Page 12 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-TIME-027** A node whose clock exceeds the approved infrastructure-drift threshold shall be removed from time-sensitive processing or placed under an approved degraded-mode policy. 
+
+###### **14.6 Timezone Resolution** 
+
+###### **14.6.1 Clinical Event Resolution Track** 
+
+The effective timezone for a Clinical event shall be resolved in the following order: 
+
+1. Explicit event timezone, where the workflow permits an authorized explicit timezone. 
+
+2. Patient-care facility timezone. 
+
+3. Client-space timezone, where explicitly configured and applicable. 
+
+4. Entity or branch timezone. 
+
+5. Tenant default timezone. 
+
+6. Platform UTC fallback through a controlled exception. 
+
+**CLN-TIME-030** Clinical shall resolve event timezone from the patient’s effective care-delivery context rather than merely from the logged-in user’s current location. 
+
+**CLN-TIME-031** Facility and client-space timezone resolution shall use stable public identifiers and effective-dated Main Module configuration. 
+
+**CLN-TIME-032** An explicit event timezone shall require a workflow that supports it and shall preserve the selecting actor, reason and source. 
+
+**CLN-TIME-033** Clinical shall not accept an arbitrary client-supplied timezone identifier without server-side validation. 
+
+**CLN-TIME-034** The platform UTC fallback shall not be silently interpreted as the patient-care facility timezone. 
+
+**CLN-TIME-035** Use of the UTC fallback shall be auditable and shall enter a configuration or data-quality review queue where the missing timezone may affect clinical interpretation. 
+
+###### **14.6.2 Presentation Resolution Track** 
+
+The user presentation timezone may be resolved in the following order: 
+
+1. User preferred timezone. 
+
+2. Active viewing-context timezone. 
+
+3. Facility timezone. 
+
+4. Entity or branch timezone. 
+
+5. Tenant default timezone. 
+
+6. Platform UTC. 
+
+**CLN-TIME-036** User timezone preference shall control presentation only. 
+
+**CLN-TIME-037** Changing a user presentation preference shall not alter: 
+
+- Stored UTC instants 
+
+- Originating local datetime 
+
+- Originating timezone 
+
+- Applicable UTC offset 
+
+- Event sequence 
+
+- Clinical date 
+
+- Due-state calculation already determined for a completed event 
+
+- Audit history 
+
+- Financial or Inventory processing 
+
+**CLN-TIME-038** Where a user views information in a timezone different from the originating timezone, the interface shall identify the displayed timezone when ambiguity could affect clinical interpretation. 
+
+**CLN-TIME-039** The originating facility time shall remain available from the event detail or provenance view. 
+
+Controlled Draft | Not Approved for Production | Page 13 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+###### **14.7 Clinical Temporal Snapshot** 
+
+**CLN-TIME-040** Every clinically significant historical event shall preserve a temporal snapshot sufficient to reconstruct its original interpretation. 
+
+The snapshot shall contain, where applicable: 
+
+- Authoritative UTC instant 
+
+- Original or resolved local datetime 
+
+- IANA timezone identifier 
+
+- Applicable UTC offset in minutes 
+
+- Timezone-resolution source type 
+
+- Timezone-resolution source public ID 
+
+- Timezone policy or configuration version 
+
+- Time source 
+
+- Time precision 
+
+- Time confidence 
+
+- Estimated-time indicator 
+
+- Adjusted-time indicator 
+
+- Late-entry indicator 
+
+- Retrospective-entry indicator 
+
+- Device clock status 
+
+- Correlation and provenance identifiers 
+
+**CLN-TIME-041** The local datetime and UTC offset stored in the temporal snapshot shall represent the rules that applied to that event at that instant. 
+
+**CLN-TIME-042** Clinical shall not reconstruct historical local time solely from the facility’s current timezone configuration. 
+
+**CLN-TIME-043** Retirement, renaming or replacement of a timezone configuration shall not make historical event snapshots unresolvable. 
+
+**CLN-TIME-044** Temporal snapshots shall be immutable after event finalization, except through a formal correction process that preserves the original snapshot. 
+
+**CLN-TIME-045** The EDD shall define a reusable temporal-value implementation pattern so that individual engineering teams do not create inconsistent timestamp structures. 
+
+###### **14.8 Actual and Historical Events** 
+
+**CLN-TIME-050** A completed or historical Clinical event shall be persisted as an unambiguous UTC instant. 
+
+**CLN-TIME-051** Historical event records shall retain the local datetime, timezone and offset applicable when the event occurred or was interpreted. 
+
+**CLN-TIME-052** Later changes to timezone rules shall not move a historical event to a different UTC instant. 
+
+**CLN-TIME-053** The Clinical timeline shall ordinarily position an event according to its clinically meaningful occurrence or effective time. 
+
+**CLN-TIME-054** The timeline shall preserve and expose recorded, received, verified and corrected times where those differ from occurrence time. 
+
+**CLN-TIME-055** Events sharing the same occurrence instant shall use deterministic ordering based on event priority, sequence, source, recorded time and stable public identifier as defined in the EDD. 
+
+**CLN-TIME-056** Deterministic same-time ordering shall not imply clinical causation. 
+
+**CLN-TIME-057** An event received late shall appear according to its validated occurrence time while visibly retaining its receipt and recording times. 
+
+Controlled Draft | Not Approved for Production | Page 14 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+###### **14.9 Future and Recurring Clinical Schedules** 
+
+The shared platform architecture distinguishes historical events from future schedules because future UTC conversion may change when timezone rules change. [KashTre_SR...Time_Zones | PDF] 
+
+**CLN-TIME-060** A future activity intended to occur at a specific local civil time shall preserve: 
+
+- Intended local date and time 
+
+- IANA timezone 
+
+- Recurrence rule, where applicable 
+
+- Applicable scheduling policy 
+
+- Ambiguity and gap policy 
+
+- Source configuration version 
+
+- Next evaluated UTC execution time 
+
+- Last calculation time 
+
+**CLN-TIME-061** Future local-time schedules shall be converted using the supported timezone rules applicable when the occurrence is due. 
+
+**CLN-TIME-062** A recurring activity defined as occurring at a local clock time shall not be implemented solely as a fixed number of elapsed seconds. 
+
+**CLN-TIME-063** Schedule recalculation following a timezone-rule change shall affect future occurrences only and shall not alter completed events. 
+
+**CLN-TIME-064** Recalculation shall preserve the schedule version, previous execution time, new execution time, reason and affected future occurrences. 
+
+**CLN-TIME-065** Clinical schedules governed by this section include: 
+
+- Medication administration opportunities 
+
+- Observation schedules 
+
+- Monitoring plans 
+
+- Infusion checks 
+
+- PRN reassessments 
+
+- Care-plan reviews 
+
+- Clinical tasks 
+
+- Follow-up activities 
+
+- Appointment-linked clinical work 
+
+- Transition and discharge follow-up 
+
+- Recurring procedure or treatment activities 
+
+**CLN-TIME-066** The system shall prevent duplicate due events when timezone configuration or daylight-saving rules change. 
+
+**CLN-TIME-067** A timezone update shall not silently make an already completed event overdue, early, late or omitted. 
+
+###### **14.10 Event-Specific Timestamp Families** 
+
+###### **14.10.1 Medication Administration** 
+
+A Medication Administration Event may require: 
+
+- Scheduled time 
+
+- Permitted administration window 
+
+- Preparation time 
+
+- Independent-check time 
+
+- Actual start time 
+
+- Actual completion time 
+
+- Witness time 
+
+- Recorded time 
+
+- Signed time 
+
+Controlled Draft | Not Approved for Production | Page 15 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Reassessment due time 
+
+- Reassessment completion time 
+
+- Correction time 
+
+**CLN-TIME-070** The actual administration time shall not be replaced by the time at which the nurse completes documentation. 
+
+**CLN-TIME-071** Medication events recorded retrospectively shall preserve both actual administration time and recorded time. 
+
+**CLN-TIME-072** Preparation, double-check, administration, witnessed waste, infusion-rate change, pause, resume, bag change and reassessment shall preserve separate occurrence times where they represent separate events. 
+
+**CLN-TIME-073** Medication schedules shall ordinarily use the patient-care facility timezone unless the authorized order or service context explicitly specifies another timezone. 
+
+###### **14.10.2 Consumption Sessions and Events** 
+
+A consumption workflow may require: 
+
+- Physical-use occurrence time 
+
+- Consumption Session creation time 
+
+- User confirmation time 
+
+- Deferral time 
+
+- Inventory receipt time 
+
+- Inventory posting time 
+
+- Main Module evaluation time 
+
+- Reconciliation completion time 
+
+- Correction or reversal time 
+
+**CLN-TIME-074** Physical-use time shall remain separate from Consumption Session confirmation and downstream processing times. 
+
+**CLN-TIME-075** Medication product lines generated from an administration shall inherit the applicable administration occurrence time and temporal snapshot. 
+
+**CLN-TIME-076** Incidental supplies shall ordinarily inherit the linked clinical-activity time, but an authorized user may record a materially different physical-use time. 
+
+**CLN-TIME-077** Inventory posting time and Main Module financial-evaluation time shall not be represented as the time an item was physically used. 
+
+**CLN-TIME-078** Deferred consumption shall preserve physical-use, deferral, confirmation and reconciliation times separately. 
+
+###### **14.10.3 Observations and Devices** 
+
+A device-originated observation may require: 
+
+- Device measurement time 
+
+- Device transmission time 
+
+- Interface receipt time 
+
+- Clinical service receipt time 
+
+- User validation time 
+
+- Durable-recording time 
+
+- Result-release time 
+
+- Correction time 
+
+**CLN-TIME-079** A device measurement shall ordinarily appear clinically according to its validated measurement time, not merely its transmission or receipt time. 
+
+**CLN-TIME-080** Device-reported time shall remain distinguishable from trusted server timestamps. 
+
+###### **14.10.4 Orders, Results and Transitions** 
+
+**CLN-TIME-081** Orders shall distinguish authored, signed, activated, scheduled, held, resumed, discontinued, cancelled and completed times where applicable. 
+
+**CLN-TIME-082** Results shall distinguish specimen or study time, result-generation time, source-release time, Clinical receipt time, review time, acknowledgement time and correction time where applicable. 
+
+Controlled Draft | Not Approved for Production | Page 16 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-TIME-083** Patient movement shall distinguish requested, approved, departed, arrived, accepted and completed times. 
+
+**CLN-TIME-084** Encounter closure shall distinguish clinical finish time, closure-check completion time and final closure time. 
+
+###### **14.11 Device and External-System Time** 
+
+**CLN-TIME-090** Each integrated clinical device shall have a stable device identity and an approved mapping to tenant, facility, client space where required and time-resolution context. 
+
+**CLN-TIME-091** Clinical shall preserve the raw source timestamp received from the device or external system. 
+
+**CLN-TIME-092** The raw timestamp shall not be overwritten when Clinical calculates a corrected, normalized or estimated UTC instant. 
+
+**CLN-TIME-093** Device-originated events shall preserve, where available: 
+
+- Raw device datetime 
+
+- Device timezone or offset 
+
+- Device sequence number 
+
+- Device transmission time 
+
+- Server receipt time 
+
+- Estimated clock drift 
+
+- Normalized UTC instant 
+
+- Time confidence 
+
+- Clock-validation status 
+
+- Adjustment method 
+
+- Integration and message identifiers 
+
+**CLN-TIME-094** A device timestamp without an offset may be interpreted using the approved device-to-location and timezone mapping. 
+
+**CLN-TIME-095** Use of a device mapping shall preserve the mapping ID, version and effective period. 
+
+**CLN-TIME-096** If device identity, location, timezone or clock status cannot be established, the event shall be staged, warned or quarantined according to risk. 
+
+**CLN-TIME-097** Clinical shall define event-risk-specific drift tolerances. 
+
+**CLN-TIME-098** The shared financial or low-value transaction drift threshold shall not automatically apply to medication administration, critical observations, blood products, deterioration events or other high-risk Clinical events. 
+
+**CLN-TIME-099** Automatic adjustment shall not conceal the fact that the device clock was inaccurate or uncertain. 
+
+###### **14.12 Offline Clinical Activity** 
+
+**CLN-TIME-100** Offline Clinical records shall preserve: 
+
+- Local event ID 
+
+- Device ID 
+
+- User ID 
+
+- Patient and encounter 
+
+- Raw device event time 
+
+- Device submission time 
+
+- Device sequence number 
+
+- Timezone context 
+
+- Synchronization time 
+
+- Server receipt time 
+
+- Server-recorded time 
+
+- Estimated or validated occurrence time 
+
+- Time-confidence classification 
+
+**CLN-TIME-101** Offline client clocks shall not produce authoritative server-recorded timestamps. 
+
+Controlled Draft | Not Approved for Production | Page 17 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-TIME-102** Synchronization shall preserve the original offline event time and shall not silently replace it with synchronization time. 
+
+**CLN-TIME-103** Clinical shall evaluate duplicate, stale, future, out-of-order and materially drifted offline events before finalization. 
+
+**CLN-TIME-104** An estimated occurrence time shall be clearly identified as estimated. 
+
+**CLN-TIME-105** Where estimation is not clinically safe, the record shall enter reconciliation rather than being automatically finalized. 
+
+**CLN-TIME-106** Offline synchronization retries shall be idempotent and shall not create duplicate clinical, consumption or audit events. 
+
+###### **14.13 Late, Retrospective and Corrected Records** 
+
+**CLN-TIME-110** A late or retrospective record shall preserve the user-stated occurrence time and actual server-recorded time. 
+
+**CLN-TIME-111** A late entry shall not be made to appear as though it was documented contemporaneously. 
+
+**CLN-TIME-112** The interface shall identify late or retrospective documentation where clinically, legally or operationally material. 
+
+**CLN-TIME-113** Backdating shall require an authorized workflow, atomic permission, controlled reason and audit record. 
+
+**CLN-TIME-114** A user shall not directly edit system-generated recorded, received, verified, signed or audit timestamps. **CLN-TIME-115** A correction shall preserve: 
+
+- Original occurrence time 
+
+- Original recorded time 
+
+- Original signed or verified time 
+
+- Original temporal snapshot 
+
+- Corrected values 
+
+- Correction time 
+
+- Correcting actor 
+
+- Reason 
+
+- Replacement or supersession linkage 
+
+**CLN-TIME-116** Correcting clinical content shall not automatically change the event occurrence time unless the time itself is the subject of the authorized correction. 
+
+**CLN-TIME-117** A correction to event time shall preserve both the original and corrected times and shall initiate downstream reconciliation where sequencing, medication, Inventory, billing or reporting may be affected. 
+
+###### **14.14 Daylight-Saving Gaps and Ambiguous Local Time** 
+
+The shared platform documents describe repeated local hours, skipped local times, offset selection and adjustment for legacy hardware.  Clinical shall apply more conservative rules to completed patient-care events. <u>[KashTre_SR...Time_Zones | PDF], [KashTre_ED...Time_Zones | PDF]</u> 
+
+**CLN-TIME-120** A local datetime mapping to two UTC instants shall be treated as ambiguous until an approved rule or sufficient source evidence resolves the applicable offset. 
+
+**CLN-TIME-121** A local datetime that did not exist because of a timezone transition shall not be silently treated as an exact completed clinical-event time. 
+
+**CLN-TIME-122** Clinical shall not automatically use lenient timezone mapping for completed medication, critical-observation, blood-product or other high-risk events. 
+
+**CLN-TIME-123** Sequence numbers, adjacent trusted events, device provenance and source metadata may support resolution but shall not replace required human review where clinical risk remains. 
+
+**CLN-TIME-124** Future schedules may use an approved policy such as: 
+
+- Earlier valid offset 
+
+- Later valid offset 
+
+- Move forward to the next valid time 
+
+- Skip occurrence 
+
+Controlled Draft | Not Approved for Production | Page 18 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Require user confirmation 
+
+- Route for clinical review 
+
+**CLN-TIME-125** The selected schedule policy and any adjustment shall be recorded. 
+
+**CLN-TIME-126** The raw local input shall be preserved when an ambiguity or gap is adjusted. 
+
+**CLN-TIME-127** Unresolved temporal ambiguity shall not be concealed by assigning server receipt time as the event occurrence time. 
+
+###### **14.15 Display and User Interface** 
+
+**CLN-TIME-130** Clinical interfaces shall use a consistent date and time format appropriate to the tenant and user configuration. 
+
+**CLN-TIME-131** Critical workflows shall avoid ambiguous numeric-only dates where day and month order could be misunderstood. 
+
+**CLN-TIME-132** The displayed timezone shall be visible where the viewer timezone differs from the event timezone or where timezone interpretation affects clinical action. 
+
+**CLN-TIME-133** Event details shall make the originating local time and UTC offset available. 
+
+**CLN-TIME-134** The interface shall distinguish: 
+
+- Scheduled 
+
+- Occurred 
+
+- Recorded 
+
+- Received 
+
+- Verified 
+
+- Signed 
+
+- Corrected 
+
+- Estimated 
+
+- Late 
+
+- Retrospective 
+
+**CLN-TIME-135** Relative expressions such as “five minutes ago” may supplement but shall not replace an exact date and time in high-risk or audit-sensitive workflows. 
+
+**CLN-TIME-136** Due, overdue, early and late labels shall be calculated from server-evaluated temporal rules, not browser-local time. 
+
+**CLN-TIME-137** A user changing presentation timezone shall not cause completed events to move between encounters, reports or clinical dates unless the report explicitly states that grouping uses the selected display timezone. 
+
+**CLN-TIME-138** Printed and exported records shall identify the timezone used for displayed timestamps. 
+
+###### **14.16 Cross-Module Events and APIs** 
+
+**CLN-TIME-140** Every cross-module Clinical event shall include an unambiguous offset-aware occurrence timestamp or UTC instant. 
+
+**CLN-TIME-141** Where local interpretation is required, the payload shall include: 
+
+- IANA timezone identifier 
+
+- Applicable UTC offset 
+
+- Local datetime 
+
+- Time source 
+
+- Time precision 
+
+- Time confidence where applicable 
+
+- Source-event ID 
+
+- Correlation ID 
+
+- Idempotency key 
+
+Controlled Draft | Not Approved for Production | Page 19 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-TIME-142** API contracts shall not transmit an unqualified local datetime for a completed event unless the field is explicitly identified as raw or unresolved source input. 
+
+**CLN-TIME-143** Main Module, Inventory, LIMS, Imaging, Theatre, Surgery and external-system processing times shall not overwrite Clinical occurrence time. 
+
+**CLN-TIME-144** Cross-module retries shall preserve the original event time and idempotency identifier. 
+
+**CLN-TIME-145** A consuming module may add its own receipt, processing and completion timestamps but shall not relabel them as the originating clinical-event time. 
+
+**CLN-TIME-146** Contract versions shall define timestamp format, precision, timezone requirements, nullable conditions and error behaviour. 
+
+###### **14.17 Shared Time Engine Availability and Clinical Cache** 
+
+**CLN-TIME-150** Clinical may maintain a read-through resilience cache of Main Module timezone-resolution data. 
+
+**CLN-TIME-151** The cache shall not become an independently editable source of timezone truth. 
+
+**CLN-TIME-152** Cached entries shall preserve: 
+
+- Tenant, entity, facility or client-space public ID 
+
+- Resolved IANA timezone 
+
+- Resolution source 
+
+- Main Module configuration version 
+
+- Effective start and end 
+
+- Cache retrieval time 
+
+- Cache expiry 
+
+- Last verified time 
+
+- Fresh or stale status 
+
+**CLN-TIME-153** Use of cached timezone data shall follow an approved risk-based outage policy. 
+
+**CLN-TIME-154** Where a valid approved cache proves the effective timezone, Clinical may continue according to the configured safe-failure policy. 
+
+**CLN-TIME-155** Where timezone cannot be resolved safely, Clinical shall not guess or silently use server-local time. 
+
+**CLN-TIME-156** An action that cannot be safely completed without timezone resolution shall be blocked or staged for reconciliation. 
+
+**CLN-TIME-157** An event recorded using cached resolution shall retain the cache version and last-verification time in its provenance where required. 
+
+**CLN-TIME-158** Time Engine recovery shall reconcile staged events without duplicating or silently changing their original temporal facts. 
+
+###### **14.18 Audit and Monitoring** 
+
+**CLN-TIME-160** Temporal audit evidence shall record, where applicable: 
+
+- Actor 
+
+- Device or service identity 
+
+- Patient and encounter 
+
+- Facility and client space 
+
+- Raw source time 
+
+- Normalized UTC time 
+
+- Resolved local time 
+
+- Timezone and offset 
+
+- Resolution source 
+
+- Configuration version 
+
+- Drift estimate 
+
+- Time confidence 
+
+Controlled Draft | Not Approved for Production | Page 20 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Adjustment 
+
+- Override 
+
+- Late-entry reason 
+
+- Correction 
+
+- Outcome 
+
+**CLN-TIME-161** Timezone configuration changes affecting Clinical shall be versioned, effective-dated and auditable. 
+
+**CLN-TIME-162** Operational monitoring shall identify: 
+
+- Unsynchronized application nodes 
+
+- Excessive clock drift 
+
+- Invalid timezone identifiers 
+
+- Missing facility timezone assignments 
+
+- Stale Clinical timezone-cache entries 
+
+- Device clock failures 
+
+- Ambiguous timestamps 
+
+- Nonexistent local timestamps 
+
+- Future-dated completed events 
+
+- Excessive late entries 
+
+- Failed schedule recalculations 
+
+- Cross-module temporal inconsistencies 
+
+**CLN-TIME-163** The system shall generate alerts for time-related conditions that could affect medication safety, observation interpretation, clinical sequencing or legal-record integrity. 
+
+**CLN-TIME-164** Audit ordering shall use authoritative UTC timestamps and deterministic sequence information. 
+
+**CLN-TIME-165** Audit displays may provide local-time conversion but shall preserve and expose UTC ordering. 
+
+###### **14.19 Configuration** 
+
+###### **14.19.1 Main Module Configuration** 
+
+The Main Module shall configure and govern: 
+
+- Tenant default timezone 
+
+- Entity or branch timezone 
+
+- Facility timezone 
+
+- Client-space timezone where supported 
+
+- User presentation-timezone preference 
+
+- Timezone-resolution hierarchy 
+
+- Timezone configuration versions 
+
+- IANA timezone validation 
+
+- Shared clock and synchronization policy 
+
+- Platform fallback 
+
+- Shared service cache-control metadata 
+
+###### **14.19.2 Clinical Configuration** 
+
+Clinical may configure: 
+
+- Event-risk classes 
+
+- Device clock-drift tolerances 
+
+- Event-specific warning, staging and quarantine rules 
+
+- Allowed retrospective-entry windows 
+
+- Late-entry reason requirements 
+
+- Time-correction approval rules 
+
+- Future-schedule ambiguity and gap policies 
+
+Controlled Draft | Not Approved for Production | Page 21 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Display requirements by workflow 
+
+- Time-related escalation rules 
+
+- Allowed cache use during Shared Time Engine outage 
+
+**CLN-TIME-170** Clinical configuration shall not permit administrators to create arbitrary timezone identifiers or offsets. 
+
+**CLN-TIME-171** Clinical event-risk and drift policies shall be versioned, reviewed, approved and effective-dated. **CLN-TIME-172** A configuration change shall not rewrite historical records. 
+
+**CLN-TIME-173** High-risk defaults shall fail safely when no approved Clinical temporal policy exists. 
+
+###### **14.20 Acceptance Scenarios** 
+
+|**ID**|**Scenario**|**Expected Result**|
+|---|---|---|
+|**PH1-TIME-**<br>**AT-001**|A blood-pressure machine measures at 10:04, transmits<br>at 10:05 and the reading is validated at 10:07.|Measurement, transmission, receipt, validation and<br>recorded times remain distinct.|
+|**PH1-TIME-**<br>**AT-002**|A nurse administers medicine at 10:05 and completes<br>documentation at 10:08.|The administration appears at 10:05 with 10:08 retained<br>as recorded time.|
+|**PH1-TIME-**<br>**AT-003**|Confirm Consumption completes after medication<br>administration.|Physical-use, confirmation, Inventory posting and Main<br>evaluation times remain separate.|
+|**PH1-TIME-**<br>**AT-004**|A remote clinician views an event using another<br>timezone.|The display converts appropriately while originating<br>facility time and stored UTC remain unchanged.|
+|**PH1-TIME-**<br>**AT-005**|A facility changes its configured timezone.|Historical records retain their original timezone, offset<br>and local interpretation.|
+|**PH1-TIME-**<br>**AT-006**|A bedside device clock is materially ahead.|The raw time is preserved and the event is warned,<br>staged or quarantined according to risk.|
+|**PH1-TIME-**<br>**AT-007**|A device sends local time without an offset.|The approved device-location mapping resolves<br>timezone and records provenance.|
+|**PH1-TIME-**<br>**AT-008**|A high-risk event occurs during a repeated local hour.|The system does not silently choose an offset when<br>ambiguity remains clinically material.|
+|**PH1-TIME-**<br>**AT-009**|A local time does not exist during a forward clock<br>transition.|Raw input is preserved and the event follows the<br>approved review or scheduling policy.|
+|**PH1-TIME-**<br>**AT-010**|A recurring medication is scheduled for the same local<br>time each day.|Future opportunities remain aligned to intended local<br>civil time.|
+|**PH1-TIME-**<br>**AT-011**|The Shared Time Engine becomes unavailable.|Clinical uses only an approved current cache or safely<br>stages or blocks the action without guessing.|
+|**PH1-TIME-**<br>**AT-012**|An offline event synchronizes twice.|Idempotency prevents duplicate records while<br>preserving the original source time.|
+|**PH1-TIME-**<br>**AT-013**|A user enters a retrospective observation.|Both the stated occurrence time and actual recorded<br>time are preserved.|
+|**PH1-TIME-**<br>**AT-014**|An authorized correction changes an event time.|Original and corrected times, reason, actor and<br>downstream reconciliation remain traceable.|
+|**PH1-TIME-**<br>**AT-015**|Two events have the same UTC occurrence instant.|Deterministic ordering occurs without implying<br>causation.|
+|**PH1-TIME-**<br>**AT-016**|The database server timezone changes.|Clinical scheduling, recording and display outcomes<br>remain unchanged.|
+|**PH1-TIME-**<br>**AT-017**|A user changes the profile display timezone.|Visual rendering changes, but historical records, clinical<br>dates and audit ordering do not.|
+|**PH1-TIME-**<br>**AT-018**|An Inventory response arrives after its linked Clinical<br>event.|Inventory processing time is retained without replacing<br>Clinical occurrence time.|
+|**PH1-TIME-**<br>**AT-019**|An external result arrives one day after the specimen<br>event.|The timeline uses the applicable clinical event time and<br>visibly retains source-release and receipt times.|
+
+
+
+Controlled Draft | Not Approved for Production | Page 22 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**PH1-TIME-** A timezone configuration update alters future schedule **AT-020** conversion. 
+
+Future events are recalculated with versioned provenance; completed events are unchanged. 
+
+###### **14.21 Mandatory Negative Tests** 
+
+The following tests shall be included in the Phase 1 test baseline: 
+
+- Browser clock supplied as authoritative recorded time 
+
+- Application-server local time used for clinical scheduling 
+
+- Database-server timezone change altering results 
+
+- Unqualified local datetime accepted as a completed event 
+
+- Hardcoded fixed offset used instead of an IANA timezone 
+
+- User presentation preference changing historical event meaning 
+
+- Current facility timezone used to reinterpret historical records 
+
+- Device timestamp overwriting server receipt time 
+
+- Server receipt time falsely labelled as device measurement time 
+
+- Raw device time lost after normalization 
+
+- Material device drift accepted without policy evaluation 
+
+- Financial drift threshold applied automatically to high-risk Clinical events 
+
+- Ambiguous repeated-hour timestamp silently resolved 
+
+- Nonexistent local clinical event time silently advanced 
+
+- Retrospective entry presented as contemporaneous 
+
+- Signed timestamp directly edited 
+
+- Correction deleting the original timestamp 
+
+- Offline synchronization producing duplicate events 
+
+- Retry assigning a new occurrence time 
+
+- Future schedule stored only as a fixed UTC value where local-time intent must be preserved 
+
+- Timezone-service outage causing silent server-local fallback 
+
+- Stale cache used beyond approved validity 
+
+- Cross-module processor replacing Clinical occurrence time 
+
+- Export omitting timezone where interpretation is ambiguous 
+
+- Same-time events ordered nondeterministically 
+
+- Timezone configuration change rewriting completed medication administrations 
+
+###### **14.22 Reporting Requirements** 
+
+Authorized users shall be able to report: 
+
+- Clinical records with missing occurrence times 
+
+- Records where occurrence and recorded times differ beyond configured thresholds 
+
+- Late and retrospective entries 
+
+- Time corrections and overrides 
+
+- Device clock drift 
+
+- Low-confidence or estimated event times 
+
+- Ambiguous or nonexistent local times 
+
+- Events recorded using UTC fallback 
+
+- Events recorded using cached timezone resolution 
+
+- Stale timezone mappings 
+
+- Future-dated completed events 
+
+- Out-of-order external or device events 
+
+- Schedule changes caused by timezone updates 
+
+- Cross-module timestamp discrepancies 
+
+Controlled Draft | Not Approved for Production | Page 23 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Facilities or client spaces without valid timezone configuration 
+
+- Infrastructure clock-health exceptions 
+
+**CLN-TIME-RPT-001** Temporal reports shall state the timezone used for display and grouping. 
+
+**CLN-TIME-RPT-002** A presentation-timezone change shall not alter the underlying report population unless the report explicitly defines viewer-timezone grouping. 
+
+**CLN-TIME-RPT-003** Audit and medico-legal exports shall include sufficient temporal provenance to reconstruct the originating event time. 
+
+###### **14.23 Phase 1 Traceability** 
+
+|**Area**|**Requirement Prefix**|**Primary Evidence**|
+|---|---|---|
+|**Ownership**|CLN-TIME-001 to CLN-TIME-005|Shared-service architecture review|
+|**Core temporal rules**|CLN-TIME-010 to CLN-TIME-019|Record-contract inspection|
+|**Trusted clock**|CLN-TIME-020 to CLN-TIME-027|Infrastructure and clock testing|
+|**Resolution**|CLN-TIME-030 to CLN-TIME-039|Multi-tenant timezone tests|
+|**Temporal snapshot**|CLN-TIME-040 to CLN-TIME-045|Historical reproducibility tests|
+|**Historical events**|CLN-TIME-050 to CLN-TIME-057|Timeline and ordering tests|
+|**Future schedules**|CLN-TIME-060 to CLN-TIME-067|Scheduling and transition tests|
+|**Event families**|CLN-TIME-070 to CLN-TIME-084|Medication, consumption, observation and transition tests|
+|**Devices**|CLN-TIME-090 to CLN-TIME-099|Device simulator and drift tests|
+|**Offline**|CLN-TIME-100 to CLN-TIME-106|Offline synchronization tests|
+|**Late and corrected entries**|CLN-TIME-110 to CLN-TIME-117|Provenance and correction tests|
+|**DST ambiguity**|CLN-TIME-120 to CLN-TIME-127|Timezone boundary tests|
+|**User interface**|CLN-TIME-130 to CLN-TIME-138|Web and mobile UI tests|
+|**Integration**|CLN-TIME-140 to CLN-TIME-146|Contract and interoperability tests|
+|**Resilience**|CLN-TIME-150 to CLN-TIME-158|Outage and cache tests|
+|**Audit**|CLN-TIME-160 to CLN-TIME-165|Audit and monitoring tests|
+|**Configuration**|CLN-TIME-170 to CLN-TIME-173|Configuration governance tests|
+|**Reporting**|CLN-TIME-RPT|Reporting verification|
+
+
+
+###### **14.24 Registered Phase 1 Temporal Gaps** 
+
+|**Gap ID**|**Resolution Required**|**Release**<br>**Blocking**|
+|---|---|---|
+|**CLN-P1-TIME-GAP-**<br>**001**|Confirm Clinical registration as a formal Shared Time Engine consumer.|Yes|
+|**CLN-P1-TIME-GAP-**<br>**002**|Confirm authoritative facility and client-space timezone fields and APIs.|Yes|
+|**CLN-P1-TIME-GAP-**<br>**003**|Approve the Clinical timezone-resolution precedence.|Yes|
+|**CLN-P1-TIME-GAP-**<br>**004**|Define the shared timestamp serialization and precision contract.|Yes|
+|**CLN-P1-TIME-GAP-**<br>**005**|Approve the reusable Clinical temporal snapshot structure.|Yes|
+|**CLN-P1-TIME-GAP-**<br>**006**|Define risk-based device clock-drift tolerances.|Yes|
+
+
+
+Controlled Draft | Not Approved for Production | Page 24 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+|**CLN-P1-TIME-GAP-**<br>**007**|Define ambiguous and nonexistent local-time policies for future schedules.|Yes|
+|---|---|---|
+|**CLN-P1-TIME-GAP-**<br>**008**|Define rules for high-risk completed events with uncertain device time.|Yes|
+|**CLN-P1-TIME-GAP-**<br>**009**|Approve offline Clinical time-confidence handling.|Yes|
+|**CLN-P1-TIME-GAP-**<br>**010**|Approve late-entry and time-correction permissions and reasons.|Yes|
+|**CLN-P1-TIME-GAP-**<br>**011**|Define Shared Time Engine cache validity and outage behaviour.|Yes|
+|**CLN-P1-TIME-GAP-**<br>**012**|Confirm NTP/PTP monitoring, alert ownership and unhealthy-node handling.|Yes|
+|**CLN-P1-TIME-GAP-**<br>**013**|Reconcile Clinical terminology of facility, entity and client space with shared “branch”<br>terminology.|Yes|
+|**CLN-P1-TIME-GAP-**<br>**014**|Define printed, exported and interoperability timezone-display requirements.|Yes|
+|**CLN-P1-TIME-GAP-**<br>**015**|Add temporal requirements to the final requirements traceability matrix and companion<br>EDD.|Yes|
+
+
+
+###### **14.25 Completion Gate** 
+
+The temporal component of Phase 1 shall be considered complete only when: 
+
+- Clinical is formally registered as a Shared Time Engine consumer. 
+
+- Main Module and Clinical ownership boundaries are approved. 
+
+- IANA timezone identifiers are mandatory across applicable contracts. 
+
+- No Clinical business rule depends on server-local time. 
+
+- Historical-event and future-schedule models are approved. 
+
+- The Clinical temporal snapshot is defined. 
+
+- Medication and Consumption Session timestamps are mapped. 
+
+- Observation and device-time provenance is defined. 
+
+- Late-entry and correction rules are approved. 
+
+- Device drift and time-confidence policies are approved. 
+
+- DST ambiguity and gap policies are approved. 
+
+- Offline synchronization behaviour is approved. 
+
+- Time Engine cache and outage behaviour are approved. 
+
+- API timestamp formats and precision are approved. 
+
+- Acceptance and negative tests are assigned. 
+
+- Every registered temporal gap has an accountable owner. 
+
+- The companion Clinical EDD contains an implementation and migration design. 
+
+**Phase rule:** No later Clinical phase may weaken the distinction between event time, source time, received time, recorded time, verification time, signing time, correction time and downstream processing time without formal impact assessment and approval. 
+
+###### **Appendix: Minimum Temporal Record** 
+
+|**Group**|**Minimum content**|
+|---|---|
+|**Event identity**|Event public ID, event type, source module and source-event ID|
+|**Subject context**|Tenant, entity, facility, client space, patient and encounter where applicable|
+|**Occurrence**|UTC occurrence or effective instant, or period start and end|
+|**Local interpretation**|Local datetime, IANA timezone and UTC offset|
+
+
+
+Controlled Draft | Not Approved for Production | Page 25 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+|**Resolution**|Timezone source type, source public ID and configuration version|
+|---|---|
+|**Source**|User, device, external system or trusted server|
+|**Processing**|Received, recorded and processed times where applicable|
+|**Attestation**|Authored, verified, signed and witnessed times where applicable|
+|**Correction**|Original time, corrected time, correction-recorded time and reason|
+|**Confidence**|Precision, confidence, estimated indicator and adjustment indicator|
+|**Device**|Device ID, raw time, sequence, drift and clock status where applicable|
+|**Provenance**|Actor, correlation ID, idempotency key, version and audit reference|
+
+
+
+This complete section provides the Phase 1 governing contract. Phase 6 and Phase 7 should only add event-specific rules for medication, consumption, observations and devices, while Phase 10 should define the integration and production-assurance obligations. 
+
+#### **15. Shared AI Gateway Contract** 
+
+**CLN-AI-001** Clinical shall send AI requests only through registered Shared AI Gateway services. 
+
+**CLN-AI-002** Clinical shall send the minimum necessary data for the authorized purpose. 
+
+**CLN-AI-003** An AI request shall include tenant, requesting module, requesting user, service code, correlation ID and approved context metadata. 
+
+- **CLN-AI-004** AI-generated notes, extracted observations, diagnoses, order suggestions, summaries and protocol suggestions shall remain drafts or suggestions. 
+
+**CLN-AI-005** AI shall not approve, sign, publish, prescribe, place an order, release a result, activate a protocol or execute a major transition. 
+
+**CLN-AI-006** The accepting user shall independently possess the permission, scope, client-space relationship and privilege required for the resulting action. 
+
+- **CLN-AI-007** Clinical shall preserve the AI transaction reference, model/provider provenance supplied by the Gateway, prompttemplate version where supplied, user edits and acceptance or rejection outcome. 
+
+**CLN-AI-008** If the AI Gateway is unavailable, ordinary authenticated manual workflows shall remain available where safe. 
+
+#### **16. Shared Service Availability and Safe Failure** 
+
+|**Dependency**|**Safe-Failure Rule**|
+|---|---|
+|**Identity/authentication**|No protected Clinical action without authenticated identity.|
+|**Permission service**|Deny restricted action unless approved cached entitlement<br>remains valid and policy permits cache use.|
+|**Client-space assignment**|Deny ordinary client-space write if current assignment cannot<br>be established.|
+|**Unit Engine**|Do not commit a value requiring unavailable conversion; allow<br>already verified canonical display where safe.|
+|**AI Gateway**|Continue manual workflows; do not fabricate AI output.|
+|**Inventory**|Do not promise stock truth; stage or display unavailable<br>status.|
+|**LIMS/Imaging**|Preserve order and follow-up; do not invent result state.|
+|**Audit service**|High-risk write shall fail if its required audit record cannot be<br>durably recorded.|
+
+
+
+**CLN-RES-001** Every shared dependency shall define timeout, retry, idempotency, circuit-breaker and reconciliation requirements in the EDD. 
+
+**CLN-RES-002** Clinical shall distinguish unavailable, unauthorized, not found, stale and invalid responses. 
+
+Controlled Draft | Not Approved for Production | Page 26 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-RES-003** A retry shall not duplicate a signed note, order, administration, transition or audit event. 
+
+#### **16. Audit, Provenance and Historical Reproducibility** 
+
+**CLN-AUD-001** Clinical shall maintain immutable audit evidence for access, create, update, sign, approve, cancel, correct, override, export, break-glass and configuration actions. 
+
+**CLN-AUD-002** Audit evidence shall record actor, impersonation or delegation context, tenant, facility, client space, patient, encounter, resource, action, outcome, timestamp, reason, correlation ID, device/client, permission used and policy version where applicable. 
+
+**CLN-AUD-003** Denied high-risk attempts shall be auditable without leaking protected data to the denied user. 
+
+**CLN-AUD-004** Clinical provenance shall distinguish author, recorder, verifier, signer, approver and system process. 
+
+**CLN-AUD-005** Corrections shall preserve the original content and link the replacement, reason and authorizing action. 
+
+**CLN-AUD-006** Audit and provenance shall remain queryable after users, titles, units, policies or client-space assignments change. 
+
+#### **17. Configuration Interfaces** 
+
+###### **17.1 Main Module Configuration Dependencies** 
+
+- Official titles and employment state 
+
+- Atomic permission registry 
+
+- Permission bundles and versions 
+
+- Title-to-bundle mappings 
+
+- User and role assignments 
+
+- Facility and client-space records 
+
+- User client-space assignments 
+
+- Credentials and privileges 
+
+- Delegations and restrictions 
+
+- Shared Unit Engine 
+
+###### **17.2 Clinical Configuration** 
+
+- Clinical permission metadata and required context 
+
+- Care relationship types 
+
+- Clinical privilege requirements 
+
+- Break-glass categories and review rules 
+
+- Sensitive-record labels and restrictions 
+
+- CDE unit-use policies 
+
+- Clinical audit severity 
+
+- Safe-cache and outage policies 
+
+- AI service enablement by workflow 
+
+- Cross-module status mappings 
+
+- **CLN-CFG-001** Every configuration page shall require a dedicated management permission and shall not be exposed by ordinary clinical title bundles. 
+
+**CLN-CFG-002** Configuration changes shall support draft, review, approval, activation, deprecation and historical resolution where the change can affect clinical safety or access. 
+
+**CLN-CFG-003** No configuration shall be activated when required references are missing or invalid. 
+
+#### **18. Operational Interfaces** 
+
+**CLN-UI-001** Clinical navigation shall be derived from effective permissions but server authorization shall remain authoritative. 
+
+**CLN-UI-002** The user shall see the active facility, client space, assignment type and temporary authority context. 
+
+**CLN-UI-003** Patient lists shall be filtered by effective assignment and relationship rather than showing unrestricted facility-wide lists by default. 
+
+Controlled Draft | Not Approved for Production | Page 27 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-UI-004** A denial shall provide a usable reason category such as missing permission, expired assignment, wrong client space, missing relationship, record locked or additional privilege required, without exposing restricted content. 
+
+**CLN-UI-005** The interface shall clearly identify break-glass mode and its expiry. 
+
+**CLN-UI-006** Mobile and web interfaces shall enforce the same authorization outcomes. 
+
+#### **19. Notifications and Events** 
+
+**CLN-EVT-001** Clinical shall consume user, title, assignment, permission, client-space, credential and unit-policy changes through approved versioned interfaces or events. 
+
+**CLN-EVT-002** Consumers shall use event IDs and idempotent processing. 
+
+**CLN-EVT-003** Security-sensitive changes including account suspension, assignment expiry, privilege suspension and break-glass activation shall trigger prompt cache invalidation. 
+
+**CLN-EVT-004** Notifications shall not include restricted clinical detail unless the recipient is authorized to receive it. 
+
+- user.status.changed 
+
+- user.official_title.changed 
+
+- permission.assignment.changed 
+
+- client_space.assignment.changed 
+
+- credential.status.changed 
+
+- unit.version.activated 
+
+- unit.retired 
+
+- clinical.break_glass.activated 
+
+- clinical.break_glass.expired 
+
+- clinical.access.review.required 
+
+#### **20. Reporting and Oversight** 
+
+**CLN-RPT-001** Authorized administrators shall be able to report effective permissions by user, title, bundle, facility and client space. 
+
+**CLN-RPT-002** The system shall report users with permissions but no active operational assignment, and users with assignments but missing required permissions or credentials. 
+
+**CLN-RPT-003** The system shall report expiring assignments, credentials, delegations and privileges. 
+
+**CLN-RPT-004** Break-glass reports shall show reason, scope, duration, accessed resources, actions and review outcome. 
+
+**CLN-RPT-005** Reports and exports shall themselves be permission- and scope-controlled and audited. 
+
+#### **21. Acceptance Scenarios** 
+
+|**ID**|**Scenario**|**Expected Result**|
+|---|---|---|
+|**PH1-AT-001**|Registered Nurse with observation<br>permission, active ward assignment and<br>qualifying patient relationship records<br>temperature.|Allowed; action and context audited.|
+|**PH1-AT-002**|Same nurse attempts observation entry<br>for a patient in an unassigned ICU.|Denied with wrong-client-space reason.|
+|**PH1-AT-003**|Medical Officer has title bundle but<br>prescribing privilege is expired.|Prescribing action denied; ordinary<br>permitted documentation remains<br>available.|
+|**PH1-AT-004**|User receives approved cross-cover<br>assignment for a night shift.|Configured authority is active only for<br>approved scope and time.|
+|**PH1-AT-005**|Unassigned clinician invokes break glass<br>during resuscitation.|Time-limited minimum access after<br>required controls; reviewer notified.|
+|**PH1-AT-006**|Main Module permission service is<br>unavailable.|Restricted write fails closed unless an<br>approved current cached entitlement<br>rule applies.|
+|**PH1-AT-007**|Glucose entered in mg/dL where base is|Clinical verifies permitted unit and Main|
+
+
+
+Controlled Draft | Not Approved for Production | Page 28 
+
+||mmol/L.|KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1<br>Unit Engine conversion; stores source,<br>normalized value and provenance.|
+|---|---|---|
+|**PH1-AT-008**|Unit Engine cannot verify conversion.|Save blocked or inbound result staged;<br>no silent conversion.|
+|**PH1-AT-009**|AI suggests an order for a user lacking<br>order-sign permission.|Suggestion may be displayed as policy<br>permits, but cannot be committed or<br>signed.|
+|**PH1-AT-010**|Sensitive chart appears in search for<br>ordinary user.|No restricted snippet or content is<br>exposed; access governed by additional<br>controls.|
+|**PH1-AT-011**|Official title changes.|Effective baseline bundle recalculated<br>and stale authorization invalidated.|
+|**PH1-AT-012**|Assignment expires while user remains<br>logged in.|Ordinary client-space authority is<br>removed promptly; historical work<br>remains intact.|
+
+
+
+#### **22. Mandatory Negative Tests** 
+
+- Cross-tenant public ID substitution 
+
+- Direct API call when UI button is hidden 
+
+- User with permission but no client-space assignment 
+
+- User with client-space assignment but no permission 
+
+- User with correct title but expired credential 
+
+- Access using inactive encounter 
+
+- Access after transfer to another client space 
+
+- Self-assignment without authority 
+
+- Delegation beyond delegator authority 
+
+- Delegation after expiry 
+
+- Break-glass without reason 
+
+- Break-glass after expiry 
+
+- Sensitive data leakage in search, alerts or notifications 
+
+- Unit label substitution without canonical ID 
+
+- Molar-to-mass conversion without analyte context 
+
+- AI response committed without human authorization 
+
+- Queue worker acting without recorded service identity and tenant 
+
+- Replay of a previously accepted high-risk request 
+
+#### **23. Phase 1 Traceability** 
+
+|**Area**|**Requirement Prefix**|**Primary Evidence**|
+|---|---|---|
+|**Foundation**|CLN-FND|Architecture review|
+|**Ownership**|CLN-OWN|Source-of-truth contract tests|
+|**Context**|CLN-CTX|Tenant and client-space tests|
+|**Authorization**|CLN-AUTH|Policy and negative tests|
+|**Permissions**|CLN-PERM|Catalogue and bundle tests|
+|**Scope**|CLN-SCOPE|Object-level access tests|
+|**Relationships**|CLN-REL|Care-assignment tests|
+|**Privileges**|CLN-PRIV|Credential-expiry tests|
+|**Delegation**|CLN-DEL|Time and scope tests|
+|**Break glass**|CLN-BTG|Emergency and after-action tests|
+|**Consent**|CLN-CONS|Sensitive-data tests|
+|**Units**|CLN-UOM|Conversion contract tests|
+|**AI**|CLN-AI|Human-approval tests|
+|**Resilience**|CLN-RES|Outage and idempotency tests|
+|**Audit**|CLN-AUD|Immutable evidence tests|
+
+
+
+Controlled Draft | Not Approved for Production | Page 29 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **24. Registered Phase 1 Gaps** 
+
+|**Gap ID**|**Resolution Required**|**Release Blocking**|
+|---|---|---|
+|**CLN-P1-GAP-001**|Confirm current Main Module<br>permission schema and APIs.|Yes|
+|**CLN-P1-GAP-002**|Confirm authoritative source and exact<br>model for user client-space<br>assignments.|Yes|
+|**CLN-P1-GAP-003**|Approve initial atomic permission<br>catalogue and official-title bundle<br>templates.|Yes|
+|**CLN-P1-GAP-004**|Approve credential and privilege registry<br>ownership.|Yes|
+|**CLN-P1-GAP-005**|Approve care-relationship types and<br>relationship creation authority.|Yes|
+|**CLN-P1-GAP-006**|Approve sensitivity-label and consent<br>policy for applicable jurisdictions.|Yes|
+|**CLN-P1-GAP-007**|Approve break-glass categories, time<br>limits and reviewers.|Yes|
+|**CLN-P1-GAP-008**|Approve resilient cache rules for<br>permission and assignment outages.|Yes|
+|**CLN-P1-GAP-009**|Reconcile all clinical_uom_* references<br>to the Main Module Unit Engine.|Yes|
+|**CLN-P1-GAP-010**|Define service identities and scopes for<br>background jobs and integrations.|Yes|
+
+
+
+#### **25. Phase 1 Completion Gate** 
+
+- Main Module, Clinical, HR and integration ownership boundaries approved. 
+
+- Atomic permission naming rules approved. 
+
+- Title-to-bundle model approved as configurable, not hardcoded. 
+
+- Client-space assignment established as mandatory for ordinary location-bound work. 
+
+- Care relationship and scope intersection approved. 
+
+- Credential, delegation, restriction and break-glass models approved. 
+
+- Shared Unit Engine contract accepted and local writable unit masters marked for reconciliation. 
+
+- Shared AI Gateway human-approval rule accepted. 
+
+- Audit and safe-failure requirements accepted. 
+
+- Every registered Phase 1 gap assigned an owner and acceptance test. 
+
+**Phase 2 shall not redefine or weaken Phase 1 authorization, source-of-truth or shared-service rules without a** 
+
+**formally approved change and impact assessment.** 
+
+#### **Appendix A. Initial Clinical Permission Metadata Template** 
+
+|**Field**|**Required Content**|
+|---|---|
+|**Permission code**|Stable clinical.* action code|
+|**Display name**|Human-readable action|
+|**Resource family**|Patient, note, observation, order, medication, result,<br>transition, settings and so on|
+|**Action**|View, create, update, sign, approve, cancel, correct, override,<br>export or administer|
+|**Risk tier**|Routine, elevated, high or critical|
+|**Default scope**|Narrowest recommended scope|
+|**Client-space required**|Yes, no or conditional|
+|**Relationship required**|Relationship types or conditional rule|
+|**Credential required**|Credential or privilege code|
+
+
+
+Controlled Draft | Not Approved for Production | Page 30 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+|**Break-glass eligible**|Yes or no with category|
+|---|---|
+|**Audit level**|Standard, enhanced or critical|
+|**Separation of duty**|Conflicting permissions or creator-approver restriction|
+|**Status and version**|Lifecycle and effective dates|
+
+
+
+#### **Appendix B. Sources and Standards Reviewed** 
+
+- KashTre Clinical Module SRD v6.0 and addendum. 
+
+- KashTre Clinical Module v6.1 working draft. 
+
+- KashTre Main Module Shared Unit Engine Contract v1.0 Draft. 
+
+- KashTre Shared AI Services Gateway SRD v3.1. 
+
+- KashTre HR Module SRD v6.25. 
+
+- HL7 EHR System Functional Model guidance on emergency access, consent, audit and access control. 
+
+- OWASP authorization guidance on deny by default, least privilege, server-side enforcement and testing. 
+
+#### **Appendix C. Review Record** 
+
+|**Role**<br>**Name**|**Decision**|**Date**|**Comments**|
+|---|---|---|---|
+|**Clinical Product**||||
+|**Owner**||||
+|**Main Module**||||
+|**Architect**||||
+|**Clinical Architect**||||
+|**HR Architect**||||
+|**Security Lead**||||
+|**Database Lead**||||
+|**API Lead**||||
+|**Quality Assurance**||||
+|**Clinical Governance**||||
+|**Data Protection/Legal**||||
+
+
+
+### **PHASE 2** 
+
+##### **PATIENT, ENCOUNTER AND CLINICAL WORKSPACE FOUNDATION** 
+
+**Phase 2 defines how users identify the correct patient, select and manage the correct encounter, resolve patient location and responsibility, and work safely within patient lists, ward views and the longitudinal chart.** 
+
+Controlled Draft | Not Approved for Production | Page 31 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **Document Control and Phase Authority** 
+
+|**Field**|**Rule**|
+|---|---|
+|**Purpose**|Define patient identity use, encounter context, patient-space<br>context and Clinical workspace behavior.|
+|**Dependency**|All Phase 1 ownership, authorization, client-space, care-<br>relationship, unit, AI, audit and safe-failure rules remain<br>mandatory.|
+|**Functional boundary**|This phase defines workspace foundations. Detailed notes,<br>diagnoses, orders, medication, observations and results are<br>specified in later phases.|
+|**Baseline**|Clinical SRD v6.0 and addendum, corrected through Phase 1.|
+|**Implementation**|Functional requirements only. Laravel schemas, policies, APIs<br>and Vue components belong in the companion EDD.|
+|**Release state**|Not approved for production until consolidated SRD, EDD and<br>acceptance gates are approved.|
+
+
+
+###### **Phase 2 outcomes** 
+
+- Prevent wrong-patient and wrong-encounter work. 
+
+- Give each user a contextually filtered work surface. 
+
+- Preserve continuous patient history without merging distinct encounters. 
+
+- Represent patient movement and location without confusing client spaces with organizational ownership. 
+
+- Make alerts, care responsibility, chart state and confidentiality visible without disclosing restricted content. 
+
+- Specify concurrency, closure, reopening, downtime and reconciliation behavior. 
+
+#### **1. Governing Principles** 
+
+- **CLN-P2-GOV-001** The system shall require an explicit patient and encounter context before committing encounter-bound clinical information. 
+
+- **CLN-P2-GOV-002** The system shall distinguish patient identity, patient record, encounter, episode, visit, appointment, client space, patient space, bed and care relationship. 
+
+- **CLN-P2-GOV-003** The patient banner shall remain visible throughout patient-context work and shall not be replaced by a generic page title. 
+
+- **CLN-P2-GOV-004** The system shall use at least two configured patient identifiers before high-risk patient-specific actions and shall not use room or bed number as a patient identifier. 
+
+- **CLN-P2-GOV-005** An active encounter shall not imply unrestricted access; all Phase 1 authorization checks remain required. 
+
+- **CLN-P2-GOV-006** A longitudinal chart shall aggregate authorized history while preserving source encounter, author, time, state and provenance for every item. 
+
+- **CLN-P2-GOV-007** Patient movement shall change location context prospectively and shall not rewrite the location attached to completed historical actions. 
+
+- **CLN-P2-GOV-008** The user interface shall fail safely when identity, encounter, assignment or movement information is stale, contradictory or unavailable. 
+
+**Mandatory safety rule: no clinical action may be saved merely because a browser tab already contains a patient record. The server shall revalidate patient, encounter, authority and record state at commit time.** 
+
+#### **2. Conceptual Model and Definitions** 
+
+|**Concept**|**Definition**|**Key Rule**|
+|---|---|---|
+|**Person**|A human represented by authoritative<br>identity services.|One person may have one or more<br>patient identifiers under governed<br>matching rules.|
+|**Patient**|The care-recipient record used for<br>healthcare activities.|Patient identity is not an encounter.|
+
+
+
+Controlled Draft | Not Approved for Production | Page 32 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+|**Patient identifier**|Stable identifier with assigning authority<br>and type.|Display labels and names are not<br>identifiers.|
+|---|---|---|
+|**Encounter**|A bounded interaction for healthcare<br>service or health assessment.|Must carry status, class/type, patient<br>and service context.|
+|**Episode of care**|A configured grouping of related<br>encounters.|Does not erase encounter boundaries.|
+|**Appointment**|Planned service occurrence.|Does not prove that care occurred.|
+|**Client space**|Operational service location or virtual<br>service context.|Owned by Main Module; used for access<br>and work routing.|
+|**Patient space**|Patient’s effective location within an<br>encounter.|Derived from movements, not manually<br>assumed.|
+|**Bed/slot**|A resource within a patient space.|Never a patient identifier.|
+|**Care relationship**|Effective responsibility link between<br>user/team/role and patient/encounter.|Required where Phase 1 policy specifies.|
+|**Chart**|Authorized longitudinal projection of<br>clinical information.|Not a single mutable document.|
+|**Workspace**|Role- and context-filtered UI for current<br>work.|Must not enlarge authorization scope.|
+
+
+
+#### **3. Source-of-Truth Responsibilities** 
+
+###### **3.1 Main Module** 
+
+**CLN-P2-OWN-001** The Main Module shall remain authoritative for patient demographic identity where configured, enterprise patient identifiers, users, facilities, client spaces and location registries. 
+
+**CLN-P2-OWN-002** Clinical shall consume stable public identifiers and assigning-authority metadata and shall not manufacture substitute enterprise identifiers. 
+
+**CLN-P2-OWN-003** Client-space names, hierarchy and active status shall be consumed from the Main Module. 
+
+###### **3.2 Clinical Module** 
+
+**CLN-P2-OWN-010** Clinical shall own clinical encounter state, patient clinical workspace projections, care relationships, clinical chart state and clinical movement consequences within its boundary. 
+
+**CLN-P2-OWN-011** Clinical shall preserve links to authoritative patient, facility, client-space and user IDs without duplicating those masters as editable registries. 
+
+###### **3.3 Other modules** 
+
+**CLN-P2-OWN-020** Appointments, billing clearance, bed administration, laboratory fulfilment, imaging fulfilment and inventory availability shall remain owned by their authoritative modules while Clinical consumes verified status and references. 
+
+**CLN-P2-OWN-021** A remote module status shall not be rewritten locally as though Clinical were the source of truth. 
+
+#### **4. Patient Search, Discovery and Selection** 
+
+###### **4.1 Authorized search** 
+
+**CLN-P2-PTS-001** Patient search shall require clinical.patient.search and an allowed tenant, facility or other configured scope. 
+
+**CLN-P2-PTS-002** Searchable fields may include approved patient identifier, name, date of birth, telephone, appointment/visit reference and other configured demographic attributes. 
+
+- **CLN-P2-PTS-003** Search results shall be minimum-necessary and shall not reveal diagnoses, sensitive labels, notes or full addresses unless separately authorized. 
+
+**CLN-P2-PTS-004** The system shall distinguish exact identifier matches from broader demographic matches. 
+
+- **CLN-P2-PTS-005** Users shall not search across tenants. Cross-entity search shall require a specific governance permission and purpose. 
+
+Controlled Draft | Not Approved for Production | Page 33 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P2-PTS-006** Search shall handle aliases, spelling variants and previous names only through authoritative identity data and shall not auto-merge records. 
+
+###### **4.2 Result presentation** 
+
+|**Displayed Field**|**Default Rule**|
+|---|---|
+|**Patient identifier**|Show approved masked or full value according to policy.|
+|**Name**|Show authoritative display name and configured name-use<br>indicator.|
+|**Date of birth/age**|Show enough information for differentiation.|
+|**Sex/other demographic fields**|Show only configured identity data needed for safe<br>differentiation.|
+|**Current encounter**|Show authorized status, class and service location.|
+|**Photograph**|Optional, policy-controlled and not a substitute for identifiers.|
+|**Sensitive status**|Show a neutral restriction indicator without exposing the<br>restricted reason.|
+|**Deceased indicator**|Prominent where authoritative and permitted.|
+
+
+
+**CLN-P2-PTS-010** Selecting a result shall open a confirmation step or patient banner before a patient-specific action begins. 
+
+**CLN-P2-PTS-011** The system shall warn when several records have materially similar demographics. 
+
+- **CLN-P2-PTS-012** The user shall not be allowed to merge, split or correct enterprise patient identity from the Clinical workspace unless an explicit authoritative workflow and permission exist. 
+
+#### **5. Positive Patient Identification** 
+
+**CLN-P2-ID-001** Before medication administration, specimen collection, blood-product activity, image/procedure initiation, 
+
+   - invasive procedure, transfer acceptance, discharge completion and other configured high-risk actions, the user shall confirm at least two approved identifiers. 
+
+- **CLN-P2-ID-002** Approved identifiers shall be configured and may include patient name, date of birth, enterprise patient number or another identity attribute. Bed, room and ward shall not count as patient identifiers. 
+
+- **CLN-P2-ID-003** Barcode, wristband, biometric or device-assisted identification may support verification but shall not bypass mismatch handling. 
+
+- **CLN-P2-ID-004** If scanned identity does not match the active chart, the system shall block the action, preserve both references in a security-safe event and require resolution. 
+
+- **CLN-P2-ID-005** When a patient cannot reliably provide identity, the system shall support configured emergency, newborn, unconscious and unknown-patient processes with temporary identifiers and later reconciliation. 
+
+**CLN-P2-ID-006** Temporary identifiers shall be visually distinct and shall not be reused. 
+
+**CLN-P2-ID-007** Identity confirmation shall occur again when the patient context changes, not merely once per login session. 
+
+###### **5.1 Wrong-patient prevention controls** 
+
+- Persistent patient banner 
+
+- Two-identifier confirmation for configured actions 
+
+- Visual differentiation of similar names 
+
+- Recent-patient list with identifiers and locations 
+
+- Tab title containing safe configured patient context 
+
+- Mismatch blocking 
+
+- Confirmation after long inactivity 
+
+- Server revalidation at commit 
+
+- Audit of patient-context switches 
+
+- No silent carry-over of draft data between patients 
+
+Controlled Draft | Not Approved for Production | Page 34 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **6. Encounter Creation and Activation** 
+
+###### **6.1 Encounter classes** 
+
+|**Class**|**Examples**|**Required Context**|
+|---|---|---|
+|**OUTPATIENT**|General or specialty clinic visit|Service, facility, date/time and<br>responsible context|
+|**EMERGENCY**|Emergency intake and care|Emergency service, acuity context and<br>arrival time|
+|**INPATIENT**|Admission and stay|Admitting service, facility and<br>location/movement context|
+|**DAY_CASE**|Same-day planned care|Procedure/service and expected period|
+|**VIRTUAL**|Telehealth or remote care|Virtual client space and remote-service<br>authority|
+|**HOME/COMMUNITY**|Authorized field or home service|Service area and assigned team|
+|**OBSERVATION**|Time-limited monitored encounter|Observation service and review plan|
+
+
+
+**CLN-P2-ENC-001** Encounter classes, types and status values shall be configurable through controlled dictionaries and mapped to interoperability codes where approved. 
+
+**CLN-P2-ENC-002** Encounter creation shall require clinical.encounter.create and appropriate service/facility scope. 
+
+- **CLN-P2-ENC-003** Each encounter shall record patient, unique public ID, identifier, class, type, status, service, facility, planned and actual period, source/referral, reason, responsible clinician/team where known, initial client space where applicable and audit metadata. 
+
+- **CLN-P2-ENC-004** Appointment conversion shall preserve the appointment reference but shall not treat a scheduled appointment as completed clinical attendance. 
+
+- **CLN-P2-ENC-005** The system shall check for duplicate or overlapping encounters according to configurable rules and present existing encounters before creating another. 
+
+- **CLN-P2-ENC-006** An authorized user may create an emergency encounter with minimum safe data where policy permits; missing information shall enter a visible completion queue. 
+
+#### **7. Encounter Status Lifecycle** 
+
+|**Status**|**Meaning**|**Permitted Direction Examples**|
+|---|---|---|
+|**PLANNED**|Expected future encounter|ARRIVED, CANCELLED|
+|**ARRIVED**|Patient has presented|TRIAGE/IN_PROGRESS, CANCELLED,<br>ENTERED_IN_ERROR|
+|**TRIAGE**|Triage activity active|IN_PROGRESS, ON_HOLD|
+|**IN_PROGRESS**|Clinical care active|ON_HOLD, TRANSFER_PENDING,<br>FINISHED|
+|**ON_HOLD**|Temporarily paused|IN_PROGRESS, FINISHED|
+|**TRANSFER_PENDING**|Movement awaiting completion|IN_PROGRESS, TRANSFERRED|
+|**FINISHED**|Clinical activity ended, closure checks<br>pending|CLOSED, REOPENED_BY_EXCEPTION|
+|**CLOSED**|Final operational closure|REOPENED only by approved workflow|
+|**CANCELLED**|Planned/arrived encounter cancelled|No clinical completion; correction rules<br>apply|
+|**ENTERED_IN_ERROR**|Encounter created for wrong<br>subject/context|Immutable evidence plus corrective link|
+
+
+
+**CLN-P2-ENC-010** Status transitions shall be explicit, permission-controlled and audited. 
+
+**CLN-P2-ENC-011** A status change shall validate mandatory prerequisites and outstanding safety items defined by later phases. 
+
+- **CLN-P2-ENC-012** Cancellation and entered-in-error shall be distinct. Cancellation describes a legitimate encounter that did not proceed; entered-in-error corrects an invalid record. 
+
+**CLN-P2-ENC-013** Closing an encounter shall not delete pending results, follow-up obligations or historical tasks. 
+
+**CLN-P2-ENC-014** The system shall reject illegal transitions and return a structured reason. 
+
+Controlled Draft | Not Approved for Production | Page 35 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **8. Encounter Selection and Context Lock** 
+
+**CLN-P2-CTX-001** When a patient has more than one encounter, the system shall require the user to select or confirm the applicable encounter before encounter-bound entry. 
+
+**CLN-P2-CTX-002** The active encounter context shall display encounter ID, class/type, status, service, facility, current patient space and period. 
+
+**CLN-P2-CTX-003** Draft information shall remain bound to the patient and encounter on which it was created. 
+
+**CLN-P2-CTX-004** Switching patient or encounter shall warn about unsaved work and shall never copy draft values silently. 
+
+**CLN-P2-CTX-005** Deep links and notifications shall be re-authorized and shall confirm current patient and encounter context before display. 
+
+**CLN-P2-CTX-006** Browser back/forward navigation shall not restore an unauthorized or stale patient context without revalidation. 
+
+**CLN-P2-CTX-007** A closed encounter may be viewed according to permission but may not receive ordinary new entries unless the specific entry type supports a late-entry or addendum workflow. 
+
+#### **9. Patient Banner and Safety Header** 
+
+|**Banner Element**|**Requirement**|
+|---|---|
+|**Identity**|Authoritative display name plus at least one prominent<br>identifier and configured second identifier.|
+|**Age context**|Date of birth and calculated age; neonatal/pediatric precision<br>where configured.|
+|**Encounter**|Class/type, status, visit identifier and start date/time.|
+|**Location**|Facility, client space, room/bed or virtual context, with<br>effective timestamp.|
+|**Responsibility**|Primary/attending clinician, assigned nurse/team where<br>available.|
+|**Safety alerts**|Allergy, critical warning, isolation, fall/pressure/VTE or other<br>configured indicators without replacing detailed review.|
+|**Confidentiality**|Restriction indicator and emergency-access state.|
+|**Special state**|Deceased, unknown identity, temporary identifier, duplicate-<br>review pending or encounter closed.|
+|**Actions**|Context-safe access to overview, timeline and permitted<br>workflows.|
+
+
+
+**CLN-P2-BNR-001** The banner shall remain visible or immediately accessible on every patient-context page, modal and mobile workflow. 
+
+**CLN-P2-BNR-002** Banner content shall refresh when encounter, movement, alert or care-responsibility events change. **CLN-P2-BNR-003** Colour alone shall not convey safety-critical meaning. 
+
+**CLN-P2-BNR-004** The banner shall not expose restricted details to an unauthorized user. 
+
+**CLN-P2-BNR-005** Printed and exported clinical documents shall include approved patient and encounter identifiers on every page where required. 
+
+#### **10. Patient Location, Movement and Patient Space** 
+
+###### **10.1 Location hierarchy** 
+
+**CLN-P2-LOC-001** Clinical shall consume Main Module location and client-space identifiers and shall retain the distinction between facility, client space, room, bed/slot and virtual location. 
+
+**CLN-P2-LOC-002** Each movement shall record source, destination, requested time, effective time, status, actor, reason, encounter, transport/clinical readiness references where applicable and correlation ID. 
+
+**CLN-P2-LOC-003** A requested or reserved destination shall not become the patient’s effective location until the configured acceptance/completion event occurs. 
+
+**CLN-P2-LOC-004** The current patient space shall be derived from the latest valid completed movement, with detection of overlaps and gaps. 
+
+Controlled Draft | Not Approved for Production | Page 36 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P2-LOC-005** Clinical actions shall store the effective patient location at action time when location is clinically relevant. 
+
+###### **10.2 Movement states** 
+
+|**State**|**Meaning**|
+|---|---|
+|**REQUESTED**|Movement requested but not accepted.|
+|**ACCEPTED**|Receiving destination agrees; patient not yet moved.|
+|**IN_TRANSIT**|Movement underway where used.|
+|**COMPLETED**|Destination becomes effective patient space.|
+|**REJECTED**|Destination declined with reason.|
+|**CANCELLED**|Valid request withdrawn before completion.|
+|**ENTERED_IN_ERROR**|Invalid movement retained with correction linkage.|
+
+
+
+**CLN-P2-LOC-010** Movement completion shall trigger recalculation of patient lists, client-space access, care assignments, task routing and alerts without rewriting prior history. 
+
+**CLN-P2-LOC-011** A user assigned only to the source space shall lose ordinary new-write authority after completed transfer, subject to configured handover and late-entry rules. 
+
+**CLN-P2-LOC-012** A receiving user shall not gain ordinary authority merely because a transfer was requested; configured assignment and relationship rules still apply. 
+
+#### **11. Patient Lists and Worklist Derivation** 
+
+|**List**|**Inclusion Basis**|
+|---|---|
+|**My Patients**|Active individual responsibility or accepted referral.|
+|**My Current Work**|Assigned tasks, due observations, medication windows and<br>follow-up within authorized scope.|
+|**My Team**|Active care-team relationships.|
+|**My Client Space**|Current patients in spaces where the user has active<br>operational assignment and permission.|
+|**Covering Patients**|Effective cross-cover or on-call assignment.|
+|**Consultations**|Accepted consultation/referral relationship.|
+|**Recent Patients**|Recently accessed patients within retention and authorization<br>rules.|
+|**Exceptions**|Authorized unresolved identity, movement, result, task or<br>chart-state problems.|
+
+
+
+**CLN-P2-LST-001** Lists shall be projections derived from authoritative current state and shall not become separate manual sources of truth. 
+
+**CLN-P2-LST-002** List membership shall never override authorization at chart-open or action-commit time. 
+
+**CLN-P2-LST-003** Filters shall include approved patient, encounter, location, care team, acuity, task, status and date attributes. 
+
+**CLN-P2-LST-004** Sensitive patients shall not be revealed through unauthorized list inclusion, counts or filter facets. 
+
+**CLN-P2-LST-005** The UI shall display when information is delayed or last refreshed. 
+
+**CLN-P2-LST-006** Bulk selection shall be restricted to specifically permitted low-risk actions and shall never enable bulk signature or indiscriminate chart export. 
+
+#### **12. Ward and Client-Space Workspace** 
+
+###### **12.1 Census header** 
+
+**CLN-P2-WRD-001** An authorized client-space workspace shall show current census counts derived from effective patient-space records and location status. 
+
+**CLN-P2-WRD-002** Counts shall distinguish occupied, reserved, available, unavailable/maintenance and configured overflow capacity where those concepts are supported. 
+
+**CLN-P2-WRD-003** Census discrepancies shall be visible through an exception queue and shall not be silently repaired. 
+
+Controlled Draft | Not Approved for Production | Page 37 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+###### **12.2 Bed and slot view** 
+
+**CLN-P2-WRD-010** A bed/slot card may show minimum-necessary patient identity, encounter, acuity and responsibility information only to authorized users. 
+
+**CLN-P2-WRD-011** Clicking an occupied bed shall not bypass patient and encounter authorization. 
+
+**CLN-P2-WRD-012** An available bed action shall initiate the authoritative allocation or movement workflow rather than directly changing patient location. 
+
+**CLN-P2-WRD-013** Overflow spaces shall use controlled temporary location records with unique identifiers, effective periods, inherited policies defined explicitly, and retirement workflow. 
+
+**CLN-P2-WRD-014** A retired overflow space shall remain historically resolvable. 
+
+#### **13. Care Team and Responsibility Panel** 
+
+**CLN-P2-CARE-001** The workspace shall show current primary clinician, primary nurse, assigned team, covering users, accepted consultants and allied-health relationships where authorized. 
+
+**CLN-P2-CARE-002** Each relationship shall display role/responsibility, effective period, source and handover state. 
+
+**CLN-P2-CARE-003** Users shall not edit care relationships unless they hold the exact create, transfer, accept or end permission required by the workflow. 
+
+**CLN-P2-CARE-004** Replacing a primary responsible person shall preserve the prior relationship and record handover acceptance where required. 
+
+**CLN-P2-CARE-005** An unavailable responsible clinician shall trigger configured cover or escalation workflows; the system shall not silently assign a substitute. 
+
+#### **14. Clinical Chart Workspace** 
+
+###### **14.1 Default sections** 
+
+- Overview and safety summary 
+
+- Active encounter 
+
+- Longitudinal timeline 
+
+- Problems and diagnoses 
+
+- Allergies and intolerances 
+
+- Medications and medication administration 
+
+- Orders and requests 
+
+- Results 
+
+- Observations and scores 
+
+- Notes and documentation 
+
+- Care plans and tasks 
+
+- Procedures 
+
+- Referrals and consultations 
+
+- Patient movements and transitions 
+
+- Documents and media 
+
+- Audit/provenance view for authorized users 
+
+**CLN-P2-CHT-001** Sections shall be permission-filtered and shall not expose section counts or previews when the section itself is restricted. 
+
+**CLN-P2-CHT-002** The chart shall clearly distinguish active-encounter information from historical information. 
+
+**CLN-P2-CHT-003** The chart shall not aggregate conflicting facts into a single unqualified value. Source, time, status and encounter shall remain available. 
+
+**CLN-P2-CHT-004** Unsigned drafts shall be visually and technically distinct from signed clinical records. 
+
+**CLN-P2-CHT-005** Corrected, amended and entered-in-error content shall remain linked and visibly state its current legal/clinical status. 
+
+**CLN-P2-CHT-006** Chart navigation shall preserve patient and encounter context while enforcing authorization on every data request. 
+
+Controlled Draft | Not Approved for Production | Page 38 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+###### **14.2 Forms and Clinical Charts** 
+
+**CLN-P2-CHT-007** The patient workspace shall provide a Forms and Clinical Charts section containing active, available, completed, discontinued, superseded and historical forms applicable to the patient and encounter. 
+
+**CLN-P2-CHT-008** A rendered form shall retrieve applicable authoritative Observations and other approved records rather than require duplicate clinical data entry. 
+
+**CLN-P2-CHT-009** An authorized user shall be able to select Add Form and activate an eligible approved Form Definition for the patient or encounter. 
+
+**CLN-P2-CHT-010** Adding a form shall activate its presentation and applicable observation requirements but shall not modify defaults for other patients or the governing client-space configuration. 
+
+**CLN-P2-CHT-011** A patient-added form shall remain historically associated with the patient and encounter after completion, discontinuation, supersession or entry in error. 
+
+#### **15. Longitudinal Timeline** 
+
+**CLN-P2-TML-001** The timeline shall present authorized events by clinically meaningful time while preserving recorded time, effective time and source time where they differ. 
+
+**CLN-P2-TML-002** Events shall include type, status, author/source, encounter, facility/client space and provenance link. 
+
+**CLN-P2-TML-003** Filters shall include encounter, event type, service, author/team, date range, status and location. 
+
+**CLN-P2-TML-004** The timeline shall distinguish preliminary, final, corrected, cancelled and entered-in-error states. 
+
+**CLN-P2-TML-005** Late-arriving data shall appear according to clinical event time with a visible received/recorded timestamp and shall not impersonate contemporaneous entry. 
+
+**CLN-P2-TML-006** Same-time ordering shall use deterministic tie-breaking and shall not imply causation. 
+
+**CLN-P2-TML-007** The timeline shall support source-object navigation only when the user is authorized for that source object. 
+
+#### **16. Alerts, Allergies and Critical Context** 
+
+**CLN-P2-ALT-001** The patient workspace shall show active safety alerts appropriate to the user’s permissions and workflow context. 
+
+**CLN-P2-ALT-002** Alerts shall identify severity, source, status, effective period, verification state and required action where applicable. 
+
+**CLN-P2-ALT-003** Acknowledgement shall not be treated as resolution unless the alert workflow explicitly defines that transition. 
+
+**CLN-P2-ALT-004** Alert fatigue controls shall not suppress critical alerts without approved policy and audit. 
+
+**CLN-P2-ALT-005** Allergy and intolerance summaries shall preserve substance, reaction, severity, verification and source information when available. 
+
+**CLN-P2-ALT-006** The workspace shall show stale, unverified or conflicting safety information as such rather than selecting one silently. 
+
+#### **17. Concurrent Access, Drafts and Conflict Handling** 
+
+**CLN-P2-CON-001** The system shall permit appropriate multidisciplinary concurrent viewing and documentation while preventing unsafe lost updates. 
+
+**CLN-P2-CON-002** Editable resources shall use version or concurrency tokens and reject updates based on stale versions where overwrite would lose information. 
+
+**CLN-P2-CON-003** A user shall be shown a clear conflict summary and shall not be asked to choose between anonymous raw payloads. 
+
+**CLN-P2-CON-004** Drafts shall record owner, patient, encounter, type, last saved time, version and device/session context. **CLN-P2-CON-005** Auto-save shall not sign, finalize or publish content. 
+
+**CLN-P2-CON-006** Draft recovery shall require renewed authorization and shall never recover a draft into another patient or encounter. 
+
+**CLN-P2-CON-007** The presence of another viewer shall not disclose that viewer’s identity unless policy permits. 
+
+Controlled Draft | Not Approved for Production | Page 39 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **18. Encounter Closure, Reopening and Late Information** 
+
+**CLN-P2-CLS-001** Encounter closure shall require clinical.encounter.close and completion of configured closure checks. 
+
+- **CLN-P2-CLS-002** Closure checks shall identify outstanding orders, results, medication reconciliation, follow-up, documentation, movement and task obligations defined in later phases. 
+
+- **CLN-P2-CLS-003** The system shall distinguish finished from closed so that operational completion checks can occur before final closure. 
+
+- **CLN-P2-CLS-004** Closed encounters shall be read-only except for separately authorized late-entry, addendum, correction, resultarrival and follow-up workflows. 
+
+- **CLN-P2-CLS-005** Reopening shall require a dedicated permission, reason, effective scope and audit; it shall not erase the original closure event. 
+
+- **CLN-P2-CLS-006** A new episode of care shall not be recorded as reopening merely to avoid creating the correct new encounter. 
+
+- **CLN-P2-CLS-007** Post-discharge results and obligations shall remain linked to the original encounter while producing new followup tasks where required. 
+
+#### **19. Wrong-Patient, Duplicate and Identity-Correction Handling** 
+
+- **CLN-P2-COR-001** Clinical shall provide a report-wrong-patient or identity-concern action without allowing ordinary users to merge records directly. 
+
+- **CLN-P2-COR-002** Suspected duplicate, overlay or wrong-patient conditions shall place affected high-risk actions into a controlled review state where safe and configured. 
+
+- **CLN-P2-COR-003** Identity correction shall preserve old and new identifiers, authoritative decision, actor, reason, effective time and impacted-object reconciliation status. 
+
+- **CLN-P2-COR-004** Moving a clinical record from one patient to another shall require an exceptional governed workflow, dual review where configured and complete provenance. 
+
+- **CLN-P2-COR-005** The system shall produce an impact list covering notes, orders, results, medications, specimens, images, billing references and audit events before correction completion. 
+
+**CLN-P2-COR-006** Downstream modules shall receive idempotent correction events and reconciliation status shall be monitored. 
+
+#### **20. Downtime, Offline and Recovery** 
+
+- **CLN-P2-DWN-001** Downtime identity and encounter workflows shall use approved local policy and shall preserve temporary identifiers, time, facility, client space and responsible user/device. 
+
+- **CLN-P2-DWN-002** Offline patient lists shall contain only the minimum data required for approved care scope and shall expire according to policy. 
+
+- **CLN-P2-DWN-003** An offline action shall not assume that patient location, encounter status or authority remained unchanged; synchronization shall revalidate and reconcile. 
+
+- **CLN-P2-DWN-004** Conflicts shall enter a review queue rather than silently overwriting online changes. 
+
+- **CLN-P2-DWN-005** The system shall distinguish data captured offline from data committed online and preserve both timestamps. 
+
+- **CLN-P2-DWN-006** Temporary unknown-patient and encounter records shall be reconciled through an approved identity workflow after service restoration. 
+
+#### **21. Mobile and Remote Workspace** 
+
+- **CLN-P2-MOB-001** Mobile patient lists and chart views shall enforce the same Phase 1 permissions, client-space assignment and care-relationship rules as web interfaces. 
+
+- **CLN-P2-MOB-002** The mobile interface shall keep patient identity and active encounter context visible during action entry. 
+
+- **CLN-P2-MOB-003** Device notifications shall minimize protected content and require authenticated opening before showing patient details. 
+
+- **CLN-P2-MOB-004** Remote-service users shall require an active REMOTE_SERVICE assignment or other approved context and shall not inherit facility-wide access from remote login alone. 
+
+Controlled Draft | Not Approved for Production | Page 40 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 **CLN-P2-MOB-005** Screenshots, local caching, clipboard and background previews shall follow configured mobile security policy. 
+
+#### **22. Permissions Catalogue for Phase 2** 
+
+|**Permission**|**Purpose**|**Typical Extra Context**|
+|---|---|---|
+|**clinical.patient.search**|Search authorized patient registry|Tenant/facility scope|
+|**clinical.patient.chart.view**|Open authorized chart|Client space or care relationship|
+|**clinical.patient.chart.view_sensitive**|View restricted chart content|Sensitivity clearance|
+|**clinical.patient.identity.concern_report**|Report possible wrong identity|Patient context|
+|**clinical.encounter.create**|Create encounter|Facility/service scope|
+|**clinical.encounter.view**|View encounter|Authorized patient scope|
+|**clinical.encounter.update**|Update permitted encounter metadata|Record state|
+|**clinical.encounter.status_change**|Perform ordinary status transition|Transition rule|
+|**clinical.encounter.close**|Close encounter|Closure checks|
+|**clinical.encounter.reopen**|Reopen closed encounter|Reason and elevated authority|
+|**clinical.movement.request**|Request movement|Source scope|
+|**clinical.movement.accept**|Accept into destination|Destination scope|
+|**clinical.movement.complete**|Complete movement|Handover and location checks|
+|**clinical.care_assignment.manage**|Manage responsibility links|Scope and separation of duty|
+|**clinical.client_space.workspace.view**|View operational workspace|Active client-space assignment|
+|**clinical.timeline.view**|View authorized longitudinal events|Patient scope|
+|**clinical.audit.context.view**|View detailed provenance|Elevated read scope|
+
+
+
+**CLN-P2-PRM-001** These permissions shall be registered in the Main Module and mapped to configurable bundles; titles shall not be checked directly in Laravel business logic. 
+
+#### **23. Audit and Event Catalogue** 
+
+###### **23.1 Mandatory audit events** 
+
+- Patient search 
+
+- Patient chart open 
+
+- Patient/encounter switch 
+
+- Sensitive chart access or denial 
+
+- Encounter create and status transition 
+
+- Movement request, accept, reject, cancel and complete 
+
+- Care relationship create, accept, transfer and end 
+
+- Wrong-patient warning and mismatch 
+
+- Identity concern report 
+
+- Encounter closure and reopening 
+
+- Draft recovery conflict 
+
+- Bulk list action 
+
+- Offline synchronization and reconciliation 
+
+###### **23.2 Platform events** 
+
+- patient.identity.updated 
+
+- patient.identity.merge_pending 
+
+- patient.identity.reconciled 
+
+- encounter.created 
+
+- encounter.status.changed 
+
+- encounter.closed 
+
+- encounter.reopened 
+
+- patient.movement.requested 
+
+- patient.movement.completed 
+
+- care.relationship.changed 
+
+- patient.workspace.invalidated 
+
+- patient.alert.changed 
+
+Controlled Draft | Not Approved for Production | Page 41 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- patient.confidentiality.changed 
+
+**CLN-P2-EVT-001** Events shall use stable public IDs, version, tenant, occurred-at time, correlation ID and idempotency key. 
+
+**CLN-P2-EVT-002** Event consumers shall not infer a movement is complete from a request event. 
+
+#### **24. Reports and Operational Monitoring** 
+
+- Active encounters by class, status, facility and client space 
+
+- Patients without resolved current space 
+
+- Overlapping or missing movements 
+
+- Encounters lacking responsible clinician/team where required 
+
+- Temporary identifiers awaiting reconciliation 
+
+- Suspected duplicates and identity overlays 
+
+- Closed encounters with unresolved follow-up 
+
+- Stale patient-list projections 
+
+- Unauthorized or denied chart access trends 
+
+- Break-glass chart access 
+
+- Client-space census discrepancies 
+
+- Drafts older than configured threshold 
+
+**CLN-P2-RPT-001** Report visibility and exports shall remain permission- and scope-controlled. 
+
+**CLN-P2-RPT-002** Operational counts shall be reproducible from source records and shall disclose refresh time and filters. 
+
+#### **25. Acceptance Scenarios** 
+
+|**ID**|**Scenario**|**Expected Result**|
+|---|---|---|
+|**P2-AT-001**|Nurse searches exact patient ID within<br>assigned ward.|Minimum safe result shown; chart open<br>reauthorized.|
+|**P2-AT-002**|Two patients have similar names.|Results show differentiating identifiers<br>and warning; no automatic selection.|
+|**P2-AT-003**|User scans wristband for a different<br>patient than active chart.|Action blocked and mismatch recorded.|
+|**P2-AT-004**|Patient has outpatient and inpatient<br>encounters.|User must confirm the applicable<br>encounter before entry.|
+|**P2-AT-005**|Transfer is requested but not completed.|Current patient space remains source;<br>destination shown as pending.|
+|**P2-AT-006**|Transfer completes to ICU.|Patient lists and ordinary client-space<br>access recalculate prospectively.|
+|**P2-AT-007**|Ward nurse opens patient after<br>assignment expiry.|Ordinary write denied despite stale<br>browser page.|
+|**P2-AT-008**|Two users edit the same mutable draft.|Stale update rejected or reconciled<br>without silent overwrite.|
+|**P2-AT-009**|Encounter is closed with pending final<br>result.|Result and follow-up remain linked;<br>ordinary new entry blocked.|
+|**P2-AT-010**|Authorized user adds late information.|Separate late-entry/addendum workflow<br>preserves closure and provenance.|
+|**P2-AT-011**|Unknown emergency patient is<br>registered.|Unique temporary identity and<br>encounter created with visible<br>reconciliation status.|
+|**P2-AT-012**|Sensitive patient appears in<br>unauthorized search.|No restricted detail or revealing facet is<br>exposed.|
+|**P2-AT-013**|AI-generated summary is requested from<br>timeline.|Only authorized source data used;<br>output remains draft and requires<br>human review.|
+|**P2-AT-014**|Offline entry synchronizes after patient<br>moved.|Server revalidates context and routes<br>conflict to reconciliation.|
+|**P2-AT-015**|Overflow bed is retired.|Historical location remains resolvable<br>and current capacity updates.|
+
+
+
+Controlled Draft | Not Approved for Production | Page 42 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **26. Mandatory Negative Tests** 
+
+- Cross-tenant patient ID substitution 
+
+- Patient search without permission 
+
+- Chart open from copied deep link after assignment expiry 
+
+- Commit to wrong encounter through modified request payload 
+
+- Bed number used as sole patient identifier 
+
+- Movement request treated as completed location 
+
+- Unauthorized patient revealed in list count or search facet 
+
+- Closed encounter edited through direct API 
+
+- Stale version overwrites newer data 
+
+- Draft recovered into another patient 
+
+- Sensitive details exposed in notification preview 
+
+- Duplicate encounter created despite exact active encounter match 
+
+- Temporary identifier reused 
+
+- Offline synchronization silently overwrites movement 
+
+- Care relationship self-created without permission 
+
+- Bulk export enabled by ordinary chart-view permission 
+
+#### **27. Phase 2 Traceability** 
+
+|**Area**|**Prefix**|**Evidence**|
+|---|---|---|
+|**Governance**|CLN-P2-GOV|Architecture and workflow review|
+|**Ownership**|CLN-P2-OWN|Contract tests|
+|**Patient search**|CLN-P2-PTS|Search privacy tests|
+|**Identification**|CLN-P2-ID|Wrong-patient tests|
+|**Encounter**|CLN-P2-ENC|Lifecycle tests|
+|**Context**|CLN-P2-CTX|Patient/encounter binding tests|
+|**Banner**|CLN-P2-BNR|UI and accessibility tests|
+|**Location**|CLN-P2-LOC|Movement tests|
+|**Lists**|CLN-P2-LST|Projection and access tests|
+|**Ward**|CLN-P2-WRD|Census reconciliation tests|
+|**Care**|CLN-P2-CARE|Relationship tests|
+|**Chart**|CLN-P2-CHT|Authorization and state tests|
+|**Timeline**|CLN-P2-TML|Ordering/provenance tests|
+|**Alerts**|CLN-P2-ALT|Safety display tests|
+|**Concurrency**|CLN-P2-CON|Lost-update tests|
+|**Closure**|CLN-P2-CLS|Closure/reopen tests|
+|**Correction**|CLN-P2-COR|Identity reconciliation tests|
+|**Downtime**|CLN-P2-DWN|Offline recovery tests|
+|**Mobile**|CLN-P2-MOB|Parity tests|
+
+
+
+#### **28. Registered Phase 2 Gaps** 
+
+|**Gap ID**|**Resolution Required**|**Blocking**|
+|---|---|---|
+|**CLN-P2-GAP-001**|Confirm authoritative patient identity<br>master and matching/merge service.|Yes|
+|**CLN-P2-GAP-002**|Approve encounter classes, types and<br>status lifecycle for each care setting.|Yes|
+||Confirm whether bed administration is||
+|**CLN-P2-GAP-003**|Main, Clinical or a dedicated service<br>while preserving Phase 2 boundaries.|Yes|
+|**CLN-P2-GAP-004**|Approve two-identifier rules for each<br>high-risk workflow.|Yes|
+|**CLN-P2-GAP-005**|Approve patient banner fields and<br>sensitive-data masking.|Yes|
+
+
+
+Controlled Draft | Not Approved for Production | Page 43 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+|**CLN-P2-GAP-006**|Approve current patient-space<br>derivation and movement completion<br>authority.|Yes|
+|---|---|---|
+|**CLN-P2-GAP-007**|Approve care-relationship creation,<br>acceptance, handover and expiry rules.|Yes|
+|**CLN-P2-GAP-008**|Approve unknown-patient and newborn<br>temporary identity workflows.|Yes|
+|**CLN-P2-GAP-009**|Approve offline patient-list retention and<br>synchronization policy.|Yes|
+|**CLN-P2-GAP-010**|Approve chart closure prerequisites and<br>reopening authorities.|Yes|
+|**CLN-P2-GAP-011**|Approve identity correction, merge and<br>wrong-patient clinical-record<br>reconciliation workflow.|Yes|
+||Confirm FHIR version/profile approach||
+|**CLN-P2-GAP-012**|for Patient, Encounter and Location<br>exchange.|Before interoperability release|
+
+
+
+#### **29. Phase 2 Completion Gate** 
+
+- Phase 1 rules incorporated without contradiction. 
+
+- Patient identity source and identifier rules approved. 
+
+- Two-identifier patient-safety rules approved. 
+
+- Encounter schema concepts, classes and statuses approved. 
+
+- Patient-space and movement semantics approved. 
+
+- Patient banner and chart context approved. 
+
+- Patient lists and client-space workspace derivation approved. 
+
+- Care responsibility and handover model approved. 
+
+- Concurrency, drafts and closure rules approved. 
+
+- Identity correction and downtime reconciliation approved. 
+
+- Permissions, events, acceptance tests and gaps assigned. 
+
+   - **Phase 3 shall use the patient, encounter, location, chart-state and authorization foundations defined here. It shall not create independent patient-context rules for individual note types.** 
+
+#### **Appendix A. Minimum Encounter Functional Record** 
+
+|**Group**|**Fields**|
+|---|---|
+|**Identity**|Public ID, encounter identifier, patient public ID, tenant, entity|
+|**Classification**|Class, type, service, priority where used|
+|**Status**|Current status, status history and version|
+|**Time**|Planned period, actual period, arrival, finish and closure<br>timestamps|
+|**Location**|Facility, current patient space and movement references|
+|**Responsibility**|Responsible clinician, nurse, care team and relationship<br>references|
+|**Origin**|Appointment, referral, source or prior encounter references|
+|**Clinical context**|Reason, initial acuity or admission context where applicable|
+|**Closure**|Disposition, closure checks, closed by and reopened<br>references|
+|**Audit**|Created/updated actor, correlation ID and provenance|
+
+
+
+#### **Appendix B. Phase 2 Review Checklist** 
+
+|**Review Role**|**Key Review Focus**|
+|---|---|
+|**Clinical Product Owner**|Workflow completeness and usability|
+|**Patient Administration**|Identity, registration and encounter rules|
+
+
+
+Controlled Draft | Not Approved for Production | Page 44 
+
+||KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1|
+|---|---|
+|**Nursing**|Ward lists, handover, patient-space and banner|
+|**Medical Leadership**|Responsibility, encounter state and chart access|
+|**Main Module Architect**|Identity, client-space and event contracts|
+|**Security/Data Protection**|Minimum necessary, masking and access control|
+|**Interoperability**|Patient, Encounter and Location mappings|
+|**Quality Assurance**|Acceptance, negative and concurrency tests|
+|**Operations**|Downtime, reconciliation and monitoring|
+
+
+
+#### **Appendix C. Sources Reviewed** 
+
+- KashTre Clinical Module SRD v6.0 and addendum. 
+
+- KashTre Clinical Module SRD v6.1 Phase 1 Draft. 
+
+- HL7 FHIR Patient, Encounter and Location materials. 
+
+- WHO Patient Identification safety solution. 
+
+- ONC SAFER Patient Identification guidance. 
+
+### **PHASE 3** 
+
+##### **CLINICAL DOCUMENTATION AND LEGAL RECORD CONTROLS** 
+
+**Phase 3 defines creation, review, signature, co-signature, correction, amendment, late entry, copy-forward, voice and AI-assisted documentation while preserving patient safety and the legal clinical record.** 
+
+Controlled Draft | Not Approved for Production | Page 45 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **Document Control and Phase Authority** 
+
+|**Field**|**Rule**|
+|---|---|
+|**Purpose**|Define the complete functional lifecycle and governance of<br>Clinical documentation.|
+|**Dependencies**|All Phase 1 authorization and Phase 2 patient, encounter,<br>workspace and record-state rules apply.|
+|**Technology**|The companion implementation shall be Laravel-native. This<br>SRD defines behavior, not partial framework code.|
+|**Boundary**|Problems, diagnoses, orders, medication, observations and<br>results are referenced but detailed in later phases.|
+|**Authority**|This phase supersedes conflicting assumptions that a signed<br>note may be overwritten or AI output may become final<br>automatically.|
+|**Release**|Controlled draft, not approved for production.|
+
+
+
+###### **Phase 3 outcomes** 
+
+- Create consistent note-type and template governance. 
+
+- Separate draft, completed, signed, co-signed, corrected and entered-in-error states. 
+
+- Preserve authorship, attestation and version history. 
+
+- Control copy-forward and imported content. 
+
+- Keep voice and AI assistance advisory and reviewable. 
+
+- Support multidisciplinary documentation without unsafe overwrites. 
+
+- Define permissions, audit, reports, acceptance tests and release gaps. 
+
+#### **1. Governing Principles** 
+
+- **CLN-P3-GOV-001** Clinical documentation shall be patient-bound, encounter-bound where applicable, attributable, time-stamped, versioned and auditable. 
+
+**CLN-P3-GOV-002** A signed or otherwise finalized record entry shall not be destructively overwritten. 
+
+- **CLN-P3-GOV-003** The system shall distinguish author, recorder, transcriber, verifier, signer, co-signer, approver and source system. 
+
+- **CLN-P3-GOV-004** The person signing a record shall be shown the complete content and context being attested. 
+
+- **CLN-P3-GOV-005** Auto-save, speech recognition, templates, copy-forward and AI shall not constitute signature or clinical attestation. 
+
+- **CLN-P3-GOV-006** Documentation interfaces shall remain dynamic and template-driven without permitting administrators to bypass safety, provenance or authorization requirements. 
+
+- **CLN-P3-GOV-007** Every note type shall declare its patient context, encounter rules, permitted authors, required sections, signature rules, amendment rules, retention and interoperability mapping. 
+
+**Legal-record rule: final content remains readable and traceable. Subsequent corrections or additions create linked record states rather than erasing history.** 
+
+#### **2. Documentation Concepts** 
+
+|**Concept**|**Definition**|**Control**|
+|---|---|---|
+|**Record entry**|A discrete clinical statement or<br>structured entry.|Versioned and attributable.|
+|**Note**|A documentation record composed of<br>sections and entries.|Bound to note type and context.|
+|**Document**|A coherent package prepared for<br>persistence, exchange or attestation.|Frozen version when issued.|
+|**Draft**|Editable, incomplete content not yet<br>attested.|Not treated as final clinical truth.|
+
+
+
+Controlled Draft | Not Approved for Production | Page 46 
+
+|**Completion**|<br>Author indicates content is ready for<br>required attestation.|KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1<br>May still require signature/co-signature.|
+|---|---|---|
+|**Signature**|Authenticated attestation by an<br>authorized person.|Locks signed version.|
+|**Co-signature**|Additional attestation required by policy.|Does not conceal original author.|
+|**Addendum**|New supplementary content linked to a<br>final entry.|Does not modify original text.|
+|**Correction**|Replacement or clarification of<br>erroneous content.|Original remains accessible.|
+|**Late entry**|New documentation recorded after the<br>clinical event.|Shows event and entry times.|
+|**Entered in error**|Final record declared invalid for clinical<br>use.|Retained with reason and replacement<br>link.|
+|**Copy-forward**|Reuse of prior content with provenance.|Must be reviewed and identifiable.|
+|**Imported content**|Content received from device, module or<br>external source.|Source and validation status preserved.|
+
+
+
+#### **3. Documentation Types and Registry** 
+
+###### **3.1 Pre-seeded documentation families** 
+
+- History and physical examination 
+
+- Progress note 
+
+- Nursing note 
+
+- Consultation note 
+
+- Allied-health note 
+
+- Triage note 
+
+- Procedure note 
+
+- Operative and anaesthetic boundary documents 
+
+- Transfer summary 
+
+- Discharge summary 
+
+- Referral note or letter 
+
+- Care-plan review note 
+
+- Handover note 
+
+- Telephone or virtual consultation note 
+
+- Patient/family communication note 
+
+- Administrative clinical clarification 
+
+- Unstructured attachment with governed metadata 
+
+- **CLN-P3-TYP-001** Documentation types shall be stored in a controlled, versioned registry and shall not be hardcoded solely in Laravel controllers or Vue pages. 
+
+- **CLN-P3-TYP-002** Each type shall define stable code, name, purpose, clinical category, allowed encounter classes, permitted 
+
+   - authors, required permission, required sections, signature mode, co-sign rule, sensitivity, retention class, correction policy and active period. 
+
+- **CLN-P3-TYP-003** A retired type shall remain resolvable for historical records but shall not be selectable for new entries. 
+
+- **CLN-P3-TYP-004** Local note types may extend the registry through governed configuration but shall not redefine canonical codes silently. 
+
+- **CLN-P3-TYP-005** The interface shall show only note types allowed by the user’s effective permissions, title bundle, client-space assignment, relationship, encounter class and professional scope. 
+
+#### **4. Templates and Structured Sections** 
+
+**CLN-P3-TPL-001** Templates shall be versioned and effective-dated. 
+
+- **CLN-P3-TPL-002** A template shall define sections, order, required status, data type, terminology binding, help text, conditional visibility, validation, repeatability and signature inclusion. 
+
+Controlled Draft | Not Approved for Production | Page 47 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P3-TPL-003** Clinical Data Elements referenced by a template shall use stable CDE identifiers and shall not be duplicated as unrelated free-text fields. 
+
+**CLN-P3-TPL-004** Template changes shall not alter previously signed notes or their rendered meaning. 
+
+**CLN-P3-TPL-005** A note shall preserve the template ID and exact version used at creation and signature. 
+
+**CLN-P3-TPL-006** Administrators shall preview and validate templates before activation. 
+
+**CLN-P3-TPL-007** A template may provide optional suggested text, but it shall not pre-assert unverified clinical facts. 
+
+**CLN-P3-TPL-008** Required sections may be satisfied by structured data, authored narrative or approved reference links only where explicitly configured. 
+
+###### **4.1 Template lifecycle** 
+
+|**State**|**Permitted Use**|
+|---|---|
+|**DRAFT**|Configuration work only|
+|**IN_REVIEW**|Clinical and governance review|
+|**APPROVED**|Approved but not yet effective|
+|**ACTIVE**|Available for new documentation|
+|**DEPRECATED**|Existing use ends on configured date|
+|**RETIRED**|Historical resolution only|
+|**REJECTED**|Not available|
+
+
+
+#### **5. Authoring Workflow** 
+
+|**Step**|**Required System Behavior**|
+|---|---|
+|**1. Select action**|Show permitted note types for active patient and encounter.|
+|**2. Confirm context**|Display patient banner, encounter, location and authoring role.|
+|**3. Create draft**|Bind patient, encounter, note type, template version, author<br>and timestamps.|
+|**4. Enter content**|Validate required and conditional fields while allowing safe<br>draft save.|
+|**5. Review imported/reused content**|Display provenance and require confirmation.|
+|**6. Run validation**|Show blocking errors separately from warnings.|
+|**7. Complete**|Freeze a review candidate and resolve required attestations.|
+|**8. Sign**|Reauthenticate where configured and attest to exact version.|
+|**9. Co-sign**|Route to authorized co-signer if required.|
+|**10. Publish to chart**|Display final status and issue downstream events.|
+
+
+
+**CLN-P3-AUT-001** Draft creation shall require an atomic permission for the note family and Phase 1 contextual authorization. 
+
+**CLN-P3-AUT-002** The server shall revalidate patient, encounter, client space, relationship, privilege and record state at save, complete and sign operations. 
+
+**CLN-P3-AUT-003** The system shall warn before leaving unsaved content and shall never transfer content into another patient or encounter. 
+
+**CLN-P3-AUT-004** A user may save an incomplete draft unless the action itself is unsafe or the configured workflow prohibits it. 
+
+**CLN-P3-AUT-005** A final validation failure shall block completion or signature and shall identify the field or rule requiring action. 
+
+#### **6. Required Documentation Metadata** 
+
+|**Group**|**Required Fields**|
+|---|---|
+|**Identity**|Public ID, tenant, patient, encounter where applicable, note<br>type|
+|**Context**|Facility, client space, service, care relationship, specialty|
+|**Authorship**|Author, recorder/transcriber if different, professional title and<br>acting/delegated context|
+|**Time**|Clinical event time, authored time, recorded time, signed time<br>and time-zone context|
+
+
+
+Controlled Draft | Not Approved for Production | Page 48 
+
+||KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1|
+|---|---|
+|**Template**|Template ID and version; section definitions used|
+|**State**|Draft/completion/signature/co-signature/correction status<br>and version|
+|**Provenance**|Source objects, copied/imported fragments, AI transaction<br>reference|
+|**Confidentiality**|Sensitivity labels and disclosure restrictions|
+|**Audit**|Correlation ID, client/device, create/update actors and<br>reasons|
+|**Interoperability**|Canonical type/code and source/target mappings where<br>approved|
+
+
+
+**CLN-P3-MET-001** Clinical event time and record-entry time shall be stored separately when they differ. 
+
+**CLN-P3-MET-002** The author’s title and authority context at signature time shall be historically preserved. 
+
+**CLN-P3-MET-003** Changing a user’s later title shall not rewrite authorship metadata on prior notes. 
+
+#### **7. Draft Management and Auto-Save** 
+
+**CLN-P3-DRF-001** Drafts shall be visible only to the author and other explicitly authorized users according to note policy. **CLN-P3-DRF-002** Auto-save shall create recoverable draft versions without creating chart-final content. 
+
+**CLN-P3-DRF-003** Draft recovery shall display patient, encounter, note type and last-save information before opening. **CLN-P3-DRF-004** Stale drafts shall enter a configurable review or expiry workflow and shall not be silently deleted. **CLN-P3-DRF-005** The system shall prevent simultaneous sessions from silently overwriting the same draft. **CLN-P3-DRF-006** Abandoned drafts and their retention shall follow configured institutional policy. 
+
+**CLN-P3-DRF-007** Other users shall not cite an unsigned draft as final clinical evidence unless an emergency policy explicitly permits viewing and labels it clearly. 
+
+#### **8. Completion, Signature and Attestation** 
+
+###### **8.1 Signature modes** 
+
+|**Mode**|**Meaning**|
+|---|---|
+|**AUTHOR_SIGNATURE**|Author authenticates professional content.|
+|**RECORDER_PLUS_AUTHOR**|Recorder enters content; responsible author verifies and signs.|
+|**CO_SIGNATURE**|Additional authorized person attests according to policy.|
+|**SUPERVISOR_ATTESTATION**|Supervisor attests where training/scope rules require.|
+|**ORGANIZATIONAL_ATTESTATION**|Organization authenticates an issued document under policy.|
+|**PATIENT_ACKNOWLEDGEMENT**|Records acknowledgement, not professional clinical<br>authorship.|
+
+
+
+**CLN-P3-SIG-001** Signature shall apply to the exact rendered and structured version presented to the signer. 
+
+**CLN-P3-SIG-002** Signature shall record signer, authenticated identity, capacity, timestamp, method, note version and outcome. 
+
+**CLN-P3-SIG-003** A user shall not sign on behalf of another person unless a distinct legally approved recorder/attestation workflow represents both identities correctly. 
+
+**CLN-P3-SIG-004** Signing shall lock the signed version against ordinary editing. 
+
+**CLN-P3-SIG-005** A failed or interrupted signature attempt shall not mark the note signed. 
+
+**CLN-P3-SIG-006** The system shall distinguish professional, legal and organizational attestation modes where required by policy. **CLN-P3-SIG-007** Credential or privilege expiry at signature time shall block signature where that authority is required. 
+
+#### **9. Co-Signature and Supervision** 
+
+**CLN-P3-COS-001** Co-signature rules shall be configurable by note type, author title/category, training state, service, client space, encounter class and risk level. 
+
+**CLN-P3-COS-002** The original author shall remain visible after co-signature. 
+
+Controlled Draft | Not Approved for Production | Page 49 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P3-COS-003** A co-signer shall review the content being attested and may accept, return for amendment or reject according to configured workflow. 
+
+**CLN-P3-COS-004** Returning a note shall not erase the submitted version or reviewer comments. 
+
+**CLN-P3-COS-005** Co-signature queues shall route by effective authority and relationship, not merely by a hardcoded title string. 
+
+**CLN-P3-COS-006** Overdue co-signatures shall escalate according to configured time and risk rules. 
+
+**CLN-P3-COS-007** A note awaiting mandatory co-signature shall display its provisional status and shall not falsely appear fully attested. 
+
+#### **10. Late Entries, Addenda, Corrections and Entered-in-Error** 
+
+|**Action**|**Use**|**Effect on Original**|
+|---|---|---|
+|**Late entry**|Document a past event after the fact.|Original timeline retained; event and<br>entry times both shown.|
+|**Addendum**|Add supplementary information.|Original content unchanged.|
+|**Correction**|Correct erroneous content.|Original readable; corrected version<br>becomes current.|
+|**Entered in error**|Declare record invalid for clinical use.|Original retained and prominently<br>marked.|
+|**Administrative correction**|Correct non-clinical metadata where<br>permitted.|Full audit and no clinical meaning<br>change.|
+
+
+
+**CLN-P3-AMD-001** Each post-finalization action shall require its own permission, reason and policy eligibility. 
+
+**CLN-P3-AMD-002** The system shall preserve the original and every successive amendment, correction or augmentation. 
+
+**CLN-P3-AMD-003** The current version shall clearly link to previous versions and vice versa. 
+
+**CLN-P3-AMD-004** A correction shall specify what was wrong, the corrected information, authorizing user and date/time. 
+
+**CLN-P3-AMD-005** Entered-in-error content shall be excluded from ordinary decision support and summaries where safe, while remaining accessible to authorized audit/review users. 
+
+- **CLN-P3-AMD-006** If downstream modules consumed the original, Clinical shall publish a correction event and monitor reconciliation. 
+
+**CLN-P3-AMD-007** An addendum shall not be used to conceal a required correction. 
+
+**CLN-P3-AMD-008** A late entry shall not be backdated as though entered contemporaneously. 
+
+#### **11. Copy-Forward, Copy-Paste and Reuse** 
+
+**CLN-P3-CPY-001** Copy-forward shall be configurable by note type and section and may be disabled for high-risk content. 
+
+**CLN-P3-CPY-002** Copied content shall preserve source patient, encounter, note, author, source date/time and section provenance. 
+
+**CLN-P3-CPY-003** Cross-patient copy-forward shall be prohibited. 
+
+**CLN-P3-CPY-004** The interface shall make copied text identifiable during review and shall provide access to its source context. 
+
+**CLN-P3-CPY-005** The author shall affirm review and update of copied content before signature. 
+
+**CLN-P3-CPY-006** The system shall warn when copied content is stale, conflicts with current structured facts or includes unresolved placeholders. 
+
+- **CLN-P3-CPY-007** Copying another author’s assessment shall not change its provenance or falsely attribute original observation to the current author. 
+
+- **CLN-P3-CPY-008** Copy-forward metrics shall support governance review without judging clinical appropriateness solely from volume. 
+
+#### **12. Smart Text, Macros and Templates** 
+
+**CLN-P3-MAC-001** Smart text and macros shall be versioned, attributable and governed. 
+
+**CLN-P3-MAC-002** Macros shall not insert affirmative normal findings unless the user actively confirms them according to policy. **CLN-P3-MAC-003** Unresolved tokens and placeholders shall block signature. 
+
+Controlled Draft | Not Approved for Production | Page 50 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P3-MAC-004** Auto-populated facts shall identify source and timestamp and shall not present stale values as current. **CLN-P3-MAC-005** Personal macros shall be distinguishable from institution-approved standard macros. **CLN-P3-MAC-006** Deactivating a macro shall not alter signed notes that used it. 
+
+#### **13. Voice Dictation and Transcription** 
+
+**CLN-P3-VCE-001** Voice dictation shall use the approved Shared AI Gateway speech-to-text service or another approved shared platform service, not a private Clinical provider integration. 
+
+**CLN-P3-VCE-002** The transcript shall remain draft until reviewed and accepted by an authorized user. 
+
+**CLN-P3-VCE-003** The UI shall display recording/transcription state and shall prevent accidental capture into the wrong patient or encounter. 
+
+**CLN-P3-VCE-004** The transcript shall preserve service transaction reference, capture time, author/requester, edits and acceptance status. 
+
+**CLN-P3-VCE-005** Low-confidence segments shall be highlighted where the service supplies confidence data. 
+
+**CLN-P3-VCE-006** Voice commands that suggest orders, diagnoses or structured observations shall create reviewable suggestions only. 
+
+**CLN-P3-VCE-007** Audio retention shall follow configured privacy and retention policy; the SRD shall not assume audio is retained indefinitely. 
+
+**CLN-P3-VCE-008** If transcription is unavailable, manual authoring shall remain available where safe. 
+
+#### **14. AI-Assisted Documentation** 
+
+**CLN-P3-AI-001** AI may generate draft summaries, SOAP structures, discharge drafts, referral drafts, coding candidates and extracted CDE suggestions only through the Shared AI Gateway. 
+
+**CLN-P3-AI-002** AI shall use only source information the requesting user is authorized to access for the stated purpose. 
+
+**CLN-P3-AI-003** AI output shall visibly identify itself as generated or assisted until accepted into authored content. 
+
+**CLN-P3-AI-004** The user shall be able to inspect source references where the service supports them and shall remain responsible for verifying accuracy and completeness. 
+
+**CLN-P3-AI-005** AI shall not sign, co-sign, finalize, publish, place orders, assign diagnoses or activate protocols. 
+
+**CLN-P3-AI-006** Clinical shall preserve AI request ID, service, prompt-template version where provided, output version, user edits, acceptance/rejection and final signer. 
+
+**CLN-P3-AI-007** The system shall prevent unreviewed AI text from being represented as the user’s final attested statement. 
+
+**CLN-P3-AI-008** AI outage shall not block ordinary manual documentation. 
+
+#### **15. Imported and Referenced Content** 
+
+**CLN-P3-IMP-001** Content imported from LIMS, Imaging, devices, Main, external documents or other services shall retain source module/system, source public ID, status, time and version. 
+
+**CLN-P3-IMP-002** A note may reference an external result or document without copying its full content where access and retention requirements are satisfied. 
+
+**CLN-P3-IMP-003** A referenced object’s correction or withdrawal shall be visible and shall not leave a frozen misleading excerpt without status. 
+
+**CLN-P3-IMP-004** Users shall distinguish authored interpretation from imported source content. 
+
+**CLN-P3-IMP-005** External attachments shall be scanned, classified, access-controlled and linked to the correct patient and encounter before availability. 
+
+**CLN-P3-IMP-006** Unverified patient-generated content shall be labelled by source and verification status. 
+
+#### **16. Multidisciplinary and Collaborative Documentation** 
+
+**CLN-P3-COL-001** Different professionals may document concurrently in the same encounter without sharing one mutable author identity. 
+
+Controlled Draft | Not Approved for Production | Page 51 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P3-COL-002** Each authored section or contribution shall preserve its author and attestation requirements. 
+
+**CLN-P3-COL-003** A multidisciplinary document may assemble signed contributions while preserving section-level provenance and whole-document issuance rules. 
+
+**CLN-P3-COL-004** One user shall not silently edit another user’s signed contribution. 
+
+**CLN-P3-COL-005** Handover and collaborative comments shall not automatically become permanent legal notes unless the configured workflow commits them as such. 
+
+**CLN-P3-COL-006** Mentioning or assigning another user shall not grant them patient access beyond Phase 1 rules. 
+
+#### **17. Confidentiality, Sensitive Notes and Disclosure** 
+
+**CLN-P3-SEC-001** Note types and individual notes may carry sensitivity labels and disclosure restrictions. 
+
+**CLN-P3-SEC-002** Restricted note titles, counts, snippets and search facets shall not leak protected information. 
+
+**CLN-P3-SEC-003** A user who can view a general chart shall not automatically view every sensitive note section. 
+
+**CLN-P3-SEC-004** Print, download, export and external sharing shall require separate permissions and purpose controls. 
+
+**CLN-P3-SEC-005** Break-glass access to sensitive documentation shall follow Phase 1 and shall be reviewable per note accessed. 
+
+**CLN-P3-SEC-006** Redaction for disclosure shall not alter the source legal record and shall produce a separately governed derivative. 
+
+#### **18. Documentation Validation and Safety Checks** 
+
+- Patient and encounter still valid 
+
+- User still authorized 
+
+- Encounter state permits action 
+
+- Required sections complete 
+
+- No unresolved placeholders 
+
+- Required structured fields valid 
+
+- Dates and times plausible 
+
+- Required signer/co-signer resolved 
+
+- Imported/copy-forward content reviewed 
+
+- Sensitive labeling completed 
+
+- Referenced objects resolvable 
+
+- No stale version conflict 
+
+**CLN-P3-VAL-001** Blocking rules and advisory warnings shall be distinguishable. 
+
+- **CLN-P3-VAL-002** Overrides shall require an eligible permission, configured reason and audit; mandatory legal or identity checks shall not be overridable unless policy explicitly permits. 
+
+**CLN-P3-VAL-003** Validation shall run server-side at completion and signature even if the client previously passed validation. 
+
+#### **19. Closed Encounters and Post-Closure Documentation** 
+
+**CLN-P3-CLS-001** Ordinary new notes shall not be added to a closed encounter. 
+
+**CLN-P3-CLS-002** Permitted post-closure actions shall use late-entry, addendum, correction, result-follow-up or other expressly defined workflows. 
+
+**CLN-P3-CLS-003** Post-closure documentation shall display the original encounter closure time and the new entry time. 
+
+**CLN-P3-CLS-004** Encounter reopening shall not be required merely to receive a final result or create an authorized addendum unless configured policy requires it. 
+
+- **CLN-P3-CLS-005** A post-closure note shall not change the historical patient location or responsible team without a separate correction workflow. 
+
+#### **20. Offline, Downtime and Recovery** 
+
+**CLN-P3-DWN-001** Offline documentation shall preserve patient, encounter, author, device, capture time, template version and local draft ID. 
+
+Controlled Draft | Not Approved for Production | Page 52 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P3-DWN-002** Offline content shall remain unsigned unless an approved offline signature method provides authenticated attestation and later verification. 
+
+**CLN-P3-DWN-003** Synchronization shall revalidate authorization, patient/encounter state, template validity and version conflicts. 
+
+**CLN-P3-DWN-004** Conflicting offline content shall enter reconciliation and shall not silently overwrite online notes. 
+
+**CLN-P3-DWN-005** Downtime paper or external documents shall be entered or scanned through an approved reconciliation workflow with source and time metadata. 
+
+#### **21. Permissions Catalogue** 
+
+|**Permission**|**Action**|
+|---|---|
+|**clinical.note.create**|Create permitted note draft|
+|**clinical.note.view**|View ordinary authorized notes|
+|**clinical.note.view_sensitive**|View sensitive documentation|
+|**clinical.note.edit_draft**|Edit own or permitted draft|
+|**clinical.note.complete**|Submit note for attestation|
+|**clinical.note.sign**|Sign permitted note|
+|**clinical.note.cosign**|Co-sign or supervise|
+|**clinical.note.return**|Return submitted note|
+|**clinical.note.addendum**|Add supplementary content|
+|**clinical.note.late_entry**|Create late entry|
+|**clinical.note.correct**|Correct final content|
+|**clinical.note.mark_entered_in_error**|Declare final record entered in error|
+|**clinical.note.copy_forward**|Reuse permitted prior content|
+|**clinical.note.export**|Export documentation|
+|**clinical.template.manage**|Manage note types/templates|
+|**clinical.documentation.audit**|View detailed provenance/audit|
+
+
+
+**CLN-P3-PRM-001** Permissions shall be Main Module registered and bundle-configurable. Laravel policies shall evaluate atomic permission plus Phase 1 and Phase 2 context, not hardcoded titles. 
+
+#### **22. Notifications, Queues and Escalation** 
+
+- Notes awaiting mandatory signature 
+
+- Mandatory co-signature due or overdue 
+
+- Returned documentation requiring revision 
+
+- Stale drafts 
+
+- Failed correction propagation 
+
+- Entered-in-error review 
+
+- Unresolved transcription segment 
+
+- Template retired while draft remains open 
+
+- Closed-encounter documentation awaiting review 
+
+- Downstream document delivery failure 
+
+**CLN-P3-NTF-001** Notifications shall reveal only minimum necessary patient information and shall reauthorize when opened. 
+
+**CLN-P3-NTF-002** Queue routing shall use effective assignment, relationship and authority at delivery time. 
+
+**CLN-P3-NTF-003** Escalation shall not automatically sign or approve documentation. 
+
+#### **23. Audit and Event Catalogue** 
+
+- Draft created, updated, recovered, abandoned or expired 
+
+- Template/content imported or copied 
+
+- Voice/AI request and response 
+
+- Completion requested 
+
+- Signature/co-signature attempted, completed or failed 
+
+- Note returned or rejected 
+
+- Addendum, correction, late entry or entered-in-error 
+
+- Sensitive note viewed, printed or exported 
+
+Controlled Draft | Not Approved for Production | Page 53 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Validation overridden 
+
+- Offline synchronization and conflict resolution 
+
+- clinical.note.created 
+
+- clinical.note.completed 
+
+- clinical.note.signed 
+
+- clinical.note.cosigned 
+
+- clinical.note.returned 
+
+- clinical.note.addendum.created 
+
+- clinical.note.corrected 
+
+- clinical.note.entered_in_error 
+
+- clinical.note.disclosure.created 
+
+- clinical.template.activated 
+
+- clinical.documentation.reconciliation.required 
+
+- **CLN-P3-EVT-001** Events shall include stable IDs, version, patient, encounter, tenant, actor, occurred-at, correlation ID and idempotency key without placing unrestricted note text in event headers. 
+
+#### **24. Reports and Oversight** 
+
+- Unsigned and incomplete notes by age and service 
+
+- Mandatory co-signatures due/overdue 
+
+- Late entries and addenda 
+
+- Corrections and entered-in-error trends 
+
+- Copy-forward use and source age 
+
+- AI-assisted documentation acceptance/rejection 
+
+- Voice transcription exception rates 
+
+- Sensitive note access and exports 
+
+- Stale drafts 
+
+- Template versions in use 
+
+- Post-closure documentation 
+
+- Failed downstream correction reconciliation 
+
+- **CLN-P3-RPT-001** Reports shall be scope-controlled, audited and shall not expose note content unless the report permission explicitly allows it. 
+
+#### **25. Acceptance Scenarios** 
+
+|**ID**|**Scenario**|**Expected Result**|
+|---|---|---|
+|**P3-AT-001**|Nurse creates authorized ward note.|Draft bound to patient, encounter,<br>location, author and template version.|
+|**P3-AT-002**|User changes patient with unsaved note.|Warning shown; content cannot transfer<br>to new patient.|
+|**P3-AT-003**|Author signs complete progress note.|Exact version locked with attestation<br>metadata.|
+|**P3-AT-004**|Junior author requires co-signature.|Note remains provisional and routes to<br>eligible supervisor.|
+|**P3-AT-005**|Signed note contains error.|Correction creates linked current<br>version; original remains readable.|
+|**P3-AT-006**|Author adds information after closure.|Authorized late-entry/addendum<br>workflow records both times.|
+|**P3-AT-007**|User copies prior section.|Copied text is identifiable with source<br>provenance and review confirmation.|
+|**P3-AT-008**|Cross-patient copy is attempted.|Blocked.|
+|**P3-AT-009**|Voice transcript has low-confidence<br>phrase.|Phrase highlighted; transcript remains<br>draft.|
+|**P3-AT-010**|AI drafts discharge summary.|Output labelled as AI-assisted, reviewed<br>and signed only by authorized user.|
+|**P3-AT-011**|Template changes after note signature.|Historical note retains original template|
+
+
+
+Controlled Draft | Not Approved for Production | Page 54 
+
+|**P3-AT-012**|Imported result is later corrected.|KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1<br>version and rendering.<br>Note reference shows corrected source<br>status; authored interpretation remains<br>distinct.|
+|---|---|---|
+|**P3-AT-013**|Offline draft conflicts with online update.|<br>Conflict routed to reconciliation without<br>overwrite.|
+|**P3-AT-014**|Sensitive note count requested by<br>unauthorized user.|No count, title or snippet leaks.|
+|**P3-AT-015**|Credential expires before signature.|Signature blocked where credential is<br>required.|
+
+
+
+#### **26. Mandatory Negative Tests** 
+
+- Direct API signing without sign permission 
+
+- Signing another user’s identity 
+
+- Editing signed text in place 
+
+- Removing prior corrected version 
+
+- Backdating late entry as contemporaneous 
+
+- Cross-patient draft recovery 
+
+- Cross-patient copy/paste through manipulated payload 
+
+- Unresolved macro token allowed at signature 
+
+- AI output auto-finalized 
+
+- Co-signer selected by title string without authority check 
+
+- Closed encounter ordinary note creation 
+
+- Sensitive note exposed in search facet 
+
+- Stale draft overwrites current version 
+
+- Template retirement changes signed note 
+
+- Correction event duplicated on retry 
+
+- Offline unsigned note represented as signed 
+
+#### **27. Traceability** 
+
+|**Area**|**Prefix**|**Evidence**|
+|---|---|---|
+|**Governance**|CLN-P3-GOV|Record governance review|
+|**Types**|CLN-P3-TYP|Registry tests|
+|**Templates**|CLN-P3-TPL|Version tests|
+|**Authoring**|CLN-P3-AUT|Workflow tests|
+|**Metadata**|CLN-P3-MET|Schema/provenance tests|
+|**Drafts**|CLN-P3-DRF|Recovery/concurrency tests|
+|**Signature**|CLN-P3-SIG|Attestation tests|
+|**Co-sign**|CLN-P3-COS|Routing tests|
+|**Amendment**|CLN-P3-AMD|Version preservation tests|
+|**Copy**|CLN-P3-CPY|Provenance tests|
+|**Voice**|CLN-P3-VCE|Draft safety tests|
+|**AI**|CLN-P3-AI|Human approval tests|
+|**Import**|CLN-P3-IMP|Source correction tests|
+|**Collaboration**|CLN-P3-COL|Authorship tests|
+|**Security**|CLN-P3-SEC|Leakage tests|
+|**Downtime**|CLN-P3-DWN|Reconciliation tests|
+
+
+
+#### **28. Registered Phase 3 Gaps** 
+
+|**Gap ID**|**Resolution Required**|**Blocking**|
+|---|---|---|
+|**CLN-P3-GAP-001**|Approve canonical note-type registry<br>and initial templates.|Yes|
+|**CLN-P3-GAP-002**|Approve signature and reauthentication|Yes|
+
+
+
+Controlled Draft | Not Approved for Production | Page 55 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+||methods.||
+|---|---|---|
+||Approve co-signature rules by title,||
+|**CLN-P3-GAP-003**|<br>training grade and note type.|Yes|
+|**CLN-P3-GAP-004**|Approve legal retention and disclosure<br>policies by jurisdiction.|Yes|
+|**CLN-P3-GAP-005**|Approve late-entry, correction,<br>addendum and entered-in-error<br>authorities.|Yes|
+|**CLN-P3-GAP-006**|Approve copy-forward sections,<br>provenance display and stale-content<br>thresholds.|Yes|
+|**CLN-P3-GAP-007**|Approve voice-audio retention policy.|Before voice release|
+|**CLN-P3-GAP-008**|Approve AI-assisted documentation<br>services and minimum source-citation<br>behavior.|Before AI release|
+|**CLN-P3-GAP-009**|Approve sensitive note categories and<br>masking.|Yes|
+|**CLN-P3-GAP-010**|Approve downtime signature and<br>reconciliation process.|Yes|
+|**CLN-P3-GAP-011**|Confirm FHIR/CDA document and note<br>mappings.|Before interoperability release|
+|**CLN-P3-GAP-012**|Define downstream correction<br>propagation contracts.|Yes|
+
+
+
+#### **29. Phase 3 Completion Gate** 
+
+- Phases 1 and 2 incorporated without contradiction. 
+
+- Note types and template lifecycle approved. 
+
+- Draft, completion, signature and co-signature states approved. 
+
+- Authorship and attestation roles approved. 
+
+- Late entry, addendum, correction and entered-in-error rules approved. 
+
+- Copy-forward controls approved. 
+
+- Voice and AI draft-only rules approved. 
+
+- Sensitive documentation and disclosure controls approved. 
+
+- Concurrency, downtime and reconciliation rules approved. 
+
+- Permissions, events, reports, acceptance tests and gaps assigned. 
+
+   - **Phase 4 shall reference these documentation controls for problem lists, diagnoses and care plans. It shall not create alternate signature, correction or copy-forward rules.** 
+
+#### **Appendix A. Documentation State Model** 
+
+|**State**|**Editable**|**Visible as Final**|**Next Actions**|
+|---|---|---|---|
+|**DRAFT**|Yes, authorized|No|Complete, abandon|
+|**COMPLETED**|Restricted|No|Sign, return|
+|**AWAITING_COSIGN**|No ordinary edit|Provisional|Co-sign, return|
+|**SIGNED**|No|Yes|Addendum, correction,<br>entered in error|
+|**CORRECTED**|No|Yes, current version|Further governed correction|
+|**ENTERED_IN_ERROR**|No|No ordinary clinical use|Replacement link/review|
+|**ABANDONED**|No|No|Audit/retention only|
+
+
+
+#### **Appendix B. Minimum Note Record** 
+
+|**Group**|**Fields**|
+|---|---|
+|**Identity**|Public ID, patient, encounter, note type|
+|**Context**|Facility, client space, service, relationship|
+
+
+
+Controlled Draft | Not Approved for Production | Page 56 
+
+||KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1|
+|---|---|
+|**Content**|Structured sections, narrative, references|
+|**Authorship**|Author, recorder, verifier, signer, co-signer|
+|**Time**|Event, authored, recorded, completed, signed|
+|**State**|Status, version, correction chain|
+|**Template**|Template ID/version|
+|**Provenance**|Copy/import/AI/voice references|
+|**Security**|Sensitivity and disclosure controls|
+|**Audit**|Correlation, device/client, policy version|
+
+
+
+#### **Appendix C. Sources Reviewed** 
+
+- KashTre Clinical Module SRD v6.0 and addendum. 
+
+- KashTre Clinical Module SRD v6.1 Phase 1 Draft. 
+
+- KashTre Clinical Module SRD v6.1 Phase 2 Draft. 
+
+- HL7 EHR System Functional Model amendment/correction guidance. 
+
+- HL7 FHIR Composition and attestation materials. 
+
+- HL7 Clinical Document Architecture overview. 
+
+- Joint Commission and ECRI copy-and-paste safety recommendations. 
+
+### **PHASE 4 DRAFT** 
+
+##### **PROBLEMS, DIAGNOSES, GOALS AND CARE PLANNING** 
+
+**Phase 4 defines how clinical concerns become governed problems and diagnoses, how goals and care plans are created and reviewed, and how terminology assistance remains subject to human clinical authority.** 
+
+Controlled Draft | Not Approved for Production | Page 57 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **Document Control and Phase Authority** 
+
+|**Field**|**Rule**|
+|---|---|
+|**Purpose**|Define problem lists, encounter diagnoses, diagnostic<br>certainty, clinical goals, care plans, interventions and review.|
+|**Dependencies**|Phase 1 authorization, Phase 2 patient/encounter context and<br>Phase 3 documentation/signature controls remain mandatory.|
+||Orders and medication actions referenced by care plans are|
+|**Boundaries**|specified in later phases and are not executed merely by plan<br>entry.|
+|**Terminology**|ICD-11 and other approved terminologies assist standardized<br>representation; coding does not replace clinical judgment.|
+||Functional requirements only. Detailed Laravel migrations,|
+|**Implementation**|Eloquent models, policies, services, APIs and Vue interfaces<br>belong in the EDD.|
+|**Release**|Controlled draft, not approved for production.|
+
+
+
+###### **Phase 4 outcomes** 
+
+- Separate symptoms, concerns, problems, encounter diagnoses and longitudinal diagnoses. 
+
+- Preserve clinical and verification status independently. 
+
+- Support provisional, differential, confirmed, refuted and entered-in-error states. 
+
+- Create measurable goals and multidisciplinary care plans. 
+
+- Link care plans to conditions, goals, activities, responsible people and review schedules. 
+
+- Preserve authorship, correction and history. 
+
+- Define permissions, safety checks, audit, reports, tests and release gaps. 
+
+#### **1. Governing Principles** 
+
+**CLN-P4-GOV-001** No coded diagnosis shall be created solely because text, AI or an external system suggested a code. 
+
+**CLN-P4-GOV-002** Clinical meaning and classification shall be stored separately: the clinician records the clinical assertion, while approved terminology services provide standardized coding. 
+
+**CLN-P4-GOV-003** Clinical status and verification status shall be separate attributes and shall not be inferred from each other. 
+
+**CLN-P4-GOV-004** The longitudinal problem list shall not be an unqualified copy of all encounter diagnoses. 
+
+- **CLN-P4-GOV-005** Problems, diagnoses, goals and plans shall preserve patient, encounter where applicable, author, time, source, version and status history. 
+
+- **CLN-P4-GOV-006** Care plans express intended care. They shall not themselves prove that an activity occurred or automatically execute an order. 
+
+**CLN-P4-GOV-007** A signed assessment or care-plan version shall follow Phase 3 correction and amendment controls. 
+
+**Clinical authority rule: terminology, rules and AI may suggest. An appropriately authorized human clinician must assert, verify, refute or close the clinical record.** 
+
+#### **2. Conceptual Separation** 
+
+|**Concept**|**Meaning**|**Not Equivalent To**|
+|---|---|---|
+|**Symptom/sign**|Reported or observed manifestation.|Confirmed diagnosis|
+|**Clinical concern**|Issue requiring attention before formal<br>problem assertion.|Longitudinal problem|
+|**Problem**|Health issue judged important enough<br>for monitoring or management.|Every historical diagnosis|
+|**Encounter diagnosis**|Diagnosis asserted in the context of a<br>specific encounter.|Automatically active problem|
+|**Longitudinal diagnosis**|Diagnosis maintained across encounters<br>where clinically appropriate.|Billing-only code|
+|**Differential diagnosis**|One of several candidates guiding|Confirmed diagnosis|
+
+
+
+Controlled Draft | Not Approved for Production | Page 58 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+||evaluation.||
+|---|---|---|
+|**Clinical status**|Active, inactive, resolved, remission or<br>other approved state.|Verification certainty|
+|**Verification status**|Unconfirmed, provisional, differential,<br>confirmed, refuted or entered in error.|Clinical activity|
+|**Goal**|Desired measurable or observable<br>outcome.|Intervention|
+|**Care plan**|Coherent intention for managing one or<br>more concerns over time.|Proof of completion|
+|**Activity/intervention**|Planned action within a care plan.|Order unless separately committed|
+|**Outcome**|Observed result used to assess<br>progress.|Goal target|
+
+
+
+#### **3. Source-of-Truth and Interoperability Boundaries** 
+
+**CLN-P4-OWN-001** Clinical shall own patient-specific problem, diagnosis, goal and care-plan assertions and their lifecycle. 
+
+- **CLN-P4-OWN-002** Approved terminology services shall own canonical classification releases, codes, descriptions, synonyms and mappings. Clinical shall retain stable references and terminology version. 
+
+- **CLN-P4-OWN-003** Finance or coding modules may consume diagnoses for coding and billing but shall not silently change the clinician’s clinical assertion. 
+
+- **CLN-P4-OWN-004** LIMS and Imaging results may support diagnosis review but shall remain source records owned by their authoritative modules. 
+
+- **CLN-P4-OWN-005** Orders and tasks generated from a care plan shall be separately created, authorized and tracked by their owning workflow. 
+
+- **CLN-P4-OWN-006** FHIR Condition, CarePlan and Goal mappings shall be defined in the interoperability profile without forcing Clinical storage to duplicate external resource structures blindly. 
+
+#### **4. Problem and Diagnosis Data Model** 
+
+|**Field Group**|**Required Data**|
+|---|---|
+|**Identity**|Public ID, tenant, patient, encounter association, category|
+|**Clinical assertion**|Clinical term, narrative, body site where applicable, severity,<br>stage/grade where applicable|
+|**Terminology**|Coding system, canonical code/URI, display, release/version,<br>postcoordination/extension details|
+|**Status**|Clinical status, verification status, lifecycle status|
+|**Timing**|Onset, recorded, asserted, resolved/abated and last-reviewed<br>times|
+|**Authorship**|Asserter, recorder, verifier, responsible clinician and authority<br>context|
+|**Evidence**|Linked symptoms, observations, results, procedures, notes<br>and external references|
+|**Context**|Facility, service, client space, source encounter and care<br>relationship|
+|**Governance**|Sensitivity, reason for change, version, correction chain and<br>audit metadata|
+
+
+
+**CLN-P4-DAT-001** Each record shall have a stable public ID and immutable patient ownership. 
+
+- **CLN-P4-DAT-002** Encounter association shall be mandatory for encounter diagnoses and optional or multiple-reference capable for longitudinal problems according to policy. 
+
+**CLN-P4-DAT-003** Onset may be exact, approximate, ranged or unknown and shall not be fabricated from record-entry time. 
+
+- **CLN-P4-DAT-004** Absence of a coded term shall not prevent safe draft capture of clinical narrative, but finalization requirements shall be configurable by use case. 
+
+**CLN-P4-DAT-005** Terminology version and selected expression shall be preserved so historical meaning remains reproducible. 
+
+Controlled Draft | Not Approved for Production | Page 59 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **5. Problem Categories** 
+
+|**Category**|**Purpose**|
+|---|---|
+|**ACTIVE_PROBLEM**|Current issue needing monitoring or management|
+|**HISTORICAL_PROBLEM**|Relevant past issue no longer active|
+|**ENCOUNTER_DIAGNOSIS**|Diagnosis for a specific encounter|
+|**ADMISSION_DIAGNOSIS**|Assertion at admission or initial assessment|
+|**DISCHARGE_DIAGNOSIS**|Final encounter/discharge assertion|
+|**DIFFERENTIAL**|Candidate diagnosis set|
+|**COMPLICATION**|Condition associated with care or disease progression|
+|**PREGNANCY_OR_HEALTH_STATE**|Clinically relevant health state|
+|**PATIENT_REPORTED_CONCERN**|Concern not yet clinician-verified|
+|**SCREENING_OR_RISK_CONDITION**|Risk/status requiring monitoring under policy|
+
+
+
+**CLN-P4-CAT-001** Categories shall be controlled and configurable, with approved interoperability mappings. 
+
+**CLN-P4-CAT-002** The same clinical concept may have more than one contextual record only where purpose and provenance justify it; the UI shall prevent confusing duplicates. 
+
+**CLN-P4-CAT-003** Patient-reported concerns shall remain visibly distinct from clinician-confirmed diagnoses. 
+
+#### **6. Clinical and Verification Status** 
+
+|**Dimension**|**Illustrative Values**|**Rule**|
+|---|---|---|
+|**Clinical status**|ACTIVE, RECURRENCE, RELAPSE,<br>INACTIVE, REMISSION, RESOLVED|Describes current clinical state.|
+||UNCONFIRMED, PROVISIONAL,||
+|**Verification status**|DIFFERENTIAL, CONFIRMED, REFUTED,<br>ENTERED_IN_ERROR|Describes certainty/validity.|
+|**Record lifecycle**|DRAFT, FINAL, CORRECTED, RETIRED|Describes record governance.|
+
+
+
+**CLN-P4-STS-001** A condition with an abatement/resolution time shall use a compatible inactive, resolved or remission clinical status. 
+
+**CLN-P4-STS-002** Refuted shall not be used for data-entry mistakes; entered in error shall be used for invalid records. 
+
+**CLN-P4-STS-003** Resolution shall not erase prior active periods or linked care plans. 
+
+**CLN-P4-STS-004** Reactivation, recurrence or relapse shall create a historically traceable transition and may require a new episode link according to policy. 
+
+**CLN-P4-STS-005** A differential diagnosis shall not appear in displays as confirmed. 
+
+#### **7. Problem List Workflow** 
+
+|**Step**|**System Behavior**|
+|---|---|
+|**Identify concern**|User selects existing coded concept or enters narrative for<br>review.|
+|**Confirm context**|Patient, encounter, location and authorizing relationship<br>displayed.|
+|**Classify**|Choose problem category, clinical status and verification<br>status.|
+|**Add details**|Onset, severity, body site, evidence and responsible owner.|
+|**Duplicate check**|Show active, historical and similar existing concepts.|
+|**Validate**|Apply permission, terminology, status and required-field rules.|
+|**Assert/sign**|Authorized user attests according to Phase 3.|
+|**Monitor**|Schedule review or link care plan where required.|
+|**Update**|Record status change, review, correction or entered-in-error<br>action.|
+
+
+
+**CLN-P4-PRB-001** Adding a longitudinal problem shall require clinical.problem.create and eligible professional authority. 
+
+**CLN-P4-PRB-002** The system shall search for existing active and historical matching or similar problems before creating another. 
+
+Controlled Draft | Not Approved for Production | Page 60 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P4-PRB-003** A duplicate warning shall not merge clinically distinct episodes automatically. 
+
+**CLN-P4-PRB-004** The user shall be able to link encounter diagnoses to a longitudinal problem without rewriting either record. **CLN-P4-PRB-005** Each active problem may have an owner, review date, priority and associated care plan according to policy. **CLN-P4-PRB-006** Problems overdue for review shall enter a work queue but shall not auto-resolve. 
+
+#### **8. Encounter Diagnosis Workflow** 
+
+**CLN-P4-DIA-001** Encounter diagnosis entry shall require an active or otherwise eligible encounter and clinical.diagnosis.create. 
+
+- **CLN-P4-DIA-002** The diagnosis shall record role in the encounter, including principal/primary, secondary, provisional, differential, complication or other approved classification. 
+
+- **CLN-P4-DIA-003** The system shall not infer principal diagnosis merely from display order. 
+
+- **CLN-P4-DIA-004** Admission, working and discharge diagnoses shall remain distinct assertions with traceable relationships. 
+
+- **CLN-P4-DIA-005** A discharge diagnosis may require confirmation, terminology completion and signature before encounter closure according to configured policy. 
+
+- **CLN-P4-DIA-006** A diagnosis created from an AI or coding suggestion shall remain unasserted until the authorized clinician explicitly selects and confirms it. 
+
+- **CLN-P4-DIA-007** Coding staff may propose classification refinements without changing clinical meaning or verification status unless separately authorized clinically. 
+
+#### **9. Terminology and ICD-11 Assistance** 
+
+**CLN-P4-TRM-001** Clinical shall support an approved terminology service with versioned coding systems and stable identifiers. 
+
+**CLN-P4-TRM-002** ICD-11 search shall support official descriptions, synonyms and approved postcoordination where configured. 
+
+- **CLN-P4-TRM-003** The selected ICD-11 entity URI/code, release, language, display and extension/postcoordination expression shall be preserved. 
+
+- **CLN-P4-TRM-004** A local clinical term may map to one or more classifications, but the mapping shall identify author, status, version and confidence/review state. 
+
+- **CLN-P4-TRM-005** When the terminology service is unavailable, the system may preserve a narrative draft but shall not guess a code. 
+
+- **CLN-P4-TRM-006** Deprecated codes shall remain resolvable historically and replacement suggestions shall require review. 
+
+**CLN-P4-TRM-007** Classification updates shall not rewrite previously signed diagnoses automatically. 
+
+###### **9.1 Search presentation** 
+
+- Preferred term and code 
+
+- Synonyms and inclusions where supplied 
+
+- Exclusions and coding notes where supplied 
+
+- Parent/child context 
+
+- Postcoordination options 
+
+- Terminology release/version 
+
+- Local mapping status 
+
+- Warning for deprecated or inactive concepts 
+
+#### **10. Problem and Diagnosis Evidence** 
+
+- **CLN-P4-EVD-001** A condition may link to evidence including observations, laboratory results, imaging results, procedures, notes and external documents. 
+
+- **CLN-P4-EVD-002** Evidence links shall preserve source object identity, status and version and shall not copy the evidence into an untraceable text field. 
+
+- **CLN-P4-EVD-003** A corrected or withdrawn result shall cause the diagnosis workspace to display the changed evidence status and may generate a review task. 
+
+- **CLN-P4-EVD-004** The system shall not automatically refute or confirm a diagnosis solely because an individual result changes. 
+
+Controlled Draft | Not Approved for Production | Page 61 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P4-EVD-005** Clinical rationale may be documented narratively and shall follow Phase 3 authorship and correction rules. 
+
+#### **11. Goal Registry and Patient-Specific Goals** 
+
+|**Goal Element**|**Requirement**|
+|---|---|
+|**Description**|Clear intended patient outcome|
+|**Category**|Clinical, functional, behavioral, safety, education or other<br>approved category|
+|**Priority**|Configured priority|
+|**Status**|PROPOSED, PLANNED, ACCEPTED, ACTIVE, ON_HOLD,<br>ACHIEVED, SUSTAINING, CANCELLED, NOT_ACHIEVED,<br>ENTERED_IN_ERROR|
+|**Target**|Measure/observation, qualitative outcome or milestone|
+|**Due time**|Target date, period or review cadence|
+|**Owner**|Responsible practitioner/team and contributors|
+|**Addresses**|Linked problem, diagnosis, risk or care plan|
+|**Participation**|Patient/family preference and agreement where applicable|
+|**Outcome**|Linked observations or assessments used for review|
+
+
+
+**CLN-P4-GOL-001** Goals shall be patient-specific and shall not be confused with reusable template definitions. 
+
+**CLN-P4-GOL-002** Quantitative targets shall use canonical units and Clinical unit policies through the Main Module Unit Engine. 
+
+**CLN-P4-GOL-003** A goal status shall be changed only by an authorized user or governed workflow and shall record reason and evidence. 
+
+**CLN-P4-GOL-004** Missed target dates shall not automatically mark a goal failed; they shall create a review exception. 
+
+**CLN-P4-GOL-005** Patient or caregiver goals shall preserve source and shall not be misrepresented as clinician-authored. 
+
+#### **12. Care Plan Types and Scope** 
+
+- Encounter-specific plan 
+
+- Longitudinal condition plan 
+
+- Nursing care plan 
+
+- Multidisciplinary plan 
+
+- Discharge/transition plan 
+
+- Rehabilitation plan 
+
+- Nutrition plan 
+
+- Wound-care plan 
+
+- Maternal/newborn plan 
+
+- Pediatric plan 
+
+- Chronic-disease plan 
+
+- Palliative/supportive care plan 
+
+- Patient/caregiver self-management plan 
+
+**CLN-P4-CP-001** Care-plan types shall be controlled and versioned. 
+
+**CLN-P4-CP-002** A patient may have multiple plans when their scopes differ; the workspace shall show relationships and prevent contradictory hidden plans. 
+
+**CLN-P4-CP-003** A master integrated plan may reference component plans without absorbing or rewriting their provenance. 
+
+**CLN-P4-CP-004** A reusable protocol or plan definition shall remain separate from the instantiated patient care plan. 
+
+#### **13. Care Plan Data and Lifecycle** 
+
+|**State**|**Meaning**|**Typical Next Actions**|
+|---|---|---|
+|**DRAFT**|Being authored|Submit, abandon|
+|**PROPOSED**|Recommended but not accepted|Accept, reject, revise|
+|**ACTIVE**|Current approved plan|Review, update, place on hold, complete|
+|**ON_HOLD**|Temporarily paused|Resume, discontinue|
+|**COMPLETED**|Intended plan period completed|Outcome review|
+
+
+
+Controlled Draft | Not Approved for Production | Page 62 
+
+|||KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1|
+|---|---|---|
+|**REVOKED**|Withdrawn before ordinary completion|Retain reason/history|
+|**ENTERED_IN_ERROR**|Invalid record|Replacement/correction link|
+|**SUPERSEDED**|Replaced by new governed version|Historical view|
+
+
+
+**CLN-P4-CPL-001** Each care plan shall record patient, encounter/episode scope, period, category, status, intent, author, 
+
+responsible owner, care team, addressed conditions, goals, activities, review schedule and provenance. 
+
+**CLN-P4-CPL-002** Activation shall require validation of responsible ownership, goals, required activities, permissions and patient/encounter context. 
+
+**CLN-P4-CPL-003** Plan versioning shall preserve prior signed/approved versions and identify the superseding version. 
+
+**CLN-P4-CPL-004** Completing or revoking a plan shall not automatically mark all linked goals achieved or all linked problems resolved. 
+
+#### **14. Care Plan Activities and Interventions** 
+
+|**Activity Element**|**Requirement**|
+|---|---|
+|**Description/code**|Planned action with approved terminology where available|
+|**Status**|NOT_STARTED, SCHEDULED, IN_PROGRESS, ON_HOLD,<br>COMPLETED, CANCELLED, NOT_DONE|
+|**Timing**|Start, recurrence, due date or milestone|
+|**Performer**|Role, team or named user resolved through assignments|
+|**Location**|Client space or remote context where applicable|
+|**Prerequisites**|Conditions, observations, consent or readiness|
+|**Linked workflow**|Order, task, appointment, education or manual intervention<br>reference|
+|**Outcome**|Completion record, result or reason not done|
+
+
+
+**CLN-P4-ACT-001** Adding an activity to a plan shall not place a medication, laboratory, imaging or procedure order unless the authorized user completes the separate order workflow. 
+
+**CLN-P4-ACT-002** Activities assigned to roles or teams shall resolve to eligible users through Phase 1 assignment rules. 
+
+**CLN-P4-ACT-003** A plan activity shall distinguish planned, scheduled and completed states. 
+
+**CLN-P4-ACT-004** Not-done or cancelled states shall require configured reason codes where clinically significant. 
+
+**CLN-P4-ACT-005** Completion evidence shall identify the performing user/system and actual time. 
+
+#### **15. Multidisciplinary Planning and Participation** 
+
+**CLN-P4-MDT-001** Multidisciplinary plans shall identify author, responsible owner, contributors and section/activity-level responsibility. 
+
+**CLN-P4-MDT-002** Each professional shall remain accountable only for contributions and attestations attributed to them. 
+
+**CLN-P4-MDT-003** Care-team membership shall not by itself grant authority to add diagnoses or approve another profession’s restricted intervention. 
+
+- **CLN-P4-MDT-004** Patient and caregiver participation, preferences, declined actions and education needs shall be recordable with source and consent context. 
+
+**CLN-P4-MDT-005** A disagreement shall be documented without silently replacing another professional’s signed assessment. 
+
+**CLN-P4-MDT-006** Handover of plan ownership shall preserve the previous owner and require acceptance where configured. 
+
+#### **16. Review, Outcomes and Closure** 
+
+**CLN-P4-REV-001** Active problems, goals and plans may carry review due dates and configurable recurrence. 
+
+**CLN-P4-REV-002** A review shall record reviewer, date/time, evidence considered, current status, changes and next review. 
+
+**CLN-P4-REV-003** Outcome assessment shall link to observations, results or authored assessments and shall not overwrite target definitions. 
+
+**CLN-P4-REV-004** A care plan may close as completed, revoked or superseded with an explicit reason and outcome summary. 
+
+**CLN-P4-REV-005** Encounter closure shall identify unresolved active problems, goals and plans, but shall not automatically close longitudinal items. 
+
+Controlled Draft | Not Approved for Production | Page 63 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P4-REV-006** Transition/discharge workflows shall assign ongoing plan ownership or mark follow-up responsibility explicitly. 
+
+#### **17. Corrections, Refutation and Entered-in-Error** 
+
+**CLN-P4-COR-001** Corrections shall follow Phase 3 and preserve the original assertion and every version. 
+
+**CLN-P4-COR-002** Refuted means later clinical evidence ruled out a previously considered condition; entered in error means the record itself was invalid. 
+
+**CLN-P4-COR-003** Changing a diagnosis from provisional to confirmed shall be a status history event, not a destructive replacement. 
+
+**CLN-P4-COR-004** Correcting terminology without changing clinical meaning shall remain distinguishable from changing the clinical assertion. 
+
+**CLN-P4-COR-005** A material correction shall notify affected plan owners and downstream consumers through idempotent events. 
+
+**CLN-P4-COR-006** Decision support shall exclude entered-in-error records and apply refuted/historical statuses correctly. 
+
+#### **18. Decision Support and AI Assistance** 
+
+**CLN-P4-AI-001** AI terminology and diagnosis assistance shall be accessed only through the Shared AI Gateway. 
+
+**CLN-P4-AI-002** The service may return ranked candidate diagnoses, codes, missing-detail prompts or plan suggestions, but shall not assert them. 
+
+**CLN-P4-AI-003** The user shall see that suggestions are advisory and must explicitly select, edit or reject them. 
+
+**CLN-P4-AI-004** The accepting user shall independently possess the action permission and clinical privilege. 
+
+**CLN-P4-AI-005** Clinical shall preserve the AI transaction reference, suggestion set, selected item, edits, rejection and final assertion metadata. 
+
+**CLN-P4-AI-006** The system shall not train or modify clinical terminology from local acceptance behavior except through an approved governed service. 
+
+**CLN-P4-AI-007** AI unavailability shall not block manual problem, diagnosis, goal or plan entry. 
+
+#### **19. Permissions Catalogue** 
+
+|**Permission**|**Purpose**|
+|---|---|
+|**clinical.problem.view**|View ordinary authorized problem list|
+|**clinical.problem.create**|Assert new problem|
+|**clinical.problem.update**|Update status/details|
+|**clinical.problem.resolve**|Resolve or inactivate|
+|**clinical.problem.correct**|Correct final assertion|
+|**clinical.problem.mark_entered_in_error**|Invalidate erroneous record|
+|**clinical.diagnosis.create**|Create encounter diagnosis|
+|**clinical.diagnosis.confirm**|Confirm provisional/differential diagnosis|
+|**clinical.diagnosis.refute**|Record refutation|
+|**clinical.diagnosis.correct**|Correct diagnosis|
+|**clinical.goal.create**|Create patient goal|
+|**clinical.goal.update**|Update goal and outcome|
+|**clinical.care_plan.create**|Create care plan|
+|**clinical.care_plan.activate**|Activate approved plan|
+|**clinical.care_plan.update**|Revise active plan|
+|**clinical.care_plan.review**|Perform formal review|
+|**clinical.care_plan.close**|Complete/revoke/supersede plan|
+|**clinical.terminology.mapping.review**|Review local/canonical mapping|
+|**clinical.problem_config.manage**|Manage categories/status policy|
+|**clinical.care_plan_config.manage**|Manage plan definitions/templates|
+
+
+
+**CLN-P4-PRM-001** Permissions shall be registered in the Main Module and assigned through configurable title bundles and privileges. Laravel shall enforce policies contextually without direct hardcoded title comparisons. 
+
+Controlled Draft | Not Approved for Production | Page 64 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **20. User Interfaces and Work Queues** 
+
+- Active problem list with filters and overdue-review indicators 
+
+- Encounter diagnosis panel with certainty and role 
+
+- Differential diagnosis workspace 
+
+- Terminology search and coding detail panel 
+
+- Goal dashboard 
+
+- Care-plan authoring workspace 
+
+- Multidisciplinary contribution view 
+
+- Activity and intervention board 
+
+- Review-due queue 
+
+- Unowned plan queue 
+
+- Conflicting/duplicate problem review 
+
+- Corrected evidence review 
+
+- Post-discharge ongoing-plan handover 
+
+- **CLN-P4-UI-001** Every workspace shall preserve the Phase 2 patient banner and active encounter context. 
+
+- **CLN-P4-UI-002** Clinical and verification statuses shall be displayed independently and not through colour alone. 
+
+- **CLN-P4-UI-003** Provisional and differential diagnoses shall be visibly distinguishable from confirmed diagnoses throughout lists, summaries and exports. 
+
+- **CLN-P4-UI-004** The interface shall show source, author, last review and terminology version without requiring audit-level permission for ordinary provenance. 
+
+#### **21. Notifications, Audit and Events** 
+
+###### **21.1 Notifications and exceptions** 
+
+- Problem review overdue 
+
+- Provisional diagnosis pending review 
+
+- Evidence corrected or withdrawn 
+
+- Goal review due or target date passed 
+
+- Care plan awaiting activation 
+
+- Plan activity overdue 
+
+- Care-plan owner unavailable 
+
+- Conflicting active plans 
+
+- Plan handover pending acceptance 
+
+- Downstream correction reconciliation failed 
+
+###### **21.2 Audit actions** 
+
+- Create, verify, confirm, refute, resolve, reactivate, correct or enter in error 
+
+- Terminology selection and mapping override 
+
+- Goal create/update/outcome review 
+
+- Plan create/activate/update/hold/complete/revoke/supersede 
+
+- Activity assignment, completion or not-done 
+
+- AI suggestion displayed, accepted, edited or rejected 
+
+- Sensitive problem/plan viewed or exported 
+
+###### **21.3 Events** 
+
+- clinical.problem.created 
+
+- clinical.problem.status_changed 
+
+- clinical.problem.corrected 
+
+- clinical.diagnosis.confirmed 
+
+- clinical.diagnosis.refuted 
+
+- clinical.goal.created 
+
+- clinical.goal.status_changed 
+
+- clinical.care_plan.activated 
+
+Controlled Draft | Not Approved for Production | Page 65 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- clinical.care_plan.updated 
+
+- clinical.care_plan.closed 
+
+- clinical.care_plan.review_due 
+
+- clinical.condition.reconciliation_required 
+
+**CLN-P4-EVT-001** Events shall carry stable IDs, version, patient, encounter where applicable, tenant, actor, occurred-at, correlation ID and idempotency key without unrestricted sensitive narrative. 
+
+#### **22. Reports and Oversight** 
+
+- Active problems by status, service and owner 
+
+- Provisional/differential diagnoses awaiting review 
+
+- Discharge diagnoses incomplete 
+
+- Duplicate and conflicting condition records 
+
+- Conditions using deprecated terminology 
+
+- Goals overdue for review 
+
+- Goals achieved/not achieved 
+
+- Active care plans without owner 
+
+- Plans and activities overdue 
+
+- Care-plan handovers pending 
+
+- AI suggestion acceptance/rejection 
+
+- Corrections, refutations and entered-in-error trends 
+
+- Terminology release and mapping usage 
+
+**CLN-P4-RPT-001** Reports and exports shall remain permission-, scope- and sensitivity-controlled. 
+
+**CLN-P4-RPT-002** Aggregates shall expose terminology version and inclusion criteria where needed for reproducibility. 
+
+#### **23. Acceptance Scenarios** 
+
+|**ID**|**Scenario**|**Expected Result**|
+|---|---|---|
+|**P4-AT-001**|Clinician records provisional malaria<br>diagnosis.|Verification status remains provisional<br>and is not displayed as confirmed.|
+|**P4-AT-002**|Clinician confirms after evidence review.|Status history preserved with verifier and<br>evidence links.|
+|**P4-AT-003**|Diagnosis later ruled out.|Marked refuted, not deleted or entered in<br>error.|
+|**P4-AT-004**|Wrong-patient diagnosis was recorded.|Entered-in-error workflow preserves<br>original and triggers reconciliation.|
+|**P4-AT-005**|Duplicate active problem is proposed.|Existing similar problems shown; no<br>silent merge.|
+|**P4-AT-006**|ICD service is unavailable.|Narrative draft may be saved; no code<br>guessed.|
+|**P4-AT-007**|Terminology release changes.|Signed historical diagnosis retains<br>original code/version.|
+|**P4-AT-008**|Goal target uses mg/dL while base policy<br>uses mmol/L.|Shared Unit Engine verifies conversion<br>and provenance.|
+|**P4-AT-009**|Care plan includes lab monitoring.|Plan records intended activity; order<br>requires separate authorization.|
+|**P4-AT-010**|Plan activity target time passes.|Review exception created; activity not<br>auto-failed.|
+|**P4-AT-011**|Patient transfers wards.|Plan remains patient-linked; task routing<br>recalculates by assignment.|
+|**P4-AT-012**|AI suggests diagnosis to nurse without<br>confirmation privilege.|Suggestion cannot be<br>asserted/confirmed.|
+|**P4-AT-013**|Evidence result is corrected.|Responsible clinician receives review<br>task; diagnosis not auto-changed.|
+|**P4-AT-014**|Encounter closes with active chronic<br>problem.|Longitudinal problem remains active and<br>ownership is explicit.|
+
+
+
+Controlled Draft | Not Approved for Production | Page 66 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 Each contribution preserves professional authorship and authority. 
+
+Two disciplines contribute to one plan. 
+
+**P4-AT-015** 
+
+#### **24. Mandatory Negative Tests** 
+
+- Hardcoded title grants diagnosis authority 
+
+- Clinical status inferred from verification status 
+
+- Differential displayed as confirmed 
+
+- Encounter diagnosis automatically copied to active problem list 
+
+- Principal diagnosis inferred from row order 
+
+- AI candidate automatically committed 
+
+- Deprecated code rewrites signed history 
+
+- Care-plan activity silently places an order 
+
+- Goal target calculated with unverified unit conversion 
+
+- Entered-in-error condition used by decision support 
+
+- User resolves problem outside patient/client-space scope 
+
+- Care-team member edits another discipline’s signed contribution 
+
+- Closed plan overwritten rather than versioned 
+
+- Corrected result auto-refutes diagnosis 
+
+- Report reveals sensitive diagnosis without permission 
+
+- Repeated event creates duplicate plan activity 
+
+#### **25. Traceability** 
+
+|**Area**|**Prefix**|**Evidence**|
+|---|---|---|
+|**Governance**|CLN-P4-GOV|Clinical governance review|
+|**Ownership**|CLN-P4-OWN|Contract tests|
+|**Data**|CLN-P4-DAT|Schema/provenance tests|
+|**Categories**|CLN-P4-CAT|Registry tests|
+|**Statuses**|CLN-P4-STS|Lifecycle tests|
+|**Problem list**|CLN-P4-PRB|Workflow tests|
+|**Diagnosis**|CLN-P4-DIA|Certainty tests|
+|**Terminology**|CLN-P4-TRM|Version/API tests|
+|**Evidence**|CLN-P4-EVD|Correction tests|
+|**Goals**|CLN-P4-GOL|Target/unit tests|
+|**Care plans**|CLN-P4-CPL|Version/state tests|
+|**Activities**|CLN-P4-ACT|Order-boundary tests|
+|**Multidisciplinary**|CLN-P4-MDT|Authorship tests|
+|**Review**|CLN-P4-REV|Due/closure tests|
+|**Corrections**|CLN-P4-COR|History tests|
+|**AI**|CLN-P4-AI|Human-approval tests|
+
+
+
+#### **26. Registered Phase 4 Gaps** 
+
+|**Gap ID**|**Resolution Required**|**Blocking**|
+|---|---|---|
+|**CLN-P4-GAP-001**|Approve problem and diagnosis<br>categories and status value sets.|Yes|
+|**CLN-P4-GAP-002**|Approve professional authority for<br>asserting, confirming and refuting<br>diagnoses.|Yes|
+|**CLN-P4-GAP-003**|Approve ICD-11 release, API/service<br>ownership and licensing approach.|Before coding release|
+|**CLN-P4-GAP-004**|Approve local clinical terminology and<br>mapping governance.|Yes|
+|**CLN-P4-GAP-005**|Approve principal/admission/discharge<br>diagnosis rules by encounter class.|Yes|
+
+
+
+Controlled Draft | Not Approved for Production | Page 67 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+|**CLN-P4-GAP-006**|Approve problem duplicate-detection<br>and merge-review behavior.|Yes|
+|---|---|---|
+|**CLN-P4-GAP-007**|Approve care-plan types, templates and<br>lifecycle.|Yes|
+|**CLN-P4-GAP-008**|Approve goal categories, measurable<br>target rules and review cadence.|Yes|
+|**CLN-P4-GAP-009**|Approve multidisciplinary ownership and<br>handover rules.|Yes|
+|**CLN-P4-GAP-010**|Define plan-to-order/task integration<br>contracts.|Yes|
+|**CLN-P4-GAP-011**|Approve AI diagnosis/care-plan<br>assistance scope.|Before AI release|
+|**CLN-P4-GAP-012**|Confirm FHIR Condition, CarePlan and<br>Goal profiles.|Before interoperability release|
+
+
+
+#### **27. Phase 4 Completion Gate** 
+
+- Phases 1 to 3 incorporated without contradiction. 
+
+- Problem, diagnosis and certainty models approved. 
+
+- ICD-11 and terminology governance approved. 
+
+- Problem-list and encounter-diagnosis separation approved. 
+
+- Goal structure and unit handling approved. 
+
+- Care-plan types, lifecycle, ownership and review approved. 
+
+- Plan activities separated from executable orders. 
+
+- Correction, refutation and entered-in-error rules approved. 
+
+- Permissions, interfaces, events, reports and tests approved. 
+
+- Every blocking gap assigned an owner and acceptance test. 
+
+   - **Phase 5 shall use these problems, diagnoses, goals and plan references when defining orders. It shall not allow careplan activities or AI suggestions to bypass order authorization.** 
+
+#### **Appendix A. Condition State Examples** 
+
+|**Example**|**Clinical Status**|**Verification Status**|
+|---|---|---|
+|**Working diagnosis under investigation**|ACTIVE|PROVISIONAL|
+|**Candidate among alternatives**|ACTIVE|DIFFERENTIAL|
+|**Established chronic disease**|ACTIVE|CONFIRMED|
+|**Condition improved and no longer**<br>**active**|RESOLVED|CONFIRMED|
+|**Previously suspected but ruled out**|INACTIVE|REFUTED|
+|**Record placed on wrong patient**|Not clinically applicable|ENTERED_IN_ERROR|
+
+
+
+#### **Appendix B. Minimum Care Plan Record** 
+
+|**Group**|**Fields**|
+|---|---|
+|**Identity**|Public ID, patient, encounter/episode scope, category|
+|**Intent/state**|Intent, status, period, version|
+|**Addresses**|Problems, diagnoses, risks|
+|**Goals**|Goal references, targets, priority and outcomes|
+|**Activities**|Interventions, timing, performers and linked workflows|
+|**Team**|Author, owner, contributors, patient/caregiver participation|
+|**Review**|Review schedule, reviewers and outcome summary|
+|**Provenance**|Template/protocol, source, signatures and corrections|
+|**Security**|Sensitivity and disclosure controls|
+|**Audit**|Correlation, context and event history|
+
+
+
+Controlled Draft | Not Approved for Production | Page 68 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **Appendix C. Sources Reviewed** 
+
+- KashTre Clinical Module SRD v6.0 and addendum. 
+
+- KashTre Clinical Module SRD v6.1 Phases 1, 2 and 3. 
+
+- HL7 FHIR Condition, CarePlan and Goal materials. 
+
+- WHO ICD-11 browser, coding tools, API and implementation information. 
+
+### **PHASE 5** 
+
+##### **CLINICAL ORDERS AND CLOSED-LOOP REQUEST MANAGEMENT** 
+
+**Phase 5 defines safe creation, authorization, transmission, acknowledgement, fulfilment, modification, cancellation and closure of medication, laboratory, imaging, procedure, referral and clinical-task orders.** 
+
+Controlled Draft | Not Approved for Production | Page 69 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **Document Control and Phase Authority** 
+
+|**Field**|**Rule**|
+|---|---|
+|**Purpose**|Define complete order-entry and closed-loop request-<br>management requirements.|
+|**Dependencies**|Phase 1 authorization, Phase 2 patient/encounter context,<br>Phase 3 attestation and Phase 4 problem/care-plan rules<br>remain mandatory.|
+|**Boundary**|Detailed medication administration and eMAR are Phase 6;<br>results acknowledgement is Phase 8.|
+|**Ownership**|Clinical owns ordering intent and clinical follow-up. Fulfilling<br>modules own their fulfilment records and authoritative output.|
+|**Implementation**|Functional specification. Laravel engineering details belong in<br>the companion EDD.|
+|**Release**|Controlled draft, not approved for production.|
+
+
+
+###### **Phase 5 outcomes** 
+
+- One consistent request framework across order families. 
+
+- Explicit distinction between proposal, plan, order and fulfilment. 
+
+- No unsigned or unauthorised order transmitted as active. 
+
+- Closed-loop acknowledgement and status reconciliation. 
+
+- Safe order sets, standing, verbal and emergency orders. 
+
+- Deterministic safety checks with governed overrides. 
+
+- Complete permissions, audit, events, reports and tests. 
+
+#### **1. Governing Principles** 
+
+- **CLN-P5-GOV-001** An order shall be a patient-specific authorized request, distinct from a care-plan activity, suggestion, draft, result or fulfilment record. 
+
+- **CLN-P5-GOV-002** No AI output, protocol recommendation, copied text or unsigned draft shall become an active order without explicit human authorization. 
+
+- **CLN-P5-GOV-003** Every order shall be bound to the correct patient and encounter where required, with two-identifier confirmation for configured high-risk actions. 
+
+- **CLN-P5-GOV-004** Order authority shall require atomic permission, effective scope, client-space or service context, care relationship, credential and permitted encounter state. 
+
+**CLN-P5-GOV-005** Clinical shall preserve placer intent while fulfilling systems preserve authoritative fulfilment and result state. 
+
+**CLN-P5-GOV-006** Cancellation, discontinuation, replacement, correction and entered-in-error shall remain distinct actions. **CLN-P5-GOV-007** All transmissions and retries shall be idempotent and traceable. 
+
+**Order safety rule: if required patient, requester, item, timing, destination, authorization or decision-support context cannot be verified, the order shall not be activated.** 
+
+#### **2. Order Concepts and Separation** 
+
+|**Concept**|**Meaning**|**Not Equivalent To**|
+|---|---|---|
+|**Proposal**|Suggested action requiring acceptance.|Active order|
+|**Plan**|Intended future action.|Authorization to fulfil|
+|**Draft order**|Editable uncommitted request.|Recipient work item|
+|**Active order**|Authorized request available to fulfiller.|Proof of performance|
+|**Order set**|Versioned group of candidate orders.|Automatic batch execution|
+|**Standing order**|Pre-authorized rule usable only under<br>defined criteria.|Blanket authority|
+|**Verbal/telephone order**|Order communicated when requester<br>cannot enter directly.|Anonymous order|
+
+
+
+Controlled Draft | Not Approved for Production | Page 70 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+|**Emergency order**|Urgent order under configured<br>emergency controls.|Audit bypass|
+|---|---|---|
+|**Fulfilment**|Work performed by receiving<br>module/service.|Order intent|
+|**Result**|Output of performed service.|Order completion by itself|
+|**Task**|Operational assignment derived from a<br>request.|Clinical order authority|
+
+
+
+#### **3. Order Families** 
+
+|**Family**|**Examples**|**Primary Fulfiller**|
+|---|---|---|
+|**MEDICATION**|Inpatient, outpatient, infusion, PRN,<br>taper|Pharmacy/eMAR workflows|
+|**LABORATORY**|Haematology, chemistry, microbiology,<br>pathology|LIMS|
+|**IMAGING**|X-ray, ultrasound, CT, MRI|RIS/PACS|
+|**PROCEDURE**|Bedside, endoscopy, surgery request|Clinical/Theatre/Surgery service|
+|**REFERRAL_CONSULT**|Internal consult, external referral,<br>second opinion|Receiving service/entity|
+|**THERAPY**|Physiotherapy, occupational,<br>respiratory, nutrition|Allied-health service|
+|**NURSING_SERVICE**|Configured nursing intervention requests|Nursing workflow|
+|**DEVICE_SUPPLY**|Patient-focused device or supply<br>request|Inventory/device service|
+|**OTHER_CLINICAL_SERVICE**|Approved configured service|Registered fulfiller|
+
+
+
+**CLN-P5-FAM-001** Order families and service catalogues shall be controlled, versioned and mapped to authoritative fulfilling services. 
+
+**CLN-P5-FAM-002** The UI shall present only order families permitted for the user, patient, encounter, facility and client space. 
+
+**CLN-P5-FAM-003** A single request shall not conflate independent medications or services merely to reduce record count. 
+
+#### **4. Common Order Record** 
+
+|**Group**|**Required Fields**|
+|---|---|
+|**Identity**|Public ID, tenant, patient, encounter, order family, placer<br>identifier|
+|**Request**|Requested code/item, display, intent, priority, status, reason<br>and clinical question|
+|**Context**|Facility, client space, service, care-plan/problem references|
+|**Requester**|Author, recorder if different, signer, professional authority|
+|**Timing**|Authored, requested occurrence, start, end, frequency or<br>urgency|
+|**Destination**|Fulfilling module/service, facility and recipient endpoint|
+|**Safety**|Allergies, relevant observations, warnings, overrides and<br>consent|
+|**Lifecycle**|Status, versions, replaces/replaced-by,<br>cancellation/discontinuation reason|
+|**Fulfilment**|Filler identifier, acknowledgement and status references|
+|**Governance**|Sensitivity, provenance, correlation ID and audit metadata|
+
+
+
+**CLN-P5-DAT-001** Each order shall have stable placer and public identifiers; receiving filler identifiers shall be stored separately. 
+
+**CLN-P5-DAT-002** Clinical reason and linked problem/diagnosis shall be captured where required and not inferred solely from order text. 
+
+**CLN-P5-DAT-003** Order instructions shall be structured where safety depends on them, with narrative retained only as supplementary context. 
+
+**CLN-P5-DAT-004** Terminology and catalogue version shall be preserved for historical interpretation. 
+
+Controlled Draft | Not Approved for Production | Page 71 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **5. Lifecycle and Status Model** 
+
+|**Status**|**Meaning**|**Allowed Examples**|
+|---|---|---|
+|**DRAFT**|Not authorized or transmitted|Submit, abandon|
+|**PROPOSED**|Suggested for clinician decision|Accept, reject|
+|**PENDING_SIGNATURE**|Complete but not authorized|Sign, return|
+|**ACTIVE**|Authorized and available to fulfil|Acknowledge, start, cancel, discontinue|
+|**ON_HOLD**|Temporarily paused|Resume, discontinue|
+|**IN_PROGRESS**|Fulfiller reports work underway|Complete, fail, discontinue|
+|**COMPLETED**|Requested service fulfilled|Result/follow-up may remain|
+|**CANCELLED**|Withdrawn before fulfilment|Retain reason/history|
+|**DISCONTINUED**|Stopped after activation/start|Retain effective stop|
+|**REVOKED**|Authorization withdrawn under policy|Retain reason|
+|**FAILED**|Could not be fulfilled|Review/reorder|
+|**ENTERED_IN_ERROR**|Invalid request record|Correction/replacement link|
+
+
+
+**CLN-P5-STS-001** Status transitions shall be explicit, versioned, permission-controlled and audited. 
+
+**CLN-P5-STS-002** Clinical shall not mark an order completed merely because it was transmitted. 
+
+**CLN-P5-STS-003** A final result may arrive after order completion and shall be managed by Phase 8. 
+
+**CLN-P5-STS-004** Illegal or stale state transitions shall be rejected with a structured conflict response. 
+
+#### **6. Order Entry Workflow** 
+
+|**Step**|**Required Behavior**|
+|---|---|
+|**1. Start**|Confirm patient, encounter and ordering context.|
+|**2. Select family**|Show permitted catalogue and order sets.|
+|**3. Select item/service**|Resolve canonical item/service and version.|
+|**4. Enter parameters**|Capture indication, priority, timing, instructions and<br>destination.|
+|**5. Safety checks**|Run patient-, order- and context-specific deterministic checks.|
+|**6. Review warnings**|Resolve blockers and document eligible overrides.|
+|**7. Preview**|Show complete human-readable order and recipient.|
+|**8. Sign/authorize**|Revalidate authority and attest exact version.|
+|**9. Transmit**|Persist active order and durable outbox atomically.|
+|**10. Acknowledge**|Receive recipient acceptance/rejection and filler ID.|
+|**11. Track**|Display fulfilment, exceptions and follow-up.|
+
+
+
+**CLN-P5-ENT-001** Draft saving may be permitted before all fields are complete, but activation shall require all mandatory data. **CLN-P5-ENT-002** The server shall rerun authorization and safety validation at signature, not rely on earlier client checks. **CLN-P5-ENT-003** The user shall see the fulfiller and destination before signing. **CLN-P5-ENT-004** Transmission failure shall not create a second order on retry. 
+
+#### **7. Clinical Decision Support and Safety Checks** 
+
+- Patient identity and encounter state 
+
+- Allergy and intolerance 
+
+- Duplicate and overlapping order 
+
+- Drug-drug, drug-condition and drug-laboratory checks 
+
+- Dose, route, frequency and duration completeness 
+
+- Age, weight, body-surface-area and organ-function context 
+
+- Pregnancy/lactation context where configured 
+
+- Contraindication and prerequisite checks 
+
+- Recent duplicate laboratory/imaging service 
+
+- Laterality, body site and specimen completeness 
+
+- Required consent or preparation 
+
+- Client-space/service capability 
+
+Controlled Draft | Not Approved for Production | Page 72 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Formulary, catalogue and availability status 
+
+- Linked order-set dependencies 
+
+- **CLN-P5-CDS-001** Safety checks shall distinguish hard stop, interruptive warning, advisory information and unavailable-check status. 
+
+**CLN-P5-CDS-002** A hard stop shall not be bypassed unless policy explicitly defines an eligible override permission and reason. 
+
+**CLN-P5-CDS-003** Every override shall preserve rule, severity, user, reason, evidence and order version. 
+
+**CLN-P5-CDS-004** The UI shall avoid duplicate or irrelevant warnings while never silently suppressing critical rules. 
+
+**CLN-P5-CDS-005** If a required safety dependency is unavailable, the system shall follow configured safe-failure rules and visibly identify the unavailable check. 
+
+#### **8. Medication Order Foundation** 
+
+- **CLN-P5-MED-001** Medication orders shall reference authoritative medication/item identifiers and preserve generic/brand, strength, form and route context. 
+
+- **CLN-P5-MED-002** Each medication order shall capture dose, dose unit, route, frequency/timing, start, duration/end, indication and PRN conditions where applicable. 
+
+**CLN-P5-MED-003** Dose and rate units shall use Main Module canonical unit IDs and verified conversions. 
+
+**CLN-P5-MED-004** Weight- or body-surface-area-based orders shall preserve the source measurement, time, formula, calculated value, rounding and author confirmation. 
+
+- **CLN-P5-MED-005** Taper, titration, infusion and conditional instructions shall use structured components and shall not rely solely on ambiguous free text. 
+
+**CLN-P5-MED-006** High-alert and controlled medication orders shall require additional privilege and configured verification. 
+
+**CLN-P5-MED-007** Phase 6 shall define dispensing, administration, omission, wastage and eMAR behavior without weakening these order controls. 
+
+#### **9. Laboratory Orders** 
+
+**CLN-P5-LAB-001** Laboratory orders shall reference the LIMS service/test catalogue and required specimen definitions. 
+
+**CLN-P5-LAB-002** The request shall capture test/panel, clinical question, priority, requested time, specimen type/site where required, collection responsibility and infection hazard/precautions where authorized. 
+
+**CLN-P5-LAB-003** Panel expansion shall show constituent tests and preserve the panel version. 
+
+**CLN-P5-LAB-004** Duplicate checking shall consider recent, pending and in-progress tests and shall not cancel a clinically justified repeat automatically. 
+
+**CLN-P5-LAB-005** Order status and specimen status shall remain separate. 
+
+**CLN-P5-LAB-006** Add-on testing shall reference an eligible existing specimen and use a separate authorized request. 
+
+#### **10. Imaging Orders** 
+
+**CLN-P5-IMG-001** Imaging orders shall reference the RIS service catalogue and capture modality/procedure, body site, laterality, clinical question, priority and requested timing. 
+
+**CLN-P5-IMG-002** Contrast, sedation, pregnancy, renal-function and implant/device checks shall be invoked where applicable. 
+
+**CLN-P5-IMG-003** The system shall preserve relevant prior imaging references without substituting them for the clinical question. 
+
+**CLN-P5-IMG-004** Changing modality or body site after authorization shall require governed modification or replacement and recipient reconciliation. 
+
+**CLN-P5-IMG-005** Image acquisition, interpretation and report release remain owned by RIS/PACS workflows. 
+
+#### **11. Procedure, Therapy and Nursing Service Orders** 
+
+**CLN-P5-SVC-001** Procedure requests shall capture procedure, indication, body site/laterality, priority, requested timing, performer/service, consent/preparation and prerequisites where applicable. 
+
+**CLN-P5-SVC-002** A procedure order shall not itself document procedure completion. 
+
+Controlled Draft | Not Approved for Production | Page 73 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P5-SVC-003** Therapy orders shall capture goals, precautions, frequency, duration and service responsibility. 
+
+**CLN-P5-SVC-004** Nursing service orders shall not override nursing professional assessment or title-derived scope. 
+
+**CLN-P5-SVC-005** Theatre and Surgery modules shall own scheduling and operative fulfilment where applicable, while Clinical preserves request and follow-up context. 
+
+#### **12. Referrals and Consultations** 
+
+**CLN-P5-REF-001** A referral shall capture reason, clinical question, urgency, requested specialty/service, recipient, relevant records, consent/disclosure basis and expected response. 
+
+**CLN-P5-REF-002** Internal consultation and external referral shall remain distinct pathways. 
+
+**CLN-P5-REF-003** Referral acceptance shall create an authorized care relationship only according to Phase 1 and Phase 2 rules. 
+
+**CLN-P5-REF-004** Sending a referral shall not automatically grant unrestricted chart access to every member of the receiving organization. 
+
+**CLN-P5-REF-005** Decline, redirect and request-more-information states shall preserve reason and requester notification. 
+
+**CLN-P5-REF-006** Referral closure shall identify response received, follow-up owner and unresolved actions. 
+
+#### **13. Order Sets and Protocol-Based Ordering** 
+
+**CLN-P5-SET-001** Order sets shall be versioned definitions containing candidate orders, grouping, defaults, dependencies and explanatory guidance. 
+
+**CLN-P5-SET-002** Instantiating an order set shall create reviewable drafts, not automatically active orders. 
+
+**CLN-P5-SET-003** The user shall select or deselect optional components and review every included order before signature. 
+
+**CLN-P5-SET-004** Defaults shall never silently insert patient-specific dose, laterality or timing without validation. 
+
+**CLN-P5-SET-005** Set updates shall not alter previously signed orders. 
+
+**CLN-P5-SET-006** Each resulting order shall retain order-set ID/version and independent lifecycle. 
+
+#### **14. Standing and Conditional Orders** 
+
+- **CLN-P5-STD-001** A standing order shall define authorizing policy, eligible patient population, setting, trigger criteria, permitted users, action, limits, effective period and review date. 
+
+- **CLN-P5-STD-002** Use of a standing order shall create a patient-specific order record attributed to the invoking user and standingorder authority. 
+
+**CLN-P5-STD-003** The system shall verify all criteria at invocation and shall not allow use after expiry or outside scope. 
+
+**CLN-P5-STD-004** Conditional orders shall define machine-readable conditions and required confirmation at execution points. 
+
+**CLN-P5-STD-005** Standing orders shall be versioned, approved and periodically reviewed. 
+
+#### **15. Verbal, Telephone and Emergency Orders** 
+
+**CLN-P5-VER-001** Verbal or telephone orders shall be limited to configured circumstances and permissions. 
+
+**CLN-P5-VER-002** The recorder shall capture stated requester, communication method, read-back confirmation, time, reason and exact order content. 
+
+- **CLN-P5-VER-003** The responsible requester shall authenticate the order within the configured timeframe; overdue authentication shall escalate. 
+
+**CLN-P5-VER-004** The record shall always distinguish requester from recorder. 
+
+**CLN-P5-VER-005** Emergency processing shall not remove identity, safety, read-back or audit requirements unless a formally approved downtime policy specifies an alternative. 
+
+**CLN-P5-VER-006** An unauthenticated verbal order shall remain visibly provisional even if urgent fulfilment is allowed by policy. 
+
+#### **16. Modification, Replacement, Cancellation and Discontinuation** 
+
+**CLN-P5-CHG-001** Material changes to an active order shall create a new version or replacement order according to family policy. 
+
+Controlled Draft | Not Approved for Production | Page 74 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P5-CHG-002** Replacement shall link prior and new orders and shall prevent both remaining active unintentionally. 
+
+**CLN-P5-CHG-003** Cancellation applies before ordinary fulfilment; discontinuation stops an active or started order prospectively. **CLN-P5-CHG-004** The system shall show whether the fulfiller accepted the cancellation/discontinuation and whether work had already started. 
+
+**CLN-P5-CHG-005** Entered in error shall not be used to conceal a legitimate cancelled or discontinued order. 
+
+**CLN-P5-CHG-006** Every change shall require reason, authority, effective time and downstream reconciliation. 
+
+#### **17. Transmission, Acknowledgement and Closed Loop** 
+
+|**Stage**|**Required Evidence**|
+|---|---|
+|**Committed**|Order persisted with authorization and outbox record|
+|**Transmitted**|Message delivered or queued to registered endpoint|
+|**Received**|Recipient technical acknowledgement|
+|**Accepted**|Fulfiller accepts clinical work|
+|**Rejected**|Fulfiller rejects with actionable reason|
+|**In progress**|Fulfiller reports performance underway|
+|**Completed**|Service reports fulfilment complete|
+|**Resulted/responded**|Expected output available where applicable|
+|**Reviewed**|Responsible Clinical user reviewed output in Phase 8|
+|**Closed**|No unresolved workflow obligation remains|
+
+
+
+**CLN-P5-LOOP-001** Technical receipt shall not be treated as clinical acceptance. 
+
+**CLN-P5-LOOP-002** The order workspace shall display placer status and authoritative fulfiller status separately when they differ. 
+
+**CLN-P5-LOOP-003** Unacknowledged, rejected, failed and overdue orders shall enter exception queues with escalation. 
+
+**CLN-P5-LOOP-004** Closure shall not occur while a required result, consultation response or follow-up remains unresolved. 
+
+#### **18. AI-Assisted Ordering** 
+
+**CLN-P5-AI-001** AI may extract or suggest candidate orders only through the Shared AI Gateway. **CLN-P5-AI-002** Suggestions shall be presented as drafts with source context and shall not be transmitted automatically. **CLN-P5-AI-003** Each selected suggestion shall pass the same catalogue, authorization, safety and signing checks as manual entry. **CLN-P5-AI-004** The system shall preserve AI request ID, suggestion, user edits, acceptance/rejection and final signer. **CLN-P5-AI-005** AI outage shall not block manual ordering. 
+
+#### **19. Permissions Catalogue** 
+
+|**Permission**|**Purpose**|
+|---|---|
+|**clinical.order.create**|Create draft order|
+|**clinical.order.sign**|Authorize permitted order|
+|**clinical.order.modify**|Modify or replace active order|
+|**clinical.order.cancel**|Cancel before fulfilment|
+|**clinical.order.discontinue**|Stop active order|
+|**clinical.order.override_warning**|Apply eligible warning override|
+|**clinical.order.verbal_enter**|Record verbal/telephone order|
+|**clinical.order.verbal_authenticate**|Authenticate own communicated order|
+|**clinical.order.standing.invoke**|Invoke eligible standing order|
+|**clinical.order.standing.manage**|Manage standing-order definitions|
+|**clinical.order_set.manage**|Manage order sets|
+|**clinical.referral.create**|Create referral/consultation|
+|**clinical.referral.accept**|Accept clinical referral|
+|**clinical.order.exception.manage**|Resolve transmission/status exceptions|
+|**clinical.order.audit**|View detailed order provenance|
+
+
+
+Controlled Draft | Not Approved for Production | Page 75 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P5-PRM-001** Permissions shall be registered in the Main Module and assigned through configurable title bundles and privileges. Laravel policies shall not rely on hardcoded title names. 
+
+#### **20. Operational Interfaces and Queues** 
+
+- Order composer 
+
+- Order review and signature 
+
+- Current orders by family and status 
+
+- Medication order view 
+
+- Laboratory order and specimen status 
+
+- Imaging order status 
+
+- Procedure and therapy requests 
+
+- Referral inbox and response workspace 
+
+- Orders awaiting signature/co-signature 
+
+- Verbal orders awaiting authentication 
+
+- Rejected/unacknowledged transmission queue 
+
+- Overdue fulfilment queue 
+
+- Cancellation/discontinuation reconciliation 
+
+- Order-set and standing-order administration 
+
+**CLN-P5-UI-001** Every interface shall retain Phase 2 patient banner and encounter context. 
+
+**CLN-P5-UI-002** Draft, proposal, active, cancelled, discontinued and entered-in-error orders shall be visually distinct without relying only on colour. 
+
+**CLN-P5-UI-003** The UI shall show requester, signer, fulfiller, indication, priority and current state without requiring audit-level access. 
+
+#### **21. Audit, Events and Reports** 
+
+- Draft create/update/abandon 
+
+- Safety check and override 
+
+- Signature and authorization failure 
+
+- Transmission, retry and acknowledgement 
+
+- Acceptance/rejection 
+
+- Status update and fulfilment 
+
+- Modification/replacement 
+
+- Cancellation/discontinuation 
+
+- Verbal read-back/authentication 
+
+- Standing-order invocation 
+
+- AI suggestion acceptance/rejection 
+
+- Sensitive order view/export 
+
+- clinical.order.created 
+
+- clinical.order.activated 
+
+- clinical.order.transmitted 
+
+- clinical.order.acknowledged 
+
+- clinical.order.accepted 
+
+- clinical.order.rejected 
+
+- clinical.order.status_changed 
+
+- clinical.order.replaced 
+
+- clinical.order.cancelled 
+
+- clinical.order.discontinued 
+
+- clinical.order.exception_raised 
+
+- clinical.referral.accepted 
+
+- Orders by family/status/service 
+
+- Unsigned orders 
+
+- Verbal orders awaiting authentication 
+
+- • Unacknowledged or rejected orders 
+
+- Overdue fulfilment 
+
+Controlled Draft | Not Approved for Production | Page 76 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Duplicate-order overrides 
+
+- Safety-alert overrides 
+
+- Cancelled after work started 
+
+- Standing-order usage 
+
+- Order-set usage and deselection 
+
+- AI suggestion acceptance 
+
+- Transmission and reconciliation failures 
+
+- **CLN-P5-EVT-001** Events shall use stable IDs, tenant, patient, encounter, version, occurred-at, correlation ID and idempotency key and shall avoid unrestricted sensitive narrative. 
+
+**CLN-P5-RPT-001** Reports and exports shall be permission-, scope- and sensitivity-controlled. 
+
+#### **22. Acceptance Scenarios** 
+
+|**ID**|**Scenario**|**Expected Result**|
+|---|---|---|
+|**P5-AT-001**|Clinician creates routine laboratory<br>order.|Patient/context validated, order signed,<br>transmitted once and filler<br>acknowledgement tracked.|
+|**P5-AT-002**|Care plan proposes imaging.|Draft suggestion created; no active order<br>until authorized.|
+|**P5-AT-003**|Duplicate test exists.|Warning shows prior/pending test;<br>justified repeat requires reason.|
+|**P5-AT-004**|Medication dose uses mg/kg.|Current weight, unit conversion,<br>calculation and rounding preserved.|
+|**P5-AT-005**|Imaging laterality missing.|Activation blocked where laterality is<br>required.|
+|**P5-AT-006**|Order set selected.|Candidate orders shown individually for<br>review; optional items not silently<br>included.|
+|**P5-AT-007**|Standing order invoked outside criteria.|Blocked with rule explanation.|
+|**P5-AT-008**|Nurse records urgent verbal order.|Requester/recorder/read-back<br>preserved and authentication queued.|
+|**P5-AT-009**|Cancellation sent after fulfilment<br>started.|Recipient status shown; reconciliation<br>required.|
+|**P5-AT-010**|Transmission times out and retries.|Same order/idempotency key used; no<br>duplicate recipient order.|
+|**P5-AT-011**|AI suggests CBC.|Suggestion remains draft and passes<br>normal checks before signing.|
+|**P5-AT-012**|Referral accepted.|Scoped care relationship created<br>according to Phase 1/2 rules.|
+|**P5-AT-013**|Result expected after order completion.|Order closes only when configured<br>follow-up obligation is resolved.|
+|**P5-AT-014**|User lacks controlled-drug privilege.|Restricted medication order cannot be<br>signed.|
+|**P5-AT-015**|Unit Engine unavailable for required<br>dose conversion.|Activation blocked; no guessed<br>conversion.|
+
+
+
+#### **23. Mandatory Negative Tests** 
+
+- Hardcoded title bypasses permission 
+
+- Draft transmitted as active 
+
+- AI suggestion auto-orders 
+
+- Care-plan activity treated as executable order 
+
+- Wrong-patient payload substitution 
+
+- Encounter closed but ordinary order signed 
+
+- Duplicate retry creates second filler order 
+
+- Technical receipt treated as clinical acceptance 
+
+Controlled Draft | Not Approved for Production | Page 77 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Medication order with free-text-only dose 
+
+- Molar/mass conversion without context 
+
+- Imaging order without required site/laterality 
+
+- Standing order used after expiry 
+
+- Verbal order loses requester identity 
+
+- Cancellation deletes original order 
+
+- Entered-in-error used instead of discontinuation 
+
+- Recipient rejection hidden from requester 
+
+- • Report exposes sensitive order outside scope 
+
+#### **24. Traceability** 
+
+|**Area**|**Prefix**|**Evidence**|
+|---|---|---|
+|**Governance**|CLN-P5-GOV|Architecture review|
+|**Families**|CLN-P5-FAM|Catalogue tests|
+|**Data**|CLN-P5-DAT|Schema/provenance tests|
+|**Status**|CLN-P5-STS|Lifecycle tests|
+|**Entry**|CLN-P5-ENT|Workflow tests|
+|**Safety**|CLN-P5-CDS|Rule/override tests|
+|**Medication**|CLN-P5-MED|Dose/unit tests|
+|**Laboratory**|CLN-P5-LAB|LIMS contract tests|
+|**Imaging**|CLN-P5-IMG|RIS contract tests|
+|**Services**|CLN-P5-SVC|Procedure boundary tests|
+|**Referral**|CLN-P5-REF|Access/acceptance tests|
+|**Order sets**|CLN-P5-SET|Instantiation tests|
+|**Standing**|CLN-P5-STD|Criteria tests|
+|**Verbal**|CLN-P5-VER|Read-back tests|
+|**Changes**|CLN-P5-CHG|Reconciliation tests|
+|**Closed loop**|CLN-P5-LOOP|Acknowledgement tests|
+|**AI**|CLN-P5-AI|Human approval tests|
+
+
+
+#### **25. Registered Phase 5 Gaps** 
+
+|**Gap ID**|**Resolution Required**|**Blocking**|
+|---|---|---|
+|**CLN-P5-GAP-001**|Approve common order status and<br>intent value sets.|Yes|
+|**CLN-P5-GAP-002**|Approve authoritative service catalogues<br>and owning modules.|Yes|
+|**CLN-P5-GAP-003**|Approve professional ordering privileges<br>by family.|Yes|
+|**CLN-P5-GAP-004**|Approve hard stops, warnings and<br>override authorities.|Yes|
+|**CLN-P5-GAP-005**|Define LIMS, RIS/PACS, Inventory,<br>Theatre and Surgery contracts.|Yes|
+|**CLN-P5-GAP-006**|Approve medication dose/rate unit<br>policies and calculation rules.|Yes|
+|**CLN-P5-GAP-007**|Approve order-set governance and initial<br>seed sets.|Yes|
+|**CLN-P5-GAP-008**|Approve standing-order criteria and<br>review model.|Yes|
+|**CLN-P5-GAP-009**|Approve verbal/telephone<br>authentication timelines and escalation.|Yes|
+|**CLN-P5-GAP-010**|Approve referral disclosure and care-<br>relationship rules.|Yes|
+|**CLN-P5-GAP-011**|Define acknowledgement, timeout, retry<br>and reconciliation SLAs.|Yes|
+
+
+
+Controlled Draft | Not Approved for Production | Page 78 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+Confirm FHIR ServiceRequest, MedicationRequest and related profiles. 
+
+**CLN-P5-GAP-012** 
+
+Before interoperability release 
+
+#### **26. Phase 5 Completion Gate** 
+
+- Phases 1 to 4 incorporated without contradiction. 
+
+- Order families, intents and statuses approved. 
+
+- Common order record and authorization workflow approved. 
+
+- Safety checks and override governance approved. 
+
+- Medication, laboratory, imaging, procedure and referral requirements approved. 
+
+- Order sets, standing and verbal orders approved. 
+
+- Modification, cancellation and discontinuation semantics approved. 
+
+- Closed-loop acknowledgement and exception queues approved. 
+
+- Permissions, audit, events, reports and tests approved. 
+
+- Every blocking gap assigned an owner and acceptance test. 
+
+   - **Phase 6 shall use these medication-order records as authoritative administration instructions. It shall not permit eMAR to invent, broaden or silently reinterpret the signed order.** 
+
+#### **Appendix A. Minimum Order Record** 
+
+|**Group**|**Fields**|
+|---|---|
+|**Identity**|Public ID, placer ID, patient, encounter, family|
+|**Intent**|Draft/proposal/plan/order and priority|
+|**Request**|Canonical item/service, parameters, reason and instructions|
+|**Requester**|Author, recorder, signer and authority context|
+|**Timing**|Authored, occurrence/start/end and recurrence|
+|**Destination**|Fulfiller, endpoint and facility|
+|**Safety**|Warnings, checks, overrides and evidence|
+|**Lifecycle**|Status history, replacement/cancellation links|
+|**Fulfilment**|Filler ID, acknowledgement and authoritative status|
+|**Audit**|Version, correlation, idempotency and provenance|
+
+
+
+#### **Appendix B. Sources Reviewed** 
+
+- KashTre Clinical Module SRD v6.0 and addendum. 
+
+- KashTre Clinical Module SRD v6.1 Phases 1 to 4. 
+
+- HL7 FHIR ServiceRequest and MedicationRequest materials. 
+
+- ONC SAFER Computerized Provider Order Entry with Decision Support guidance. 
+
+- AHRQ computerized provider order entry materials. 
+
+### **PHASE 6 DRAFT** 
+
+##### **MEDICATION MANAGEMENT, DISPENSING INTEGRATION AND eMAR** 
+
+**Phase 6 defines medication reconciliation, pharmacy verification integration, electronic medication administration, infusions, PRN review, omissions, refusals, wastage, controlled medicines and adverse medication-event** 
+
+**workflows.** 
+
+Controlled Draft | Not Approved for Production | Page 79 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **Document Control and Phase Authority** 
+
+|**Field**|**Rule**|
+|---|---|
+|**Purpose**|Define safe medication use from verified order through supply,<br>administration, monitoring and reconciliation.|
+|**Dependencies**|Phases 1 to 5 remain mandatory, especially patient identity,<br>authority, documentation, unit conversion and medication-<br>order controls.|
+|**Boundary**|Pharmacy and Inventory remain authoritative for dispensing<br>and stock; Clinical owns bedside administration records and<br>clinical follow-up.|
+|**Vaccines**|Immunization may use a dedicated profile/workflow but shall<br>follow equivalent patient, product, administration and safety<br>controls.|
+|**Implementation**|Functional requirements only. Laravel implementation belongs<br>in the companion EDD.|
+|**Release**|Controlled draft, not approved for production.|
+
+
+
+###### **Phase 6 outcomes** 
+
+- One accurate active medication profile. 
+
+- Closed-loop reconciliation at transitions. 
+
+- Order-faithful eMAR generation. 
+
+- Positive patient and product identification. 
+
+- Structured administration, infusion and PRN documentation. 
+
+- Controlled omission, refusal, waste and correction workflows. 
+
+- High-alert and controlled-medicine safeguards. 
+
+- Complete audit, events, reports, tests and release gaps. 
+
+#### **1. Governing Principles** 
+
+- **CLN-P6-GOV-001** MedicationAdministration shall record an event that occurred or was not done; it shall not replace the authorizing MedicationRequest. 
+
+- **CLN-P6-GOV-002** The eMAR shall be a projection of active medication orders, dispensing/availability state and administration events, not an independently editable order source. 
+
+- **CLN-P6-GOV-003** Administration shall require the correct patient, medication/product, dose, unit, route, time, indication where applicable and authorized administrator. 
+
+- **CLN-P6-GOV-004** A nurse or other administrator shall not broaden, reinterpret or silently repair an ambiguous medication order. 
+
+- **CLN-P6-GOV-005** Medication safety rules shall apply at ordering, verification, supply, preparation, administration and monitoring points according to configuration. 
+
+- **CLN-P6-GOV-006** Medication events, corrections and waste records shall preserve immutable provenance and link to the order and dispense/supply where available. 
+
+**CLN-P6-GOV-007** High-alert and controlled medicines shall use additional safeguards defined by approved institutional policy. 
+
+**Bedside rule: when patient identity, order validity, product identity, dose, route, timing, privilege or a required safety check cannot be verified, administration shall be blocked or placed into an explicitly governed emergency pathway.** 
+
+#### **2. Medication Concepts and Boundaries** 
+
+|**Concept**|**Meaning**|**Owner/Rule**|
+|---|---|---|
+|**Medication order**|Authorization and instructions for<br>medication use.|Clinical ordering, Phase 5|
+|**Medication dispense**|Provision of medication supply.|Pharmacy/Inventory|
+|**Medication administration**|Actual or not-done administration event.|Clinical eMAR|
+|**Medication statement**|Reported medication use from patient or|Reconciliation source, not automatic|
+
+
+
+Controlled Draft | Not Approved for Production | Page 80 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+||another source.|order|
+|---|---|---|
+|**Medication reconciliation**|Comparison and resolution of<br>medication lists at transitions.|Clinical workflow|
+|**Dose due**|Calculated administration opportunity<br>from an active order.|eMAR projection|
+|**Preparation**|Compounding/drawing-up action before<br>administration.|Recorded when policy requires|
+|**Waste**|Medication prepared/dispensed but not<br>administered and disposed.|Separate witnessed event where<br>required|
+|**Omission**|Scheduled dose not administered.|Not-done event with reason|
+|**Refusal**|Patient/caregiver declines offered<br>medicine.|Not-done event plus follow-up|
+|**Adverse reaction**|Suspected harmful response.|Clinical event linked to allergy/safety<br>workflow|
+
+
+
+- **CLN-P6-BND-001** Clinical shall consume authoritative medication/item and package identifiers from Main/Inventory and authoritative dispense status from Pharmacy. 
+
+- **CLN-P6-BND-002** Stock quantity shall not be inferred from eMAR events alone. 
+
+- **CLN-P6-BND-003** A patient-reported medication shall not appear as an active administered inpatient order until reconciled and authorized. 
+
+#### **3. Medication Profile and Reconciliation** 
+
+###### **3.1 Medication sources** 
+
+- Current active orders 
+
+- Prior encounter orders 
+
+- Patient or caregiver report 
+
+- External prescription/dispense records 
+
+- Pharmacy history 
+
+- Referral or transfer documents 
+
+- Medication containers or verified list 
+
+- Device-administered medication history 
+
+- **CLN-P6-REC-001** Reconciliation shall record source, reliability/verification state, medication, strength, form, route, dose, frequency, last dose, indication and adherence where available. 
+
+- **CLN-P6-REC-002** The system shall compare sources and identify duplicates, omissions, dose differences, route differences, interactions and unresolved uncertainty. 
+
+- **CLN-P6-REC-003** Each item shall receive an explicit decision such as CONTINUE, MODIFY, HOLD, STOP, SUBSTITUTE, DEFER_REVIEW or NOT_CURRENT. 
+
+- **CLN-P6-REC-004** A reconciliation decision that creates or changes therapy shall invoke the Phase 5 order workflow and authority checks. 
+
+- **CLN-P6-REC-005** Admission, internal transfer and discharge reconciliation shall remain distinct completed activities with responsible clinician and timestamp. 
+
+- **CLN-P6-REC-006** Unresolved discrepancies shall remain visible and route to an accountable owner; they shall not disappear when the encounter closes. 
+
+#### **4. Pharmacy Verification and Dispensing Integration** 
+
+|**State**|**Meaning**|
+|---|---|
+|**NOT_REQUIRED**|Policy does not require pharmacy verification|
+|**PENDING**|Awaiting pharmacist review|
+|**VERIFIED**|Pharmacist accepted for dispensing/administration|
+|**CLARIFICATION_REQUIRED**|Order requires prescriber response|
+|**REJECTED**|Cannot be verified under policy|
+|**DISPENSED**|Supply issued|
+
+
+
+Controlled Draft | Not Approved for Production | Page 81 
+
+||KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1|
+|---|---|
+|**PARTIALLY_DISPENSED**|Only part supplied|
+|**NOT_AVAILABLE**|Supply unavailable|
+|**RETURNED**|Unused supply returned|
+|**RECALLED**|Product/lot recall applies|
+
+
+
+**CLN-P6-PHX-001** The eMAR shall show pharmacy verification and availability independently from order status. 
+
+**CLN-P6-PHX-002** Where verification is mandatory, administration shall be blocked until VERIFIED unless an approved emergency rule applies. 
+
+- **CLN-P6-PHX-003** Clarification messages shall preserve question, sender, recipient, response, timestamps and resulting order version. 
+
+- **CLN-P6-PHX-004** Dispense events shall retain product, lot/batch, expiry, quantity, unit, dispenser and source identifiers where supplied. 
+
+- **CLN-P6-PHX-005** A substitution shall require an approved equivalence and shall not change the ordered clinical ingredient, dose or route silently. 
+
+- **CLN-P6-PHX-006** Recall notifications shall identify affected patients, products/lots and administrations without rewriting completed history. 
+
+#### **5. eMAR Generation and Dose Scheduling** 
+
+- **CLN-P6-MAR-001** The eMAR shall derive dose opportunities from the current signed medication order version and configured scheduling rules. 
+
+- **CLN-P6-MAR-002** Each due event shall preserve order ID/version, scheduled time/window, dose, route, PRN/conditional status and patient location. 
+
+- **CLN-P6-MAR-003** Order modification, hold, discontinuation or transfer shall recalculate future opportunities prospectively while preserving prior events. 
+
+**CLN-P6-MAR-004** The system shall prevent duplicate due events during retries, daylight/time-zone changes or order replacement. 
+
+**CLN-P6-MAR-005** Overdue status shall not itself record an omission; an authorized user or governed rule must resolve the event. 
+
+**CLN-P6-MAR-006** The eMAR shall distinguish scheduled, due, overdue, administered, partial, refused, omitted, held, unavailable, cancelled and not-applicable states. 
+
+###### **5.1 Administration windows** 
+
+**CLN-P6-MAR-010** Early and late windows shall be configurable by medication, frequency, care setting and risk class. **CLN-P6-MAR-011** Administration outside the ordinary window shall require a reason and may require additional authorization. **CLN-P6-MAR-012** The interface shall show actual time and scheduled time separately. 
+
+#### **6. Positive Patient and Product Identification** 
+
+**CLN-P6-ID-001** The administrator shall confirm at least two approved patient identifiers before administration. 
+
+**CLN-P6-ID-002** Barcode or equivalent scanning shall verify patient wristband and medication product where configured. 
+
+**CLN-P6-ID-003** A mismatch between scanned patient, active chart, medication, strength, form, route, lot or order shall block administration. 
+
+**CLN-P6-ID-004** Room, bed or ward number shall not serve as a patient identifier. 
+
+**CLN-P6-ID-005** Manual barcode override shall require an eligible permission, reason and audit and shall never override a true patient/product mismatch. 
+
+**CLN-P6-ID-006** Bedside verification shall re-check the current order version and not rely on a stale client display. 
+
+#### **7. Administration Workflow** 
+
+|**Step**|**Required Behavior**|
+|---|---|
+|**1. Select due dose**|Open from authorized patient eMAR/worklist.|
+|**2. Confirm patient**|Verify two identifiers and current encounter.|
+|**3. Confirm order**|Display medication, dose, route, time, indication and|
+
+
+
+Controlled Draft | Not Approved for Production | Page 82 
+
+||KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1|
+|---|---|
+||warnings.|
+|**4. Confirm product**|Scan/select exact product, strength, form, lot and expiry where<br>available.|
+|**5. Prepare**|Record calculations, dilution, preparation and witness if<br>required.|
+|**6. Safety check**|Revalidate allergies, parameters, hold criteria and privileges.|
+|**7. Administer**|Record actual dose, unit, route, site, method and time.|
+|**8. Complete**|Authenticate event and update eMAR projection.|
+|**9. Monitor**|Create required reassessment/follow-up tasks.|
+|**10. Reconcile supply**|Send consumption/waste/return events to authoritative<br>services.|
+
+
+
+**CLN-P6-ADM-001** Administration shall require clinical.medication.administer and any additional medication/route privilege. 
+
+**CLN-P6-ADM-002** The administrator shall attest to the exact event record; pre-charting as administered before the event shall be prohibited. 
+
+**CLN-P6-ADM-003** Actual dose may differ from ordered dose only where the order explicitly permits a range/titration or an authorized exception workflow applies. 
+
+**CLN-P6-ADM-004** The event shall record performer, witness where required, patient, encounter, order, dispense/product, occurrence, recorded time, dose, route, site and notes/reason. 
+
+**CLN-P6-ADM-005** A failed save shall not display the dose as administered; retry shall remain idempotent. 
+
+###### **7.1 Point-of-Care Consumption Confirmation** 
+
+The Confirm Consumption step forms part of the medication-administration workflow. It confirms the physical products used without turning the nurse into an Inventory or billing decision-maker. 
+
+**CLN-P6-CNS-001** Upon successful commitment of a Medication Administration Event, the Clinical Module shall automatically create a draft Consumption Session and display a persistent Confirm Consumption interface. 
+
+**CLN-P6-CNS-002** The session shall inherit tenant, facility, patient, encounter, client space, Medication Administration Event, administering user, occurrence time and clinical activity without duplicate entry. 
+
+**CLN-P6-CNS-003** The interface shall pre-populate every medication product recorded as physically used during administration. 
+
+**CLN-P6-CNS-004** Each medication line shall show product, strength, formulation, physical stock quantity, inventory unit, source store, batch or lot and expiry where available. 
+
+**CLN-P6-CNS-005** Clinical dose and physical stock quantity shall be displayed distinctly where they differ, for example ceftriaxone 2 g administered from two 1 g vials. 
+
+**CLN-P6-CNS-006** The user shall be able to scan, search for or select additional items used during administration, including gloves, syringes, needles, swabs, diluents and other non-prescribed supplies. 
+
+**CLN-P6-CNS-007** Repeated scanning shall increment quantity unless batch, lot, serial or traceability rules require separate item lines. 
+
+**CLN-P6-CNS-008** The user shall either confirm that all additional items are listed or explicitly select No additional items were used. 
+
+**CLN-P6-CNS-009** The Clinical interface shall not ask the user to determine Approved Pool eligibility, prior payment, coverage, pricing, financial responsibility or chargeability. 
+
+**CLN-P6-CNS-010** Confirmation shall submit one grouped Consumption Session to Inventory using stable session, source-event, correlation and idempotency identifiers. 
+
+**CLN-P6-CNS-011** Inventory shall create authoritative item-level Consumption Events and apply Approved Pool, physical-stock and reconciliation rules. 
+
+**CLN-P6-CNS-012** The Main Module shall determine the downstream financial outcome for quantities not satisfied by the Approved Pool or another recognized entitlement. 
+
+**CLN-P6-CNS-013** Successful medication administration shall not wait for downstream financial evaluation. 
+
+**CLN-P6-CNS-014** Failure of Inventory or Main processing shall not delete, reverse or invalidate a valid Medication Administration Event. 
+
+**CLN-P6-CNS-015** An unresolved Consumption Session shall retain its contents and enter an accountable reconciliation queue. 
+
+**CLN-P6-CNS-016** The interface shall offer Save for Reconciliation rather than silently discarding an incomplete session. 
+
+Controlled Draft | Not Approved for Production | Page 83 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 **CLN-P6-CNS-020** Administered, wasted, returned and remaining quantities shall be separate dispositions within the session and shall not cause duplicate consumption. 
+
+**CLN-P6-CNS-021** Breakage, contamination or damage shall be represented as a separate Inventory disposition and not as medication administered. 
+
+**CLN-P6-CNS-022** Shelf expiry not attributable to a patient shall use the Inventory stock-disposition workflow and shall not require a false patient association. 
+
+#### **8. Partial Doses, Split Products and Multi-Component Administration** 
+
+**CLN-P6-PAR-001** Partial administration shall record ordered dose, administered dose, remaining disposition and reason. 
+
+**CLN-P6-PAR-002** The system shall support one administration composed from multiple products or strengths while preserving each product and lot. 
+
+- **CLN-P6-PAR-003** The system shall support one dispensed product contributing to an administered dose and a waste quantity without duplicating consumption. 
+
+**CLN-P6-PAR-004** Unit conversions shall use the Main Module Unit Engine and store original, normalized and rule provenance. 
+
+**CLN-P6-PAR-005** Dose rounding shall follow medication-specific policy and show the calculated and administered values. 
+
+#### **9. PRN and Conditional Medication** 
+
+- **CLN-P6-PRN-001** A PRN order shall specify indication, minimum interval, maximum dose/quantity and reassessment requirements where applicable. 
+
+**CLN-P6-PRN-002** Before PRN administration, the user shall document or confirm the indication and relevant assessment. 
+
+- **CLN-P6-PRN-003** The system shall check last administration, cumulative dose and overlapping products before allowing the event. 
+
+**CLN-P6-PRN-004** Required effectiveness reassessment shall generate a task with due time and accountable role/user. 
+
+**CLN-P6-PRN-005** Failure to complete reassessment shall enter an exception queue and shall not alter the administration record. 
+
+#### **10. Infusions, Titration and Pumps** 
+
+**CLN-P6-INF-001** Infusion administration shall capture solution/product components, concentration, route/access, rate, rate unit, volume, start and expected end. 
+
+- **CLN-P6-INF-002** Titration orders shall define permitted range, increment, interval, target parameter and maximum/minimum limits. 
+
+**CLN-P6-INF-003** Every rate change shall record old rate, new rate, time, reason/target observation, performer and order version. 
+
+**CLN-P6-INF-004** Pause, resume, bag change, line change, completion and early termination shall be distinct events. 
+
+- **CLN-P6-INF-005** Pump/device integration shall stage device data for patient/order validation; device data shall not auto-finalize an administration event without approved validation. 
+
+- **CLN-P6-INF-006** Cumulative infused volume and dose shall be reproducible from events and shall identify gaps or conflicting device/manual records. 
+
+#### **11. High-Alert Medicines and Independent Checks** 
+
+- **CLN-P6-HAM-001** High-alert status and required safeguards shall come from an approved, versioned institutional policy linked to authoritative medication records. 
+
+- **CLN-P6-HAM-002** Safeguards may include restricted access, standardized concentrations, mandatory pharmacy verification, dose limits, independent checks, smart-pump library use and enhanced monitoring. 
+
+- **CLN-P6-HAM-003** An independent double check shall require a second eligible user to verify configured elements independently and record their own authenticated decision. 
+
+**CLN-P6-HAM-004** The first user shall not sign for the second user, and simultaneous shared credentials shall be prohibited. 
+
+- **CLN-P6-HAM-005** The system shall define whether an emergency override is permitted for each high-alert class and what retrospective review is required. 
+
+- **CLN-P6-HAM-006** Changing or retiring the high-alert list shall not rewrite historical administrations. 
+
+Controlled Draft | Not Approved for Production | Page 84 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **12. Controlled Medicines and Wastage** 
+
+**CLN-P6-CTL-001** Controlled-medicine processes shall be configurable to applicable law and institutional policy and shall not assume one jurisdiction. 
+
+**CLN-P6-CTL-002** Receipt, issue, administration, return, waste and discrepancy events shall preserve quantity, unit, product/lot, custody actors, location and timestamps. 
+
+**CLN-P6-CTL-003** Waste shall record quantity wasted, reason, method/location and witness where required. 
+
+**CLN-P6-CTL-004** A waste event shall not be represented as a patient-administered dose. 
+
+**CLN-P6-CTL-005** Balance discrepancies shall enter an exception workflow and shall not be silently adjusted. **CLN-P6-CTL-006** Witness eligibility shall be checked at witness time, including client-space assignment and required privilege. 
+
+#### **13. Omission, Refusal, Hold and Unavailability** 
+
+|**Outcome**|**Required Meaning**|
+|---|---|
+|**REFUSED**|Medication offered but declined by patient/authorized<br>decision-maker|
+|**OMITTED_CLINICAL**|Not given for a clinical reason|
+|**OMITTED_OPERATIONAL**|Not given for an operational reason|
+|**HELD**|Temporarily withheld under valid order/instruction|
+|**NOT_AVAILABLE**|Required product unavailable|
+|**PATIENT_UNAVAILABLE**|Patient not available at due time|
+|**NIL_BY_MOUTH_OR_CONTRAINDICATED**|Configured clinical condition prevents administration|
+|**NOT_DONE_OTHER**|Approved reason with required narrative|
+
+
+
+**CLN-P6-NDG-001** Not-done events shall require a controlled reason code and free text where configured. 
+
+**CLN-P6-NDG-002** The system shall distinguish patient refusal from medication unavailability and clinical withholding. 
+
+**CLN-P6-NDG-003** A refusal or significant omission shall trigger configured notification, prescriber/pharmacy review or 
+
+reassessment. 
+
+**CLN-P6-NDG-004** Repeated omissions shall be detectable and reportable. 
+
+**CLN-P6-NDG-005** A held order and a held dose shall remain distinct. 
+
+#### **14. Self-Administration, Patient-Owned and Device-Administered Medicines** 
+
+**CLN-P6-SELF-001** Self-administration requires an active order/policy, patient assessment, product verification, storage plan and documentation responsibility. 
+
+**CLN-P6-SELF-002** Patient-owned medicines shall be identified and verified before use and shall remain distinct from pharmacydispensed stock. 
+
+**CLN-P6-SELF-003** The system shall record whether the event was administered by staff, patient, caregiver or device. 
+
+**CLN-P6-SELF-004** Device-generated administrations shall remain linked to device identity and validation status. **CLN-P6-SELF-005** Inability to verify a patient-owned product shall block its ordinary inpatient administration. 
+
+#### **15. Adverse Reactions, Errors and Escalation** 
+
+**CLN-P6-ADE-001** A suspected adverse reaction may be recorded from the administration event and linked to allergy/intolerance and safety-reporting workflows. 
+
+**CLN-P6-ADE-002** The record shall distinguish adverse drug reaction, side effect, medication error, near miss and therapeutic failure where policy supports these concepts. 
+
+**CLN-P6-ADE-003** Clinical response, observations, treatment, notifications and outcome shall be documented without altering the original administration event. 
+
+**CLN-P6-ADE-004** A medication error report shall not be hidden by correcting the eMAR entry. 
+
+**CLN-P6-ADE-005** Serious events shall trigger configured urgent escalation and governance review. 
+
+Controlled Draft | Not Approved for Production | Page 85 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **16. Corrections and Entered-in-Error** 
+
+**CLN-P6-COR-001** A completed administration event shall not be edited destructively. 
+
+**CLN-P6-COR-002** Correction shall preserve original and corrected values, reason, author, time and clinical impact assessment. 
+
+- **CLN-P6-COR-003** Entered-in-error shall be used only when the event record itself is invalid, not when a legitimate dose was omitted or discontinued. 
+
+- **CLN-P6-COR-004** Corrections shall reconcile eMAR, pharmacy, inventory, controlled-drug balance and downstream reports where affected. 
+
+**CLN-P6-COR-005** A corrected event shall remain linked to the original order and dispense records. 
+
+#### **17. Transfers, Leave and Discharge** 
+
+- **CLN-P6-TRN-001** Patient movement shall recalculate future eMAR worklists and responsible administrators without changing prior administration context. 
+
+- **CLN-P6-TRN-002** Transfer handover shall identify doses due during transit, infusions in progress, patient-owned medicines, controlled medicines and unresolved discrepancies. 
+
+- **CLN-P6-TRN-003** Leave medication shall use an approved supply and documentation workflow with clear responsibility for selfadministration. 
+
+- **CLN-P6-TRN-004** Discharge reconciliation shall produce the intended discharge medication list through authorized orders and distinguish continue, change, stop and new medicines. 
+
+- **CLN-P6-TRN-005** Encounter closure shall not erase outstanding medication reconciliation, adverse-event follow-up or controlledmedicine discrepancies. 
+
+#### **18. Downtime, Offline and Recovery** 
+
+**CLN-P6-DWN-001** Downtime eMAR shall use an approved current medication snapshot with issuance time and expiry. 
+
+- **CLN-P6-DWN-002** Offline administration shall record local event ID, patient, order, product, dose, route, occurrence, performer and device. 
+
+**CLN-P6-DWN-003** Synchronization shall revalidate order version, duplicate events, patient location, authority and product status. 
+
+**CLN-P6-DWN-004** A possible duplicate administration shall enter urgent reconciliation and shall never be silently posted twice. 
+
+**CLN-P6-DWN-005** Downtime controlled-medicine records shall be reconciled against electronic balances after restoration. 
+
+###### **18.1 Standalone Patient-Linked Consumption** 
+
+**CLN-POC-CNS-001** Clinical shall provide a patient-linked Record Consumption action for supplies used during care without a Medication Administration Event. 
+
+**CLN-POC-CNS-002** The action shall be available from authorized patient, procedure, treatment, observation and nursing interfaces. 
+
+**CLN-POC-CNS-003** Clinical shall pre-populate patient, encounter, client space, user and clinical activity when launched from an active workflow. 
+
+**CLN-POC-CNS-004** The user shall scan or select items and confirm physical quantities without making coverage or billing decisions. 
+
+#### **19. Permissions Catalogue** 
+
+|**Permission**|**Purpose**|
+|---|---|
+|**clinical.medication_profile.view**|View authorized medication profile|
+|**clinical.medication_reconciliation.perform**|Perform reconciliation|
+|**clinical.medication_reconciliation.verify**|Verify reconciliation|
+|**clinical.medication.administer**|Record permitted administration|
+|**clinical.medication.administer_high_alert**|Administer configured high-alert medication|
+|**clinical.medication.infusion.manage**|Start/change/pause/complete infusion|
+|**clinical.medication.prn_administer**|Administer PRN medicine|
+
+
+
+Controlled Draft | Not Approved for Production | Page 86 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+|**clinical.medication.omission_record**|Record not-done outcome|
+|---|---|
+|**clinical.medication.waste_record**|Record medication waste|
+|**clinical.medication.waste_witness**|Witness controlled/high-risk waste|
+|**clinical.medication.double_check**|Perform independent check|
+|**clinical.medication.correct**|Correct final event|
+|**clinical.medication.mark_entered_in_error**|Invalidate erroneous administration record|
+|**clinical.medication.exception.manage**|Resolve eMAR/integration exceptions|
+|**clinical.medication_config.manage**|Manage eMAR and safeguard policy|
+|**clinical.medication.audit**|View detailed medication provenance|
+
+
+
+**CLN-P6-PRM-001** Permissions shall be registered centrally and assigned through configurable title bundles and privileges. Laravel policies shall evaluate context and never rely solely on title names. 
+
+###### **Additional consumption permissions** 
+
+- clinical.consumption.confirm 
+
+- clinical.consumption.record_patient 
+
+- clinical.consumption.defer 
+
+- clinical.consumption.correct 
+
+- clinical.consumption.view 
+
+- clinical.consumption.reconcile 
+
+- clinical.consumption.scan_override 
+
+#### **20. Operational Interfaces and Queues** 
+
+- Patient medication profile 
+
+- Admission/transfer/discharge reconciliation 
+
+- Ward eMAR and due-medication worklist 
+
+- Medication administration wizard 
+
+- Infusion dashboard 
+
+- PRN reassessment queue 
+
+- Pharmacy clarification queue 
+
+- Not-available medication queue 
+
+- Omission/refusal review 
+
+- High-alert double-check queue 
+
+- Controlled-medicine waste and discrepancy queue 
+
+- Recall impact list 
+
+- Adverse medication-event follow-up 
+
+- Administration correction/reconciliation 
+
+**CLN-P6-UI-001** Every patient-specific page shall retain the Phase 2 patient banner and encounter context. 
+
+**CLN-P6-UI-002** Order, pharmacy, supply, due-dose and administration states shall be displayed separately. 
+
+**CLN-P6-UI-003** The interface shall show scheduled time, actual time, administrator, product and dose without requiring audit-level permission. 
+
+**CLN-P6-UI-004** Critical warnings shall not rely on colour alone. 
+
+###### **20.1 Confirm Consumption Interface** 
+
+**CLN-P6-UI-010** The Confirm Consumption interface shall open automatically after a Medication Administration Event is saved successfully. 
+
+**CLN-P6-UI-011** Desktop shall use a persistent side drawer and smaller devices a full-screen sheet with equivalent functionality. 
+
+**CLN-P6-UI-012** The patient, encounter, client space and source administration context shall remain visible. 
+
+**CLN-P6-UI-013** The interface shall provide barcode scanning, item search, quantity controls and approved frequently used item selectors. 
+
+**CLN-P6-UI-014** The primary action shall be Confirm Consumption. 
+
+**CLN-P6-UI-015** Closing an incomplete interface shall preserve the session and require a controlled reconciliation deferral reason. 
+
+**CLN-P6-UI-016** Prices, charging responsibility and payment decisions shall not interrupt the bedside confirmation workflow. 
+
+Controlled Draft | Not Approved for Production | Page 87 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **21. Audit, Events and Reports** 
+
+- Reconciliation source/decision 
+
+- Pharmacy verification/clarification 
+
+- eMAR due-event generation 
+
+- Patient/product scan and override 
+
+- Preparation/double-check 
+
+- Administration/partial administration 
+
+- Infusion rate change 
+
+- PRN assessment/reassessment 
+
+- Omission/refusal/hold 
+
+- Waste/witness 
+
+- Adverse reaction/error 
+
+- Correction/reconciliation 
+
+- Downtime synchronization 
+
+- clinical.medication.reconciled 
+
+- clinical.medication.due 
+
+- clinical.medication.administered 
+
+- clinical.medication.not_done 
+
+- clinical.medication.infusion_changed 
+
+- clinical.medication.waste_recorded 
+
+- clinical.medication.discrepancy_raised 
+
+- clinical.medication.adverse_event_recorded 
+
+- clinical.medication.corrected 
+
+- clinical.medication.reassessment_due 
+
+- Due/overdue administrations 
+
+- Omissions and refusals 
+
+- Medication unavailability 
+
+- Late/early administrations 
+
+- High-alert checks and overrides 
+
+- PRN reassessments overdue 
+
+- Infusions and rate changes 
+
+- Controlled-medicine waste/discrepancies 
+
+- Reconciliation completion/discrepancies 
+
+- Adverse events and near misses 
+
+- Barcode overrides/mismatches 
+
+- Corrections and downtime duplicates 
+
+- **CLN-P6-EVT-001** Events shall carry stable IDs, tenant, patient, encounter, order/event version, occurred-at, correlation ID and idempotency key without unnecessary sensitive narrative. 
+
+**CLN-P6-RPT-001** Reports shall remain permission-, scope- and sensitivity-controlled. 
+
+###### **21.1 Consumption Acceptance Scenarios** 
+
+- P6-CNS-AT-001: Two 1 g ceftriaxone vials are recorded for a 2 g administration; the drawer opens with two vials pre-populated. 
+
+- P6-CNS-AT-002: The nurse adds gloves, syringe and swabs; one grouped session reaches Inventory. 
+
+- P6-CNS-AT-003: No incidental supplies were used; explicit No additional items were used completes the session. 
+
+- P6-CNS-AT-004: An Approved Pool quantity covers the medication; Inventory reduces the pool without duplicate physicalstock deduction or new billing. 
+
+- P6-CNS-AT-005: A floor-stock supply is outside the Approved Pool; Inventory reduces the originating Satellite Store and sends the usage fact for Main evaluation. 
+
+- P6-CNS-AT-006: Inventory is unavailable after administration; the administration remains valid and the session enters reconciliation. 
+
+- P6-CNS-AT-007: The same confirmation is replayed; idempotency prevents duplicate consumption. 
+
+- P6-CNS-AT-008: Part of a product is administered and part wasted; dispositions remain separate. 
+
+- P6-CNS-AT-009: A vial breaks before administration; breakage is recorded without falsely charting administration. 
+
+- P6-CNS-AT-010: Wound care records gloves and dressings through standalone Record Consumption without a medication order. 
+
+Controlled Draft | Not Approved for Production | Page 88 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **22. Acceptance Scenarios** 
+
+|**ID**|**Scenario**|**Expected Result**|
+|---|---|---|
+|**P6-AT-001**|Nurse scans correct patient and<br>medicine for due dose.|Current order verified and administration<br>recorded once.|
+|**P6-AT-002**|Scanned wristband belongs to another<br>patient.|Administration blocked and mismatch<br>audited.|
+|**P6-AT-003**|Pharmacy verification is required but<br>pending.|Administration blocked unless approved<br>emergency pathway applies.|
+|**P6-AT-004**|Order changed after eMAR screen<br>loaded.|Commit revalidates and rejects stale<br>instructions.|
+|**P6-AT-005**|PRN opioid requested too soon.|Interval/cumulative-dose rule blocks or<br>warns according to approved policy.|
+|**P6-AT-006**|Partial tablet administered.|Administered and waste/remaining<br>quantities preserved without duplicate<br>consumption.|
+|**P6-AT-007**|Infusion rate titrated.|Old/new rate, target evidence, performer<br>and time recorded.|
+|**P6-AT-008**|High-alert drug requires independent<br>check.|Second eligible user independently<br>verifies configured elements.|
+|**P6-AT-009**|Patient refuses medicine.|Refusal recorded with reason and<br>configured follow-up.|
+|**P6-AT-010**|Scheduled product unavailable.|Not-available event and pharmacy<br>notification created; not charted as<br>administered.|
+|**P6-AT-011**|Controlled medicine waste witnessed.|Waste quantity and both authenticated<br>actors recorded.|
+|**P6-AT-012**|Administration entered on wrong patient.|Entered-in-error/correction and cross-<br>system reconciliation initiated.|
+|**P6-AT-013**|Patient transfers with infusion running.|Handover preserves infusion state and<br>receiving responsibility.|
+|**P6-AT-014**|Offline administration synchronizes<br>twice.|Idempotency prevents duplicate<br>administration.|
+|**P6-AT-015**|Discharge reconciliation has unresolved<br>discrepancy.|Closure blocked or exception assigned<br>according to policy.|
+
+
+
+#### **23. Mandatory Negative Tests** 
+
+- Hardcoded nurse title bypasses permission/client-space check 
+
+- eMAR invents dose absent from signed order 
+
+- Pre-charted dose marked administered 
+
+- Wrong patient/product scan overridden 
+
+- Stale order administered 
+
+- Pharmacy rejection ignored 
+
+- High-alert second check completed by same credential 
+
+- Waste recorded as administered dose 
+
+- Refusal coded as unavailable 
+
+- Held dose treated as held order 
+
+- Unverified patient-owned medicine administered 
+
+- Device event auto-finalized to wrong patient 
+
+- Unit conversion guessed during outage 
+
+- Correction deletes original administration 
+
+- Offline retry duplicates dose 
+
+- Transfer rewrites historical administration location 
+
+- Report exposes controlled-medicine details outside scope 
+
+Controlled Draft | Not Approved for Production | Page 89 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **24. Traceability** 
+
+|**Area**|**Prefix**|**Evidence**|
+|---|---|---|
+|**Governance**|CLN-P6-GOV|Medication governance review|
+|**Boundaries**|CLN-P6-BND|Module contract tests|
+|**Reconciliation**|CLN-P6-REC|Transition tests|
+|**Pharmacy**|CLN-P6-PHX|Verification/dispense tests|
+|**eMAR**|CLN-P6-MAR|Schedule projection tests|
+|**Identity**|CLN-P6-ID|Barcode/mismatch tests|
+|**Administration**|CLN-P6-ADM|Bedside workflow tests|
+|**Partial doses**|CLN-P6-PAR|Quantity/unit tests|
+|**PRN**|CLN-P6-PRN|Interval/reassessment tests|
+|**Infusions**|CLN-P6-INF|Rate/cumulative tests|
+|**High alert**|CLN-P6-HAM|Independent-check tests|
+|**Controlled**|CLN-P6-CTL|Custody/balance tests|
+|**Not done**|CLN-P6-NDG|Reason/escalation tests|
+|**Self administration**|CLN-P6-SELF|Product verification tests|
+|**Adverse events**|CLN-P6-ADE|Escalation tests|
+|**Corrections**|CLN-P6-COR|History/reconciliation tests|
+|**Transitions**|CLN-P6-TRN|Handover tests|
+|**Downtime**|CLN-P6-DWN|Duplicate/recovery tests|
+
+
+
+#### **25. Registered Phase 6 Gaps** 
+
+|**Gap ID**|**Resolution Required**|**Blocking**|
+|---|---|---|
+|**CLN-P6-GAP-001**|Approve medication reconciliation<br>sources, decisions and transition<br>requirements.|Yes|
+|**CLN-P6-GAP-002**|Define Pharmacy/Inventory verification,<br>dispense, return and recall contracts.|Yes|
+|**CLN-P6-GAP-003**|Approve eMAR scheduling windows and<br>overdue rules.|Yes|
+|**CLN-P6-GAP-004**|Approve barcode identifiers and manual-<br>override policy.|Yes|
+|**CLN-P6-GAP-005**|Approve high-alert list ownership and<br>safeguards.|Yes|
+|**CLN-P6-GAP-006**|Approve independent double-check<br>elements and eligible titles/privileges.|Yes|
+|**CLN-P6-GAP-007**|Approve controlled-medicine custody,<br>witness and reconciliation rules for<br>applicable jurisdictions.|Yes|
+|**CLN-P6-GAP-008**|Approve infusion/titration models and<br>pump integration boundary.|Yes|
+|**CLN-P6-GAP-009**|Approve PRN indications, cumulative<br>limits and reassessment rules.|Yes|
+|**CLN-P6-GAP-010**|Approve omission/refusal escalation<br>and reason codes.|Yes|
+|**CLN-P6-GAP-011**|Approve adverse-reaction and<br>medication-error integration.|Yes|
+||Confirm FHIR MedicationAdministration,||
+|**CLN-P6-GAP-012**|MedicationDispense and<br>MedicationStatement profiles.|Before interoperability release|
+
+
+
+#### **26. Phase 6 Completion Gate** 
+
+- Phases 1 to 5 incorporated without contradiction. 
+
+Controlled Draft | Not Approved for Production | Page 90 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Medication profile and reconciliation model approved. 
+
+- Pharmacy/Inventory boundaries approved. 
+
+- eMAR projection, scheduling and patient/product identification approved. 
+
+- Administration, partial-dose, PRN and infusion workflows approved. 
+
+- High-alert and controlled-medicine safeguards approved. 
+
+- Omission, refusal, waste, adverse-event and correction rules approved. 
+
+- Transfer, discharge and downtime reconciliation approved. 
+
+- Permissions, interfaces, events, reports and tests approved. 
+
+- Every blocking gap assigned an owner and acceptance test. 
+
+**Phase 7 shall consume medication administrations, infusion state and relevant monitoring requirements when defining observations and scoring. It shall not reinterpret medication events without preserving their source status and provenance.** 
+
+#### **Appendix A. Minimum Medication Administration Record** 
+
+|**Group**|**Fields**|
+|---|---|
+|**Identity**|Public ID, patient, encounter, administration category|
+|**Authorization**|Medication order ID/version and standing/emergency authority<br>if used|
+|**Product**|Canonical medication/product, strength, form, lot, expiry and<br>dispense reference|
+|**Occurrence**|Scheduled time/window, actual start/end and recorded time|
+|**Dosage**|Dose, unit, route, site, method, rate and volume|
+|**Actors**|Administrator, recorder, witness/checker and device|
+|**Outcome**|Completed, partial, not done, reason and follow-up|
+|**Safety**|Patient/product verification, warnings, overrides and<br>assessments|
+|**Provenance**|Correction chain, source, correlation and idempotency|
+|**Context**|Facility, client space, patient location and care relationship|
+
+
+
+#### **Appendix B. Sources Reviewed** 
+
+- KashTre Clinical Module SRD v6.0 and addendum. 
+
+- KashTre Clinical Module SRD v6.1 Phases 1 to 5. 
+
+- HL7 FHIR MedicationAdministration materials. 
+
+- WHO Medication Without Harm initiative. 
+
+- ISMP high-alert medication guidance for acute care settings. 
+
+- KashTre Inventory Endstore Systems Requirements Document v6.0. 
+
+### **PHASE 7** 
+
+##### **OBSERVATIONS, CDEs, MONITORING, SCORING AND UNITS** 
+
+**Phase 7 defines atomic Clinical Data Elements, observation capture, device staging, unit safety, reference ranges, trends, scores, monitoring schedules and deterioration escalation.** 
+
+Controlled Draft | Not Approved for Production | Page 91 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **Document Control and Phase Authority** 
+
+|**Field**|**Rule**|
+|---|---|
+|**Purpose**|Define safe capture, normalization, interpretation, display and<br>monitoring of clinical observations.|
+|**Dependencies**|Phases 1 to 6 remain mandatory, including patient context,<br>documentation, diagnosis, orders, medication events and<br>Shared Unit Engine rules.|
+|**Ownership**|Clinical owns CDE policy, observations, clinical validation,<br>scores and monitoring. Main Module owns canonical units and<br>conversions.|
+|**External results**|LIMS and Imaging remain authoritative for their released<br>results; Clinical may display or reference them without<br>relabelling ownership.|
+|**Implementation**|Functional specification only. Laravel schema and services<br>belong in the EDD.|
+|**Release**|Controlled draft, not approved for production.|
+
+
+
+###### **Phase 7 outcomes** 
+
+- One governed atomic CDE registry. 
+
+- Safe manual, calculated and device-originated observations. 
+
+- No competing Clinical unit master. 
+
+- Reproducible normalization and scoring. 
+
+- Clear reference, critical and physiological limits. 
+
+- Due, overdue, missed and escalated monitoring. 
+
+- Trend visualization with provenance. 
+
+- Complete permissions, events, reports, tests and gaps. 
+
+#### **1. Governing Principles** 
+
+- **CLN-P7-GOV-001** An observation shall be an event recording a measurement or clinical assertion about a patient or other authorized subject. 
+
+- **CLN-P7-GOV-002** Every observation shall identify what was observed, subject, encounter/context where required, value, unit where applicable, status, effective time, performer/source and provenance. 
+
+- **CLN-P7-GOV-003** Clinical shall maintain CDE definitions and unit-use policies but shall not maintain a competing writable canonical unit or conversion master. 
+
+- **CLN-P7-GOV-004** Original value and unit shall be preserved whenever normalization or display conversion occurs. 
+
+- **CLN-P7-GOV-005** Calculated scores and derived observations shall preserve inputs, algorithm version, calculation time and rounding. 
+
+- **CLN-P7-GOV-006** A warning or score shall support clinical judgment and shall not automatically diagnose, order treatment or execute a protocol. 
+
+- **CLN-P7-GOV-007** Device data shall not become trusted chart data until patient, encounter, CDE, unit, time and device provenance are validated under policy. 
+
+**Observation safety rule: the system shall never silently change a value’s meaning through guessed units, incompatible conversion, stale ranges, wrong-patient association or hidden algorithm changes.** 
+
+#### **2. Observation and CDE Concepts** 
+
+|**Concept**|**Meaning**|**Rule**|
+|---|---|---|
+|**CDE**|Governed definition of one clinical data<br>element.|Stable code and versioned policy|
+|**Observation**|Patient-specific measurement or<br>assertion.|Event with status and provenance|
+
+
+
+Controlled Draft | Not Approved for Production | Page 92 
+
+|**Observation group**|Logical set captured together.|KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1<br>Components remain individually<br>traceable|
+|---|---|---|
+|**Component**|Part of a multi-component observation.|Example systolic/diastolic BP|
+|**Panel/organizer**|Groups related observations.|Does not duplicate values|
+|**Derived observation**|Calculated from one or more inputs.|Preserves dependency versions|
+|**Score**|Rule-based aggregate or assessment<br>result.|Inputs and matrix version retained|
+|**Reference range**|Expected interval for a defined<br>population/context.|Not a physiological hard limit|
+|**Critical limit**|Threshold requiring configured urgent<br>response.|Triggers escalation|
+|**Physiological limit**|Plausibility boundary for capture<br>validation.|Outside value requires<br>correction/override|
+|**Monitoring plan**|Schedule and rules for repeated<br>observations.|Creates due work, not fabricated values|
+
+
+
+#### **3. CDE Registry** 
+
+|**Field Group**|**Required Data**|
+|---|---|
+|**Identity**|Public ID, stable code, canonical name, aliases, category|
+|**Value**|Data type, cardinality, components, coded value set or text<br>constraints|
+|**Units**|Base unit public ID, permitted input/display units, precision<br>and rounding|
+|**Clinical interpretation**|Reference ranges, critical limits, physiological limits and<br>age/sex/context qualifiers|
+|**Capture**|Allowed manual, device, imported, calculated and voice<br>methods|
+|**Display**|Label, chartability, graph type, decimals and grouping|
+|**Governance**|Version, owner, status, effective dates, approval and audit|
+|**Interoperability**|Canonical terminology code/system and approved<br>profile/mapping|
+
+
+
+**CLN-P7-CDE-001** CDE codes and public IDs shall remain stable when labels change. 
+
+**CLN-P7-CDE-002** A CDE definition shall support NUMERIC, BOOLEAN, TEXT, CODED, DATE_TIME, QUANTITY and MULTI_COMPONENT patterns as approved. 
+
+**CLN-P7-CDE-003** CDE activation shall require valid value rules, unit policy where applicable, interpretation policy, capture methods and provenance requirements. 
+
+**CLN-P7-CDE-004** Retired CDE versions shall remain resolvable for historical observations and calculations. 
+
+**CLN-P7-CDE-005** Changing a CDE shall not reinterpret previously final observations automatically. 
+
+###### **3.1 Observation-First Work and System-Rendered Forms** 
+
+Active Form Definitions, client-space Clinical Profiles, orders, protocols, care plans, medication-monitoring rules and authorized patient-specific instructions define what observations are needed and when. Clinical consolidates those requirements into a patient-specific observation worklist. Users record the observations once. Clinical then populates and renders all applicable forms and other views automatically. 
+
+**CLN-P7-GOV-008** Forms shall define observation requirements and presentation rules, while atomic Observations shall remain the authoritative patient-specific clinical facts. 
+
+**CLN-P7-GOV-009** Clinical shall translate applicable observation requirements into due work rather than require users to identify required form fields manually. 
+
+**CLN-P7-GOV-010** The ordinary bedside interface shall present the observations due for the patient, their permitted capture windows and why they are required. 
+
+**CLN-P7-GOV-011** Saving an Observation shall update every applicable form, flowsheet, chart, score and report without additional entry by the user. 
+
+Controlled Draft | Not Approved for Production | Page 93 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P7-GOV-012** Failure to render or refresh a form shall not invalidate, roll back, delete or conceal a successfully committed Observation. 
+
+###### **3.2 Clinical Form Definition Registry** 
+
+A Clinical Form Definition is a governed, versioned specification describing the observations and approved non-observation data required by a form and the rules by which authoritative Clinical data are rendered. Supported examples may include a Labour Care Guide or partograph, vital-signs chart, fluid-balance chart, neurological chart, postoperative chart, anaesthetic record, intraoperative monitoring chart, newborn chart, diabetic monitoring chart and wound-assessment chart. 
+
+**CLN-P7-FRM-001** Each Form Definition shall have a stable public ID, code, name, purpose, clinical domain, version, owner, status, effective period and approval history. 
+
+**CLN-P7-FRM-002** Each Form Definition shall identify the CDEs, Observation Groups, calculated indicators and other controlled data elements that it consumes. 
+
+**CLN-P7-FRM-003** Each form element shall be classified as required, optional, conditional, calculated, display-only or nonobservation clinical content. 
+
+**CLN-P7-FRM-004** Each scheduled observation requirement shall identify frequency, start and end conditions, permitted window, responsible role and missed-observation policy. 
+
+**CLN-P7-FRM-005** A Form Definition shall specify rendering rules including sections, labels, sequence, rows, columns, time axes, plotted values, graphs, calculated fields and printable presentation where applicable. 
+
+**CLN-P7-FRM-006** A form may include controlled non-observation content such as instructions, assessment, plan, declarations, attestations and signatures. 
+
+**CLN-P7-FRM-007** Semantic requirements shall be separated from visual layout so that a rendering change does not silently change clinical meaning. 
+
+**CLN-P7-FRM-008** Addition, removal or reinterpretation of required CDEs, schedules, calculations or alert rules shall create a new approved Form Definition version. 
+
+**CLN-P7-FRM-009** Historical forms shall remain reproducible using the applicable Form Definition version and source Observations. 
+
+**CLN-P7-FRM-010** A Form Definition shall not redefine a governed CDE unit, value set, reference range, provenance or status independently of the applicable CDE policy. 
+
+###### **3.3 Clinical Form and Chart Designer** 
+
+**CLN-P7-FRM-020** Clinical shall provide an authorized configuration interface for creating, reviewing, approving, activating, deprecating and previewing Form Definitions. 
+
+**CLN-P7-FRM-021** Form configuration shall support selection of existing CDEs and Observation Groups, requirement classification, schedules, calculations, chart rules, ordered sections, conditional visibility, completion rules and interactive and printable previews. 
+
+**CLN-P7-FRM-022** If a required observation does not exist in the CDE Registry, the workflow shall require creation and approval of the CDE before form activation. 
+
+**CLN-P7-FRM-023** A source PDF, image or Word document may be uploaded as a controlled reference, statutory source or rendering guide. 
+
+**CLN-P7-FRM-024** Uploading a source document shall not by itself create an executable form or unreviewed CDE definitions. 
+
+**CLN-P7-FRM-025** Authorized reviewers shall be able to compare the digital rendering with the approved source or statutory reference where one exists. 
+
+###### **3.4 Client-Space Observation and Form Defaults** 
+
+**CLN-P7-CSP-001** Each client space may have a versioned Clinical Profile containing default Observation Groups, monitoring schedules, forms, flowsheets and escalation policies. 
+
+**CLN-P7-CSP-002** Client-space Clinical Profiles shall be configured through an authorized clinical-governance workflow and shall not be inferred from the client-space display name. 
+
+**CLN-P7-CSP-003** A client-space form assignment shall specify an activation mode of automatically active, available for selection, required to commence, conditional, order-activated, protocol-activated or care-pathway activated. 
+
+Controlled Draft | Not Approved for Production | Page 94 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P7-CSP-004** A Labour Ward profile may activate maternal and fetal observations and an approved Labour Care Guide; a Postoperative or Postnatal Ward profile shall activate its own prospective defaults without continuing inapplicable labour monitoring. 
+
+**CLN-P7-CSP-005** Client-space defaults shall apply only to patients satisfying configured patient, encounter, status and clinicalcontext criteria. 
+
+**CLN-P7-CSP-006** Changes to a client-space Clinical Profile shall apply prospectively and shall not restructure historical observations, due work or forms. 
+
+**CLN-P7-CSP-007** An overflow bed or temporary treatment position shall inherit the effective Clinical Profile of its governing client space unless an authorized exception is recorded. 
+
+###### **3.5 Effective Patient Observation Plan** 
+
+The Effective Patient Observation Plan is the system-derived union of universal baseline requirements, client-space defaults, active forms, orders, protocols, care pathways, care plans, medication-monitoring requirements and authorized patient-specific additions, less approved holds, exemptions and resolved duplications. 
+
+**CLN-P7-PLAN-001** The Effective Observation Plan shall identify each required CDE or Observation Group, frequency, next due time, permitted window, responsible role and contributing sources. 
+
+**CLN-P7-PLAN-002** Applicability shall be evaluated using patient, encounter, client space, clinical status, active orders, active forms, protocols, care plans and medication context. 
+
+**CLN-P7-PLAN-003** Equivalent requirements for the same CDE and clinically equivalent time shall be consolidated into one due observation opportunity. 
+
+**CLN-P7-PLAN-004** The system shall not create duplicate blood-pressure, temperature or other observation tasks merely because the same CDE is required by multiple active sources. 
+
+**CLN-P7-PLAN-005** Where active sources specify different compatible frequencies, the clinically stricter frequency shall apply unless an approved precedence or exception rule states otherwise. 
+
+**CLN-P7-PLAN-006** Consolidation shall retain all contributing sources so the system can explain why an Observation is due and which obligations it satisfies. 
+
+**CLN-P7-PLAN-007** One eligible Observation shall satisfy every applicable requirement for which its CDE, patient, encounter, occurrence time, status, context and quality are valid. 
+
+**CLN-P7-PLAN-008** Completion or removal of one source shall not end monitoring still required by another active source. 
+
+**CLN-P7-PLAN-009** Recalculation shall be idempotent and shall not create duplicate due events. 
+
+###### **3.6 Observation-to-Form Population and Rendering** 
+
+**CLN-P7-REN-001** Clinical shall render a form by retrieving qualifying authoritative Observations and other approved Clinical records. 
+
+**CLN-P7-REN-002** Observation matching shall consider patient, encounter, CDE, occurrence time or period, status, quality, clinical context, capture method and Form Definition rules. 
+
+**CLN-P7-REN-003** A saved Observation shall automatically update every applicable active form and flowsheet. 
+
+**CLN-P7-REN-004** Observations recorded through a worklist, quick capture, device validation or a permitted empty form location shall use the same authoritative Observation model. 
+
+**CLN-P7-REN-005** Clinical shall not copy an Observation into each consuming form as an independently editable value. 
+
+**CLN-P7-REN-006** A rendered form shall retain a traceable reference to every Observation used to populate it. 
+
+**CLN-P7-REN-007** An authorized user shall be able to navigate from a rendered value to its source Observation and provenance. 
+
+**CLN-P7-REN-008** A form position without a qualifying Observation shall display pending, due, overdue, not obtained, not applicable or another approved state rather than fabricate a value. 
+
+**CLN-P7-REN-009** Where multiple Observations could populate one form location, deterministic selection and conflict-display rules shall apply. 
+
+**CLN-P7-REN-010** Preliminary, corrected, entered-in-error, device-unvalidated, late and estimated Observations shall retain their status when rendered. 
+
+**CLN-P7-REN-011** A rendering failure shall enter technical reconciliation without rolling back valid Observations. 
+
+Controlled Draft | Not Approved for Production | Page 95 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+###### **3.7 Patient-Specific Add Form** 
+
+**CLN-P7-ADD-001** The patient workspace shall provide Add Form to authorized users. 
+
+**CLN-P7-ADD-002** The catalogue shall show eligible approved Form Definitions filtered by tenant, facility, client space, encounter, specialty, clinical context and user authority. 
+
+**CLN-P7-ADD-003** Adding a form shall create a patient- and encounter-linked activation record referring to the exact Form Definition version. 
+
+**CLN-P7-ADD-004** Adding a form shall evaluate its observation requirements against the Effective Observation Plan and add only genuinely new or stricter work. 
+
+**CLN-P7-ADD-005** The added form shall immediately populate from existing qualifying Observations. 
+
+**CLN-P7-ADD-006** Adding a form shall not modify the client-space Clinical Profile or defaults for other patients. 
+
+**CLN-P7-ADD-007** The system shall warn when an equivalent active form already exists and may require a configured indication or reason. 
+
+**CLN-P7-ADD-008** The activation record shall govern applicability, rendering, lifecycle and provenance but shall not own duplicate copies of Observations. 
+
+**CLN-P7-ADD-009** Supported activation states shall include AVAILABLE, ACTIVE, COMPLETED, DISCONTINUED, SUPERSEDED and ENTERED_IN_ERROR. 
+
+**CLN-P7-ADD-010** The form shall remain historically visible after its active lifecycle ends. 
+
+#### **4. Observation Groups and Flowsheets** 
+
+- Vital signs 
+
+- Neurological observations 
+
+- Fluid balance inputs and outputs 
+
+- Respiratory observations 
+
+- Pain assessment 
+
+- Falls and pressure-injury assessments 
+
+- Maternal and fetal monitoring 
+
+- Newborn observations 
+
+- Pediatric observations 
+
+- ICU/HDU flowsheets 
+
+- Wound observations 
+
+- Nutrition and anthropometry 
+
+- Device and ventilator parameters 
+
+- Medication-related monitoring 
+
+- **CLN-P7-GRP-001** Observation-group definitions shall specify constituent CDEs, required/optional status, order, conditional fields, default capture method and completion rules. 
+
+- **CLN-P7-GRP-002** Capturing a group shall create traceable member observations with a shared group identifier and capture session. 
+
+- **CLN-P7-GRP-003** A group may be incomplete when policy permits, but missing required elements shall be visible and shall affect score calculation appropriately. 
+
+**CLN-P7-GRP-004** Flowsheets shall present time-series data without losing original values, units, status or source. 
+
+**CLN-P7-GRP-005** Template changes shall not restructure historical groups silently. 
+
+#### **5. Observation Status Lifecycle** 
+
+|**Status**|**Meaning**|
+|---|---|
+|**REGISTERED**|Known but no usable result yet|
+|**PRELIMINARY**|Available but not final/validated|
+|**FINAL**|Completed and clinically available|
+|**AMENDED**|Final record supplemented or changed|
+|**CORRECTED**|Erroneous final value replaced with traceable correction|
+|**CANCELLED**|Legitimate observation process cancelled|
+
+
+
+Controlled Draft | Not Approved for Production | Page 96 
+
+||KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1|
+|---|---|
+|**ENTERED_IN_ERROR**|Invalid record excluded from ordinary clinical use|
+|**UNKNOWN**|Status cannot be established and requires review|
+
+
+
+**CLN-P7-STS-001** Status transitions shall be explicit, permission-controlled and audited. 
+
+**CLN-P7-STS-002** Preliminary and unvalidated observations shall be visually distinct from final observations. 
+
+**CLN-P7-STS-003** Entered-in-error observations shall not drive scores, trends, alerts or decision support. 
+
+**CLN-P7-STS-004** Corrected observations shall preserve original value, source and correction reason. 
+
+#### **6. Manual Observation Capture** 
+
+|**Step**|**Required Behavior**|
+|---|---|
+|**1. Open capture**|Confirm patient, encounter, location and authorized workflow.|
+|**2. Select group/CDE**|Use active definition/version.|
+|**3. Enter value**|Show unit prominently and enforce data type.|
+|**4. Validate**|Check plausibility, permitted unit, time and contextual rules.|
+|**5. Interpret**|Display applicable range/limit and warnings.|
+|**6. Review**|Show full group, missing fields and any calculated score.|
+|**7. Commit**|Revalidate authority and persist observations atomically as<br>configured.|
+|**8. Escalate**|Create alerts/tasks for critical or overdue findings.|
+
+
+
+- **CLN-P7-MAN-001** Manual capture shall require clinical.observation.create and applicable client-space/care relationship. 
+
+**CLN-P7-MAN-002** The patient banner and encounter shall remain visible throughout capture. 
+
+- **CLN-P7-MAN-003** Observation effective time shall default transparently and be editable only within policy; recorded time shall remain system-generated. 
+
+- **CLN-P7-MAN-004** Pre-charting a measurement before it occurs shall be prohibited. 
+
+- **CLN-P7-MAN-005** A failed group save shall not present partial values as a completed set unless partial commit is expressly designed and labelled. 
+
+#### **7. Unit Policy and Shared Unit Engine** 
+
+**CLN-P7-UOM-001** Each quantitative CDE shall reference a canonical base unit in the Main Module Unit Engine. 
+
+- **CLN-P7-UOM-002** Clinical unit policy shall define permitted input units, permitted display units, preferred unit, precision and context-specific conversion requirements. 
+
+- **CLN-P7-UOM-003** The system shall store original value/unit, normalized value/base unit, conversion rule ID/version and rounding mode. 
+
+- **CLN-P7-UOM-004** Dimensional incompatibility shall block conversion and explain the mismatch. 
+
+- **CLN-P7-UOM-005** Contextual conversion, including molar-to-mass or product-specific relationships, shall require the appropriate analyte/product context. 
+
+- **CLN-P7-UOM-006** When conversion is unavailable or invalid, manual commit shall be blocked or device/import data staged as an exception. The numeric value shall not be relabelled. 
+
+- **CLN-P7-UOM-007** Unit switching in the UI shall be explicit and shall immediately update labels, displayed ranges and precision using verified conversions. 
+
+- **CLN-P7-UOM-008** Cumulative calculations shall use normalized precision appropriate to the CDE and shall avoid binary floatingpoint assumptions in the EDD. 
+
+#### **8. Reference Ranges and Limits** 
+
+|**Rule Type**|**Purpose**|**Response**|
+|---|---|---|
+||Expected range for||
+|**Reference range**|<br>population/method/context|Interpretation indicator|
+|**Critical limit**|Value requiring urgent clinical response|Alert and escalation|
+|**Physiological limit**|Plausibility boundary|Block or exceptional confirmation|
+|**Device technical limit**|Device/reportable constraint|Technical exception|
+
+
+
+Controlled Draft | Not Approved for Production | Page 97 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 <mark>Care-plan/monitoring comparison</mark> 
+
+<mark>Patient-specific intended range</mark> 
+
+**<mark>Target range</mark>** 
+
+**CLN-P7-RNG-001** Ranges shall be effective-dated and may depend on age, sex, pregnancy, method, specimen, posture, oxygen scale, care setting or other approved context. 
+
+**CLN-P7-RNG-002** The exact range/limit version applied to an observation shall be reproducible. 
+
+**CLN-P7-RNG-003** A value outside a reference range shall not automatically be labelled critical. 
+
+**CLN-P7-RNG-004** Physiological-limit overrides shall require permission, reason and repeat/verification action where configured. 
+
+**CLN-P7-RNG-005** Missing applicable range shall be shown as unavailable, not normal. 
+
+#### **9. Device and Telemetry Ingestion** 
+
+|**Stage**|**Behavior**|
+|---|---|
+|**RECEIVED**|Raw device payload durably stored|
+|**MAPPED**|Device metric mapped to CDE/unit|
+|**PATIENT_MATCHED**|Patient and encounter association verified|
+|**VALIDATED**|Technical and clinical validation completed|
+|**COMMITTED**|Observation created|
+|**REJECTED**|Payload/value rejected with reason|
+|**QUARANTINED**|Requires manual resolution|
+
+
+
+**CLN-P7-DEV-001** Device records shall preserve device public ID, model, metric/channel, gateway, calibration/status metadata where supplied, raw payload hash and timestamps. 
+
+**CLN-P7-DEV-002** Device-to-patient association shall be explicit, effective-dated and independently auditable. 
+
+**CLN-P7-DEV-003** A bed association alone shall not establish patient identity. 
+
+**CLN-P7-DEV-004** Unknown CDE, unrecognized unit, implausible value, stale timestamp, duplicate payload or patient mismatch shall prevent automatic commit. 
+
+**CLN-P7-DEV-005** Automatic validation eligibility shall be configurable by device, metric, care setting and risk level. 
+
+**CLN-P7-DEV-006** Sampled high-frequency data and charted summary observations shall remain distinct, with derivation rules preserved. 
+
+**CLN-P7-DEV-007** Device disconnection, calibration failure or technical alarm shall not be represented as a patient observation value. 
+
+#### **10. Voice and AI-Assisted Observation Capture** 
+
+**CLN-P7-AI-001** Voice and text extraction shall use the Shared AI Gateway and shall return proposed observations only. 
+
+**CLN-P7-AI-002** Each proposed observation shall show extracted CDE, value, unit, time, source phrase and confidence where available. 
+
+**CLN-P7-AI-003** An authorized user shall confirm or edit every proposed observation before commit. 
+
+**CLN-P7-AI-004** AI shall not infer a missing unit, patient, time or body site silently. 
+
+**CLN-P7-AI-005** Accepted observations shall pass the same unit, range, identity and authorization checks as manual entry. 
+
+**CLN-P7-AI-006** AI outage shall not block manual capture. 
+
+#### **11. Calculated and Derived Observations** 
+
+**CLN-P7-CAL-001** A calculated observation shall record algorithm code/version, input observation IDs/versions, coefficients, unit rules, precision, rounding and result. 
+
+**CLN-P7-CAL-002** Inputs shall be final or otherwise explicitly eligible under the algorithm policy. 
+
+**CLN-P7-CAL-003** Correction of an input shall mark dependent calculations for recalculation/review without overwriting prior calculated versions. 
+
+**CLN-P7-CAL-004** The interface shall distinguish measured, asserted, device-originated and calculated observations. 
+
+**CLN-P7-CAL-005** A calculation failure or missing input shall never yield a plausible default score/value. 
+
+Controlled Draft | Not Approved for Production | Page 98 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **12. Scoring and Assessment Engines** 
+
+**CLN-P7-SCR-001** Scoring definitions shall be versioned dictionaries containing required inputs, ranges, weights, modifiers, missing-input behavior, thresholds and response guidance. 
+
+**CLN-P7-SCR-002** Supported examples may include NEWS2, APGAR, GCS and locally approved tools, each subject to licensing and governance. 
+
+**CLN-P7-SCR-003** The score record shall preserve component observations, component scores, aggregate score, matrix version, calculation time and any override. 
+
+**CLN-P7-SCR-004** Incomplete scores shall be labelled incomplete and shall follow tool-specific guidance; the system shall not substitute zero for missing values unless the definition requires it. 
+
+**CLN-P7-SCR-005** Score thresholds may trigger alerts and response workflows but shall not independently diagnose or place orders. 
+
+**CLN-P7-SCR-006** A patient-specific threshold adaptation shall require an authorized, documented and effective-dated rule. 
+
+###### **12.1 NEWS2 boundary** 
+
+**CLN-P7-SCR-010** If NEWS2 is enabled, its official parameter, oxygen-scale, supplemental-oxygen, threshold and response policies shall be implemented from the approved governed version rather than re-created from memory. 
+
+**CLN-P7-SCR-011** New confusion shall be captured explicitly where NEWS2 policy requires it. 
+
+#### **13. Monitoring Schedules and Work Generation** 
+
+|**Concept**|**Rule**|
+|---|---|
+|**Schedule**|Defines CDE/group, frequency, start/end and responsible role|
+|**Due event**|Expected observation opportunity|
+|**Window**|Permitted early/late period|
+|**Overdue**|Due event remains unresolved after window|
+|**Missed**|Authorized resolution that observation was not obtained|
+|**Deferred**|Rescheduled according to policy|
+|**Escalated**|Failure or value routed for response|
+
+
+
+**CLN-P7-MON-001** Monitoring may be created by an order, care plan, protocol, medication requirement or authorized manual action. 
+
+**CLN-P7-MON-002** A monitoring schedule shall not fabricate observations; it creates due work only. 
+
+**CLN-P7-MON-003** Changes to frequency shall apply prospectively and preserve previous due events. 
+
+**CLN-P7-MON-004** Due events shall route by current patient location, client-space assignment and eligible role. 
+
+**CLN-P7-MON-005** Missed or deferred monitoring shall require controlled reasons and may trigger escalation. 
+
+**CLN-P7-MON-006** Patient transfer shall hand over unresolved due and overdue monitoring without duplication. 
+
+###### **13.1 Form-Derived Work and Consolidation** 
+
+**CLN-P7-MON-007** Monitoring schedules may additionally be contributed by client-space Clinical Profiles and active Form Definitions. 
+
+**CLN-P7-MON-008** Due work shall name the observation to be performed rather than require the user to navigate separately to every consuming form. 
+
+**CLN-P7-MON-009** A due event shall show patient, observation or group, due time, permitted window, priority and responsible context. 
+
+**CLN-P7-MON-010** Due-event detail shall identify contributing sources such as client-space default, form, protocol, care plan, medication rule or clinician order. 
+
+**CLN-P7-MON-011** One completed eligible Observation may resolve multiple contributing requirements. 
+
+**CLN-P7-MON-012** A form-rendering requirement shall not create an additional task when an applicable due event already exists. 
+
+Controlled Draft | Not Approved for Production | Page 99 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **14. Critical Results and Deterioration Escalation** 
+
+**CLN-P7-ESC-001** Critical threshold crossing shall create a persistent alert and accountable response task according to configured policy. 
+
+**CLN-P7-ESC-002** The alert shall identify observation, value/unit, threshold/version, patient, encounter, time, source and required response without obscuring provenance. 
+
+**CLN-P7-ESC-003** Acknowledgement, clinical assessment, action and resolution shall be distinct states. 
+
+**CLN-P7-ESC-004** Failure to acknowledge within the configured interval shall escalate to the next eligible person/team. 
+
+**CLN-P7-ESC-005** A corrected observation shall update the alert context and preserve the original alert history. 
+
+**CLN-P7-ESC-006** Alert suppression shall be patient-specific, time-limited, authorized and auditable and shall not delete triggering observations. 
+
+#### **15. Trend Charts and Clinical Display** 
+
+**CLN-P7-TRD-001** Trend charts shall display observation time, value, unit, interpretation, source and status. 
+
+**CLN-P7-TRD-002** Values displayed in a common unit shall be converted through the Shared Unit Engine while preserving original unit access. 
+
+- **CLN-P7-TRD-003** A chart shall not connect points across clinically invalid gaps or incompatible methods without a visible distinction. 
+
+- **CLN-P7-TRD-004** Corrected, preliminary, device-unvalidated and entered-in-error values shall use distinct visual and textual states. 
+
+**CLN-P7-TRD-005** Reference ranges and patient-specific targets shall be version-aware and displayed only when applicable. 
+
+**CLN-P7-TRD-006** Colour shall not be the sole indication of abnormality or criticality. 
+
+#### **16. Fluid Balance and Cumulative Measures** 
+
+**CLN-P7-FLD-001** Intake and output observations shall record source/type, quantity, canonical unit, occurrence period and performer. 
+
+- **CLN-P7-FLD-002** Medication infusion volumes may be included through verified administration references and shall not be doublecounted by manual entry. 
+
+**CLN-P7-FLD-003** Cumulative balance shall identify included events, exclusions, period, late entries and recalculation version. 
+
+**CLN-P7-FLD-004** Corrections to source events shall trigger recalculation while preserving prior totals. 
+
+**CLN-P7-FLD-005** Estimated values shall be visibly marked and shall not be indistinguishable from measured quantities. 
+
+#### **17. Corrections and Entered-in-Error** 
+
+**CLN-P7-COR-001** Final observations shall not be destructively edited. 
+
+**CLN-P7-COR-002** Correction shall retain original value/unit/status, corrected value, reason, actor, time and impact on scores/alerts. 
+
+- **CLN-P7-COR-003** Entered-in-error shall exclude the observation from ordinary trends, scores and decision support while preserving audit access. 
+
+**CLN-P7-COR-004** Dependent calculations, alerts, care-plan outcomes and medication titration references shall be placed into review after material correction. 
+
+**CLN-P7-COR-005** Downstream consumers shall receive idempotent correction events. 
+
+#### **18. Downtime and Offline Capture** 
+
+**CLN-P7-DWN-001** Offline capture shall preserve local event ID, patient, encounter, CDE/version, value/unit, effective time, performer and device. 
+
+**CLN-P7-DWN-002** Synchronization shall validate duplicate observations, current patient association, unit policy, CDE status and authorization. 
+
+Controlled Draft | Not Approved for Production | Page 100 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P7-DWN-003** Late synchronized data shall retain capture and commit times and shall not impersonate contemporaneous online entry. 
+
+**CLN-P7-DWN-004** Conflicts and possible duplicates shall enter reconciliation rather than being silently merged. 
+
+**CLN-P7-DWN-005** Critical offline values shall follow an approved local escalation process and shall not wait for connectivity. 
+
+#### **19. Permissions Catalogue** 
+
+|**Permission**|**Purpose**|
+|---|---|
+|**clinical.observation.view**|View authorized observations|
+|**clinical.observation.create**|Record manual observation|
+|**clinical.observation.validate**|Validate staged/device observation|
+|**clinical.observation.override_limit**|Override eligible plausibility rule|
+|**clinical.observation.correct**|Correct final observation|
+|**clinical.observation.mark_entered_in_error**|Invalidate erroneous record|
+|**clinical.observation.device_reconcile**|Resolve device mapping/patient exceptions|
+|**clinical.monitoring.create**|Create monitoring schedule|
+|**clinical.monitoring.modify**|Change schedule|
+|**clinical.monitoring.resolve_missed**|Resolve missed/deferred event|
+|**clinical.score.calculate**|Complete authorized assessment/score|
+|**clinical.score.override**|Apply eligible score override|
+|**clinical.alert.acknowledge**|Acknowledge deterioration alert|
+|**clinical.alert.resolve**|Record clinical resolution|
+|**clinical.cde_config.manage**|Manage CDE definitions/policies|
+|**clinical.score_config.manage**|Manage score matrices|
+|**clinical.observation.audit**|View detailed provenance|
+
+
+
+**CLN-P7-PRM-001** Permissions shall be centrally registered and contextually enforced through Laravel policies, never by hardcoded title comparisons. 
+
+###### **19.1 Form and Profile Permissions** 
+
+- clinical.form_definition.create — Create a draft Form Definition 
+
+- clinical.form_definition.update — Modify an eligible draft Form Definition 
+
+- clinical.form_definition.review — Review a Form Definition 
+
+- clinical.form_definition.approve — Approve a Form Definition version 
+
+- clinical.form_definition.activate — Activate an approved Form Definition 
+
+- clinical.form_definition.deprecate — Deprecate a Form Definition prospectively 
+
+- clinical.form_assignment.manage — Manage client-space form assignments and Clinical Profiles 
+
+- clinical.patient_form.add — Add an approved form for a patient or encounter 
+
+- clinical.patient_form.discontinue — Discontinue an active patient form 
+
+- clinical.patient_form.mark_entered_in_error — Invalidate an erroneous patient form activation 
+
+- clinical.form_render.view — View authorized rendered forms 
+
+- clinical.form_render.print — Print or export an authorized rendered form 
+
+**CLN-P7-PRM-002** Form-governance permissions shall be assigned through approved bundles and privileges and shall not be hardcoded to one job-title name. 
+
+#### **20. Operational Interfaces and Queues** 
+
+- Observation quick capture 
+
+- Flowsheets 
+
+- Vital-signs workspace 
+
+- Device validation queue 
+
+- Unit/conversion exception queue 
+
+- Due and overdue monitoring 
+
+- Scoring workspace 
+
+- Critical deterioration queue 
+
+- Trend viewer 
+
+Controlled Draft | Not Approved for Production | Page 101 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Fluid-balance chart 
+
+- CDE registry administration 
+
+- Range/limit administration 
+
+- Score matrix administration 
+
+- Correction and dependent-calculation reconciliation 
+
+**CLN-P7-UI-001** Every patient-specific interface shall retain the Phase 2 patient banner and encounter context. 
+
+**CLN-P7-UI-002** Input unit shall be prominent at the field, not hidden in help text. 
+
+**CLN-P7-UI-003** Measured, calculated, imported and device-originated data shall be distinguishable. 
+
+**CLN-P7-UI-004** Preliminary, corrected, critical and entered-in-error states shall not rely on colour alone. 
+
+###### **20.1 Additional Form Interfaces and Queues** 
+
+- Effective patient observation worklist 
+
+- Client-space Clinical Profile configuration 
+
+- Form Definition Registry 
+
+- Clinical Form and Chart Designer 
+
+- Form review and approval queue 
+
+- Patient Forms and Clinical Charts 
+
+- Add Form catalogue 
+
+- Form-rendering exception queue 
+
+- Duplicate observation-requirement review 
+
+- Form-version impact review 
+
+#### **21. Audit, Events and Reports** 
+
+- CDE/range/score policy activation 
+
+- Manual capture and limit override 
+
+- Device receive/map/validate/reject 
+
+- Unit conversion and failure 
+
+- Score calculation/override 
+
+- Monitoring schedule and missed event 
+
+- Critical alert and acknowledgement 
+
+- Trend/export access 
+
+- Correction and dependent reconciliation 
+
+- Offline synchronization 
+
+- clinical.observation.created 
+
+- clinical.observation.finalized 
+
+- • clinical.observation.corrected • clinical.observation.entered_in_error • clinical.observation.critical • clinical.device_observation.quarantined • clinical.score.calculated • clinical.monitoring.due • clinical.monitoring.overdue • clinical.deterioration.acknowledged • clinical.calculation.reconciliation_required • Observations due/overdue/missed • Critical values and response times • Physiological-limit overrides • Device rejection/quarantine • Unit conversion failures • Incomplete scores • Score threshold distribution • CDE/range versions in use • Corrections and dependent recalculations • Offline duplicates 
+
+Controlled Draft | Not Approved for Production | Page 102 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Fluid-balance completeness 
+
+- **CLN-P7-EVT-001** Events shall include stable IDs, tenant, patient, encounter, version, occurred-at, correlation ID and idempotency key and shall minimize sensitive payload. 
+
+**CLN-P7-RPT-001** Reports and exports shall remain permission-, scope- and sensitivity-controlled. 
+
+#### **22. Acceptance Scenarios** 
+
+|**ID**|**Scenario**|**Expected Result**|
+|---|---|---|
+|**P7-AT-001**|Nurse records temperature in permitted<br>input unit.|Original and normalized values stored<br>with conversion provenance.|
+|**P7-AT-002**|User attempts mass-to-volume<br>conversion without context.|Conversion blocked with<br>dimensional/context explanation.|
+|**P7-AT-003**|BP entered as systolic/diastolic<br>components.|Components and organizer/group<br>remain traceable.|
+|**P7-AT-004**|Value exceeds physiological limit.|Commit blocked or exceptional<br>confirmation required by policy.|
+|**P7-AT-005**|Critical oxygen saturation recorded.|Persistent alert and accountable<br>escalation task created.|
+|**P7-AT-006**|Device payload maps to wrong patient<br>by stale bed link.|Automatic commit blocked and payload<br>quarantined.|
+|**P7-AT-007**|Duplicate device message retried.|Idempotency prevents duplicate<br>observation.|
+|**P7-AT-008**|Score lacks one required input.|Score marked incomplete; no zero<br>substituted.|
+|**P7-AT-009**|Input to final score is corrected.|Dependent score and alerts enter<br>review; history preserved.|
+|**P7-AT-010**|Monitoring frequency changes.|Future due events recalculate without<br>rewriting past ones.|
+|**P7-AT-011**|Patient transfers with overdue<br>observations.|Outstanding work handed to eligible<br>receiving scope once.|
+|**P7-AT-012**|Voice extracts value but no unit.|Proposed observation requires human<br>unit confirmation.|
+|**P7-AT-013**|Unit Engine unavailable.|Observation requiring conversion<br>blocked or staged, never relabelled.|
+|**P7-AT-014**|Infusion volume already linked from<br>eMAR.|Fluid chart prevents manual duplicate<br>counting.|
+|**P7-AT-015**|Offline critical value captured.|Local escalation occurs and later sync<br>preserves both timestamps.|
+
+
+
+###### **22.1 Observation-First Form Acceptance Scenarios** 
+
+**P7-FRM-AT-001** A patient enters Labour Ward. Expected result: The applicable profile activates maternal and fetal observation work and the approved Labour Care Guide without requiring entry into a blank form. 
+
+**P7-FRM-AT-002** Blood pressure is required by routine vital signs, an active form and a protocol at the same time. Expected result: One due blood-pressure task is created; one valid Observation satisfies and populates all applicable outputs. 
+
+**P7-FRM-AT-003** A client-space form requires four-hourly blood pressure while a patient-specific order requires hourly blood pressure. Expected result: Hourly work is generated and both contributing requirement sources remain visible. 
+
+**P7-FRM-AT-004** The nurse records temperature, pulse, blood pressure, fetal heart rate and contractions from the observation worklist. Expected result: The system stores atomic Observations and automatically updates the Labour Care Guide and all applicable flowsheets and scores. 
+
+**P7-FRM-AT-005** A clinician adds a form after relevant Observations already exist. Expected result: The form prepopulates immediately and only genuinely new or stricter work is added. 
+
+**P7-FRM-AT-006** A patient transfers from Labour Ward to Postnatal Ward. Expected result: Destination defaults activate prospectively, inapplicable labour work ends under policy and the Labour Care Guide remains historically available. 
+
+Controlled Draft | Not Approved for Production | Page 103 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**P7-FRM-AT-007** Two active forms require temperature in the same clinically equivalent window. Expected result: Only one observation task is produced and one eligible result populates both forms. 
+
+**P7-FRM-AT-008** The rendering service is temporarily unavailable. Expected result: Observation capture succeeds; rendering enters reconciliation and regenerates without data loss. 
+
+**P7-FRM-AT-009** A source blood-pressure Observation is corrected. Expected result: Every consuming form and score reflects the correction with provenance while the original remains preserved. 
+
+**P7-FRM-AT-010** A user selects an empty location in a rendered form and records a value. Expected result: The same authoritative Observation workflow is invoked and every applicable consuming view updates. 
+
+#### **23. Mandatory Negative Tests** 
+
+- Hardcoded title bypasses observation permission 
+
+- Wrong-patient observation via modified payload 
+
+- Bed assignment used as sole device-patient identity 
+
+- Free-text unit accepted as canonical 
+
+- Incompatible conversion returns unchanged number as success 
+
+- Entered-in-error value included in score 
+
+- Missing score input treated as zero 
+
+- Score version change rewrites history 
+
+- Preliminary value displayed as final 
+
+- Critical alert acknowledged and treated as resolved 
+
+- Device technical alarm charted as patient value 
+
+- Monitoring schedule fabricates observation 
+
+- Transfer duplicates overdue task 
+
+- Fluid volume counted from eMAR and manual entry 
+
+- Correction deletes original value 
+
+- Offline retry duplicates observation 
+
+- Sensitive observation leaks through trend/report 
+
+#### **24. Traceability** 
+
+|**Area**|**Prefix**|**Evidence**|
+|---|---|---|
+|**Governance**|CLN-P7-GOV|Clinical governance review|
+|**CDE**|CLN-P7-CDE|Registry/version tests|
+|**Groups**|CLN-P7-GRP|Flowsheet tests|
+|**Status**|CLN-P7-STS|Lifecycle tests|
+|**Manual**|CLN-P7-MAN|Capture tests|
+|**Units**|CLN-P7-UOM|Conversion tests|
+|**Ranges**|CLN-P7-RNG|Context/range tests|
+|**Devices**|CLN-P7-DEV|Mapping/provenance tests|
+|**AI**|CLN-P7-AI|Human confirmation tests|
+|**Calculations**|CLN-P7-CAL|Dependency tests|
+|**Scores**|CLN-P7-SCR|Gold-case tests|
+|**Monitoring**|CLN-P7-MON|Scheduling tests|
+|**Escalation**|CLN-P7-ESC|Response tests|
+|**Trends**|CLN-P7-TRD|Display tests|
+|**Fluid**|CLN-P7-FLD|Duplicate/recalc tests|
+|**Correction**|CLN-P7-COR|History tests|
+|**Downtime**|CLN-P7-DWN|Sync tests|
+
+
+
+#### **25. Registered Phase 7 Gaps** 
+
+|**Gap ID**|**Resolution Required**|**Blocking**|
+|---|---|---|
+|**CLN-P7-GAP-001**|Approve canonical CDE registry and<br>initial observation groups.|Yes|
+
+
+
+Controlled Draft | Not Approved for Production | Page 104 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+|**CLN-P7-GAP-002**|Approve base/permitted units and<br>precision for every quantitative CDE.|Yes|
+|---|---|---|
+|**CLN-P7-GAP-003**|Approve reference, critical and<br>physiological limit governance.|Yes|
+|**CLN-P7-GAP-004**|Approve device registry, association and<br>auto-validation policy.|Yes|
+|**CLN-P7-GAP-005**|Approve monitoring schedules, due<br>windows and escalation routing.|Yes|
+|**CLN-P7-GAP-006**|Approve score catalogue, licensed<br>matrices and gold test cases.|Yes|
+|**CLN-P7-GAP-007**|Approve NEWS2 deployment scope and<br>official implementation version.|Before NEWS2 release|
+|**CLN-P7-GAP-008**|Approve fluid-balance source and<br>duplicate-prevention rules.|Yes|
+|**CLN-P7-GAP-009**|Approve voice/AI observation extraction<br>scope.|Before AI release|
+|**CLN-P7-GAP-010**|Define LIMS/RIS observation-reference<br>boundaries.|Yes|
+|**CLN-P7-GAP-011**|Approve offline critical-value escalation.|Yes|
+|**CLN-P7-GAP-012**|Confirm FHIR Observation, vital-sign and<br>device profiles.|Before interoperability release|
+
+
+
+#### **26. Phase 7 Completion Gate** 
+
+- Phases 1 to 6 incorporated without contradiction. 
+
+- CDE registry, observation groups and statuses approved. 
+
+- Shared Unit Engine policy and conversion provenance approved. 
+
+- Ranges, critical limits and physiological limits approved. 
+
+- Manual, device, voice and calculated capture rules approved. 
+
+- Scoring definitions and calculation evidence approved. 
+
+- Monitoring schedules and escalation workflows approved. 
+
+- Trend, fluid-balance, correction and downtime rules approved. 
+
+- Permissions, interfaces, events, reports and tests approved. 
+
+- Every blocking gap assigned an owner and acceptance test. 
+
+   - **Phase 8 shall consume released observations and external results using the statuses, correction history, unit provenance and critical-escalation rules defined here.** 
+
+#### **Appendix A. Minimum Observation Record** 
+
+|**Group**|**Fields**|
+|---|---|
+|**Identity**|Public ID, patient, encounter, CDE code/version|
+|**Value**|Typed value/components, original unit and normalized<br>value/base unit|
+|**Context**|Facility, client space, body site/method and source group|
+|**Time**|Effective time/period, issued/final time and recorded time|
+|**Status**|Preliminary/final/corrected/entered-in-error and reason|
+|**Actors**|Performer, recorder, validator and device|
+|**Interpretation**|Range/limit version, flags and target comparison|
+|**Derivation**|Input IDs, algorithm/score version and rounding|
+|**Provenance**|Conversion rule, raw source, correction chain and audit|
+|**Workflow**|Monitoring due event, alert and follow-up references|
+
+
+
+#### **Appendix B. Sources Reviewed** 
+
+- KashTre Clinical Module SRD v6.0 and addendum. 
+
+- KashTre Clinical Module SRD v6.1 Phases 1 to 6. 
+
+Controlled Draft | Not Approved for Production | Page 105 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- HL7 FHIR Observation and vital-sign profile materials. 
+
+- HL7 Point-of-Care Device Implementation Guide materials. 
+
+- Royal College of Physicians NEWS2 materials. 
+
+### **PHASE 8** 
+
+##### **RESULTS, DIAGNOSTIC REPORTS AND CLOSED-LOOP FOLLOW-UP** 
+
+**Phase 8 defines receipt, validation, presentation, notification, acknowledgement, correction, clinical review and follow-up of laboratory, imaging, pathology and other diagnostic results.** 
+
+Controlled Draft | Not Approved for Production | Page 106 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **Document Control and Phase Authority** 
+
+|**Field**|**Rule**|
+|---|---|
+|**Purpose**|Define safe diagnostic-result ingestion and closed-loop<br>clinical follow-up.|
+|**Dependencies**|Phases 1 to 7 remain mandatory, especially ordering,<br>observation status, unit provenance, patient identity and<br>documentation controls.|
+|**Ownership**|LIMS, RIS/PACS, Pathology and other diagnostic systems own<br>authoritative fulfilment and report release. Clinical owns<br>receipt, chart presentation, review and follow-up.|
+|**Boundary**|Clinical shall not edit an external authoritative report as though<br>it created it.|
+|**Implementation**|Functional specification only. Laravel engineering details<br>belong in the EDD.|
+|**Release**|Controlled draft, not approved for production.|
+
+
+
+###### **Phase 8 outcomes** 
+
+- One result inbox and patient result workspace. 
+
+- Reliable order-result matching and exception handling. 
+
+- Clear preliminary, final, amended and corrected states. 
+
+- Critical-result escalation with accountable response. 
+
+- Separate delivery, acknowledgement, review, action and closure states. 
+
+- Safe patient communication and disclosure. 
+
+- Complete permissions, events, reports, tests and gaps. 
+
+#### **1. Governing Principles** 
+
+**CLN-P8-GOV-001** A diagnostic result shall preserve its authoritative source, patient, encounter, order/request, report, 
+
+observations, status, effective time, issued time and provenance. 
+
+**CLN-P8-GOV-002** Technical receipt shall not equal clinical review, and acknowledgement shall not equal action or closure. 
+
+- **CLN-P8-GOV-003** Clinical shall display the source report faithfully and shall not silently alter the source conclusion, interpretation, units or status. 
+
+- **CLN-P8-GOV-004** Preliminary, final, amended, corrected, cancelled and entered-in-error results shall be distinguishable throughout the chart and inbox. 
+
+- **CLN-P8-GOV-005** Every result requiring follow-up shall have an accountable owner or governed exception route. 
+
+- **CLN-P8-GOV-006** Critical results shall use configured urgent communication, acknowledgement and escalation workflows. 
+
+- **CLN-P8-GOV-007** Result corrections shall preserve prior versions and trigger review of dependent decisions without destructively rewriting history. 
+
+**Closed-loop rule: a result is not complete merely because it arrived. The required recipient must review it, document appropriate action or no-action rationale, and resolve follow-up obligations.** 
+
+#### **2. Diagnostic Result Concepts** 
+
+|**Concept**|**Meaning**|**Rule**|
+|---|---|---|
+|**Atomic result**|Single measured or asserted value.|Represented with source status and unit|
+||Coherent report containing||
+|**Diagnostic report**|observations, narrative, codes, images<br>or attachments.|Source-authoritative package|
+|**Preliminary result**|Available before final authorization.|Clearly provisional|
+|**Final result**|Authorized source version.|Eligible for ordinary clinical review|
+|**Amended report**|Final report supplemented.|Prior version retained|
+|**Corrected report**|Erroneous content replaced.|Correction reason/version retained|
+
+
+
+Controlled Draft | Not Approved for Production | Page 107 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+|**Critical result**|Result meeting source or Clinical urgent<br>threshold.|Escalation required|
+|---|---|---|
+|**Abnormal result**|Outside applicable range or interpreted<br>abnormal.|Not automatically critical|
+|**Result delivery**|Technical availability to Clinical.|Not clinical acknowledgement|
+|**Acknowledgement**|Named recipient accepts awareness.|Not proof of action|
+|**Clinical review**|Authorized interpretation in patient<br>context.|Records reviewer and decision|
+|**Follow-up**|Required action, communication or<br>monitoring.|Tracked to closure|
+
+
+
+#### **3. Source and Ownership Boundaries** 
+
+- **CLN-P8-OWN-001** The fulfilling diagnostic module shall remain authoritative for report identifiers, performer, specimen/study, method, source status, issued time, conclusion and correction history. 
+
+- **CLN-P8-OWN-002** Clinical shall store source identifiers and a faithful versioned representation or reference according to the interface contract. 
+
+- **CLN-P8-OWN-003** Clinical may add its own review, interpretation, action and communication records without modifying the source report. 
+
+- **CLN-P8-OWN-004** Images remain authoritative in PACS or the designated imaging repository; Clinical shall store governed references and viewer links. 
+
+- **CLN-P8-OWN-005** The Phase 5 order remains the authoritative placer request while the fulfilling system owns filler and performance status. 
+
+- **CLN-P8-OWN-006** Unsolicited or external results shall retain source and reconciliation state and shall not be falsely represented as locally ordered. 
+
+#### **4. Result Ingestion Pipeline** 
+
+|**Stage**|**Required Behavior**|
+|---|---|
+|**RECEIVED**|Durably record message/file and correlation metadata|
+|**TECHNICALLY_VALIDATED**|Validate schema, syntax, signature and required fields|
+|**PATIENT_MATCHED**|Resolve patient with assigning authority|
+|**ORDER_MATCHED**|Resolve placer/filler request where applicable|
+|**CLINICALLY_MAPPED**|Map report/result codes, units and status|
+|**COMMITTED**|Persist report, observations and source version|
+|**NOTIFIED**|Route according to urgency and ownership|
+|**ACKNOWLEDGED**|Receive application-level technical acknowledgement|
+|**QUARANTINED**|Hold unresolved or unsafe content|
+|**REJECTED**|Reject with actionable reason|
+
+
+
+**CLN-P8-ING-001** The system shall preserve raw message/file hash, source endpoint, message ID, received time, correlation ID and interface version. 
+
+- **CLN-P8-ING-002** Patient mismatch, ambiguous order match, unknown code, incompatible unit, missing source status or duplicate conflict shall prevent ordinary automatic posting. 
+
+**CLN-P8-ING-003** Retries shall use idempotency and shall not create duplicate reports or notifications. 
+
+**CLN-P8-ING-004** Technical acknowledgement shall identify accepted, error or rejected processing outcome according to the interface contract. 
+
+**CLN-P8-ING-005** Quarantined results shall enter an accountable exception queue with severity and time target. 
+
+#### **5. Order and Result Matching** 
+
+**CLN-P8-MAT-001** Matching shall use stable patient identifiers with assigning authority plus placer/filler order identifiers where supplied. 
+
+Controlled Draft | Not Approved for Production | Page 108 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P8-MAT-002** Demographic similarity alone shall not auto-post a result to a patient when a stable match is absent or conflicting. 
+
+**CLN-P8-MAT-003** One order may produce multiple reports/results and one report may group multiple observations according to the source model. 
+
+**CLN-P8-MAT-004** Cancelled or discontinued order status shall not cause a legitimately performed result to be discarded; it shall be posted or quarantined according to policy with discrepancy visibility. 
+
+**CLN-P8-MAT-005** Unmatched results shall not disappear from operational monitoring and shall require documented resolution. 
+
+**CLN-P8-MAT-006** Manual matching shall require a dedicated permission, two-identifier confirmation, reason and audit. 
+
+#### **6. Diagnostic Report Record** 
+
+|**Group**|**Required Data**|
+|---|---|
+|**Identity**|Clinical public ID, source report ID/version, tenant, patient and<br>encounter|
+|**Request**|Placer/filler order references and requested service|
+|**Performance**|Diagnostic service, performer/interpreter, specimen/study and<br>effective period|
+|**Content**|Atomic results, conclusion, conclusion codes,<br>recommendations, media and formatted report|
+|**Status**|Source status, status reason, Clinical ingestion state and<br>correction chain|
+|**Time**|Performed/effective, issued, received, posted and notified<br>times|
+|**Interpretation**|Reference ranges, flags, criticality and source narrative|
+|**Governance**|Sensitivity, provenance, digital signature where supplied, raw<br>source hash and audit|
+
+
+
+**CLN-P8-DAT-001** Atomic results shall reference Phase 7 CDE/Observation mappings where approved while preserving source code and display. 
+
+**CLN-P8-DAT-002** The formatted source report and structured results shall remain linked, and discrepancies shall be visible. 
+
+**CLN-P8-DAT-003** A report conclusion shall not be generated from atomic results by Clinical unless an authorized derived workflow explicitly creates a separate interpretation. 
+
+**CLN-P8-DAT-004** Historical report versions shall remain accessible to authorized users. 
+
+#### **7. Status and Version Lifecycle** 
+
+|**Source Status**|**Clinical Handling**|
+|---|---|
+|**REGISTERED/PENDING**|No usable result yet; track order only|
+|**PARTIAL**|Some results available; show incompleteness|
+|**PRELIMINARY**|Display prominently as provisional|
+|**FINAL**|Eligible for standard review workflow|
+|**AMENDED**|New information added to prior final|
+|**CORRECTED**|Erroneous content replaced; prior version retained|
+|**APPENDED**|Additional source content attached|
+|**CANCELLED**|Diagnostic report cancelled by source|
+|**ENTERED_IN_ERROR**|Invalid source report excluded from ordinary clinical use|
+|**UNKNOWN**|Quarantine or display with explicit uncertainty under policy|
+
+
+
+**CLN-P8-STS-001** A later version shall not silently replace a version already clinically reviewed. 
+
+**CLN-P8-STS-002** Amended and corrected reports shall reopen review/follow-up when material under configured policy. 
+
+**CLN-P8-STS-003** Entered-in-error results shall be excluded from ordinary trends, scores and decision support while preserving audit access. 
+
+**CLN-P8-STS-004** Result version comparison shall identify changed values, narrative, interpretation, conclusion and recommendations where technically possible. 
+
+Controlled Draft | Not Approved for Production | Page 109 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **8. Result Presentation and Patient Chart** 
+
+**CLN-P8-UI-001** The patient banner and applicable encounter context shall remain visible on result pages. 
+
+**CLN-P8-UI-002** The result display shall show source, service, status, issued time, performer/interpreter, order, specimen/study, value/unit, range and interpretation as applicable. 
+
+**CLN-P8-UI-003** Preliminary, corrected, critical, externally sourced and entered-in-error results shall not rely on colour alone. 
+
+**CLN-P8-UI-004** The UI shall distinguish source interpretation from the reviewing clinician’s note or action. 
+
+**CLN-P8-UI-005** Cumulative result charts shall use Phase 7 unit conversion and provenance rules and shall not overwrite original units. 
+
+**CLN-P8-UI-006** Imaging viewer links shall reauthorize access and shall not expose unrestricted tokens or identifiers. 
+
+**CLN-P8-UI-007** Sensitive report titles, counts, snippets and notifications shall not leak protected content. 
+
+#### **9. Results Inbox and Assignment** 
+
+|**Queue**|**Inclusion**|
+|---|---|
+|**My New Results**|Unreviewed results assigned to the user|
+|**Team Results**|Results assigned to an eligible care team|
+|**Critical Results**|Critical results awaiting acknowledgement/action|
+|**Corrected Results**|Material amendments/corrections needing re-review|
+|**Unmatched Results**|Patient/order reconciliation exceptions|
+|**No Responsible Owner**|Results lacking an eligible recipient|
+|**Post-Discharge Results**|Results issued after encounter closure|
+|**Follow-Up Due**|Reviewed results with outstanding actions|
+|**Communication Due**|Patient/recipient communication required|
+
+
+
+**CLN-P8-INB-001** Inbox routing shall use current responsible clinician/team, order requester, care relationship, client-space assignment and configured fallback hierarchy. 
+
+**CLN-P8-INB-002** A result appearing in a queue shall not itself grant chart access. 
+
+**CLN-P8-INB-003** Reassignment shall preserve previous owner, reason, time and acceptance where required. 
+
+**CLN-P8-INB-004** Absence, transfer or employment-status change shall reroute unresolved results through approved cover rules. 
+
+**CLN-P8-INB-005** Bulk acknowledgement shall be prohibited for critical results and restricted for other results by explicit policy. 
+
+#### **10. Critical Results Workflow** 
+
+|**State**|**Meaning**|
+|---|---|
+|**TRIGGERED**|Critical rule/source flag identified|
+|**ROUTED**|Sent to eligible primary recipient|
+|**DELIVERED**|Notification reached configured channel|
+|**ACKNOWLEDGED**|Named recipient accepts awareness|
+|**ASSESSED**|Clinical assessment recorded|
+|**ACTION_TAKEN**|Action or no-action rationale recorded|
+|**ESCALATED**|Next recipient/level invoked|
+|**RESOLVED**|Required response and follow-up complete|
+
+
+
+**CLN-P8-CRT-001** Criticality may originate from source flags or Clinical rules; the origin and rule version shall be preserved. 
+
+**CLN-P8-CRT-002** Critical notification shall identify patient safely, result, value/unit or finding, source, time and required response subject to confidentiality policy. 
+
+**CLN-P8-CRT-003** Acknowledgement shall require an authenticated eligible user and shall record channel, time and result version. 
+
+**CLN-P8-CRT-004** Failure to acknowledge within the configured interval shall escalate through an approved hierarchy. 
+
+**CLN-P8-CRT-005** Acknowledgement shall not resolve the alert without clinical assessment and action/no-action rationale as configured. 
+
+**CLN-P8-CRT-006** Corrected critical results shall preserve the original alert and create or update follow-up according to materiality rules. 
+
+Controlled Draft | Not Approved for Production | Page 110 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **11. Clinical Review and Action** 
+
+**CLN-P8-REV-001** Review shall require clinical.result.review and appropriate patient scope/relationship. 
+
+**CLN-P8-REV-002** The reviewer shall attest to the exact report version reviewed. 
+
+**CLN-P8-REV-003** Review outcomes shall include ACKNOWLEDGED_NO_ACTION, ACTION_REQUIRED, ACTION_COMPLETED, REFERRED, REPEAT_ORDERED, PATIENT_CONTACT_REQUIRED or other approved states. 
+
+- **CLN-P8-REV-004** Creating an order, diagnosis, care-plan update or note from a result shall invoke the owning workflow and permission checks. 
+
+- **CLN-P8-REV-005** A changed or corrected source report shall not inherit the previous review automatically unless policy determines the change immaterial and records that determination. 
+
+**CLN-P8-REV-006** Review evidence shall include reviewer, result version, time, decision and linked action records. 
+
+#### **12. Follow-Up Tasks and Closure** 
+
+**CLN-P8-FUP-001** A result may generate follow-up tasks for repeat testing, treatment, referral, monitoring, documentation or communication. 
+
+**CLN-P8-FUP-002** Each task shall identify accountable owner, due time, priority, patient, result version and completion evidence. **CLN-P8-FUP-003** A result shall not be marked closed while mandatory tasks remain unresolved. 
+
+**CLN-P8-FUP-004** Overdue follow-up shall escalate according to risk, time and organizational policy. 
+
+**CLN-P8-FUP-005** Task reassignment shall require acceptance where configured and shall not remove prior accountability history. 
+
+**CLN-P8-FUP-006** Encounter closure shall not close pending results or follow-up obligations automatically. 
+
+#### **13. Post-Discharge and Delayed Results** 
+
+**CLN-P8-PDR-001** Results issued after discharge shall remain linked to the original order and encounter. 
+
+**CLN-P8-PDR-002** The system shall route post-discharge results to the configured responsible clinician/team and fallback service. 
+
+**CLN-P8-PDR-003** Patient movement, discharge or user assignment expiry shall not make an unresolved result ownerless. 
+
+**CLN-P8-PDR-004** Delayed preliminary-to-final conversion shall trigger review according to the final report version and materiality policy. 
+
+- **CLN-P8-PDR-005** External follow-up responsibility shall be documented with recipient, transfer method, acceptance and remaining local obligation. 
+
+#### **14. Patient and Caregiver Communication** 
+
+**CLN-P8-COM-001** Communication policy shall define which results may be released automatically, which require clinician review and which require direct discussion. 
+
+**CLN-P8-COM-002** Communication records shall identify recipient, relationship/authority, channel, date/time, result version, content summary, interpreter/support and outcome. 
+
+**CLN-P8-COM-003** Portal publication or message delivery shall not be treated as proof the patient understood the result. 
+
+**CLN-P8-COM-004** Sensitive, unexpected, critical or complex results shall follow approved communication pathways. 
+
+**CLN-P8-COM-005** Incorrect recipient or failed delivery shall enter a security-safe exception workflow. 
+
+**CLN-P8-COM-006** Patient questions or refusal of follow-up shall be documented and routed appropriately. 
+
+#### **15. Corrections, Amendments and Retractions** 
+
+- **CLN-P8-COR-001** Clinical shall preserve every received source version and the source correction/amendment reason where supplied. 
+
+- **CLN-P8-COR-002** A material correction shall reopen clinical review, critical escalation, patient communication and follow-up as configured. 
+
+- **CLN-P8-COR-003** The system shall identify downstream diagnoses, scores, notes, orders and care plans that referenced the superseded result and create review tasks. 
+
+Controlled Draft | Not Approved for Production | Page 111 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P8-COR-004** Clinical users shall not edit the authoritative result to resolve an interface or source error. 
+
+**CLN-P8-COR-005** Local annotation shall remain separate from the source result and follow Phase 3 documentation rules. **CLN-P8-COR-006** Entered-in-error or retracted results shall not disappear from authorized audit and reconciliation views. 
+
+#### **16. AI-Assisted Result Review** 
+
+**CLN-P8-AI-001** AI summaries, comparisons, abnormality highlights and suggested follow-up shall be provided only through the Shared AI Gateway. 
+
+**CLN-P8-AI-002** AI shall use only report versions and chart context the requesting user is authorized to access. 
+
+**CLN-P8-AI-003** AI output shall remain advisory and shall not acknowledge, close, diagnose, order, communicate or resolve a result automatically. 
+
+**CLN-P8-AI-004** The user shall be able to inspect source references where the service supports them. 
+
+**CLN-P8-AI-005** Clinical shall preserve AI transaction, input result versions, suggestion, edits, acceptance/rejection and final human action. 
+
+**CLN-P8-AI-006** AI outage shall not block ordinary manual review and follow-up. 
+
+#### **17. Downtime, Offline and Recovery** 
+
+**CLN-P8-DWN-001** Critical results received during Clinical downtime shall follow an approved source-to-clinician fallback communication process. 
+
+**CLN-P8-DWN-002** Offline acknowledgement/action shall preserve patient, result/source version, recipient, time, channel and action for later reconciliation. 
+
+**CLN-P8-DWN-003** Recovery shall reconcile source reports, message acknowledgements, critical communications and Clinical follow-up without duplicating alerts or tasks. 
+
+**CLN-P8-DWN-004** Late-arriving results shall retain source effective and issued times plus received/posted times. 
+
+**CLN-P8-DWN-005** A possible duplicate or conflicting version shall be quarantined rather than silently merged. 
+
+#### **18. Permissions Catalogue** 
+
+|**Permission**|**Purpose**|
+|---|---|
+|**clinical.result.view**|View ordinary authorized result|
+|**clinical.result.view_sensitive**|View sensitive result|
+|**clinical.result.review**|Record clinical review|
+|**clinical.result.critical_acknowledge**|Acknowledge critical result|
+|**clinical.result.critical_resolve**|Resolve critical-result response|
+|**clinical.result.reassign**|Reassign accountable owner|
+|**clinical.result.follow_up_create**|Create follow-up task|
+|**clinical.result.follow_up_complete**|Complete follow-up|
+|**clinical.result.patient_communicate**|Record patient communication|
+|**clinical.result.manual_match**|Resolve patient/order matching|
+|**clinical.result.annotation_create**|Add separate Clinical annotation|
+|**clinical.result.exception_manage**|Resolve ingestion/interface exception|
+|**clinical.result.export**|Export result/report|
+|**clinical.result_config.manage**|Manage routing, thresholds and materiality|
+|**clinical.result.audit**|View detailed provenance|
+
+
+
+**CLN-P8-PRM-001** Permissions shall be centrally registered and contextually enforced through Laravel policies, not hardcoded title checks. 
+
+#### **19. Operational Interfaces and Queues** 
+
+- Patient result summary 
+
+- Result detail and source report viewer 
+
+- Cumulative results/trends 
+
+Controlled Draft | Not Approved for Production | Page 112 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- My New Results 
+
+- Critical Results 
+
+- Corrected/Amended Results 
+
+- Post-Discharge Results 
+
+- Follow-Up Due/Overdue 
+
+- Patient Communication Due 
+
+- Unmatched/Quarantined Results 
+
+- No Responsible Owner 
+
+- Interface acknowledgement/retry monitoring 
+
+- Routing and threshold administration 
+
+**CLN-P8-OPS-001** Queues shall show age, urgency, owner, status and next required action without leaking restricted content. 
+
+**CLN-P8-OPS-002** Opening any queue item shall reauthorize patient and result access. 
+
+**CLN-P8-OPS-003** Technical, source, review and follow-up states shall be displayed separately. 
+
+#### **20. Audit, Events and Reports** 
+
+- Message receipt/validation/acknowledgement 
+
+- Patient/order match and manual override 
+
+- Report commit/version update 
+
+- Notification delivery/failure 
+
+- Critical acknowledgement/escalation/resolution 
+
+- Clinical review/action 
+
+- Follow-up task and reassignment 
+
+- Patient communication 
+
+- Sensitive view/export 
+
+- Correction and dependent review 
+
+- Downtime reconciliation 
+
+- clinical.result.received 
+
+- clinical.result.posted 
+
+- clinical.result.critical 
+
+- clinical.result.acknowledged 
+
+- clinical.result.reviewed 
+
+- clinical.result.corrected 
+
+- clinical.result.follow_up_required 
+
+- clinical.result.follow_up_overdue 
+
+- clinical.result.patient_communicated 
+
+- clinical.result.quarantined 
+
+- clinical.result.reconciliation_required 
+
+- Unreviewed results by age/risk 
+
+- Critical acknowledgement/response time 
+
+- Corrected results awaiting re-review 
+
+- Post-discharge unresolved results 
+
+- Follow-up overdue 
+
+- Communication due/failed 
+
+- Results without owner 
+
+- Unmatched/quarantined results 
+
+- Interface errors and duplicates 
+
+- Manual match overrides 
+
+- Sensitive access/exports 
+
+**CLN-P8-EVT-001** Events shall include stable IDs, tenant, patient, encounter, report version, occurred-at, correlation ID and idempotency key while minimizing sensitive content. 
+
+**CLN-P8-RPT-001** Reports and exports shall remain permission-, scope- and sensitivity-controlled. 
+
+Controlled Draft | Not Approved for Production | Page 113 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **21. Acceptance Scenarios** 
+
+|**ID**|**Scenario**|**Expected Result**|
+|---|---|---|
+|**P8-AT-001**|Final lab report matches order and<br>patient.|Source report posted once, routed to<br>responsible reviewer and linked to order.|
+|**P8-AT-002**|Result has conflicting patient identifiers.|Quarantined; no ordinary chart posting.|
+|**P8-AT-003**|Technical message accepted.|Application acknowledgement recorded<br>but result not marked clinically<br>reviewed.|
+|**P8-AT-004**|Critical potassium result arrives.|Urgent alert routes, requires named<br>acknowledgement and action.|
+|**P8-AT-005**|Primary clinician unavailable.|Escalation routes to configured cover<br>without losing accountability.|
+|**P8-AT-006**|Preliminary report becomes final.|Version/status update triggers final<br>review policy.|
+|**P8-AT-007**|Final report is materially corrected.|Previous review not silently inherited;<br>dependent actions enter review.|
+|**P8-AT-008**|Imaging report has PACS link.|Viewer reauthorizes access; source<br>report remains authoritative.|
+|**P8-AT-009**|Result arrives after discharge.|Original encounter retained and<br>accountable post-discharge queue<br>created.|
+|**P8-AT-010**|Reviewer orders repeat test.|Phase 5 workflow creates separately<br>authorized order.|
+|**P8-AT-011**|Patient portal publication succeeds.|Communication state records delivery,<br>not understanding or clinical closure.|
+|**P8-AT-012**|Unsolicited external result arrives.|Source-labelled reconciliation workflow<br>used; no false local-order link.|
+|**P8-AT-013**|AI summarizes report.|Advisory output cannot review or close<br>result.|
+|**P8-AT-014**|Same result message retries.|Idempotency prevents duplicate report,<br>alert and task.|
+|**P8-AT-015**|Downtime critical result communicated<br>by phone.|Fallback action recorded and reconciled<br>after restoration.|
+
+
+
+#### **22. Mandatory Negative Tests** 
+
+- Hardcoded title grants result review 
+
+- Technical ACK treated as clinical acknowledgement 
+
+- Acknowledgement treated as follow-up closure 
+
+- Wrong-patient result posted from demographic similarity 
+
+- Duplicate retry creates second critical alert 
+
+- Preliminary result displayed as final 
+
+- Correction overwrites prior report 
+
+- Entered-in-error value remains in trends/decision support 
+
+- Clinical user edits source conclusion 
+
+- Queue item grants chart access 
+
+- Bulk critical acknowledgement 
+
+- Discharged patient loses result owner 
+
+- Portal delivery treated as patient understanding 
+
+- AI auto-closes result 
+
+- Sensitive report title leaks in notification 
+
+- PACS link bypasses authorization 
+
+- No-owner result disappears from monitoring 
+
+Controlled Draft | Not Approved for Production | Page 114 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **23. Traceability** 
+
+|**Area**|**Prefix**|**Evidence**|
+|---|---|---|
+|**Governance**|CLN-P8-GOV|Clinical governance review|
+|**Ownership**|CLN-P8-OWN|Module contract tests|
+|**Ingestion**|CLN-P8-ING|Interface/idempotency tests|
+|**Matching**|CLN-P8-MAT|Patient/order tests|
+|**Data**|CLN-P8-DAT|Schema/version tests|
+|**Status**|CLN-P8-STS|Lifecycle tests|
+|**UI**|CLN-P8-UI|Display/access tests|
+|**Inbox**|CLN-P8-INB|Routing tests|
+|**Critical**|CLN-P8-CRT|Escalation tests|
+|**Review**|CLN-P8-REV|Review/action tests|
+|**Follow-up**|CLN-P8-FUP|Closure tests|
+|**Post-discharge**|CLN-P8-PDR|Ownership tests|
+|**Communication**|CLN-P8-COM|Recipient tests|
+|**Correction**|CLN-P8-COR|Dependent-review tests|
+|**AI**|CLN-P8-AI|Human-control tests|
+|**Downtime**|CLN-P8-DWN|Reconciliation tests|
+
+
+
+#### **24. Registered Phase 8 Gaps** 
+
+|**Gap ID**|**Resolution Required**|**Blocking**|
+|---|---|---|
+|**CLN-P8-GAP-001**|Approve diagnostic-source systems and<br>authoritative report contracts.|Yes|
+|**CLN-P8-GAP-002**|Approve patient/order matching rules<br>and manual-match authority.|Yes|
+|**CLN-P8-GAP-003**|Approve result status mappings by LIMS,<br>RIS/PACS and Pathology.|Yes|
+|**CLN-P8-GAP-004**|Approve routing hierarchy, cover and no-<br>owner workflow.|Yes|
+|**CLN-P8-GAP-005**|Approve critical-result thresholds,<br>channels and acknowledgement times.|Yes|
+|**CLN-P8-GAP-006**|Approve clinical review outcomes and<br>closure evidence.|Yes|
+|**CLN-P8-GAP-007**|Approve correction materiality and<br>dependent-review rules.|Yes|
+|**CLN-P8-GAP-008**|Approve post-discharge responsibility<br>and escalation.|Yes|
+|**CLN-P8-GAP-009**|Approve patient result-release and<br>communication policy.|Yes|
+|**CLN-P8-GAP-010**|Approve downtime critical-result<br>fallback.|Yes|
+|**CLN-P8-GAP-011**|Approve AI result-summary scope.|Before AI release|
+||Confirm FHIR DiagnosticReport,||
+|**CLN-P8-GAP-012**|Observation, ImagingStudy and<br>DocumentReference profiles.|Before interoperability release|
+
+
+
+#### **25. Phase 8 Completion Gate** 
+
+- Phases 1 to 7 incorporated without contradiction. 
+
+- Diagnostic-source ownership and ingestion contracts approved. 
+
+- Patient/order matching and quarantine rules approved. 
+
+- Result/report data and status lifecycle approved. 
+
+- Inbox ownership, critical escalation and review states approved. 
+
+- Follow-up and post-discharge closure rules approved. 
+
+Controlled Draft | Not Approved for Production | Page 115 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Patient communication and sensitive-result controls approved. 
+
+- Correction, dependent review and downtime reconciliation approved. 
+
+- Permissions, events, reports, acceptance and negative tests approved. 
+
+- Every blocking gap assigned an owner and acceptance test. 
+
+**Phase 9 shall use the result-review and follow-up evidence defined here when governing broader transitions, discharge and continuity of care. It shall not close encounters while result obligations remain unresolved.** 
+
+#### **Appendix A. Minimum Diagnostic Report Record** 
+
+|**Group**|**Fields**|
+|---|---|
+|**Identity**|Public ID, source report ID/version, patient, encounter|
+|**Request**|Placer/filler order references|
+|**Performance**|Service, performer/interpreter, specimen/study, effective time|
+|**Content**|Atomic results, conclusion, codes, media and formatted<br>report|
+|**Status**|Source status/reason, ingestion state and correction chain|
+|**Interpretation**|Ranges, abnormal/critical flags and source recommendations|
+|**Time**|Issued, received, posted, notified and reviewed|
+|**Workflow**|Owner, acknowledgement, review, action, follow-up and<br>communication|
+|**Security**|Sensitivity and disclosure controls|
+|**Provenance**|Source endpoint, raw hash, signature, correlation and audit|
+
+
+
+#### **Appendix B. Sources Reviewed** 
+
+- KashTre Clinical Module SRD v6.0 and addendum. 
+
+- KashTre Clinical Module SRD v6.1 Phases 1 to 7. 
+
+- HL7 FHIR DiagnosticReport and Diagnostics Module materials. 
+
+- ONC SAFER Test Results Reporting and Follow-Up guidance. 
+
+- HL7 acknowledgement guidance for reliable interface processing. 
+
+### **PHASE 9** 
+
+##### **HANDOVER, TRANSITIONS, DISCHARGE AND CONTINUITY OF CARE** 
+
+**Phase 9 defines shift and service handover, internal transfer, discharge readiness, discharge documentation, external transfer, continuity-of-care communication and post-transition accountability.** 
+
+Controlled Draft | Not Approved for Production | Page 116 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **Document Control and Phase Authority** 
+
+|**Field**|**Rule**|
+|---|---|
+|**Purpose**|Define safe transfer of information, responsibility and<br>unresolved work across care transitions.|
+|**Dependencies**|Phases 1 to 8 remain mandatory, including patient context,<br>documentation, medication reconciliation, observations,<br>orders and result follow-up.|
+|**Boundary**|Administrative bed allocation and transport may be owned<br>outside Clinical; Clinical owns clinical readiness, handover<br>content and continuity obligations.|
+|**Discharge record**|Discharge summary and instructions shall follow Phase 3<br>attestation and correction rules.|
+|**Implementation**|Functional specification only. Laravel implementation belongs<br>in the companion EDD.|
+|**Release**|Controlled draft, not approved for production.|
+
+
+
+###### **Phase 9 outcomes** 
+
+- Structured, attributable handover. 
+
+- Explicit transfer of responsibility with acceptance. 
+
+- Discharge-readiness checks across all prior phases. 
+
+- Versioned discharge summary and patient instructions. 
+
+- Closed-loop communication to receiving providers. 
+
+- Post-discharge ownership for pending results and follow-up. 
+
+- Complete permissions, audit, reports, tests and release gaps. 
+
+#### **1. Governing Principles** 
+
+- **CLN-P9-GOV-001** A transition shall transfer clinical information and accountability without erasing the responsibilities or history of the sending team. 
+
+- **CLN-P9-GOV-002** Handover completion shall require an identified sender, intended receiver, patient, encounter, effective time, content version and acceptance state where configured. 
+
+- **CLN-P9-GOV-003** A patient movement event shall not by itself prove that clinical handover or responsibility acceptance occurred. 
+
+**CLN-P9-GOV-004** Generated summaries shall preserve source status and shall never represent preliminary, unreviewed or entered-in-error information as final clinical fact. 
+
+- **CLN-P9-GOV-005** Encounter closure shall be blocked or exception-controlled when mandatory transition obligations remain unresolved. 
+
+- **CLN-P9-GOV-006** Patient and caregiver communication shall be understandable, accessible and recorded separately from professional handover. 
+
+**CLN-P9-GOV-007** AI may draft transition content but shall not accept responsibility, sign, discharge or close an encounter. 
+
+**Transition safety rule: information delivery is not responsibility transfer. The receiving person or service must accept the handover when the configured workflow requires acceptance.** 
+
+#### **2. Transition Concepts** 
+
+|**Concept**|**Meaning**|**Key Distinction**|
+|---|---|---|
+|**Shift handover**|Responsibility changes between staff<br>shifts.|Patient location may not change|
+|**Service handover**|Responsibility changes between<br>specialties/teams.|Encounter may remain active|
+|**Internal transfer**|Patient moves between client<br>spaces/units.|Movement and clinical acceptance are<br>separate|
+|**External transfer**|Care transfers to another organization.|Requires disclosure and receiving|
+
+
+
+Controlled Draft | Not Approved for Production | Page 117 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+|||acceptance|
+|---|---|---|
+||Current encounter ends with onward-||
+|**Discharge**|care arrangements.|Not merely physical departure|
+|**Leave**|Temporary absence during active<br>encounter.|Not discharge|
+|**Discharge readiness**|Clinical and operational prerequisites<br>assessed.|Not authorization by itself|
+|**Discharge summary**|Attested professional continuity<br>document.|Distinct from patient instructions|
+|**Patient instructions**|Patient/caregiver-facing plan and<br>warnings.|Not the entire legal record|
+|**Continuity task**|Unresolved action with an owner and|Survives encounter closure where|
+||due time.|required|
+
+
+
+#### **3. Transition Types and Triggers** 
+
+- Change of shift 
+
+- Temporary cover or on-call handover 
+
+- Transfer between ward, ICU, theatre, recovery or clinic 
+
+- Change of responsible specialty/service 
+
+- Inter-facility transfer 
+
+- Discharge home 
+
+- Discharge to rehabilitation, community or residential care 
+
+- Self-discharge or leaving before completion 
+
+- Temporary leave 
+
+- Virtual-to-physical or physical-to-virtual transition 
+
+- Death and mortuary transition under separate policy 
+
+**CLN-P9-TYP-001** Transition types shall be controlled, versioned and mapped to applicable encounter and movement events. 
+
+**CLN-P9-TYP-002** Each transition type shall define required content, sender/receiver roles, acceptance rule, readiness checks, documents, communication and escalation. 
+
+- **CLN-P9-TYP-003** A transition workflow may be initiated by movement, encounter status, scheduled discharge, clinician decision or authorized external request. 
+
+#### **4. Handover Record** 
+
+|**Group**|**Required Data**|
+|---|---|
+|**Identity**|Public ID, patient, encounter, transition type and version|
+|**Context**|Sending and receiving facility, client space, service and team|
+|**Actors**|Sender, receiver, responsible clinicians and recorder|
+|**Time**|Prepared, sent, received, accepted and effective times|
+|**Clinical state**|Current condition, acuity, trajectory and recent significant<br>changes|
+|**Safety**|Allergies, alerts, infection/isolation, risks and escalation status|
+|**Treatment**|Active medication, infusions, oxygen, devices and procedures|
+|**Work**|Pending orders, results, tasks, monitoring and consultations|
+|**Plan**|Goals, immediate priorities, contingency plans and review<br>times|
+|**Governance**|Source references, sensitivity, attestation and audit|
+
+
+
+- **CLN-P9-HND-001** Handover content shall be assembled from authorized current source data and identify stale, provisional, corrected or missing information. 
+
+**CLN-P9-HND-002** The author shall be able to add an attested narrative assessment without overwriting source facts. 
+
+**CLN-P9-HND-003** The handover shall display the data-as-of time and content version. 
+
+**CLN-P9-HND-004** A later update shall create a new version and shall not silently alter an already accepted handover. 
+
+**CLN-P9-HND-005** Restricted content shall follow minimum-necessary and receiving-authority rules. 
+
+Controlled Draft | Not Approved for Production | Page 118 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **5. Structured Communication Model** 
+
+###### **5.1 Minimum communication domains** 
+
+- Situation and reason for handover 
+
+- Background and relevant history 
+
+- Current assessment and trajectory 
+
+- Recent vital signs, scores and significant results 
+
+- Active medication, infusions and recent administrations 
+
+- Pending investigations and expected results 
+
+- Required actions with owner and timing 
+
+- Risks, escalation status and contingency plan 
+
+- Patient/caregiver concerns and communication needs 
+
+- Receiver confirmation and questions 
+
+**CLN-P9-COM-001** The system may support SBAR or another approved structured model through versioned templates. 
+
+**CLN-P9-COM-002** The template shall not force users to duplicate source data as untraceable free text when a reference can be preserved. 
+
+**CLN-P9-COM-003** The receiver shall be able to request clarification and the response shall remain linked to the handover. 
+
+**CLN-P9-COM-004** Read-back or repeat-back confirmation shall be supported for configured high-risk transitions. 
+
+#### **6. Shift and Temporary-Cover Handover** 
+
+**CLN-P9-SHF-001** Shift handover lists shall be generated from current authorized patient assignment, acuity, alerts, tasks and due work. 
+
+**CLN-P9-SHF-002** The system shall identify patients with critical alerts, active infusions, high-alert medications, pending critical results, overdue monitoring or unresolved deterioration responses. 
+
+**CLN-P9-SHF-003** Temporary cover shall have an effective period and shall not grant permanent care relationships. 
+
+**CLN-P9-SHF-004** Acceptance shall transfer current operational ownership without deleting the prior team’s authored records or unresolved accountability history. 
+
+**CLN-P9-SHF-005** Patients not successfully handed over shall remain visible in an exception queue. 
+
+#### **7. Internal Transfer** 
+
+|**Stage**|**Required Evidence**|
+|---|---|
+|**REQUESTED**|Destination and reason identified|
+|**CLINICALLY_READY**|Sending team completes readiness checks|
+|**DESTINATION_ACCEPTED**|Receiving service/space accepts|
+|**IN_TRANSIT**|Movement underway where used|
+|**ARRIVED**|Patient reaches destination|
+|**HANDOVER_ACCEPTED**|Clinical responsibility accepted|
+|**COMPLETED**|Movement, responsibility and work routing reconciled|
+|**CANCELLED/FAILED**|Reason and current responsibility preserved|
+
+
+
+**CLN-P9-INT-001** Transfer shall coordinate Phase 2 movement status with a distinct clinical handover state. 
+
+**CLN-P9-INT-002** Receiving acceptance shall identify the accepting user/team and effective time. 
+
+**CLN-P9-INT-003** Medication due events, infusions, monitoring schedules, pending results, orders and tasks shall transfer without duplication or loss. 
+
+**CLN-P9-INT-004** The sending team shall retain responsibility until the configured acceptance point. 
+
+**CLN-P9-INT-005** A rejected or delayed transfer shall preserve current patient location and accountable team and trigger contingency action where required. 
+
+Controlled Draft | Not Approved for Production | Page 119 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **8. Discharge Readiness** 
+
+|**Domain**|**Readiness Check**|
+|---|---|
+|**Clinical stability**|Discharge decision and condition appropriate to destination|
+|**Documentation**|Required notes and summaries complete or exception-<br>controlled|
+|**Diagnoses**|Admission/discharge diagnoses and problem status reviewed|
+|**Medication**|Discharge reconciliation and prescriptions completed|
+|**Orders/results**|Pending, final, corrected and post-discharge results assigned|
+|**Monitoring**|Outstanding observation requirements resolved or transferred|
+|**Care plan**|Goals, ongoing plans and ownership updated|
+|**Referrals**|Appointments, consultations and external referrals arranged|
+|**Patient needs**|Education, equipment, transport, social and accessibility<br>needs addressed|
+|**Communication**|Patient/caregiver and receiving provider information prepared|
+|**Administration**|Disposition and destination confirmed through owning<br>workflow|
+
+
+
+**CLN-P9-RDY-001** Readiness checks shall be versioned and configurable by encounter class, service and destination. 
+
+**CLN-P9-RDY-002** Blocking failures and overrideable exceptions shall be distinguishable. 
+
+**CLN-P9-RDY-003** An override shall require eligible permission, reason, accountable owner and due follow-up where applicable. **CLN-P9-RDY-004** The readiness checklist shall not auto-complete from missing or stale data. 
+
+#### **9. Discharge Workflow** 
+
+|**Step**|**Required Behavior**|
+|---|---|
+|**1. Initiate**|Record expected discharge destination/date and responsible<br>clinician|
+|**2. Assess readiness**|Evaluate mandatory domains and unresolved exceptions|
+|**3. Reconcile medication**|Complete Phase 6 discharge reconciliation|
+|**4. Resolve continuity**|Assign pending results, orders, tasks and plans|
+|**5. Prepare documents**|Create discharge summary and patient instructions|
+|**6. Review/attest**|Apply Phase 3 signature, co-signature and correction rules|
+|**7. Communicate**|Send to patient/caregiver and receiving providers as approved|
+|**8. Complete discharge**|Record disposition, departure and encounter status|
+|**9. Confirm delivery**|Track receipt/processing where contract supports it|
+|**10. Monitor follow-up**|Escalate unresolved post-discharge obligations|
+
+
+
+**CLN-P9-DSC-001** Discharge completion shall require clinical.encounter.discharge and the applicable Phase 2 closure authority. 
+
+**CLN-P9-DSC-002** Actual departure time, discharge decision time, document issue time and encounter closure time shall remain distinct. 
+
+**CLN-P9-DSC-003** Discharge shall not cancel pending legitimate diagnostic work or follow-up obligations. 
+
+**CLN-P9-DSC-004** A patient leaving before completion shall use a distinct workflow and preserve attempted assessment, advice, risks and follow-up. 
+
+**CLN-P9-DSC-005** Death shall use a separate governed workflow and shall not be represented as ordinary discharge home. 
+
+#### **10. Discharge Summary** 
+
+|**Section**|**Minimum Content**|
+|---|---|
+|**Encounter**|Reason for admission/contact, dates, responsible service and<br>disposition|
+|**Clinical course**|Significant history, findings, progress and complications|
+|**Diagnosis**|Admission, working and discharge diagnoses with verification<br>state|
+|**Procedures**|Important procedures and interventions|
+
+
+
+Controlled Draft | Not Approved for Production | Page 120 
+
+|**Medication**|KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1<br>Admission changes, discharge medication and stopped<br>medicines|
+|---|---|
+|**Results**|Significant results and clearly assigned pending results|
+|**Allergies/safety**|Allergies, alerts and relevant precautions|
+|**Plan**|Follow-up, monitoring, referrals, care plans and escalation|
+|**Patient communication**|Information provided and outstanding education needs|
+|**Contacts**|Receiving provider/service and support contacts where<br>approved|
+
+
+
+**CLN-P9-SUM-001** The discharge summary shall be a versioned, attested document governed by Phase 3. 
+
+**CLN-P9-SUM-002** Auto-populated content shall preserve source links and status and shall not include entered-in-error data. 
+
+**CLN-P9-SUM-003** Pending results shall include accountable reviewer, communication plan and follow-up expectation. 
+
+**CLN-P9-SUM-004** A corrected source item after summary issue shall generate a review task and may require an amended summary. 
+
+**CLN-P9-SUM-005** The summary shall identify its information cut-off and issue time. 
+
+#### **11. Patient and Caregiver Instructions** 
+
+**CLN-P9-PAT-001** Patient instructions shall use approved plain-language templates and the patient’s preferred language and accessibility needs where available. 
+
+**CLN-P9-PAT-002** Instructions shall include medication directions, warning signs, activity/diet/wound guidance, follow-up, appointments and contact/escalation routes as applicable. 
+
+**CLN-P9-PAT-003** The system shall record recipient, interpreter/support person, method, date/time and teach-back or understanding assessment where configured. 
+
+**CLN-P9-PAT-004** Professional-only confidential content shall not be copied into patient instructions without disclosure review. **CLN-P9-PAT-005** Printing or portal delivery shall not prove understanding. 
+
+#### **12. External Transfer and Receiving Provider Communication** 
+
+**CLN-P9-EXT-001** External transfer shall identify receiving organization/service, destination, accepting clinician where applicable and transport requirements. 
+
+**CLN-P9-EXT-002** Disclosure shall be limited to authorized continuity information and shall preserve consent/legal basis where required. 
+
+**CLN-P9-EXT-003** The transfer package shall include a controlled summary plus approved supporting documents/references. 
+
+**CLN-P9-EXT-004** Transmission state shall distinguish sent, delivered, processed, rejected and accepted. 
+
+**CLN-P9-EXT-005** A successful network transmission shall not be treated as acceptance of clinical responsibility. 
+
+**CLN-P9-EXT-006** Failed or rejected delivery shall enter an urgent exception workflow when the patient transition depends on it. 
+
+#### **13. Continuity Tasks and Follow-Up** 
+
+**CLN-P9-FUP-001** Every unresolved action at transition shall have an owner, due time, priority, source, patient and completion evidence. 
+
+**CLN-P9-FUP-002** Continuity tasks may include pending-result review, repeat testing, medication monitoring, referral, appointment, document completion, patient contact or equipment/service confirmation. 
+
+**CLN-P9-FUP-003** Encounter closure shall not delete or conceal continuity tasks. 
+
+**CLN-P9-FUP-004** Ownership transfer shall preserve previous owner, acceptance and fallback escalation. 
+
+**CLN-P9-FUP-005** Task completion shall reference the action performed and shall not be satisfied by acknowledgement alone. **CLN-P9-FUP-006** Overdue post-transition tasks shall remain reportable and escalate according to risk. 
+
+#### **14. Medication Continuity** 
+
+**CLN-P9-MED-001** Discharge medication shall derive from completed reconciliation and authorized Phase 5 orders, not from a copied inpatient eMAR list. 
+
+Controlled Draft | Not Approved for Production | Page 121 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P9-MED-002** The transition record shall distinguish new, continued, changed, held and stopped medicines with reasons where applicable. 
+
+**CLN-P9-MED-003** The last administered dose and next due dose shall be available for high-risk transfers where clinically relevant. 
+
+**CLN-P9-MED-004** Patient-owned, leave and controlled medicines shall have clear custody and supply disposition. 
+
+**CLN-P9-MED-005** Medication changes made after summary issue shall trigger updated communication and reconciliation where material. 
+
+#### **15. Pending Results and Diagnostic Continuity** 
+
+**CLN-P9-RES-001** The transition record shall identify pending, preliminary, expected and recently corrected results relevant to continuity. 
+
+**CLN-P9-RES-002** Each pending result shall retain the Phase 8 accountable reviewer and escalation route after discharge or transfer. 
+
+**CLN-P9-RES-003** Receiving-provider notification shall not automatically remove the sender’s obligation unless acceptance of responsibility is recorded. 
+
+**CLN-P9-RES-004** Material corrected results after transition shall reopen review and communication under Phase 8. 
+
+**CLN-P9-RES-005** No-owner pending results shall block closure or enter an approved high-priority exception. 
+
+#### **16. AI-Assisted Transition Documentation** 
+
+**CLN-P9-AI-001** AI may draft handovers, discharge summaries and patient instructions only through the Shared AI Gateway. 
+
+**CLN-P9-AI-002** AI shall use only authorized source data and shall preserve source-version references where supported. 
+
+**CLN-P9-AI-003** AI output shall remain visibly draft until reviewed and attested by an authorized human. 
+
+**CLN-P9-AI-004** AI shall not invent negative findings, resolve pending work, assign acceptance or infer that follow-up occurred. 
+
+**CLN-P9-AI-005** Clinical shall preserve AI transaction, input cut-off/version, output, edits, rejection/acceptance and final signer. **CLN-P9-AI-006** AI outage shall not block manual transition workflows. 
+
+#### **17. Corrections, Cancellation and Reopening** 
+
+**CLN-P9-COR-001** Signed handovers and discharge summaries shall not be destructively edited. 
+
+**CLN-P9-COR-002** A materially incorrect transition document shall use Phase 3 correction/amendment and notify affected recipients. 
+
+**CLN-P9-COR-003** Cancelled transfers shall preserve prepared handover content and reason without changing patient location or responsibility incorrectly. 
+
+**CLN-P9-COR-004** Encounter reopening shall require dedicated authority and shall not erase the original discharge/closure event. 
+
+**CLN-P9-COR-005** A readmission shall ordinarily create a new encounter rather than reopening the prior encounter. 
+
+#### **18. Downtime and Degraded Operations** 
+
+**CLN-P9-DWN-001** Downtime handover shall use an approved printable/offline dataset with issue time, page identifiers and patient identifiers. 
+
+**CLN-P9-DWN-002** Verbal and paper handovers shall record sender, receiver, time, content version and acceptance for later reconciliation. 
+
+**CLN-P9-DWN-003** Discharge during downtime shall use approved minimum documentation and create a mandatory electronic reconciliation task. 
+
+**CLN-P9-DWN-004** Recovery shall reconcile movements, encounter status, medication, pending results, tasks and transmitted documents without duplication. 
+
+**CLN-P9-DWN-005** Critical continuity information shall not wait for system restoration when an approved alternate communication channel exists. 
+
+Controlled Draft | Not Approved for Production | Page 122 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **19. Permissions Catalogue** 
+
+|**Permission**|**Purpose**|
+|---|---|
+|**clinical.handover.create**|Prepare handover|
+|**clinical.handover.send**|Send handover|
+|**clinical.handover.accept**|Accept responsibility|
+|**clinical.handover.return**|Request clarification/return|
+|**clinical.transfer.readiness_record**|Record clinical transfer readiness|
+|**clinical.transfer.accept**|Accept internal/external clinical transfer|
+|**clinical.discharge.initiate**|Start discharge workflow|
+|**clinical.discharge.readiness_override**|Override eligible readiness item|
+|**clinical.discharge.summary_create**|Prepare discharge summary|
+|**clinical.discharge.summary_sign**|Attest discharge summary|
+|**clinical.discharge.complete**|Complete clinical discharge|
+|**clinical.continuity_task.manage**|Create/reassign/complete continuity task|
+|**clinical.transition.patient_communicate**|Record patient instructions/communication|
+|**clinical.transition.external_send**|Transmit continuity package|
+|**clinical.transition.exception_manage**|Resolve transition exceptions|
+|**clinical.transition.audit**|View detailed transition provenance|
+
+
+
+**CLN-P9-PRM-001** Permissions shall be centrally registered and contextually enforced through Laravel policies, never hardcoded title comparisons. 
+
+#### **20. Operational Interfaces and Queues** 
+
+- Shift handover list 
+
+- Patient handover editor 
+
+- Internal transfer tracker 
+
+- Discharge readiness board 
+
+- Discharge summary workspace 
+
+- Patient instruction generator 
+
+- External transfer package 
+
+- Pending-result continuity queue 
+
+- Post-discharge follow-up queue 
+
+- No-owner continuity tasks 
+
+- Rejected/failed transmission queue 
+
+- Unsigned or incomplete summaries 
+
+- Transfer/discharge reconciliation exceptions 
+
+**CLN-P9-UI-001** Every patient interface shall retain the Phase 2 patient banner and encounter context. 
+
+**CLN-P9-UI-002** Preparation, transmission, delivery, acceptance and completion states shall be displayed separately. 
+
+**CLN-P9-UI-003** The interface shall show source data cut-off, stale information and unresolved obligations prominently. **CLN-P9-UI-004** Critical transition information shall not rely on colour alone. 
+
+#### **21. Audit, Events and Reports** 
+
+- Handover create/update/send/accept/return 
+
+- Transfer readiness/acceptance 
+
+- Discharge initiation/readiness/override/completion 
+
+- Summary generation/signature/amendment 
+
+- Patient instructions and teach-back 
+
+- External package delivery/processing/acceptance 
+
+- Continuity task transfer/completion 
+
+- Pending-result ownership 
+
+- Downtime reconciliation 
+
+- AI draft acceptance/rejection 
+
+- clinical.handover.created 
+
+Controlled Draft | Not Approved for Production | Page 123 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- clinical.handover.sent 
+
+- clinical.handover.accepted 
+
+- clinical.transfer.accepted 
+
+- clinical.discharge.initiated 
+
+- clinical.discharge.ready 
+
+- clinical.discharge.completed 
+
+- clinical.discharge.summary_issued 
+
+- clinical.continuity_task.created 
+
+- clinical.continuity_task.overdue 
+
+- clinical.transition.delivery_failed 
+
+- clinical.transition.reconciliation_required 
+
+- Handovers awaiting acceptance 
+
+- Transfer delays/rejections 
+
+- Discharge readiness exceptions 
+
+- Unsigned/incomplete summaries 
+
+- Patients discharged with pending results 
+
+- Post-discharge tasks overdue 
+
+- Failed continuity transmissions 
+
+- Readiness overrides 
+
+- Self-discharge/left-before-completion 
+
+- Medication reconciliation incomplete 
+
+- No-owner obligations 
+
+- Downtime transitions awaiting reconciliation 
+
+**CLN-P9-EVT-001** Events shall include stable IDs, tenant, patient, encounter, document/task version, occurred-at, correlation ID and idempotency key while minimizing sensitive content. 
+
+**CLN-P9-RPT-001** Reports and exports shall remain permission-, scope- and sensitivity-controlled. 
+
+#### **22. Acceptance Scenarios** 
+
+|**ID**|**Scenario**|**Expected Result**|
+|---|---|---|
+|**P9-AT-001**|Night nurse prepares shift handover.|Current patients, risks, due work and<br>source cut-off displayed.|
+|**P9-AT-002**|Receiving nurse has not accepted<br>transfer.|Sending team remains accountable<br>under configured rule.|
+|**P9-AT-003**|Patient moves before handover<br>accepted.|Movement and clinical-responsibility<br>states remain visibly discrepant and<br>escalated.|
+|**P9-AT-004**|Active infusion crosses unit transfer.|Infusion, rate, product, monitoring and<br>responsibility hand over once.|
+|**P9-AT-005**|Discharge has unassigned pending<br>pathology.|Closure blocked or high-priority<br>exception created.|
+|**P9-AT-006**|Discharge medication list is generated.|Uses completed reconciliation and<br>authorized discharge orders, not copied<br>eMAR.|
+|**P9-AT-007**|Summary includes preliminary result.|Status shown explicitly with assigned<br>final-result reviewer.|
+|**P9-AT-008**|External transfer package delivered.|Delivery recorded separately from<br>receiving clinical acceptance.|
+|**P9-AT-009**|Patient receives portal instructions.|Delivery recorded; understanding<br>remains separate.|
+|**P9-AT-010**|Material result correction arrives after<br>discharge.|Review, communication and summary-<br>amendment workflow reopens as<br>configured.|
+|**P9-AT-011**|Patient leaves before completion.|Distinct workflow records advice, risks<br>and follow-up.|
+|**P9-AT-012**|AI drafts summary.|Draft requires human review/signature|
+
+
+
+Controlled Draft | Not Approved for Production | Page 124 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+|||and cannot close encounter.<br>Current location/responsibility<br>|
+|---|---|---|
+|**P9-AT-013**|Transfer is cancelled.|preserved and prepared handover<br>retained historically.|
+|**P9-AT-014**|Discharge occurs during downtime.|Minimum safe record used and<br>electronic reconciliation task created.|
+|**P9-AT-015**|Patient returns next day.|New encounter created; prior discharge<br>remains intact.|
+
+
+
+#### **23. Mandatory Negative Tests** 
+
+- Hardcoded title grants discharge authority 
+
+- Patient movement treated as handover acceptance 
+
+- Network delivery treated as responsibility acceptance 
+
+- Discharge closes pending-result tasks 
+
+- Inpatient eMAR copied as discharge medication list 
+
+- Preliminary result represented as final 
+
+- AI auto-signs or completes discharge 
+
+- Receiver gains unrestricted chart access from package receipt 
+
+- Correction overwrites signed summary 
+
+- Readmission reopens prior encounter automatically 
+
+- Portal delivery treated as patient understanding 
+
+- Shift handover omits critical unresolved alerts 
+
+- Transfer duplicates monitoring and medication tasks 
+
+- Cancelled transfer changes patient location 
+
+- No-owner continuity task disappears 
+
+- Sensitive content leaks in transmission notification 
+
+- Downtime transition never reconciled 
+
+#### **24. Traceability** 
+
+|**Area**|**Prefix**|**Evidence**|
+|---|---|---|
+|**Governance**|CLN-P9-GOV|Transition governance review|
+|**Types**|CLN-P9-TYP|Registry tests|
+|**Handover**|CLN-P9-HND|Version/content tests|
+|**Communication**|CLN-P9-COM|Structured handover tests|
+|**Shift**|CLN-P9-SHF|Assignment tests|
+|**Internal transfer**|CLN-P9-INT|Movement/acceptance tests|
+|**Readiness**|CLN-P9-RDY|Checklist/override tests|
+|**Discharge**|CLN-P9-DSC|Closure tests|
+|**Summary**|CLN-P9-SUM|Attestation/source tests|
+|**Patient**|CLN-P9-PAT|Communication tests|
+|**External**|CLN-P9-EXT|Delivery/acceptance tests|
+|**Follow-up**|CLN-P9-FUP|Task continuity tests|
+|**Medication**|CLN-P9-MED|Reconciliation tests|
+|**Results**|CLN-P9-RES|Ownership tests|
+|**AI**|CLN-P9-AI|Human-control tests|
+|**Correction**|CLN-P9-COR|Version tests|
+|**Downtime**|CLN-P9-DWN|Recovery tests|
+
+
+
+#### **25. Registered Phase 9 Gaps** 
+
+|**Gap ID**|**Resolution Required**|**Blocking**|
+|---|---|---|
+|**CLN-P9-GAP-001**|Approve transition types, templates and<br>acceptance points.|Yes|
+|**CLN-P9-GAP-002**|Approve SBAR or alternative structured|Yes|
+
+
+
+Controlled Draft | Not Approved for Production | Page 125 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+||handover model.||
+|---|---|---|
+|**CLN-P9-GAP-003**|Approve sending/receiving responsibility<br>rules for internal transfers.|Yes|
+|**CLN-P9-GAP-004**|Approve discharge readiness checklists<br>by encounter class.|Yes|
+|**CLN-P9-GAP-005**|Approve readiness override authority<br>and escalation.|Yes|
+|**CLN-P9-GAP-006**|Approve discharge summary sections<br>and co-signature policy.|Yes|
+|**CLN-P9-GAP-007**|Approve patient-instruction<br>language/accessibility workflow.|Yes|
+|**CLN-P9-GAP-008**|Approve external transfer disclosure and<br>acceptance contracts.|Yes|
+|**CLN-P9-GAP-009**|Approve self-discharge/left-before-<br>completion process.|Yes|
+|**CLN-P9-GAP-010**|Approve post-discharge task ownership<br>and fallback.|Yes|
+|**CLN-P9-GAP-011**|Approve downtime transition/discharge<br>reconciliation.|Yes|
+|**CLN-P9-GAP-012**|Confirm FHIR/CDA discharge-summary<br>and Task profiles.|Before interoperability release|
+
+
+
+###### **25.0 Observation and Form Continuity at Transition** 
+
+**CLN-P9-OBS-001** On transfer, Clinical shall recalculate prospective observation work using the destination client-space Clinical Profile while preserving prior Observations, due-event history and rendered forms. 
+
+**CLN-P9-OBS-002** Requirements arising solely from the previous client space may end according to configured transition rules. 
+
+**CLN-P9-OBS-003** Requirements supported by an active order, protocol, care plan, medication rule or patient-specific form shall continue when still applicable. 
+
+**CLN-P9-OBS-004** Unresolved due and overdue observations shall transfer once to the eligible receiving context without duplication. 
+
+**CLN-P9-OBS-005** A Labour Care Guide shall remain historically available after transfer even when active labour-monitoring schedules have ended. 
+
+###### **25.1 Consumption Reconciliation at Transition** 
+
+**CLN-P9-CNS-001** Transfer, discharge readiness and encounter closure shall identify unresolved Consumption Sessions and assign reconciliation ownership without rewriting valid medication-administration records. 
+
+#### **26. Phase 9 Completion Gate** 
+
+- Phases 1 to 8 incorporated without contradiction. 
+
+- Handover types, content and acceptance rules approved. 
+
+- Internal transfer movement/responsibility coordination approved. 
+
+- Discharge readiness and override governance approved. 
+
+- Summary, patient instructions and external transfer package approved. 
+
+- Medication, pending-result and continuity-task ownership approved. 
+
+- Correction, cancellation, readmission and downtime rules approved. 
+
+- Permissions, interfaces, events, reports and tests approved. 
+
+- Every blocking gap assigned an owner and acceptance test. 
+
+   - **Phase 10 shall consolidate specialty, reporting, interoperability, non-functional and deployment requirements without weakening the transition controls established here.** 
+
+#### **Appendix A. Minimum Transition Record** 
+
+|**Group**|**Fields**|
+|---|---|
+
+
+
+Controlled Draft | Not Approved for Production | Page 126 
+
+||KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1<br>|
+|---|---|
+|**Identity**|Public ID, patient, encounter, transition type/version|
+|**Context**|Sending/receiving facility, client space, service and destination|
+|**Actors**|Sender, receiver, responsible clinicians and recorder|
+|**Time**|Prepared, sent, delivered, accepted and effective|
+|**Clinical state**|Condition, trajectory, risks, treatment and devices|
+|**Outstanding work**|Orders, results, observations, tasks and consultations|
+|**Plan**|Priorities, goals, review times and contingency|
+|**Documents**|Handover, discharge summary and patient instructions|
+|**Acceptance**|Receiving decision, questions and responsibility start|
+|**Provenance**|Source cut-off, references, sensitivity, correlation and audit|
+
+
+
+#### **Appendix B. Sources Reviewed** 
+
+- KashTre Clinical Module SRD v6.0 and addendum. 
+
+- KashTre Clinical Module SRD v6.1 Phases 1 to 8. 
+
+- WHO communication during patient handovers and SBAR materials. 
+
+- HL7 FHIR Task and workflow materials. 
+
+- HL7 FHIR and C-CDA discharge-summary materials. 
+
+### **PHASE 10** 
+
+###### **SPECIALTY EXTENSIONS, INTEROPERABILITY, REPORTING AND RELEASE ASSURANCE** 
+
+**Phase 10 consolidates specialty-extension governance, interoperability, reporting, privacy, performance, resilience, deployment, migration and final release assurance without redefining the clinical safety rules established in Phases 1 to 9.** 
+
+Controlled Draft | Not Approved for Production | Page 127 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **Document Control and Phase Authority** 
+
+|**Field**|**Rule**|
+|---|---|
+|**Purpose**|Complete the Clinical SRD with cross-cutting specialty,<br>integration, reporting and production-assurance requirements.|
+|**Dependencies**|Every requirement in Phases 1 to 9 remains authoritative<br>unless formally resolved through controlled change.|
+|**Main Module contract**|Clinical consumes shared identity, titles, permissions, client<br>spaces, terminology, unit conversion, audit, events and<br>platform services.|
+|**Extension rule**|Specialties extend common Clinical capabilities through<br>governed configuration and contracts, not parallel clinical<br>cores.|
+|**Implementation**|Functional specification only. Laravel migrations, policies,<br>services, APIs, queues and deployment topology belong in the<br>EDD.|
+|**Release**|Controlled draft, not approved for production.|
+
+
+
+###### **Phase 10 outcomes** 
+
+- Governed specialty extension model. 
+
+- Versioned APIs, events and FHIR conformance artifacts. 
+
+- Scope-safe clinical reporting and analytics. 
+
+- Explicit availability, capacity, latency and recovery requirements. 
+
+- Secure deployment, migration and operational controls. 
+
+- Final traceability, validation and production-readiness gates. 
+
+#### **1. Consolidated Architectural Principles** 
+
+**CLN-P10-ARC-001** Clinical shall remain a modular monolith or other approved Laravel-native deployment with explicit domain boundaries and no duplicated shared-platform masters. 
+
+- **CLN-P10-ARC-002** Specialty capabilities shall reuse the common patient, encounter, documentation, diagnosis, order, medication, observation, result and transition models. 
+
+- **CLN-P10-ARC-003** Every write operation shall enforce tenant, patient, encounter, client-space, care-relationship, atomic permission, privilege and record-state checks as applicable. 
+
+**CLN-P10-ARC-004** Internal trust based solely on network location, service name or module ownership shall be prohibited. 
+
+**CLN-P10-ARC-005** All external and cross-module writes shall be idempotent, version-aware and auditable. 
+
+**CLN-P10-ARC-006** The system shall preserve authoritative ownership and provenance instead of copying external data into competing mutable records. 
+
+**CLN-P10-ARC-007** Configuration shall be versioned, effective-dated, approved, testable and reversible. 
+
+**Consolidation rule: Phase 10 may strengthen cross-cutting controls but shall not create alternate authorization, signature, correction, unit, order, medication, result or transition semantics.** 
+
+#### **2. Specialty Extension Framework** 
+
+|**Extension Area**|**Permitted Capability**|**Prohibited Pattern**|
+|---|---|---|
+|**Documentation**|Specialty note types/templates and CDE<br>groups|Separate signature engine|
+|**Assessment**|Specialty scores, examinations and<br>pathways|Unversioned calculation logic|
+|**Orders**|Specialty catalogues and order sets|Bypassing Phase 5 authorization|
+|**Medication**|Specialty safeguards and monitoring|Independent eMAR/order source|
+|**Observations**|Specialty CDEs, devices and ranges|Competing unit master|
+|**Results**|Specialty display and review routing|Editing source reports|
+
+
+
+Controlled Draft | Not Approved for Production | Page 128 
+
+|||KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1|
+|---|---|---|
+|**Transitions**|Specialty readiness and summaries|Closing unresolved obligations|
+|**UI**|Workspace composition and<br>dashboards|Hardcoded title access|
+
+
+
+**CLN-P10-SPC-001** Each specialty extension shall register a stable key, owner, scope, dependencies, permissions, configuration, interoperability mappings and release version. 
+
+**CLN-P10-SPC-002** Activation shall require clinical-governance, information-security, interoperability and operational approval. 
+
+**CLN-P10-SPC-003** Specialty extensions shall declare which common states and workflows they consume and shall not redefine canonical states locally. 
+
+**CLN-P10-SPC-004** Disabling an extension shall preserve historical content and shall not break referenced records. 
+
+**CLN-P10-SPC-005** Extension data shall remain discoverable through the common patient chart subject to authorization and sensitivity rules. 
+
+###### **2.1 Candidate specialty packs** 
+
+- Emergency and acute care 
+
+- Inpatient medicine 
+
+- Critical care 
+
+- Pediatrics and newborn 
+
+- Maternal health 
+
+- Mental health 
+
+- Oncology 
+
+- Renal and dialysis 
+
+- Cardiology 
+
+- Neurology 
+
+- Rehabilitation and allied health 
+
+- Community and home care 
+
+#### **3. Interoperability Governance** 
+
+**CLN-P10-INT-001** Every interface shall have an owner, purpose, data contract, authoritative source, consumer, version, security classification, retry policy, SLA and support route. 
+
+- **CLN-P10-INT-002** FHIR, HL7 v2, DICOM and document exchange shall use approved profiles and implementation guides appropriate to the deployment jurisdiction and partner capability. 
+
+**CLN-P10-INT-003** The system shall publish machine-readable capability and conformance artifacts for supported interfaces. 
+
+**CLN-P10-INT-004** Unknown codes, unsupported versions, patient mismatches and incompatible units shall produce structured errors or quarantine, not silent coercion. 
+
+**CLN-P10-INT-005** Interface changes shall pass contract, backward-compatibility, security and clinical-safety tests before release. 
+
+**CLN-P10-INT-006** External identifiers shall retain assigning authority and shall not replace internal public IDs. 
+
+**CLN-P10-INT-007** Technical acknowledgement, application acceptance, clinical acceptance and workflow completion shall remain distinct. 
+
+#### **4. FHIR Conformance Baseline** 
+
+|**Clinical Domain**|**Primary Mapping Candidates**|
+|---|---|
+|**Patient context**|Patient, Encounter, EpisodeOfCare, Location, Practitioner,<br>CareTeam|
+|**Documentation**|Composition, Bundle document, DocumentReference|
+|**Problems/plans**|Condition, Goal, CarePlan|
+|**Orders**|ServiceRequest, MedicationRequest, Task|
+|**Medication**|Medication, MedicationDispense, MedicationAdministration,<br>MedicationStatement|
+|**Observations/results**|Observation, DiagnosticReport, ImagingStudy, Specimen|
+|**Provenance/security**|Provenance, AuditEvent, Consent, security labels|
+|**Definitions**|StructureDefinition, ValueSet, CodeSystem, ConceptMap,|
+
+
+
+Controlled Draft | Not Approved for Production | Page 129 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+CapabilityStatement 
+
+**CLN-P10-FHR-001** Profiles shall define cardinality, terminology bindings, Must Support elements, extensions and invariants for KashTre use cases. 
+
+**CLN-P10-FHR-002** The deployed system shall expose an implementation CapabilityStatement matching actual configured behavior. 
+
+**CLN-P10-FHR-003** Conformance resources shall be versioned and included in automated validation. 
+
+**CLN-P10-FHR-004** Search, write, messaging, subscription and document capabilities shall be enabled only when explicitly supported and secured. 
+
+**CLN-P10-FHR-005** FHIR resources shall not bypass Clinical domain services or Laravel policies when modifying clinical state. 
+
+#### **5. API and Event Standards** 
+
+- **CLN-P10-API-001** APIs shall use versioned resource contracts, explicit content types, schema validation, bounded pagination and structured errors. 
+
+**CLN-P10-API-002** Object-level and function-level authorization shall be evaluated on every request. 
+
+**CLN-P10-API-003** Mass assignment shall be prevented through explicit validated request objects and allowed fields. 
+
+**CLN-P10-API-004** Clinical identifiers shall be opaque; sequential database IDs shall not be exposed as authorization boundaries. 
+
+**CLN-P10-API-005** Rate limits and resource-consumption controls shall protect clinical availability without blocking configured emergency workflows. 
+
+**CLN-P10-EVT-001** Events shall include event ID, type, schema version, tenant, aggregate/public ID, aggregate version, occurred-at, producer, correlation and causation IDs. 
+
+**CLN-P10-EVT-002** Consumers shall be idempotent and shall tolerate retries and out-of-order delivery according to contract. 
+
+**CLN-P10-EVT-003** Sensitive narrative shall not be placed in event headers or unrestricted telemetry. 
+
+#### **6. Reporting and Analytics** 
+
+|**Report Class**|**Examples**|**Control**|
+|---|---|---|
+|**Operational**|Queues, overdue work, exceptions|Current scoped data|
+|**Clinical oversight**|Critical responses, medication<br>omissions, deterioration|Governed clinical definitions|
+|**Quality/safety**|Corrections, overrides, adverse events|De-identified or limited dataset where<br>appropriate|
+|**Regulatory**|Required statutory submissions|Approved jurisdictional mapping|
+|**Management**|Workload, turnaround and capacity|No unnecessary patient detail|
+|**Research/export**|Approved datasets|Purpose, consent and disclosure<br>controls|
+
+
+
+**CLN-P10-RPT-001** Every report shall declare owner, purpose, inclusion/exclusion criteria, data sources, refresh frequency, terminology/unit versions and authorization scope. 
+
+**CLN-P10-RPT-002** Counts, totals and denominators shall be reproducible from versioned definitions. 
+
+**CLN-P10-RPT-003** Patient-level drill-through shall require separate permission and current contextual authorization. 
+
+**CLN-P10-RPT-004** Entered-in-error data shall be excluded from ordinary clinical metrics unless explicitly included for safety analysis. 
+
+**CLN-P10-RPT-005** Corrections and late-arriving data shall trigger controlled recalculation with reporting-period provenance. 
+
+**CLN-P10-RPT-006** Exports shall be logged, encrypted, time-limited where applicable and subject to row/field minimization. 
+
+#### **7. Privacy, Confidentiality and Consent** 
+
+**CLN-P10-PRV-001** Clinical shall apply data minimization, purpose limitation, sensitivity labels, disclosure restrictions and retention policies according to jurisdiction and organizational policy. 
+
+- **CLN-P10-PRV-002** Restricted conditions, notes, results and specialty records shall not leak through counts, search facets, caches, notifications, logs or reports. 
+
+Controlled Draft | Not Approved for Production | Page 130 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 **CLN-P10-PRV-003** Break-glass access shall require reason, enhanced audit, time-limited scope and review. 
+
+**CLN-P10-PRV-004** Consent shall be represented separately from authorization and shall not grant permissions the user otherwise lacks. 
+
+**CLN-P10-PRV-005** Disclosure packages and redacted derivatives shall not modify the source legal record. 
+
+**CLN-P10-PRV-006** Non-production environments shall not use identifiable production clinical data unless formally approved and protected. 
+
+#### **8. Security and Zero-Trust Controls** 
+
+**CLN-P10-SEC-001** Authentication and authorization shall be evaluated for user and service identities before protected resource access. 
+
+**CLN-P10-SEC-002** No implicit trust shall be granted solely because traffic originates inside the network or from another KashTre module. 
+
+**CLN-P10-SEC-003** Service-to-service calls shall use managed identities or approved credentials, encrypted transport and leastprivilege scopes. 
+
+- **CLN-P10-SEC-004** Secrets shall be stored in an approved secret-management service and shall not be embedded in code, images or configuration repositories. 
+
+- **CLN-P10-SEC-005** Session, token, device and privileged-operation policies shall support revocation and step-up authentication where configured. 
+
+- **CLN-P10-SEC-006** Security testing shall cover broken object authorization, authentication, property authorization, resource consumption, function authorization and unsafe third-party API consumption. 
+
+- **CLN-P10-SEC-007** Security incidents affecting clinical integrity or availability shall trigger clinical-safety assessment and continuity procedures. 
+
+#### **9. Audit, Logging and Observability** 
+
+|**Signal**|**Required Content**|
+|---|---|
+|**Clinical audit**|Who, what, patient, action, reason, outcome, before/after<br>reference|
+|**Application log**|Service, severity, correlation, safe diagnostic detail|
+|**Security log**|Authentication, authorization, privileged access and anomaly|
+|**Interface log**|Message/event IDs, endpoint, acknowledgement, retry and<br>error|
+|**Metric**|Latency, error, throughput, queue depth, saturation and<br>freshness|
+|**Trace**|Cross-service correlation without unrestricted clinical payload|
+
+
+
+**CLN-P10-OBS-001** Audit records shall be tamper-evident, time-synchronized, access-controlled and retained under approved policy. 
+
+**CLN-P10-OBS-002** Logs shall not contain passwords, tokens, secrets or unnecessary clinical narrative. 
+
+**CLN-P10-OBS-003** Monitoring shall detect failures, latency degradation, queue backlog, stale data, synchronization errors and security anomalies. 
+
+**CLN-P10-OBS-004** Alert ownership, severity, response target and escalation shall be defined for every production monitor. 
+
+**CLN-P10-OBS-005** Operational dashboards shall not expose patient-identifiable information unless strictly required and authorized. 
+
+#### **10. Performance and Capacity** 
+
+|**Area**|**Requirement Method**|
+|---|---|
+|**Interactive response**|Named workflow percentile targets validated by load test|
+|**Write commitment**|Clinical transaction and outbox commit targets|
+|**Search/chart**|Scoped query targets for representative chart sizes|
+|**Queues**|Backlog age and drain-rate targets|
+
+
+
+Controlled Draft | Not Approved for Production | Page 131 
+
+||KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1|
+|---|---|
+|**Integration**|Message throughput, burst and retry capacity|
+|**Concurrency**|Simultaneous users, devices and patient records|
+|**Data growth**|Retention, index and archive projections|
+
+
+
+**CLN-P10-PER-001** Numeric service levels shall be approved per deployment profile and recorded in the EDD and operational SLO catalogue. 
+
+**CLN-P10-PER-002** Performance tests shall use clinically representative data volumes, permissions, chart complexity and concurrent workflows. 
+
+**CLN-P10-PER-003** Safety checks and authorization shall not be disabled to meet performance targets. 
+
+- **CLN-P10-PER-004** Long-running reports, exports and integrations shall use bounded asynchronous processing and shall not exhaust interactive capacity. 
+
+- **CLN-P10-PER-005** Capacity planning shall cover peak shifts, medication rounds, device bursts, result batches and downtime recovery. 
+
+#### **11. Availability, Resilience and Recovery** 
+
+**CLN-P10-RES-001** Availability, recovery time and recovery point objectives shall be defined for each deployment tier and critical capability. 
+
+**CLN-P10-RES-002** Single points of failure shall be identified and mitigated according to approved risk and architecture. 
+
+**CLN-P10-RES-003** Durable queues/outbox patterns shall protect committed clinical actions from transient integration failure. 
+
+- **CLN-P10-RES-004** Backup restoration shall be tested and shall validate database, attachments, configuration, audit and encryption keys as applicable. 
+
+- **CLN-P10-RES-005** Disaster recovery exercises shall verify patient identity, clinical integrity, ordering, eMAR, results, audit and reconciliation. 
+
+- **CLN-P10-RES-006** Degraded-mode and downtime workflows shall be documented, trained, testable and reconciled after restoration. 
+
+**CLN-P10-RES-007** Recovery shall prioritize safety and data integrity over rapid but unverified restoration. 
+
+#### **12. Data Integrity, Retention and Archiving** 
+
+- **CLN-P10-DAT-001** Clinical records shall use database constraints, transactions, optimistic concurrency and immutable history appropriate to their lifecycle. 
+
+**CLN-P10-DAT-002** Soft deletion shall not be used as a substitute for clinical cancellation, correction or entered-in-error states. 
+
+- **CLN-P10-DAT-003** Retention and legal-hold policies shall be configurable by record class and jurisdiction. 
+
+- **CLN-P10-DAT-004** Archive and restore shall preserve readability, provenance, terminology/unit versions, signatures and linked attachments. 
+
+- **CLN-P10-DAT-005** Hashing or signatures shall be used where approved to detect alteration of critical documents, payloads or exports. 
+
+- **CLN-P10-DAT-006** Purge operations shall require formal authority, evidence and verification and shall not break retained referential integrity. 
+
+#### **13. Configuration and Change Governance** 
+
+- **CLN-P10-CFG-001** Configuration changes shall progress through draft, review, approval, scheduled activation, monitoring and retirement states. 
+
+- **CLN-P10-CFG-002** High-risk configuration includes permissions, medication safeguards, ranges, scores, order sets, templates, routing, interfaces and unit policies. 
+
+- **CLN-P10-CFG-003** High-risk changes shall require segregation of duties, impact analysis, test evidence and rollback plan. 
+
+- **CLN-P10-CFG-004** Production configuration shall be exportable, diffable and reproducible without exposing secrets. 
+
+**CLN-P10-CFG-005** Emergency changes shall be time-limited where possible and undergo retrospective review. 
+
+- **CLN-P10-CFG-006** A configuration rollback shall not rewrite historical records created under the retired version. 
+
+Controlled Draft | Not Approved for Production | Page 132 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **14. Deployment and Release Management** 
+
+|**Stage**|**Minimum Gate**|
+|---|---|
+|**Build**|Reproducible artifact, dependency lock and provenance|
+|**Static checks**|Code quality, secret, dependency and policy scans|
+|**Automated tests**|Unit, integration, contract, authorization and negative tests|
+|**Clinical validation**|Approved scenarios and clinical-safety review|
+|**Migration rehearsal**|Production-scale backup, migration and rollback test|
+|**Pre-production**|Representative topology, integrations and monitoring|
+|**Approval**|Named business, clinical, security, data and operations sign-<br>off|
+|**Deployment**|Controlled rollout with observability and abort criteria|
+|**Post-release**|Reconciliation, smoke tests and heightened monitoring|
+
+
+
+- **CLN-P10-REL-001** Production deployment shall use approved immutable artifacts and environment-specific managed configuration. 
+
+- **CLN-P10-REL-002** Database migrations shall be backward-compatible where required, restartable, monitored and reversible or compensatable. 
+
+- **CLN-P10-REL-003** Feature flags shall be permission-controlled, auditable and prohibited from bypassing safety or authorization controls. 
+
+- **CLN-P10-REL-004** Release rollback shall include data, queue, interface and configuration reconciliation, not application binaries alone. 
+
+- **CLN-P10-REL-005** Known defects affecting patient safety, identity, authorization or clinical integrity shall block production release unless an approved risk decision and mitigation exist. 
+
+#### **15. Migration and Legacy Data** 
+
+- **CLN-P10-MIG-001** Migration shall preserve source system, patient identifiers/authorities, encounter, author, dates, statuses, units, terminology, versions and attachments where available. 
+
+- **CLN-P10-MIG-002** Data quality rules shall classify accepted, transformed, quarantined and rejected records with reasons. 
+
+- **CLN-P10-MIG-003** Migrated records shall be distinguishable from natively created records without appearing clinically inferior when validated. 
+
+- **CLN-P10-MIG-004** Unknown or ambiguous units, patients, authors or statuses shall not be silently guessed. 
+
+- **CLN-P10-MIG-005** Reconciliation shall compare source counts, identifiers, status distributions, hashes or other approved controls. 
+
+**CLN-P10-MIG-006** Migration cutover shall include freeze, delta, rollback, downtime and clinical-access plans. 
+
+#### **16. Testing and Validation Strategy** 
+
+- Unit and domain-state tests 
+
+- Laravel policy and authorization matrix tests 
+
+- Patient/encounter/client-space isolation tests 
+
+- API schema and contract tests 
+
+- FHIR/profile and terminology validation 
+
+- Event idempotency and ordering tests 
+
+- Unit-conversion property and gold-case tests 
+
+- Clinical algorithm gold cases 
+
+- Concurrency and stale-version tests 
+
+- Downtime and recovery exercises 
+
+- Load, endurance and failover tests 
+
+- Accessibility and usability tests 
+
+- Security testing and threat scenarios 
+
+- Migration reconciliation tests 
+
+- Clinical user acceptance and simulation 
+
+- **CLN-P10-TST-001** Every SHALL requirement shall map to one or more test cases, inspections or operational controls. Controlled Draft | Not Approved for Production | Page 133 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P10-TST-002** Negative tests from Phases 1 to 9 shall be mandatory regression tests. 
+
+**CLN-P10-TST-003** Test data shall include edge cases, incomplete data, conflicting states, corrected records and cross-tenant attack attempts. 
+
+**CLN-P10-TST-004** Automated tests shall not replace clinical workflow validation by qualified reviewers. 
+
+**CLN-P10-TST-005** Release evidence shall be retained and linked to the exact artifact and configuration versions. 
+
+#### **17. Accessibility, Localization and Usability** 
+
+**CLN-P10-UX-001** Clinical interfaces shall support keyboard operation, visible focus, meaningful labels, screen-reader semantics and non-colour status cues. 
+
+- **CLN-P10-UX-002** Date, time, number, language and unit presentation shall follow approved locale and clinical-context policies without changing stored meaning. 
+
+**CLN-P10-UX-003** Critical actions shall use clear confirmation and recovery patterns while avoiding alert fatigue. 
+
+**CLN-P10-UX-004** Patient-facing content shall support approved translations, plain language and accessibility needs. 
+
+**CLN-P10-UX-005** Usability evaluation shall include representative professional titles, care settings, devices and high-risk workflows. 
+
+#### **18. Operations, Support and Incident Management** 
+
+**CLN-P10-OPS-001** Runbooks shall cover interface failures, queue backlog, identity mismatch, unit-service outage, critical alerts, eMAR downtime, result delays and data correction. 
+
+**CLN-P10-OPS-002** Support access to production clinical data shall be least privilege, approved, time-limited and audited. 
+
+**CLN-P10-OPS-003** Incidents shall record impact, affected patients/workflows, containment, recovery, reconciliation and corrective actions. 
+
+**CLN-P10-OPS-004** Clinical-safety incidents and near misses shall feed governed improvement without altering source records. 
+
+**CLN-P10-OPS-005** Operational ownership and escalation contacts shall be maintained for every critical service and interface. 
+
+- **CLN-P10-OPS-006** Maintenance windows shall account for clinical operations and provide approved degraded-mode communication. 
+
+#### **19. Final Permission Additions** 
+
+|**Permission**|**Purpose**|
+|---|---|
+|**clinical.specialty_extension.manage**|Manage specialty extension definitions|
+|**clinical.interoperability_config.manage**|Manage interface contracts/profiles|
+|**clinical.report_definition.manage**|Manage governed report definitions|
+|**clinical.report.run_sensitive**|Run sensitive patient-level reports|
+|**clinical.export.create**|Create authorized export|
+|**clinical.configuration.approve**|Approve high-risk configuration|
+|**clinical.release.validate**|Record release validation evidence|
+|**clinical.migration.reconcile**|Resolve migration exceptions|
+|**clinical.support.break_glass**|Time-limited approved support access|
+|**clinical.operations.audit**|View operational and interface audit|
+
+
+
+**CLN-P10-PRM-001** All permissions shall be registered in Main and assigned through configurable title bundles and explicit privileges; Laravel policies shall enforce context without hardcoded title strings. 
+
+#### **20. Consolidated Operational Reports** 
+
+- Patient-safety alerts and response times 
+
+- Unsigned documentation and co-signatures 
+
+- Problem/diagnosis review exceptions 
+
+- Order acknowledgements and fulfilment delays 
+
+- Medication omissions, overrides and discrepancies 
+
+- Observation/score/monitoring exceptions 
+
+Controlled Draft | Not Approved for Production | Page 134 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Unreviewed and corrected results 
+
+- Handover and discharge exceptions 
+
+- Interface errors, quarantines and retries 
+
+- Access, break-glass and export activity 
+
+- Performance, queue age and data freshness 
+
+- Deployment, migration and reconciliation status 
+
+**CLN-P10-ORP-001** The report catalogue shall identify the authoritative phase requirement and owner for each metric. 
+
+**CLN-P10-ORP-002** Dashboards shall distinguish live operational state from retrospectively recalculated analytics. 
+
+#### **21. Consolidated Acceptance Scenarios** 
+
+|**ID**|**Scenario**|**Expected Result**|
+|---|---|---|
+|**P10-AT-001**|Specialty pack is activated.|Common states, permissions and<br>historical compatibility remain intact.|
+|**P10-AT-002**|FHIR client queries capabilities.|Published CapabilityStatement matches<br>enabled version and interactions.|
+|**P10-AT-003**|API requests another tenant’s record ID.|Object authorization blocks access<br>without existence leakage.|
+|**P10-AT-004**|Unknown source unit arrives.|Record quarantined; value is not<br>relabelled.|
+|**P10-AT-005**|Event consumer receives duplicate/out-<br>of-order events.|Idempotency/version controls preserve<br>correct state.|
+|**P10-AT-006**|Correction changes prior-period metric.|Report recalculates with definition and<br>refresh provenance.|
+|**P10-AT-007**|Internal service calls from trusted<br>network without authority.|Request denied.|
+|**P10-AT-008**|Production restore is tested.|Clinical data, attachments, audit,<br>queues and keys reconcile.|
+|**P10-AT-009**|Migration contains ambiguous patient<br>match.|Record quarantined for authorized<br>reconciliation.|
+|**P10-AT-010**|Feature flag attempts to bypass double<br>check.|Configuration rejected or safety control<br>remains enforced.|
+|**P10-AT-011**|Large export starts during peak use.|Bounded asynchronous processing<br>protects interactive workflows.|
+|**P10-AT-012**|Deployment migration partially fails.|Runbook stops/rolls back or<br>compensates with reconciliation<br>evidence.|
+|**P10-AT-013**|Support engineer needs urgent access.|Time-limited approved access with full<br>audit.|
+|**P10-AT-014**|Network segment is internal.|No implicit trust; user/service and<br>resource authorization still required.|
+|**P10-AT-015**|Phase regression suite runs.|All mandatory negative and clinical gold<br>cases pass before release.|
+
+
+
+#### **22. Mandatory Negative Tests** 
+
+- Specialty extension bypasses common signature or correction 
+
+- FHIR endpoint writes directly around domain policy 
+
+- Cross-tenant object ID enumeration 
+
+- Mass assignment changes protected status 
+
+- Internal network call bypasses authentication 
+
+- Event retry duplicates clinical action 
+
+- Unsupported terminology silently accepted 
+
+- Report denominator changes without version 
+
+- Sensitive count leaks from dashboard 
+
+- Log contains tokens or unrestricted clinical narrative 
+
+- Backup restores database but not attachments/audit 
+
+Controlled Draft | Not Approved for Production | Page 135 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+- Feature flag disables patient identity check 
+
+- Migration guesses patient, unit or author 
+
+- Rollback leaves incompatible events/queues 
+
+- Non-production uses unapproved identifiable data 
+
+- Known clinical-safety defect released without approved decision 
+
+- • Accessibility status conveyed only by colour 
+
+#### **23. Consolidated Traceability** 
+
+|**Phase**|**Primary Scope**|**Release Evidence**|
+|---|---|---|
+|**1**|Authorization and workforce context|Policy and isolation tests|
+|**2**|Patient, encounter and workspace|Identity/state tests|
+|**3**|Documentation/legal record|Signature/version tests|
+|**4**|Problems, diagnoses and plans|Clinical-status tests|
+|**5**|Orders and requests|Authorization/closed-loop tests|
+|**6**|Medication and eMAR|Administration/safeguard tests|
+|**7**|Observations, units and scores|Conversion/algorithm tests|
+|**8**|Results and follow-up|Matching/escalation tests|
+|**9**|Transitions and discharge|Acceptance/continuity tests|
+|**10**|Cross-cutting release assurance|Conformance, NFR and deployment<br>tests|
+
+
+
+- **CLN-P10-TRC-001** The final requirements traceability matrix shall map requirement, design component, test, owner, release and evidence location. 
+
+**CLN-P10-TRC-002** Unresolved contradictions shall block baseline approval. 
+
+###### **23.1 Clinical-to-Inventory Consumption Contract** 
+
+**CLN-P10-CNS-001** The Clinical-to-Inventory Consumption Session contract shall be included in interface, idempotency, outage, reconciliation and traceability testing. 
+
+**CLN-P10-CNS-002** Release evidence shall demonstrate Approved Pool usage, non-approved floor-stock usage, incidental-supply capture, waste, breakage, correction and retry handling. 
+
+**CLN-P10-CNS-003** The companion EDD shall define the versioned payload, response states, outbox processing, retry policy, reconciliation queues and observability for Consumption Sessions. 
+
+###### **23.2 Form Engine and Observation-Work Release Contract** 
+
+**CLN-P10-FRM-001** The companion EDD shall define Form Definition versioning, client-space Clinical Profiles, Effective Observation Plan derivation, task consolidation, observation matching, rendering, reconciliation and historical reproduction. 
+
+**CLN-P10-FRM-002** Release evidence shall demonstrate that one Observation can satisfy and populate multiple applicable forms without duplicate patient facts or duplicate bedside work. 
+
+**CLN-P10-FRM-003** Performance testing shall include clinically representative patients with multiple active forms, dense observation histories, concurrent capture and repeated rendering. 
+
+**CLN-P10-FRM-004** Interoperability design shall map governed form definitions and responses appropriately while preserving authoritative Observation resources and provenance. 
+
+**CLN-P10-FRM-005** Failure of form rendering, prepopulation or refresh shall be observable and recoverable without loss or rollback of committed Observations. 
+
+**CLN-P10-FRM-006** The release gate shall include client-space default activation, Add Form, transfer recalculation, deduplication, correction propagation, print reproduction and authorization tests. 
+
+#### **24. Registered Phase 10 Gaps** 
+
+|**Gap ID**|**Resolution Required**|**Blocking**|
+|---|---|---|
+|**CLN-P10-GAP-001**|Approve initial specialty-extension<br>catalogue and owners.|Yes|
+|**CLN-P10-GAP-002**|Approve interoperability profiles,|Yes|
+
+
+
+Controlled Draft | Not Approved for Production | Page 136 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+||versions and partner contracts.||
+|---|---|---|
+||Approve API/event standards and||
+|**CLN-P10-GAP-003**|<br>schema registry.|Yes|
+|**CLN-P10-GAP-004**|Approve report catalogue, definitions<br>and disclosure controls.|Yes|
+|**CLN-P10-GAP-005**|Approve deployment-tier performance<br>and capacity targets.|Yes|
+|**CLN-P10-GAP-006**|Approve availability, RTO, RPO and<br>disaster-recovery objectives.|Yes|
+|**CLN-P10-GAP-007**|Approve retention, archive, legal-hold<br>and purge policies.|Yes|
+|**CLN-P10-GAP-008**|Approve security architecture, privileged<br>access and secret management.|Yes|
+|**CLN-P10-GAP-009**|Approve observability, alert ownership<br>and operational SLOs.|Yes|
+|**CLN-P10-GAP-010**|Approve release, rollback and<br>emergency-change governance.|Yes|
+|**CLN-P10-GAP-011**|Approve migration scope, source<br>systems and reconciliation controls.|Before migration|
+||Complete full SRD-to-EDD-to-test||
+|**CLN-P10-GAP-012**|traceability and resolve all prior phase<br>gaps.|Yes|
+
+
+
+#### **25. Final SRD Baseline Gate** 
+
+- All ten phase drafts reviewed and reconciled. 
+
+- No duplicate or conflicting canonical state models. 
+
+- Main Module integration contracts confirmed. 
+
+- Specialty extension framework approved. 
+
+- FHIR, API, event and document conformance approved. 
+
+- Security, privacy, audit and reporting controls approved. 
+
+- Performance, availability, resilience and recovery targets approved. 
+
+- Deployment, migration, operations and rollback processes approved. 
+
+- All blocking gaps from Phases 1 to 10 closed or formally dispositioned. 
+
+- Traceability matrix and clinical-safety case accepted. 
+
+- Production release remains prohibited until EDD, implementation and validation evidence satisfy this gate. 
+
+   - **Phase 10 closes the functional drafting sequence. The next controlled activity is consolidation into the Clinical SRD v6.1 baseline and creation or completion of the Laravel-native Clinical EDD against the approved requirements traceability matrix.** 
+
+#### **26. Specialty Extension Registration Contract** 
+
+|**Contract Area**|**Mandatory Detail**|
+|---|---|
+|**Identity**|Stable extension key, semantic version, owner, clinical<br>sponsor and support team|
+|**Scope**|Specialty use cases, patient populations, encounter classes<br>and client spaces|
+|**Dependencies**|Required common capabilities, catalogues, terminology,<br>devices and external services|
+|**Data**|CDEs, templates, value sets, ranges, scores and retention<br>classification|
+|**Authority**|Atomic permissions, required privileges, co-signature and<br>override rules|
+|**Workflow**|Entry points, states, transitions, tasks, alerts and closure<br>evidence|
+|**Integration**|Inbound/outbound APIs, events, documents and authoritative|
+
+
+
+Controlled Draft | Not Approved for Production | Page 137 
+
+||KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1|
+|---|---|
+||ownership|
+|**Safety**|Hazards, mitigations, mandatory negative tests and downtime<br>behavior|
+|**Operations**|SLOs, monitors, runbooks, release strategy and rollback|
+|**Governance**|Approval records, effective dates, change log and retirement<br>plan|
+
+
+
+- **CLN-P10-SPC-010** An extension package shall be rejected when it cannot declare authoritative ownership, required permissions, 
+
+state transitions or historical-retention behavior. 
+
+**CLN-P10-SPC-011** Specialty configuration shall use public IDs for shared concepts and shall not bind to environment-specific database identifiers. 
+
+**CLN-P10-SPC-012** An extension shall provide deterministic seed/migration behavior and shall be safe to install repeatedly without duplicate definitions. 
+
+- **CLN-P10-SPC-013** Extension upgrades shall declare compatible source versions, transformed configuration, data migrations, validation checks and rollback limitations. 
+
+**CLN-P10-SPC-014** A specialty pack shall include a minimum validation bundle covering permissions, patient isolation, lifecycle, correction, reporting and downtime. 
+
+- **CLN-P10-SPC-015** Retirement shall block new use prospectively while preserving historical display, source resolution, audit and export behavior. 
+
+#### **27. Detailed Security Verification Baseline** 
+
+|**Control Domain**|**Required Verification Evidence**|
+|---|---|
+|**Authentication**|Identity-provider configuration, MFA/step-up rules, session<br>expiry, revocation and service identity tests|
+|**Authorization**|Object, property, function, tenant, patient, encounter, client-<br>space and privilege matrix tests|
+|**Input handling**|Schema validation, encoding, sanitization, file validation,<br>injection and fuzz tests|
+|**Tokens/sessions**|Audience, issuer, expiry, replay, rotation, logout and<br>compromised-token handling|
+|**Cryptography**|Approved algorithms, key ownership, rotation, backup and<br>certificate-expiry monitoring|
+|**Data protection**|Encryption, minimization, masking, cache controls, export<br>restrictions and secure deletion|
+|**API security**|Rate limits, pagination limits, mass-assignment prevention<br>and unsafe-consumer tests|
+|**Logging**|Security events, safe error messages, alerting and absence of<br>secrets/clinical payload leakage|
+|**Dependencies**|SBOM, provenance, vulnerability scanning, licensing and<br>remediation evidence|
+|**Operations**|Privileged access, break-glass, incident response and forensic<br>preservation|
+
+
+
+**CLN-P10-SEC-010** The EDD shall select and record an approved application-security verification target and map each applicable control to implementation and test evidence. 
+
+**CLN-P10-SEC-011** Security acceptance shall include authenticated and unauthenticated attack paths, horizontal and vertical privilege escalation, stale assignments and cross-tenant identifiers. 
+
+**CLN-P10-SEC-012** Uploaded documents and attachments shall be validated for type, size, malicious content, active content and authorized retrieval. 
+
+**CLN-P10-SEC-013** Error responses shall not disclose patient existence, internal identifiers, stack traces, SQL, secrets or authorization policy detail useful for attack. 
+
+**CLN-P10-SEC-014** Automated dependency findings shall have severity, exploitability assessment, owner, due date, disposition and release impact. 
+
+**CLN-P10-SEC-015** Software build provenance and component inventory shall be retained for every production artifact. 
+
+Controlled Draft | Not Approved for Production | Page 138 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+**CLN-P10-SEC-016** Security controls inherited from Main or infrastructure shall have named owners and evidence, rather than being assumed. 
+
+#### **28. Service-Level Objective Catalogue** 
+
+|**SLO Field**|**Required Definition**|
+|---|---|
+|**Service/capability**|Exact workflow, API, queue or integration covered|
+|**User population**|Care setting, facility tier and expected concurrency|
+|**Indicator**|Latency, availability, freshness, durability, error rate or<br>recovery measure|
+|**Target**|Approved numeric threshold and percentile/window|
+|**Exclusions**|Declared maintenance or dependency exclusions with<br>governance|
+|**Measurement**|Telemetry source, calculation, sampling and retention|
+|**Alerting**|Warning/critical thresholds, evaluation window and owner|
+|**Response**|Runbook, escalation, communication and clinical contingency|
+|**Review**|Reporting cadence and target-change governance|
+
+
+
+- **CLN-P10-SLO-001** SLOs shall be defined separately for patient lookup, chart open, note save/sign, order commit, eMAR commit, observation commit, result posting and transition completion. 
+
+- **CLN-P10-SLO-002** Integration SLOs shall distinguish producer delay, transport delay, Clinical processing delay, quarantine time and consumer acknowledgement. 
+
+- **CLN-P10-SLO-003** Data-freshness SLOs shall be defined for assignments, medication orders, device observations, diagnostic results and critical alerts. 
+
+- **CLN-P10-SLO-004** Error budgets shall not authorize disabling patient-safety, authorization, audit or data-integrity controls. 
+
+- **CLN-P10-SLO-005** Breaches shall trigger operational review and, where patient care may be affected, clinical-risk assessment and continuity action. 
+
+#### **29. Recovery Tier and Reconciliation Model** 
+
+|**Tier**|**Illustrative Scope**|**Required Recovery Evidence**|
+|---|---|---|
+|**Tier A: Immediate clinical safety**|Identity, active chart, orders, eMAR,<br>critical alerts|Priority recovery, degraded workflow and<br>urgent reconciliation|
+|**Tier B: Time-critical clinical**|Observations, results, handover,<br>continuity tasks|Bounded recovery and backlog<br>processing|
+|**Tier C: Supporting clinical**|Templates, non-urgent reports, specialty<br>administration|Scheduled recovery with dependency<br>validation|
+|**Tier D: Analytical/administrative**|Historical analytics and non-operational<br>extracts|Deferred recovery with integrity checks|
+
+
+
+- **CLN-P10-DR-001** Final tier assignment and numeric RTO/RPO shall be approved per deployment and shall not be inferred from this illustrative catalogue. 
+
+- **CLN-P10-DR-002** Recovery sequencing shall account for dependencies so that Clinical does not resume before identity, permissions, time, terminology and unit services are trustworthy. 
+
+- **CLN-P10-DR-003** After recovery, automated and manual reconciliation shall cover database commits, outbox/inbox records, queues, external acknowledgements and offline activity. 
+
+- **CLN-P10-DR-004** Reconciliation shall identify missing, duplicate, conflicting and out-of-order clinical actions and assign each exception to an accountable owner. 
+
+- **CLN-P10-DR-005** Disaster-recovery exercises shall include at least one patient-safety scenario spanning more than one module and one external interface. 
+
+- **CLN-P10-DR-006** A recovery exercise shall produce timing evidence, discrepancies, patient-impact assessment, corrective actions and retest decision. 
+
+Controlled Draft | Not Approved for Production | Page 139 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **30. Migration Workstreams and Cutover Controls** 
+
+|**Workstream**|**Minimum Controls**|
+|---|---|
+|**Discovery**|Source systems, owners, data classes, volumes, quality and<br>legal constraints|
+|**Mapping**|Source-to-target fields, code systems, units, statuses and<br>provenance|
+|**Cleansing**|Approved transformations with no invented clinical meaning|
+|**Dry run**|Repeatable extraction, transformation, load and reconciliation|
+|**Clinical validation**|Representative charts, edge cases and historical interpretation|
+|**Cutover**|Freeze, delta capture, downtime, communication and go/no-<br>go|
+|**Reconciliation**|Counts, identifiers, hashes, status/unit distributions and<br>sampled chart review|
+|**Remediation**|Quarantine ownership, correction and residual-risk<br>acceptance|
+|**Decommission**|Read-only access, archive, retention and support transition|
+
+
+
+- **CLN-P10-MIG-010** Migration mappings shall explicitly handle provisional, final, corrected, cancelled and entered-in-error states. 
+
+- **CLN-P10-MIG-011** Historical free text shall not be converted into coded diagnosis, allergy, medication or result assertions without governed human validation. 
+
+- **CLN-P10-MIG-012** Unknown authors shall retain source-attribution text and migration provenance rather than being assigned to a convenient user. 
+
+- **CLN-P10-MIG-013** Historical quantities shall preserve source unit strings and be normalized only where the Shared Unit Engine has an approved deterministic mapping. 
+
+- **CLN-P10-MIG-014** Migration shall preserve cross-record relationships where trustworthy and shall identify broken or ambiguous links. 
+
+- **CLN-P10-MIG-015** Cutover approval shall require reconciliation thresholds, open-exception inventory, rollback feasibility and clinical-operational acceptance. 
+
+#### **31. Requirements Traceability Matrix Specification** 
+
+|**RTM Column**|**Purpose**|
+|---|---|
+|**Requirement ID/version**|Stable source and revision|
+|**Requirement text**|Approved normative statement|
+|**Phase/domain**|Ownership and context|
+|**Hazard/risk**|Related safety or security concern|
+|**Design component**|EDD service, policy, table, API, event or UI|
+|**Configuration**|Relevant versioned registry/policy|
+|**Test IDs**|Positive, negative, integration and clinical tests|
+|**Evidence**|Report, log, screenshot or signed validation record|
+|**Owner**|Business, clinical and technical accountability|
+|**Release status**|Planned, implemented, verified, deferred or rejected|
+|**Residual risk**|Approved limitation and mitigation|
+|**Change link**|Decision/change request and impact assessment|
+
+
+
+**CLN-P10-RTM-001** Every normative SHALL statement shall have a unique requirement ID and a traceability row. 
+
+- **CLN-P10-RTM-002** A requirement shall not be considered verified merely because a design component exists; test evidence and acceptance are required. 
+
+- **CLN-P10-RTM-003** Deferred requirements shall identify reason, impact, mitigation, owner, target release and approving authority. 
+
+- **CLN-P10-RTM-004** Changes to shared states, units, permissions or interoperability contracts shall trigger impact analysis across all affected phase requirements. 
+
+- **CLN-P10-RTM-005** The final baseline shall report requirements with missing design, missing test, failed test, unresolved risk or unapproved evidence. 
+
+Controlled Draft | Not Approved for Production | Page 140 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **32. Production Readiness Evidence Pack** 
+
+|**Evidence Group**|**Required Artifacts**|
+|---|---|
+|**Requirements**|Approved SRD, gaps, decisions and RTM|
+|**Design**|EDD, architecture, data model, API/event contracts and threat<br>model|
+|**Build**|Artifact provenance, dependency lock, SBOM and<br>configuration manifest|
+|**Testing**|Automated results, clinical scenarios, security, accessibility,<br>load and recovery evidence|
+|**Data**|Migration reports, reconciliation and retained exceptions|
+|**Operations**|Runbooks, monitors, SLOs, on-call ownership and downtime<br>packs|
+|**Governance**|Clinical safety, privacy, security, interoperability and business<br>approvals|
+|**Deployment**|Change plan, rollback, smoke tests, communications and<br>post-release review|
+
+
+
+- **CLN-P10-PRD-001** Every evidence artifact shall identify version, environment, date, owner, approval state and applicable release. 
+
+- **CLN-P10-PRD-002** Go-live approval shall document all open defects and gaps with severity, patient impact, workaround, owner and explicit disposition. 
+
+- **CLN-P10-PRD-003** The release command shall remain unavailable until mandatory gates are satisfied by machine-verifiable and human approval checks as applicable. 
+
+- **CLN-P10-PRD-004** Post-deployment validation shall verify authentication, patient lookup, chart access, clinical write, outbox delivery, eMAR, result ingestion, audit and monitoring. 
+
+- **CLN-P10-PRD-005** A failed safety-critical smoke test shall trigger the approved abort or rollback procedure. 
+
+- **CLN-P10-PRD-006** The heightened-monitoring period shall end only after reconciliation is complete and named operational and clinical owners accept stability. 
+
+#### **33. Detailed Final Baseline Review Checklist** 
+
+- All requirement IDs are unique and version controlled. 
+
+- Every state model has one canonical owner and transition definition. 
+
+- All permissions exist in Main and have policy tests. 
+
+- Every quantitative CDE references a Main Module canonical unit. 
+
+- Every cross-module object has authoritative ownership and stable identifiers. 
+
+- Every external interface has contract, conformance, security and operational evidence. 
+
+- Every correction path preserves history and dependent review. 
+
+- Every critical workflow has acknowledgement, escalation and downtime behavior. 
+
+- Every report defines numerator, denominator, exclusions, versions and permissions. 
+
+- Every specialty pack reuses common services and has retirement behavior. 
+
+- Every SLO has telemetry, owner, threshold and runbook. 
+
+- Every migration exception has status and owner. 
+
+- Every production gate has evidence and approval. 
+
+- Every open risk is explicitly accepted, mitigated, deferred or blocking. 
+
+- **CLN-P10-BAS-001** Baseline approval shall produce a signed decision record listing included documents, versions, unresolved items and effective date. 
+
+- **CLN-P10-BAS-002** After baseline approval, changes shall use controlled impact assessment and shall not edit the approved baseline silently. 
+
+- **CLN-P10-BAS-003** The Clinical EDD shall reference this baseline by immutable version and shall identify every intentional deviation. 
+
+#### **34. Confirmed Production Runtime Baseline** 
+
+|**Component**|**Confirmed Production State**|**Phase 10 Treatment**|
+|---|---|---|
+
+
+
+Controlled Draft | Not Approved for Production | Page 141 
+
+|||KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1|
+|---|---|---|
+|**PHP runtime**|PHP 8.3|Required runtime baseline for current<br>production deployment|
+|**Composer PHP constraint**|^8.1|Compatibility constraint; not a<br>statement that production runs PHP 8.1|
+|**Laravel framework**|Laravel 10.48.x|Current production framework branch<br>and patch family|
+|**Database**|MySQL 8+|Existing target pending exact production<br>patch confirmation|
+|**Frontend**|Vue 3|Existing target pending exact production<br>package-lock confirmation|
+
+
+
+- **CLN-P10-PLT-001** The EDD, build pipeline, deployment manifests, container or server configuration and production evidence shall identify PHP 8.3 as the deployed runtime baseline. 
+
+- **CLN-P10-PLT-002** The composer.json PHP constraint ^8.1 shall be preserved as a package-resolution constraint unless deliberately changed; deployment validation shall separately enforce PHP 8.3. 
+
+- **CLN-P10-PLT-003** The application shall be tested against the exact production Laravel 10.48.x dependency lock and PHP 8.3 patch version before release. 
+
+- **CLN-P10-PLT-004** Composer install shall use the committed lock file, production-only dependencies, optimized autoloading and a reproducible artifact build. 
+
+- **CLN-P10-PLT-005** Configuration and health checks shall detect runtime drift between approved PHP/Laravel versions and deployed instances. 
+
+- **CLN-P10-PLT-006** The deployment evidence pack shall record php --version, enabled extensions, composer.lock hash, installed Laravel version, application commit and build artifact digest. 
+
+- **CLN-P10-PLT-007** Required PHP extensions shall be explicitly listed and verified in CI and at deployment rather than assumed from the server image. 
+
+- **CLN-P10-PLT-008** OPcache, queue workers, scheduler, cache, session, filesystem and process-supervision settings shall be versioned in the EDD and validated per environment. 
+
+- **CLN-P10-PLT-009** Queue workers and long-running processes shall be restarted or safely recycled after deployment so that they execute the approved artifact and configuration. 
+
+- **CLN-P10-PLT-010** Application debug mode and detailed exception output shall be disabled in production, with safe correlation identifiers available for support. 
+
+- **CLN-P10-PLT-011** Database, cache, queue and external-service compatibility shall be validated with PHP 8.3 and the locked Laravel 10.48.x dependency set. 
+
+- **CLN-P10-PLT-012** Because the Laravel 10 support window has ended, production use shall have a formally owned frameworkupgrade or extended-support risk treatment with target release, compensating controls and regression scope. 
+
+- **CLN-P10-PLT-013** A future Laravel major-version upgrade shall be handled as a controlled platform migration and shall not silently alter Clinical domain semantics, permissions, queues, serialization or database behavior. 
+
+- **CLN-P10-PLT-014** Platform upgrade testing shall rerun all Phase 1 to 10 negative tests, authorization matrices, queue/idempotency tests, clinical gold cases and migration rehearsals. 
+
+|**Platform Evidence**|**Minimum Verification**|
+|---|---|
+|**Runtime**|Exact PHP version and extensions on every application/worker<br>node|
+|**Framework**|Installed Laravel version and composer.lock hash|
+|**Build**|Source commit, dependency provenance and artifact digest|
+|**Configuration**|Environment manifest excluding secrets, cache state and<br>feature flags|
+|**Database**|Server version, connection mode, charset/collation and<br>migration level|
+|**Workers**|Queue worker/scheduler versions, restart time and health|
+|**Security**|Debug disabled, TLS, secret source and vulnerability<br>disposition|
+|**Operations**|Health checks, logs, metrics, alerting and rollback record|
+
+
+
+Controlled Draft | Not Approved for Production | Page 142 
+
+KASHTRE CLINICAL MODULE | SRD v6.1 | PHASE 1 
+
+#### **Appendix A. Minimum Interface Contract** 
+
+|**Group**|**Fields**|
+|---|---|
+|**Identity**|Interface ID, owner, producer, consumer and environment|
+|**Purpose**|Use case, authoritative source and permitted purposes|
+|**Contract**|Protocol, version, schema/profile and terminology|
+|**Security**|Identity, scopes, encryption, sensitivity and consent|
+|**Reliability**|Acknowledgement, idempotency, ordering, retry and timeout|
+|**Operations**|SLA/SLO, monitoring, alert owner and support route|
+|**Change**|Compatibility, test evidence, activation and rollback|
+|**Audit**|Correlation, payload hash, outcome and retention|
+
+
+
+#### **Appendix B. Sources Reviewed** 
+
+- KashTre Clinical Module SRD v6.0 and addendum. 
+
+- KashTre Clinical Module SRD v6.1 Phases 1 to 9. 
+
+- HL7 FHIR R5 conformance and CapabilityStatement materials. 
+
+- OWASP API Security Project materials. 
+
+- NIST SP 800-207 Zero Trust Architecture. 
+
+Controlled Draft | Not Approved for Production | Page 143 
+

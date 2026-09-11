@@ -4,7 +4,10 @@
 
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg p-6">
                 <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-bold text-gray-800 dark:text-white">Manage Businesses</h2>
+                    <h2 class="text-xl font-bold text-gray-800 dark:text-white">Kashtre Entities</h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        Organisations onboarded on Kashtre. Use <strong>Register as a supplier</strong> when creating an entity so other organisations can link it in procurement.
+                    </p>
 
                     <div class="flex space-x-2">
                         @if (Auth::check() && Auth::user()->business_id == 1)
@@ -61,43 +64,13 @@
 
                 <form action="{{ route('businesses.store') }}" method="POST" enctype="multipart/form-data">
                     @csrf
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label for="name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Name <span class="text-red-500">*</span></label>
-                            <input type="text" name="name" id="name" required placeholder="Enter business name"
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
-                            @error('name')
-                                <span class="text-red-500 text-sm">{{ $message }}</span>
-                            @enderror
-                        </div>
+                    @include('partials.business-branding-fields', [
+                        'logoRequired' => true,
+                        'showLogoPreview' => false,
+                        'idPrefix' => 'create-',
+                    ])
 
-                        <div>
-                            <label for="email" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Email <span class="text-red-500">*</span></label>
-                            <input type="email" name="email" id="email" required placeholder="Enter business email"
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
-                            @error('email')
-                                <span class="text-red-500 text-sm">{{ $message }}</span>
-                            @enderror
-                        </div>
-
-                        <div>
-                            <label for="phone" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Phone <span class="text-red-500">*</span></label>
-                            <input type="tel" name="phone" id="phone" required placeholder="Enter business phone"
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
-                            @error('phone')
-                                <span class="text-red-500 text-sm">{{ $message }}</span>
-                            @enderror
-                        </div>
-
-                        <div>
-                            <label for="address" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Address <span class="text-red-500">*</span></label>
-                            <input type="text" name="address" id="address" required placeholder="Enter business address"
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
-                            @error('address')
-                                <span class="text-red-500 text-sm">{{ $message }}</span>
-                            @enderror
-                        </div>
-
+                    <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label for="country_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Country <span class="text-red-500">*</span></label>
                             <select
@@ -108,7 +81,7 @@
                             >
                                 <option value="">Select country</option>
                                 @foreach($countries as $country)
-                                    <option value="{{ $country->id }}" {{ $country->iso_code === 'US' ? 'selected' : '' }}>
+                                    <option value="{{ $country->id }}" @selected((string) old('country_id') === (string) $country->id)>
                                         {{ $country->name }} ({{ $country->currency_code ?? ($country->currency?->code ?? 'USD') }})
                                     </option>
                                 @endforeach
@@ -117,15 +90,15 @@
                                 <span class="text-red-500 text-sm">{{ $message }}</span>
                             @enderror
                         </div>
+                    </div>
 
-                        <div>
-                            <label for="logo" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Logo <span class="text-red-500">*</span></label>
-                            <input type="file" name="logo" id="logo" accept="image/*" required placeholder="Upload business logo"
-                                class="mt-1 block w-full text-gray-700 dark:text-gray-300">
-                            @error('logo')
-                                <span class="text-red-500 text-sm">{{ $message }}</span>
-                            @enderror
-                        </div>
+                    <div class="mt-4 border-t border-gray-200 dark:border-gray-600 pt-4">
+                        <p class="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3">Financial year</p>
+                        @include('partials.financial-year-fields', ['idPrefix' => 'create-'])
+                    </div>
+
+                    <div class="mt-4">
+                        @include('partials.supplier-registration-fields', ['idPrefix' => 'create-'])
                     </div>
 
 

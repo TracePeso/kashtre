@@ -65,16 +65,42 @@ class InsurerPortalVendorController extends Controller
 
         $validated = $request->validate([
             'amount' => 'required|numeric|min:0.01',
+            'history_ids' => 'nullable|array',
+            'history_ids.*' => 'integer',
+            'entry_ids' => 'nullable|array',
+            'entry_ids.*' => 'integer',
         ]);
 
-        $preview = $payments->previewCharge($businessId, $thirdPartyVendorId, (float) $validated['amount']);
+        $amount = (float) $validated['amount'];
+        $historyIds = $validated['history_ids'] ?? $validated['entry_ids'] ?? [];
+        $preview = $payments->previewCharge($businessId, $thirdPartyVendorId, $amount);
+        $allocation = $payments->previewPaymentAllocation($businessId, $thirdPartyVendorId, $amount);
+        $chronological = app(\App\Services\ThirdPartyPayerChronologicalPaymentService::class);
+        $payer = app(InsurerPortalVendorSummaryService::class)->resolvePayer($businessId, $thirdPartyVendorId);
+        $chronologicalCheck = $payer
+            ? $chronological->validateSelectionAndAmount($payer, $historyIds, $amount)
+            : ['valid' => true];
+
+        $payload = array_merge($preview, [
+            'formatted_amount' => 'UGX '.number_format($preview['amount'], 2),
+            'formatted_service_charge' => 'UGX '.number_format($preview['service_charge'], 2),
+            'formatted_total' => 'UGX '.number_format($preview['total'], 2),
+            'allocation' => $allocation,
+            'selection_valid' => (bool) ($chronologicalCheck['valid'] ?? true),
+            'selection_message' => $chronologicalCheck['message'] ?? null,
+        ]);
+
+        if (! ($chronologicalCheck['valid'] ?? true)) {
+            return response()->json([
+                'success' => false,
+                'message' => $chronologicalCheck['message'] ?? 'Check the items you selected and the payment amount.',
+                'data' => $payload,
+            ], 422);
+        }
 
         return response()->json([
             'success' => true,
-            'data' => array_merge($preview, [
-                'formatted_service_charge' => 'UGX '.number_format($preview['service_charge'], 2),
-                'formatted_total' => 'UGX '.number_format($preview['total'], 2),
-            ]),
+            'data' => $payload,
         ]);
     }
 
@@ -89,6 +115,10 @@ class InsurerPortalVendorController extends Controller
             'payment_method' => 'required|string|max:50',
             'reference' => 'nullable|string|max:100',
             'notes' => 'nullable|string|max:500',
+            'history_ids' => 'nullable|array',
+            'history_ids.*' => 'integer',
+            'entry_ids' => 'nullable|array',
+            'entry_ids.*' => 'integer',
         ]);
 
         $result = $payments->recordPayment($businessId, $thirdPartyVendorId, $validated);

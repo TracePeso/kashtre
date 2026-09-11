@@ -7,7 +7,6 @@
 
 @import 'tailwindcss/utilities';
 
-
 /* Customise Tailwind */
 @layer base {
     body {
@@ -16,6 +15,23 @@
     .fi-btn{
         @apply bg-slate-900 text-slate-50;
     }
-    
-    
+}
+
+/* Filament's Toggle component colors itself via a CSS custom property
+   (--c-600) that a full Filament Panel normally injects app-wide — this
+   app uses Filament's Forms/Tables packages standalone (no Panel), so that
+   variable is never defined and Toggle's onColor()/offColor() render with
+   no visible color at all. Targeting the toggle's own aria-checked state
+   directly sidesteps that. Deliberately plain top-level CSS, not inside
+   another @layer block — a second @layer block placed after the existing
+   one above silently failed to compile in this project's Vite/PostCSS
+   pipeline (reproduced with a trivial marker rule, survived a full
+   dependency-cache clear and dev-server restart), so this is the
+   confirmed-working placement. !important already forces the override
+   regardless of cascade-layer ordering, so plain placement costs nothing. */
+.kt-toggle[aria-checked="true"] {
+    background-color: #000000 !important;
+}
+.kt-toggle[aria-checked="false"] {
+    background-color: #9ca3af !important;
 }

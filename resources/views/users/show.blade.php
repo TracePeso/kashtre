@@ -91,6 +91,10 @@
                             <div class="form-input w-full bg-gray-100">{{ optional($user->qualification)->name }}</div>
                         </div>
                         <div>
+                            <label>Staff category</label>
+                            <div class="form-input w-full bg-gray-100">{{ optional($user->staffCategory)->name }}</div>
+                        </div>
+                        <div>
                             <label>Title</label>
                             <div class="form-input w-full bg-gray-100">{{ optional($user->title)->name }}</div>
                         </div>

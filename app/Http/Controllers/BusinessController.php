@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\HandlesBusinessBranding;
 use App\Models\Business;
 use App\Models\Country;
+use App\Support\BusinessBranding;
+use App\Support\SupplierCategorySelection;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -15,6 +18,8 @@ use Illuminate\Support\Facades\Auth;
 
 class BusinessController extends Controller
 {
+    use HandlesBusinessBranding;
+
     /**
      * Display a listing of the resource.
      */
@@ -37,15 +42,17 @@ class BusinessController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:businesses,email',
-            'phone' => 'required|string|max:20',
-            'address' => 'required|string|max:255',
-            'logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-            'country_id' => 'required|exists:countries,id',
-
-        ]);
+        $validated = $request->validate(array_merge(
+            BusinessBranding::validationRules(logoRequired: true),
+            [
+                'country_id' => 'required|exists:countries,id',
+                'financial_year_start_month' => 'required|integer|min:1|max:12',
+                'financial_year_start_day' => 'required|integer|min:1|max:31',
+                'register_as_supplier' => 'sometimes|boolean',
+                'supplier_industry_id' => 'nullable|exists:supplier_industries,id',
+                'supplier_sub_category_id' => 'nullable|exists:supplier_sub_categories,id',
+            ]
+        ));
 
         try {
             // Country is required: derive currency from selected country.
@@ -53,21 +60,18 @@ class BusinessController extends Controller
             $validated['currency_code'] = $country->currency_code ?? $country->currency?->code ?? 'USD';
             $validated['country_id'] = $country->id;
 
-            // Handle logo upload
-            if ($request->hasFile('logo')) {
-                $logoPath = $request->file('logo')->store('logos', 'public');
-                $validated['logo'] = $logoPath;
-            } else {
-                $validated['logo'] = null;
-            }
+            $business = new Business($validated);
+            $validated = $this->applyBrandingFromRequest($request, $business, $validated, logoRequired: true);
 
             // Generate time-based account number with prefix '25' and random 2-digit suffix
             $validated['account_number'] = 'KS' . time();
-
-            //dd($validated); // For debugging purposes, remove in production
+            $registeredAsSupplier = $request->boolean('register_as_supplier');
+            $validated['registered_as_supplier'] = $registeredAsSupplier;
+            $validated = SupplierCategorySelection::normalize($registeredAsSupplier, $validated);
 
             // Create business
             $business = Business::create($validated);
+            $this->moveIncomingLogoToBusinessDirectory($business);
 
             // dd($business->email);
 
@@ -92,6 +96,8 @@ class BusinessController extends Controller
 
             // Log::error('DB error while creating business: ' . $e->getMessage());
             // return redirect()->back()->with('error', 'A database error occurred. Please contact support.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             dd($e);
             Log::error('General error while creating business: ' . $e->getMessage());

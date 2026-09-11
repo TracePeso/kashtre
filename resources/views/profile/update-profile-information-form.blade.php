@@ -81,6 +81,18 @@
                 @endif
             @endif
         </div>
+
+        <div class="col-span-6 sm:col-span-4">
+            <x-label for="presentation_timezone" value="{{ __('Display timezone') }}" />
+            <select id="presentation_timezone" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm" wire:model="state.presentation_timezone">
+                <option value="">{{ __('Use business default') }}</option>
+                @foreach (['Africa/Kampala', 'Africa/Nairobi', 'Africa/Lagos', 'Africa/Johannesburg', 'UTC', 'Europe/London', 'America/New_York'] as $tz)
+                    <option value="{{ $tz }}">{{ $tz }}</option>
+                @endforeach
+            </select>
+            <p class="mt-1 text-xs text-gray-500">Display only — does not change business dates or financial periods.</p>
+            <x-input-error for="presentation_timezone" class="mt-2" />
+        </div>
     </x-slot>
 
     <x-slot name="actions">

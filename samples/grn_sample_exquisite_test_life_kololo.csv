@@ -1,0 +1,12 @@
+"# Sample GRN upload for Exquisite Test Life (KS1759822163) — Kololo branch / Main Store"
+"# Supplier suggestion: Test Supplier (id 11). Select store: Main Store when submitting."
+"# All catalogue items are listed below. Fill quantity (and batch/expiry if needed) only for items received."
+"# Leave quantity blank to skip a row on upload. Other columns are pre-filled from the item master."
+"# expiry_date is optional. Use YYYY-MM-DD only (example: 2026-12-31)."
+item_code,item_name,quantity,batch_number,"expiry_date (YYYY-MM-DD)",duom,purchase_price,sale_units_per_purchase_unit
+ITM350184,"Abagyl 500mg Intravenous Infusion BP(0.5%w/v)",10,BATCH-A001,2026-12-31,Bottle,50,1
+ITM267889,"Abpara Paracetamol Intravenous Infusion (1%w/v)",5,BATCH-B204,2027-06-15,Bottle,100,1
+ITM352371,"Acinone S",20,LOT-8831,2026-09-30,Tab,10,1
+ITM748518,"Actosed Forte Ready",8,,,Mls,3,1
+ITM986626,"Alido 2% 30mls",15,BATCH-C112,2028-01-20,Mls,3,1
+ITM145821,"Ambezim G(trypsin+chymotrysin)",3,BATCH-D009,2027-03-10,Tab,60,1

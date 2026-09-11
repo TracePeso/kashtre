@@ -11,11 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (Schema::hasTable('callers')) {
-            Schema::table('callers', function (Blueprint $table) {
-                $table->string('display_token', 64)->nullable()->unique()->after('status');
-            });
+        if (! Schema::hasTable('callers') || Schema::hasColumn('callers', 'display_token')) {
+            return;
         }
+
+        Schema::table('callers', function (Blueprint $table) {
+            $table->string('display_token', 64)->nullable()->unique()->after('status');
+        });
     }
 
     /**
@@ -23,10 +25,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        if (Schema::hasTable('callers')) {
-            Schema::table('callers', function (Blueprint $table) {
-                $table->dropColumn('display_token');
-            });
-        }
+        // This column is now part of the callers baseline schema.
     }
 };

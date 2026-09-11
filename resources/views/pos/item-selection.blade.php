@@ -78,6 +78,73 @@
                             <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-0.5 leading-none">Age</p>
                             <p class="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-tight tabular-nums">{{ $client->age !== null && $client->age !== '' ? $client->age . ' years' : 'N/A' }}</p>
                         </div>
+                        @if(($clientSpaces ?? collect())->isNotEmpty())
+                        <div class="bg-indigo-50 border border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700 px-2.5 py-2 rounded-md min-w-[12rem] flex-1 sm:flex-none sm:max-w-xs">
+                            <label for="client-space-select" class="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase tracking-wide mb-0.5 leading-none block">{{ inventory_label('client_space') }}</label>
+                            <select id="client-space-select"
+                                    class="mt-0.5 w-full text-sm font-semibold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 border-0 focus:ring-2 focus:ring-indigo-500 rounded py-0.5 px-0"
+                                    onchange="syncFulfillmentFromClientSpace()">
+                                <option value="">Select space…</option>
+                                @foreach($clientSpaces as $space)
+                                    @php
+                                        $assignment = $space->storeAssignment;
+                                        $routeLabel = $assignment?->store?->name
+                                            ? ' → '.$assignment->store->name
+                                            : '';
+                                        $strategyLabel = $assignment
+                                            ? ' ('.($assignment->fulfillment_strategy === 'BATCH_AND_STAGE' ? 'Inpatient' : 'Outpatient').')'
+                                            : '';
+                                        $isDefaultSpace = (bool) ($space->is_default ?? false)
+                                            || ($clientSpaces->count() === 1);
+                                    @endphp
+                                    <option value="{{ $space->id }}"
+                                            data-strategy="{{ $assignment?->fulfillment_strategy ?: '' }}"
+                                            data-end-store="{{ $assignment?->store_id ?: '' }}"
+                                            data-supports-pool="{{ ($assignment && $assignment->fulfillment_strategy === 'BATCH_AND_STAGE') ? '1' : '0' }}"
+                                            @selected($isDefaultSpace)>
+                                        {{ $space->name }}{{ $routeLabel }}{{ $strategyLabel }}{{ $space->is_default ? ' ★' : '' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <script>
+                                function clientSpaceHasRoutedStrategy() {
+                                    const spaceSelect = document.getElementById('client-space-select');
+                                    if (!spaceSelect) return false;
+                                    const opt = spaceSelect.options[spaceSelect.selectedIndex];
+                                    return !!(opt && opt.value && opt.getAttribute('data-strategy'));
+                                }
+
+                                function syncFulfillmentFromClientSpace() {
+                                    const spaceSelect = document.getElementById('client-space-select');
+                                    const strategySelect = document.getElementById('fulfillment-strategy');
+                                    const endStoreSelect = document.getElementById('end-store-id');
+                                    if (!spaceSelect) return;
+                                    const opt = spaceSelect.options[spaceSelect.selectedIndex];
+                                    if (!opt || !opt.value) return;
+
+                                    const strategy = opt.getAttribute('data-strategy') || '';
+                                    if (strategySelect) {
+                                        if (strategy) {
+                                            strategySelect.value = strategy;
+                                            strategySelect.disabled = true;
+                                            strategySelect.title = 'Strategy comes from Client Space routing and cannot be overridden here.';
+                                        } else {
+                                            strategySelect.disabled = false;
+                                            strategySelect.title = '';
+                                        }
+                                    }
+
+                                    const endStoreId = opt.getAttribute('data-end-store') || '';
+                                    if (endStoreSelect && endStoreId) {
+                                        endStoreSelect.value = endStoreId;
+                                    }
+                                }
+
+                                document.getElementById('client-space-select')?.addEventListener('change', syncFulfillmentFromClientSpace);
+                                document.addEventListener('DOMContentLoaded', syncFulfillmentFromClientSpace);
+                            </script>
+                        </div>
+                        @endif
                         <button type="button"
                                 @click="expanded = !expanded"
                                 :aria-expanded="expanded"
@@ -122,6 +189,59 @@
                                 Edit Payment Methods
                             </button>
                         </div>
+                        @if(!empty($inventoryModuleEnabled) && isset($endStores) && $endStores->isNotEmpty())
+                        <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-100 md:col-span-2 lg:col-span-2">
+                            <p class="text-sm text-indigo-700 font-medium mb-2">Inventory fulfillment</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label for="fulfillment-strategy" class="block text-xs text-gray-600 mb-1">Strategy</label>
+                                    <select id="fulfillment-strategy"
+                                            class="block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                        <option value="DISCRETE_IMMEDIATE">Outpatient (dispense now)</option>
+                                        <option value="BATCH_AND_STAGE">Inpatient (batch &amp; stage)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="end-store-id" class="block text-xs text-gray-600 mb-1">End Store</label>
+                                    <select id="end-store-id"
+                                            class="block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                            onchange="syncFulfillmentStrategyFromEndStore()">
+                                        @foreach($endStores as $store)
+                                            <option value="{{ $store->id }}"
+                                                data-strategy="{{ $store->default_fulfillment_strategy ?: 'DISCRETE_IMMEDIATE' }}"
+                                                @selected($loop->first)>
+                                                {{ $store->name }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                            </div>
+                            <p class="mt-2 text-xs text-indigo-600">When a Client Space has routing, strategy follows that mapping (Batch &amp; Stage or Outpatient). End Store can still be chosen for which pharmacy fulfills.</p>
+                            <script>
+                                function syncFulfillmentStrategyFromEndStore() {
+                                    const storeSelect = document.getElementById('end-store-id');
+                                    const strategySelect = document.getElementById('fulfillment-strategy');
+                                    if (!storeSelect || !strategySelect) return;
+                                    // Space routing owns strategy when mapped — do not overwrite from store default.
+                                    if (typeof clientSpaceHasRoutedStrategy === 'function' && clientSpaceHasRoutedStrategy()) {
+                                        if (typeof syncFulfillmentFromClientSpace === 'function') {
+                                            syncFulfillmentFromClientSpace();
+                                        }
+                                        return;
+                                    }
+                                    const opt = storeSelect.options[storeSelect.selectedIndex];
+                                    const strategy = opt?.getAttribute('data-strategy') || 'DISCRETE_IMMEDIATE';
+                                    strategySelect.disabled = false;
+                                    strategySelect.title = '';
+                                    strategySelect.value = strategy;
+                                }
+                                document.addEventListener('DOMContentLoaded', function () {
+                                    // Run after space sync so routed strategy wins over store default.
+                                    setTimeout(syncFulfillmentStrategyFromEndStore, 0);
+                                });
+                            </script>
+                        </div>
+                        @endif
                         @if($client->vendors && $client->vendors->count() > 0)
                         <div class="bg-green-50 p-4 rounded-lg border-2 border-green-200">
                             <p class="text-sm text-green-700 font-medium mb-3">Third-party payment methods</p>
@@ -380,6 +500,11 @@
                                                             $descriptionParts[] = 'Standard quality variant';
                                                         }
 
+                                                        // Add generic name if available
+                                                        if ($item->generic_name && !empty(trim($item->generic_name))) {
+                                                            $descriptionParts[] = "Generic: {$item->generic_name}";
+                                                        }
+
                                                         // Add category if available
                                                         if ($item->category && !empty(trim($item->category))) {
                                                             $descriptionParts[] = "Category: {$item->category}";
@@ -406,7 +531,7 @@
                                                     @if(isset($item->final_price) && $item->final_price != $item->default_price)
                                                         <span class="text-green-600">(Branch Price)</span>
                                                     @else
-                                                        <span class="text-gray-500">(Default Price)</span>
+                                                        <span class="text-gray-500">(Sale price)</span>
                                                     @endif
                                                     @if($item->vat_rate && $item->vat_rate > 0)
                                                         <span class="text-orange-600">(VAT: {{ $item->vat_rate }}%)</span>
@@ -2212,7 +2337,14 @@
                     payment_methods: paymentMethods,
                     payment_status: amountPaid >= totalAmount ? 'paid' : 'pending',
                     status: 'confirmed',
-                    notes: ''
+                    notes: '',
+                    fulfillment_strategy: document.getElementById('fulfillment-strategy')?.value || null,
+                    end_store_id: document.getElementById('end-store-id')?.value
+                        ? parseInt(document.getElementById('end-store-id').value, 10)
+                        : null,
+                    client_space_id: document.getElementById('client-space-select')?.value
+                        ? parseInt(document.getElementById('client-space-select').value, 10)
+                        : null,
                 };
                 @if($client->insurance_company_id)
                 if (typeof paymentResponsibility !== 'undefined' && paymentResponsibility.deductibleRemaining !== undefined) {
@@ -2801,11 +2933,22 @@
             const printReceipt = function() {
                 const printWin = window.open('', '_blank', 'width=400,height=600');
                 if (!printWin) return;
-                const printContent = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Client portion – ' + invoiceNumber + '</title>' +
-                    '<style>body{font-family:ui-sans-serif,sans-serif;font-size:14px;padding:24px;max-width:320px;margin:0 auto;color:#334155}.receipt-title{font-weight:600;font-size:1rem;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:8px}.sub{font-size:12px;color:#64748b;margin-bottom:12px}table{width:100%;border-collapse:collapse;margin:12px 0}td{padding:4px 0}td:last-child{text-align:right}.total{font-weight:600;margin-top:12px;padding-top:8px;border-top:1px solid #f1f5f9}@media print{body{padding:0}}</style></head><body>' +
-                    '<div class="receipt-title">Client portion receipt</div><p class="sub">Amount due from client</p>' + (posClientName ? '<p>Client <strong>' + (posClientName.replace(/</g, '&lt;').replace(/>/g, '&gt;')) + '</strong></p>' : '') + (posInsuranceName ? '<p>Insurance <strong>' + (posInsuranceName.replace(/</g, '&lt;').replace(/>/g, '&gt;')) + '</strong></p>' : '') + '<p>Invoice <strong>' + invoiceNumber + '</strong></p><p>Date ' + todayStr + '</p>' +
+                const docFormat = window.KashtreDocumentFormat;
+                const headerBlock = docFormat
+                    ? docFormat.headerHtml('Client portion receipt', invoiceNumber)
+                    : '<div class="receipt-title">Client portion receipt</div><p class="sub">Amount due from client</p>';
+                const bodyBlock =
+                    (posClientName ? '<p>Client <strong>' + (posClientName.replace(/</g, '&lt;').replace(/>/g, '&gt;')) + '</strong></p>' : '') +
+                    (posInsuranceName ? '<p>Insurance <strong>' + (posInsuranceName.replace(/</g, '&lt;').replace(/>/g, '&gt;')) + '</strong></p>' : '') +
+                    (!docFormat ? '<p>Invoice <strong>' + invoiceNumber + '</strong></p><p>Date ' + todayStr + '</p>' : '') +
                     '<table><tbody>' + receiptBreakdownRows + '</tbody></table>' +
-                    '<p class="total">Amount to collect: UGX ' + fmt(clientTotalDue) + '</p><p style="font-size:12px;color:#64748b">Phone ' + (paymentPhone || '—') + '</p></body></html>';
+                    '<p class="total">Amount to collect: UGX ' + fmt(clientTotalDue) + '</p><p style="font-size:12px;color:#64748b">Phone ' + (paymentPhone || '—') + '</p>';
+                const footerBlock = docFormat
+                    ? docFormat.footerHtml(['Client portion receipt', 'Amount due from client'])
+                    : '<p style="font-size:8px;color:#9ca3af;margin-top:12px;">{{ addslashes(\App\Models\KashtreCashTraySetting::resolved()->documentPoweredByLine()) }}</p>';
+                const printContent = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Client portion – ' + invoiceNumber + '</title>' +
+                    '<style>body{font-family:ui-sans-serif,sans-serif;font-size:14px;padding:24px;max-width:360px;margin:0 auto;color:#334155}.receipt-title{font-weight:600;font-size:1rem;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:8px}.sub{font-size:12px;color:#64748b;margin-bottom:12px}table{width:100%;border-collapse:collapse;margin:12px 0}td{padding:4px 0}td:last-child{text-align:right}.total{font-weight:600;margin-top:12px;padding-top:8px;border-top:1px solid #f1f5f9}@media print{body{padding:0}}</style></head><body>' +
+                    headerBlock + bodyBlock + footerBlock + '</body></html>';
                 printWin.document.write(printContent);
                 printWin.document.close();
                 printWin.focus();
@@ -3406,23 +3549,7 @@
 
         function cancelAndExit() {
             @if($servicePoint)
-            fetch('{{ route('calling.announce') }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                },
-                body: JSON.stringify({
-                    client_id: {{ $client->id }},
-                    client_name: '{{ addslashes($client->name) }}',
-                    service_point_id: {{ $servicePoint->id }},
-                    type: 'stop-serving'
-                })
-            }).then(() => {
-                window.location.href = '{{ route('service-points.show', $servicePoint) }}';
-            }).catch(() => {
-                window.location.href = '{{ route('service-points.show', $servicePoint) }}';
-            });
+            window.location.href = '{{ route('service-points.show', $servicePoint) }}';
             @else
             window.location.href = '{{ route('clients.index') }}';
             @endif
@@ -3497,25 +3624,6 @@
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            // Clear this client from the TV display
-                            try {
-                                fetch('{{ route("calling.announce") }}', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                                    },
-                                    body: JSON.stringify({
-                                        client_id: {{ $client->id }},
-                                        client_name: '{{ addslashes($client->name) }}',
-                                        service_point_id: {{ $servicePoint->id ?? 'null' }},
-                                        type: 'stop-serving'
-                                    })
-                                });
-                            } catch (e) {
-                                console.error('Failed to stop serving on display:', e);
-                            }
-
                             Swal.fire({
                                 title: 'Success!',
                                 text: 'Changes saved successfully',
@@ -3907,6 +4015,8 @@
             </div>
         </div>
     </div>
+
+    @include('partials.document-format-script', ['business' => auth()->user()?->business])
 
     @stack('scripts')
 </x-app-layout>

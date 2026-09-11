@@ -85,8 +85,10 @@ class QuotationController extends Controller
         if ($quotation->business_id !== $user->business_id) {
             abort(403, 'Unauthorized access to quotation.');
         }
-        
-        return view('quotations.print', compact('quotation'));
+
+        $quotation->load(['business', 'invoice']);
+
+        return view('quotations.print', \App\Support\DocumentViewData::merge(compact('quotation')));
     }
     
     /**

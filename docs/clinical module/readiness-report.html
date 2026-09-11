@@ -1,0 +1,576 @@
+<!-- Clinical Module — Production Readiness Assessment -->
+<title>Clinical Module — Production Readiness Assessment</title>
+<style>
+  :root {
+    --paper: #f6f7f5;
+    --paper-raised: #ffffff;
+    --ink: #161a1d;
+    --ink-muted: #5b6470;
+    --ink-faint: #8891974d;
+    --accent: #0e7a73;
+    --accent-soft: #0e7a731a;
+    --line: #dde3e0;
+    --line-strong: #c7cfcb;
+
+    --sev-blocker: #a83226;
+    --sev-blocker-bg: #a832261a;
+    --sev-blocker-line: #a8322640;
+    --sev-attention: #96600b;
+    --sev-attention-bg: #96600b1a;
+    --sev-attention-line: #96600b40;
+    --sev-info: #35618f;
+    --sev-info-bg: #35618f1a;
+    --sev-info-line: #35618f40;
+    --sev-done: #2b7a56;
+    --sev-done-bg: #2b7a561a;
+    --sev-done-line: #2b7a5640;
+
+    --serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", "Cascadia Code", "Consolas", "Liberation Mono", monospace;
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #12151a;
+    --paper-raised: #1a1e24;
+    --ink: #e9ecef;
+    --ink-muted: #9aa3ad;
+    --ink-faint: #ffffff26;
+    --accent: #4fc3b8;
+    --accent-soft: #4fc3b826;
+    --line: #2a2f36;
+    --line-strong: #3a4048;
+
+    --sev-blocker: #e0685a;
+    --sev-blocker-bg: #e0685a22;
+    --sev-blocker-line: #e0685a4d;
+    --sev-attention: #d6a13f;
+    --sev-attention-bg: #d6a13f22;
+    --sev-attention-line: #d6a13f4d;
+    --sev-info: #7ba6d6;
+    --sev-info-bg: #7ba6d622;
+    --sev-info-line: #7ba6d64d;
+    --sev-done: #6fc99a;
+    --sev-done-bg: #6fc99a22;
+    --sev-done-line: #6fc99a4d;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #12151a;
+      --paper-raised: #1a1e24;
+      --ink: #e9ecef;
+      --ink-muted: #9aa3ad;
+      --ink-faint: #ffffff26;
+      --accent: #4fc3b8;
+      --accent-soft: #4fc3b826;
+      --line: #2a2f36;
+      --line-strong: #3a4048;
+
+      --sev-blocker: #e0685a;
+      --sev-blocker-bg: #e0685a22;
+      --sev-blocker-line: #e0685a4d;
+      --sev-attention: #d6a13f;
+      --sev-attention-bg: #d6a13f22;
+      --sev-attention-line: #d6a13f4d;
+      --sev-info: #7ba6d6;
+      --sev-info-bg: #7ba6d622;
+      --sev-info-line: #7ba6d64d;
+      --sev-done: #6fc99a;
+      --sev-done-bg: #6fc99a22;
+      --sev-done-line: #6fc99a4d;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .page {
+    max-width: 840px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  /* ---------- Header / vitals strip ---------- */
+
+  header.report-head {
+    background:
+      repeating-linear-gradient(
+        to bottom,
+        transparent,
+        transparent 27px,
+        var(--ink-faint) 27px,
+        var(--ink-faint) 28px
+      );
+    border-bottom: 1px solid var(--line);
+    padding: 56px 24px 32px;
+    margin: 0 calc(50% - 50vw);
+    padding-left: calc(50vw - 50% + 24px);
+    padding-right: calc(50vw - 50% + 24px);
+  }
+
+  .head-inner {
+    max-width: 840px;
+    margin: 0 auto;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+
+  h1.title {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: clamp(30px, 4.4vw, 42px);
+    line-height: 1.12;
+    letter-spacing: -0.01em;
+    margin: 0 0 12px;
+    text-wrap: balance;
+    color: var(--ink);
+  }
+
+  .dek {
+    font-size: 16px;
+    color: var(--ink-muted);
+    max-width: 62ch;
+    margin: 0 0 30px;
+  }
+
+  .dek code { font-family: var(--mono); font-size: 0.92em; }
+
+  .vitals {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .vital {
+    background: var(--paper-raised);
+    padding: 14px 16px;
+  }
+
+  .vital .n {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--ink);
+  }
+
+  .vital .n.blocker { color: var(--sev-blocker); }
+  .vital .n.attention { color: var(--sev-attention); }
+  .vital .n.done { color: var(--sev-done); }
+
+  .vital .l {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin-top: 5px;
+  }
+
+  /* ---------- Sections ---------- */
+
+  section.tier {
+    padding-top: 52px;
+  }
+
+  .tier-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+
+  h2.tier-title {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 24px;
+    margin: 0;
+    color: var(--ink);
+  }
+
+  .tier-count {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink-muted);
+  }
+
+  .tier-note {
+    color: var(--ink-muted);
+    max-width: 68ch;
+    margin: 8px 0 26px;
+    font-size: 15px;
+  }
+
+  .items {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .item {
+    background: var(--paper-raised);
+    padding: 18px 20px;
+    display: grid;
+    grid-template-columns: 106px 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    display: inline-block;
+    white-space: nowrap;
+    border: 1px solid transparent;
+  }
+
+  .chip.blocker { background: var(--sev-blocker-bg); color: var(--sev-blocker); border-color: var(--sev-blocker-line); }
+  .chip.attention { background: var(--sev-attention-bg); color: var(--sev-attention); border-color: var(--sev-attention-line); }
+  .chip.info { background: var(--sev-info-bg); color: var(--sev-info); border-color: var(--sev-info-line); }
+  .chip.done { background: var(--sev-done-bg); color: var(--sev-done); border-color: var(--sev-done-line); }
+
+  .item h3 {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 15.5px;
+    margin: 0 0 5px;
+    color: var(--ink);
+  }
+
+  .item p {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: 14.5px;
+    max-width: 66ch;
+  }
+
+  .src {
+    display: block;
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    word-break: break-word;
+  }
+
+  /* ---------- Sequence (genuinely ordered) ---------- */
+
+  ol.sequence {
+    list-style: none;
+    counter-reset: step;
+    margin: 0;
+    padding: 0;
+    border-left: 2px solid var(--line-strong);
+  }
+
+  ol.sequence li {
+    counter-increment: step;
+    position: relative;
+    padding: 4px 0 26px 28px;
+  }
+
+  ol.sequence li::before {
+    content: counter(step);
+    position: absolute;
+    left: -13px;
+    top: 3px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--paper-raised);
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  ol.sequence li:last-child { padding-bottom: 0; }
+
+  ol.sequence h3 {
+    font-size: 15.5px;
+    margin: 0 0 4px;
+    color: var(--ink);
+  }
+
+  ol.sequence p {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: 14.5px;
+    max-width: 64ch;
+  }
+
+  /* ---------- Footer ---------- */
+
+  footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    color: var(--ink-muted);
+    font-size: 13.5px;
+  }
+
+  footer p { margin: 0 0 6px; max-width: 68ch; }
+
+  @media (max-width: 560px) {
+    .item { grid-template-columns: 1fr; }
+    header.report-head { padding-top: 40px; }
+  }
+</style>
+
+<header class="report-head">
+  <div class="head-inner">
+    <p class="eyebrow">KashTre &middot; Clinical Module &middot; Chunks 0&ndash;9</p>
+    <h1 class="title">Production Readiness Assessment</h1>
+    <p class="dek">
+      All ten planned chunks are built, tested, and integrated with the real Imaging and Inventory modules —
+      LIMS and the AI Gateway are stub-first by design, since neither exists yet. The first pass of this
+      assessment found five blockers; four are now fixed and one was a wrong assumption. What's left is
+      real, but none of it stops a careful pilot.
+    </p>
+
+    <div class="vitals">
+      <div class="vital"><div class="n done">10/10</div><div class="l">Chunks complete</div></div>
+      <div class="vital"><div class="n done">205</div><div class="l">Tests passing</div></div>
+      <div class="vital"><div class="n done">0</div><div class="l">Blockers remaining</div></div>
+      <div class="vital"><div class="n attention">7</div><div class="l">Needs attention</div></div>
+      <div class="vital"><div class="n">7</div><div class="l">Deferred by design</div></div>
+    </div>
+  </div>
+</header>
+
+<div class="page">
+
+  <section class="tier">
+    <div class="tier-head">
+      <h2 class="tier-title">Resolved since first pass</h2>
+      <span class="tier-count">5 items</span>
+    </div>
+    <p class="tier-note">The original assessment listed five blockers. One turned out to be a wrong assumption about how this app's access control works; the other four are now fixed and covered by real HTTP round-trip tests, not mocks. One related item was investigated and deliberately left as-is — see its note below.</p>
+
+    <div class="items">
+      <div class="item">
+        <span class="chip done">Corrected</span>
+        <div>
+          <h3>Permission assignment was never actually a code gap</h3>
+          <p>This app has no Role-based ACL — permissions live directly on <code>User.permissions</code>, assigned via the existing Staff Create/Edit screen. The Clinical permission set was already there and already assignable with zero further code. No fix needed; this is an operational step for whoever runs the pilot.</p>
+          <span class="src">app/Traits/AccessTrait.php — $clinicalModule &middot; UserController</span>
+        </div>
+      </div>
+
+      <div class="item">
+        <span class="chip done">Fixed</span>
+        <div>
+          <h3>Role-gated steps now check a real permission</h3>
+          <p>This app has no reliable "job role" field to check against (Title/Qualification are free-text). Added two capacity permissions — Act As Ward Nurse, Act As Consultant — checked before a role-gated process step or a doctor/nurse patient claim goes through. Unrecognized required_role values fail closed.</p>
+          <span class="src">ClinicalProcessPanel::assertRoleGateSatisfied() &middot; CaptureObservations::claim()</span>
+        </div>
+      </div>
+
+      <div class="item">
+        <span class="chip done">Fixed</span>
+        <div>
+          <h3>Imaging now has a real endpoint at the dispatched path</h3>
+          <p>Added <code>POST /api/v1/imaging/facts/{factType}</code> behind the existing VerifyImagingApiKey middleware, delegating to the same ImagingOrderReceiver the local driver already used. Also corrected the auth header the dispatcher sends for Imaging specifically (<code>X-Imaging-API-Key</code>, not a generic Bearer token) to match that middleware exactly. Flipping <code>DISPATCH_DRIVER=http</code> for Imaging now works end to end.</p>
+          <span class="src">ImagingFactsController &middot; routes/api.php</span>
+        </div>
+      </div>
+
+      <div class="item">
+        <span class="chip done">Fixed</span>
+        <div>
+          <h3>LIMS has a real, HMAC-verified inbound webhook</h3>
+          <p>Added <code>POST /api/v1/clinical/lab-proxy/{eventType}</code>, signature-verified against the raw request body before anything reaches LimsIntegrationProxyService — fails closed on a missing, wrong, or tampered signature. A genuinely external LIMS now has somewhere real to call.</p>
+          <span class="src">LimsWebhookController</span>
+        </div>
+      </div>
+
+      <div class="item">
+        <span class="chip info">Investigated, left as-is</span>
+        <div>
+          <h3>branch_id scoping is a repo-wide pattern, not a Clinical bug</h3>
+          <p>Confirmed Imaging and Inventory scope by business_id only too — branch_id is stored but never filtered anywhere in this codebase. Adding branch filtering to Clinical alone would make it <em>more</em> restrictive than the Imaging/Inventory tabs for the same patient, which reads as missing data, not better isolation. Left consistent with the rest of the app; flagged as a decision for whoever owns the broader architecture, not something to fix silently in one module.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tier">
+    <div class="tier-head">
+      <h2 class="tier-title">Needs attention</h2>
+      <span class="tier-count">7 items</span>
+    </div>
+    <p class="tier-note">Real gaps worth planning for — none of these block a careful pilot, but all of them will surface under real usage.</p>
+
+    <div class="items">
+      <div class="item">
+        <span class="chip attention">Testing</span>
+        <div>
+          <h3>Nothing has been clicked through in a browser</h3>
+          <p>All 205 tests are PHPUnit and Livewire-component level (two of them now real HTTP round-trips, which is new — see Resolved above). The <code>run-kashtre</code> skill was never invoked this session — no one has actually seen the ward board, the chart page, or the MAR render in an actual browser window.</p>
+        </div>
+      </div>
+
+      <div class="item">
+        <span class="chip attention">Performance</span>
+        <div>
+          <h3>Everything runs inline, synchronously</h3>
+          <p><code>QUEUE_CONNECTION=sync</code> means FHIR export, external-referral PDF generation, and every consumption/dispatch call block the HTTP request that triggered them. Fine at pilot scale; worth queuing before real ward load.</p>
+        </div>
+      </div>
+
+      <div class="item">
+        <span class="chip attention">Concurrency</span>
+        <div>
+          <h3>Race conditions are untested</h3>
+          <p>Two nurses completing the same process step, or administering the same MAR dose, at the same moment — none of this was exercised. The step/dose tables have unique constraints that will catch some of it, but the user-facing failure mode hasn't been designed.</p>
+        </div>
+      </div>
+
+      <div class="item">
+        <span class="chip attention">UI</span>
+        <div>
+          <h3>Interfaces are functional, not refined</h3>
+          <p>Drug and lab-test entry is plain text match, not autocomplete. No list in the module paginates. Error and loading states are Livewire's defaults. This was scoped as working software, not a finished product.</p>
+        </div>
+      </div>
+
+      <div class="item">
+        <span class="chip attention">Infra</span>
+        <div>
+          <h3>Local MySQL is fragile under concurrent migrations</h3>
+          <p>Mid-build, several overlapping <code>migrate:fresh</code> runs corrupted the isolated test database's InnoDB dictionary. Recoverable by recreating the database, but worth a line in onboarding docs so a teammate doesn't lose an afternoon to it.</p>
+        </div>
+      </div>
+
+      <div class="item">
+        <span class="chip attention">Content</span>
+        <div>
+          <h3>Clinical reference data is illustrative, not exhaustive</h3>
+          <p>The drug-interaction dictionary, ICD-11 codes, and lab test catalog all ship with a handful of representative rows to prove the mechanics work — not real facility content. Someone with clinical authority needs to own populating these before go-live.</p>
+        </div>
+      </div>
+
+      <div class="item">
+        <span class="chip attention">Finance</span>
+        <div>
+          <h3>Entitlements and postpaid billing are recorded, not acted on</h3>
+          <p>Package entitlements have consumption logic but no allocation UI — Main Module needs to create the rows. Postpaid billing events are durable facts with no consumer yet; nothing turns them into an actual invoice.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tier">
+    <div class="tier-head">
+      <h2 class="tier-title">Deferred by design</h2>
+      <span class="tier-count">7 items</span>
+    </div>
+    <p class="tier-note">Scoped out on purpose during the build, each with a reason left in the code. Listed here so none of them are a surprise later.</p>
+
+    <div class="items">
+      <div class="item">
+        <span class="chip info">Ch. 8</span>
+        <div><h3>Real-time voice dictation</h3><p>Text-based AI extraction only — streaming speech-to-text needs mic capture and a persistent WebSocket, a materially bigger build.</p></div>
+      </div>
+      <div class="item">
+        <span class="chip info">Ch. 6</span>
+        <div><h3>Full eGFR (CKD-EPI) calculation</h3><p>The renal-safety check reads an eGFR value already on the chart rather than computing it from creatinine, age, and sex.</p></div>
+      </div>
+      <div class="item">
+        <span class="chip info">Ch. 9</span>
+        <div><h3>Order Automation Engine &amp; Order Sets</h3><p>Daily ward-round auto-orders and pathway bundles — not started. Needs its own scheduling and configuration design.</p></div>
+      </div>
+      <div class="item">
+        <span class="chip info">Ch. 4</span>
+        <div><h3>Demand-ledger intent &amp; ward tote handshake</h3><p>Two Inventory ICD flows (pre-availability demand logging, the 5-digit tote release token) sit outside what "consumption decrements stock" needed.</p></div>
+      </div>
+      <div class="item">
+        <span class="chip info">Ch. 3 / 7</span>
+        <div><h3>Cancel-order flows</h3><p>The contract methods exist for both Imaging and LIMS; no UI or dispatch wiring calls them yet.</p></div>
+      </div>
+      <div class="item">
+        <span class="chip info">Ch. 5</span>
+        <div><h3>Transfer's bed swap</h3><p>Admission and discharge move a bed automatically; transfer's steps exist but don't yet release the old bed and allocate the new one.</p></div>
+      </div>
+      <div class="item">
+        <span class="chip info">Ch. 9</span>
+        <div><h3>IPS / C-CDA export</h3><p>FHIR R4 JSON only — IPS is a profile on the same resources, not a separate mapping worth building speculatively.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tier">
+    <h2 class="tier-title" style="margin-bottom: 24px;">Suggested rollout sequence</h2>
+
+    <ol class="sequence">
+      <li>
+        <h3>Assign permissions to your pilot ward's staff</h3>
+        <p>Check the Clinical boxes on the Staff Edit screen for the nurses, doctors, and consultants on one ward — including their Act As Ward Nurse / Act As Consultant capacity, now that those gate role-specific steps. No code work involved.</p>
+      </li>
+      <li>
+        <h3>Run one ward through the full loop</h3>
+        <p>Admission → chart → orders → discharge, watched end to end, before adding a second ward.</p>
+      </li>
+      <li>
+        <h3>Populate real reference data</h3>
+        <p>Hand the DDI dictionary, reason codes, and item metadata to whoever owns clinical content at the facility — the mechanics are proven, the content isn't real yet.</p>
+      </li>
+      <li>
+        <h3>Move off synchronous execution, add browser smoke tests</h3>
+        <p>Queue the heavy operations and get eyes on the actual rendered UI before scaling past pilot load.</p>
+      </li>
+      <li>
+        <h3>Decide on branch-level isolation, deliberately</h3>
+        <p>A repo-wide call, not a Clinical one — worth making once, on purpose, across Imaging/Inventory/Clinical together, rather than each module drifting its own way.</p>
+      </li>
+      <li>
+        <h3>Revisit LIMS and the AI Gateway last</h3>
+        <p>Both are fully stubbed, gracefully degrade today, and now have real HTTP endpoints proven end to end. Nothing else in this module depends on either becoming real.</p>
+      </li>
+    </ol>
+  </section>
+
+  <footer>
+    <p>Covers Chunks 0&ndash;9 of the Clinical Module build, plus a follow-up pass closing four of the five original blockers. Dev database confirmed untouched throughout (5 businesses, 43 users, unchanged from the first chunk to the last).</p>
+  </footer>
+
+</div>

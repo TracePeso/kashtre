@@ -81,22 +81,28 @@
                             <h3 class="text-lg font-medium text-gray-900 mb-4">Financial Summary</h3>
                             @if($thirdPartyPayer)
                                 <dl class="space-y-3 mb-4">
+                                    @php
+                                        $availableBalance = (float) ($balanceSummary['available_balance'] ?? 0);
+                                        $totalBalance = (float) ($balanceSummary['total_balance'] ?? 0);
+                                    @endphp
                                     <div>
-                                        <dt class="text-sm font-medium text-gray-500">Total Balance</dt>
-                                        <dd class="mt-1 text-lg font-semibold text-gray-900">
-                                            UGX {{ number_format(abs($totalDebits - $totalCredits), 2) }}
-                                        </dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-sm font-medium text-gray-500">Current Balance</dt>
-                                        <dd class="mt-1 text-lg font-semibold {{ $currentBalance < 0 ? 'text-red-600' : ($currentBalance > 0 ? 'text-green-600' : 'text-gray-900') }}">
-                                            UGX {{ number_format($currentBalance, 2) }}
-                                            @if($currentBalance < 0)
-                                                <span class="text-xs text-red-500">(Amount Owed)</span>
-                                            @elseif($currentBalance > 0)
-                                                <span class="text-xs text-green-500">(Credit Available)</span>
+                                        <dt class="text-sm font-medium text-gray-500">Available balance</dt>
+                                        <dd class="mt-1 text-lg font-semibold {{ $availableBalance < 0 ? 'text-red-600' : ($availableBalance > 0 ? 'text-green-600' : 'text-gray-900') }}">
+                                            UGX {{ number_format($availableBalance, 2) }}
+                                            @if($availableBalance < 0)
+                                                <span class="text-xs text-red-500">(Amount owed)</span>
+                                            @elseif($availableBalance > 0)
+                                                <span class="text-xs text-green-500">(Credit available)</span>
                                             @endif
                                         </dd>
+                                        <p class="text-xs text-gray-500 mt-1">Total credits minus total debits</p>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500">Total balance</dt>
+                                        <dd class="mt-1 text-lg font-semibold text-gray-900">
+                                            UGX {{ number_format($totalBalance, 2) }}
+                                        </dd>
+                                        <p class="text-xs text-gray-500 mt-1">Available balance plus suspense (no separate suspense wallet for vendor payers)</p>
                                     </div>
                                     <div>
                                         <dt class="text-sm font-medium text-gray-500">Credit Limit</dt>
@@ -142,7 +148,7 @@
                 </div>
             </div>
 
-            <!-- Tabs: Items (statement by line) + Transactions -->
+            <!-- Tabs: Items + Invoices -->
             @if($thirdPartyPayer)
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mt-6">
                 <div class="border-b border-gray-200">
@@ -150,8 +156,8 @@
                         <button type="button" onclick="showTab('items')" id="tab-items" class="tab-button active w-1/2 py-4 px-6 text-center border-b-2 font-medium text-sm transition-colors">
                             <span class="border-b-2 border-blue-500 pb-4 px-1 text-blue-600">Items</span>
                         </button>
-                        <button type="button" onclick="showTab('transactions')" id="tab-transactions" class="tab-button w-1/2 py-4 px-6 text-center border-b-2 font-medium text-sm transition-colors">
-                            <span class="border-b-2 border-transparent pb-4 px-1 text-gray-500 hover:text-gray-700">Transactions</span>
+                        <button type="button" onclick="showTab('invoices')" id="tab-invoices" class="tab-button w-1/2 py-4 px-6 text-center border-b-2 font-medium text-sm transition-colors">
+                            <span class="border-b-2 border-transparent pb-4 px-1 text-gray-500 hover:text-gray-700">Invoices</span>
                         </button>
                     </nav>
                 </div>
@@ -249,97 +255,81 @@
                     @endif
                 </div>
 
-                <!-- Transactions Tab Content -->
-                <div id="content-transactions" class="tab-content p-6 hidden">
+                <!-- Invoices Tab -->
+                <div id="content-invoices" class="tab-content p-6 hidden">
                     <div class="flex justify-between items-center mb-4">
                         <div>
-                            <h3 class="text-lg font-medium text-gray-900">Recent transactions</h3>
-                            <p class="text-sm text-gray-500">Showing last 10 ledger rows</p>
+                            <h3 class="text-lg font-medium text-gray-900">Invoices</h3>
+                            <p class="text-sm text-gray-500">Insurance invoices for this vendor</p>
                         </div>
-                        <a href="{{ route('third-party-vendors.balance-statement', ['vendorId' => $vendor['id'], 'view' => 'transactions']) }}"
+                        <a href="{{ route('third-party-vendors.balance-statement', ['vendorId' => $vendor['id'], 'view' => 'invoices']) }}"
                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-                            View full statement (by transaction)
+                            View all invoices
                         </a>
                     </div>
-                    
-                    @if($balanceHistories->count() > 0)
+
+                    @if(count($vendorInvoices ?? []) > 0)
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
                                 <tr>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Method</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance due</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                @foreach($balanceHistories as $history)
+                                @foreach($vendorInvoices as $invoice)
+                                @php
+                                    $payStatus = $invoice['payment_status'] ?? 'pending_payment';
+                                    $statusClass = match ($payStatus) {
+                                        'paid' => 'bg-green-100 text-green-800',
+                                        'partial' => 'bg-blue-100 text-blue-800',
+                                        'pending_payment' => 'bg-yellow-100 text-yellow-800',
+                                        default => 'bg-gray-100 text-gray-700',
+                                    };
+                                @endphp
                                 <tr>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        {{ $history->created_at->format('Y-m-d H:i:s') }}
+                                        {{ !empty($invoice['created_at']) ? \Carbon\Carbon::parse($invoice['created_at'])->format('Y-m-d H:i') : '—' }}
                                     </td>
-                                    <td class="px-6 py-4 text-sm text-gray-900">
-                                        {{ $history->description }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        @if($history->client)
-                                            <span class="font-medium">{{ $history->client->name }}</span>
-                                            @if($history->client->client_id)
-                                                <br><span class="text-xs text-gray-500">ID: {{ $history->client->client_id }}</span>
-                                            @endif
-                                        @else
-                                            <span class="text-gray-400">N/A</span>
-                                        @endif
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        @if($history->invoice)
-                                            <a href="{{ route('invoices.show', $history->invoice->id) }}" class="text-blue-600 hover:text-blue-800 font-medium">
-                                                {{ $history->invoice->invoice_number ?? 'N/A' }}
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        @if(!empty($invoice['id']))
+                                            <a href="{{ route('invoices.show', $invoice['id']) }}" class="text-blue-600 hover:text-blue-800">
+                                                {{ $invoice['invoice_number'] ?? 'N/A' }}
                                             </a>
                                         @else
-                                            <span class="text-gray-400">N/A</span>
+                                            {{ $invoice['invoice_number'] ?? 'N/A' }}
                                         @endif
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        <span class="px-2 py-1 text-xs rounded-full {{ $history->transaction_type === 'credit' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}">
-                                            {{ ucfirst($history->transaction_type) }}
-                                        </span>
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium {{ $history->transaction_type === 'credit' ? 'text-green-600' : 'text-red-600' }}">
-                                        {{ $history->transaction_type === 'credit' ? '+' : '-' }}{{ number_format(abs($history->change_amount), 2) }} UGX
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {{ $history->payment_method ? ucwords(str_replace('_', ' ', $history->payment_method)) : 'N/A' }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        @if($history->payment_status)
-                                        <span class="px-2 py-1 text-xs rounded-full {{ $history->payment_status === 'paid' ? 'bg-green-100 text-green-800' : ($history->payment_status === 'pending_payment' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800') }}">
-                                            {{ \App\Models\ThirdPartyPayerBalanceHistory::normalizePaymentStatusLabel($history->payment_status) }}
-                                        </span>
-                                        @else
-                                        <span class="text-gray-400">N/A</span>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <span class="font-medium">{{ $invoice['client_name'] ?? 'N/A' }}</span>
+                                        @if(!empty($invoice['client_id']))
+                                            <br><span class="text-xs text-gray-500">ID: {{ $invoice['client_id'] }}</span>
                                         @endif
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">UGX {{ number_format((float) ($invoice['total_amount'] ?? 0), 2) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-green-700">UGX {{ number_format((float) ($invoice['amount_paid'] ?? 0), 2) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium {{ ($invoice['balance_due'] ?? 0) > 0 ? 'text-amber-700' : 'text-gray-900' }}">
+                                        UGX {{ number_format((float) ($invoice['balance_due'] ?? 0), 2) }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span class="px-2 py-1 text-xs rounded-full {{ $statusClass }}">
+                                            {{ ucfirst(str_replace('_', ' ', $payStatus)) }}
+                                        </span>
                                     </td>
                                 </tr>
                                 @endforeach
                             </tbody>
                         </table>
                     </div>
-                    
-                    <div class="mt-4 text-center">
-                        <a href="{{ route('third-party-vendors.balance-statement', ['vendorId' => $vendor['id'], 'view' => 'transactions']) }}"
-                           class="text-blue-600 hover:text-blue-800 font-medium">
-                            View full statement (by transaction) →
-                        </a>
-                    </div>
                     @else
                     <div class="text-center py-8">
-                        <p class="text-gray-500">No transactions found. Balance history entries will appear here when invoices are created with this vendor.</p>
+                        <p class="text-gray-500">No invoices yet for this vendor.</p>
                     </div>
                     @endif
 
