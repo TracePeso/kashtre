@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\RemovesTwoFactorAuthentication;
 use App\Models\User;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -15,6 +16,7 @@ use Illuminate\Contracts\View\View;
 
 class Admins extends Component implements HasForms, HasTable
 {
+    use RemovesTwoFactorAuthentication;
     use InteractsWithForms;
     use InteractsWithTable;
 
@@ -100,6 +102,7 @@ class Admins extends Component implements HasForms, HasTable
                     })
                     ->icon('heroicon-o-pencil')
                     ->color('primary'),
+                $this->removeTwoFactorTableAction(),
                 Tables\Actions\Action::make('impersonate')
                     ->label('Impersonate')
                     ->visible(fn() => in_array('Impersonate', Auth::user()->permissions))

@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\RemovesTwoFactorAuthentication;
 use App\Models\User;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -16,6 +17,7 @@ use Illuminate\Support\Facades\Auth;
 
 class ListUsers extends Component implements HasForms, HasTable
 {
+    use RemovesTwoFactorAuthentication;
     use InteractsWithForms;
     use InteractsWithTable;
 
@@ -129,6 +131,7 @@ class ListUsers extends Component implements HasForms, HasTable
                     ->icon('heroicon-o-pencil')
                     ->color('primary')
                     ->visible(fn (User $record): bool => Auth::user()->business_id === 1 || $record->business_id === Auth::user()->business_id),
+                $this->removeTwoFactorTableAction(),
                 // Tables\Actions\Action::make('impersonate')
                 //     ->label('Impersonate')
                 //     ->url(fn (User $record): string => route('impersonate', $record->id))

@@ -173,6 +173,28 @@ class User extends Authenticatable
         return $this->two_factor_confirmed_at !== null;
     }
 
+    public function hasTwoFactorEnabled(): bool
+    {
+        return $this->hasAuthenticatorConfigured()
+            || filled($this->two_factor_secret)
+            || $this->hasSecurityQuestionsConfigured();
+    }
+
+    public function removeTwoFactorAuthentication(): void
+    {
+        \Illuminate\Support\Facades\DB::transaction(function () {
+            $this->securityQuestions()->delete();
+
+            $this->forceFill([
+                'two_factor_secret' => null,
+                'two_factor_recovery_codes' => null,
+                'two_factor_confirmed_at' => null,
+                'security_questions_enabled_at' => null,
+                'primary_two_factor_method' => 'authenticator',
+            ])->save();
+        });
+    }
+
     public function effectivePrimaryTwoFactorMethod(): string
     {
         $preferred = $this->primary_two_factor_method ?? 'authenticator';
