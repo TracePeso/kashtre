@@ -52,6 +52,16 @@
             @if(! empty($advice['error']))
                 <div class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
                     {{ $advice['error'] }}
+                    @if(! empty($advice['errorCode']))
+                        <span class="block mt-1 text-xs font-medium">{{ $advice['errorCode'] }}</span>
+                    @endif
+                    @if(! empty($advice['details']['errors']) && is_array($advice['details']['errors']))
+                        <ul class="mt-1 text-xs font-mono space-y-0.5">
+                            @foreach($advice['details']['errors'] as $schemaError)
+                                <li>{{ $schemaError['path'] ?? '/' }} · {{ $schemaError['rule'] ?? 'invalid' }}@if(! empty($schemaError['missing'])) · missing {{ implode(', ', $schemaError['missing']) }}@endif</li>
+                            @endforeach
+                        </ul>
+                    @endif
                     @if(! empty($advice['requestId']))
                         <span class="block mt-1 font-mono text-[11px] text-red-700">{{ $advice['requestId'] }}</span>
                     @endif

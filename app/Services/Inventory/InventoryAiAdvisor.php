@@ -66,7 +66,9 @@ class InventoryAiAdvisor
      *     warnings: list<string>,
      *     requiresHumanReview: bool,
      *     requestId: ?string,
-     *     error: ?string
+     *     error: ?string,
+     *     errorCode: ?string,
+     *     details: mixed
      * }
      */
     public function advise(
@@ -120,6 +122,8 @@ class InventoryAiAdvisor
             'requiresHumanReview' => true,
             'requestId' => $response['requestId'],
             'error' => $response['error'],
+            'errorCode' => $response['errorCode'],
+            'details' => $response['details'],
         ];
     }
 
@@ -348,7 +352,9 @@ class InventoryAiAdvisor
      *     warnings: list<string>,
      *     requiresHumanReview: bool,
      *     requestId: null,
-     *     error: string
+     *     error: string,
+     *     errorCode: null,
+     *     details: null
      * }
      */
     private function localFailure(string $error, string $useCase): array
@@ -366,6 +372,8 @@ class InventoryAiAdvisor
             'requiresHumanReview' => true,
             'requestId' => null,
             'error' => $error,
+            'errorCode' => null,
+            'details' => null,
         ];
     }
 }
