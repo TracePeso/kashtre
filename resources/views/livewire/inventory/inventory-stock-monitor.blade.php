@@ -32,6 +32,14 @@
         </div>
     </div>
 
+    <div class="mt-4">
+        @livewire('inventory.ai-advice-panel', [
+            'useCase' => 'stockout',
+            'allowAsk' => true,
+            'storeId' => $storeId,
+        ], key('ai-monitor-'.$storeId))
+    </div>
+
     <div class="mt-4 bg-white shadow sm:rounded-lg overflow-hidden relative" wire:loading.class="opacity-60" wire:target="setStockView,storeId">
         @if(! $storeId)
             <p class="text-sm text-gray-500 py-8 text-center">Select a store.</p>

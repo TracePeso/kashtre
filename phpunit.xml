@@ -30,5 +30,6 @@
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="UNIT_ENGINE_ENABLED" value="true"/>
+        <env name="AI_GATEWAY_INVENTORY_TOKEN" value=""/>
     </php>
 </phpunit>

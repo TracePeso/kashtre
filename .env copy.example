@@ -146,11 +146,14 @@ CLINICAL_DB_DATABASE=
 CLINICAL_DB_USERNAME=
 CLINICAL_DB_PASSWORD=
 
-# Clinical Module (Chunk 8) — Shared AI Services Gateway. Leave both blank
-# (the default) until the Gateway actually exists — AiGatewayClientService
-# treats an empty URL as "gracefully unavailable," not an error.
-AI_GATEWAY_URL=
+# Shared AI Gateway. Inventory talks to the live service over HTTP.
+# Mint the Inventory module token on the gateway (Apps → Inventory).
+AI_GATEWAY_URL=https://ai.kashtre.com
 AI_GATEWAY_API_KEY=
+AI_GATEWAY_TOKEN=
+AI_GATEWAY_INVENTORY_TOKEN=
+AI_GATEWAY_TENANT_ID=
+AI_GATEWAY_TIMEOUT=90
 
 # ---------------------------------------------------------------------------
 # Clinical Module split — Main -> CLINICAL_ORCHESTRATOR (API Integration Guide)

@@ -112,6 +112,14 @@
         </div>
     @endif
 
+    <div class="mb-4">
+        @livewire('inventory.ai-advice-panel', [
+            'useCase' => 'consumption',
+            'storeId' => $storeId,
+            'itemId' => $itemId,
+        ], key('ai-consumption-'.$storeId.'-'.$itemId))
+    </div>
+
     <div wire:loading.class="opacity-60" wire:target="storeId,itemId,periodPreset,dateFrom,dateUntil,generateTestData">
         @if($storeId)
             {{ $this->table }}

@@ -22,7 +22,7 @@ return [
     ],
 
     'postmark' => [
-        
+
         'token' => env('POSTMARK_TOKEN'),
     ],
 
@@ -45,7 +45,7 @@ return [
     ],
 
     'calling_service' => [
-        'url'         => env('CALLING_SERVICE_URL', 'http://127.0.0.1:8001'),
+        'url' => env('CALLING_SERVICE_URL', 'http://127.0.0.1:8001'),
         'sync_secret' => env('CALLING_SERVICE_SYNC_SECRET', ''),
     ],
 
@@ -107,16 +107,20 @@ return [
         'hospital_subnets' => array_filter(explode(',', env('ZTNA_HOSPITAL_SUBNETS', '10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1/32'))),
     ],
 
-    // Clinical Module Chunk 8: Shared AI Services Gateway. A genuinely
-    // separate, external service (STT + Azure OpenAI with ZDR behind it)
-    // that doesn't exist yet — left unconfigured (empty url) by default,
-    // which AiGatewayClientService::isAvailable() treats as "gracefully
-    // unavailable," not an error. LIMS/RIS use the identical contract
-    // with their own X-Module-Code.
+    // Shared AI Gateway (https://ai.kashtre.com). Inventory calls capability
+    // invoke over HTTP. Provider keys stay on the gateway. An empty inventory
+    // token is "not connected," not an error.
     'ai_gateway' => [
-        'url' => env('AI_GATEWAY_URL'),
+        'url' => env('AI_GATEWAY_URL', 'https://ai.kashtre.com'),
         'api_key' => env('AI_GATEWAY_API_KEY'),
-        'module_code' => 'CLINICAL_ORCHESTRATOR',
+        'token' => env('AI_GATEWAY_TOKEN', env('AI_GATEWAY_API_KEY')),
+        'module_code' => env('AI_GATEWAY_MODULE_CODE', 'CLINICAL_ORCHESTRATOR'),
+        'timeout' => (int) env('AI_GATEWAY_TIMEOUT', 90),
+        'tenant_id' => env('AI_GATEWAY_TENANT_ID'),
+        'inventory' => [
+            'token' => env('AI_GATEWAY_INVENTORY_TOKEN', env('AI_GATEWAY_TOKEN', env('AI_GATEWAY_API_KEY'))),
+            'module_code' => env('AI_GATEWAY_INVENTORY_MODULE_CODE', 'INVENTORY_ORCHESTRATOR'),
+        ],
     ],
 
     // Clinical Module split (API Integration Guide v1): the Clinical Module

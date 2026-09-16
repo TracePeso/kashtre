@@ -8,6 +8,10 @@
         </p>
         @include('inventory.partials.subnav')
 
+        <div class="mt-6">
+            @livewire('inventory.ai-advice-panel', ['useCase' => 'wastage'])
+        </div>
+
         @if(session('success'))
             <div class="mt-4 rounded-md bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800">{{ session('success') }}</div>
         @endif
