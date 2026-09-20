@@ -69,7 +69,7 @@ class DisplayBoardController extends Controller
         $servicePointIds = $caller->servicePoints->pluck('id');
 
         $logsQuery = CallerLog::where('caller_id', $caller->id)
-            ->whereDate('called_at', today())
+            ->whereOperationalPeriod('called_at', 'today')
             ->with([
                 'client:id,visit_id',
                 'servicePoint:id,name',

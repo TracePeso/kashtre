@@ -36,6 +36,14 @@
                     Branch: {{ Auth::user()->current_branch->name }}
                 </p>
                 @endif
+                @if(!empty($operationalTime['ianaId'] ?? null))
+                <p class="text-[11px] text-blue-800 mt-2 text-center leading-tight lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100">
+                    {{ $operationalTime['localNow'] }} {{ $operationalTime['abbreviation'] }}
+                    <span class="block text-gray-500">{{ $operationalTime['ianaId'] }}</span>
+                    <span class="block text-gray-500">Business date {{ $operationalTime['businessDate'] }}</span>
+                    <span class="block text-gray-400">{{ $operationalTime['sourceLabel'] }}</span>
+                </p>
+                @endif
             </div>
         </div>
 
@@ -945,9 +953,9 @@
 
                             @if((int) Auth::user()->business_id === 1)
                             <li>
-                                <a href="{{ route('platform.time.index') }}"
-                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('platform.time*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
-                                    Time Engine
+                                <a href="{{ route('settings.timezones.index') }}"
+                                   class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('settings.timezones*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    Manage Timezones
                                 </a>
                             </li>
                             <li>

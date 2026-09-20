@@ -134,8 +134,8 @@
                                     </span>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ $invoice->created_at->format('M d, Y') }}
-                                    <div class="text-xs text-gray-400">{{ $invoice->created_at->format('H:i') }}</div>
+                                    {{ $invoice->created_at->inOperationalTimezone()->format('M d, Y') }}
+                                    <div class="text-xs text-gray-400">{{ $invoice->created_at->inOperationalTimezone()->format('H:i') }}</div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                                     <a href="{{ route('invoices.show', $invoice) }}" 

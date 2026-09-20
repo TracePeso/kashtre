@@ -26,7 +26,7 @@
                     <div class="flex justify-between items-start mb-6">
                         <div>
                             <h3 class="text-2xl font-bold text-gray-900">Withdrawal Request #{{ $withdrawalRequest->uuid }}</h3>
-                            <p class="text-gray-600">Created on {{ $withdrawalRequest->created_at->format('M d, Y H:i') }}</p>
+                            <p class="text-gray-600">Created on {{ $withdrawalRequest->created_at->inOperationalTimezone()->format('M d, Y H:i') }}</p>
                         </div>
                         <div class="text-right">
                             <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium
@@ -519,7 +519,7 @@
                                 <div class="flex-1">
                                     <div class="flex items-center justify-between">
                                         <h4 class="font-semibold text-gray-900">{{ $approval->approver->name }}</h4>
-                                        <span class="text-sm text-gray-500">{{ $approval->created_at->format('M d, Y H:i') }}</span>
+                                        <span class="text-sm text-gray-500">{{ $approval->created_at->inOperationalTimezone()->format('M d, Y H:i') }}</span>
                                     </div>
                                     <p class="text-sm text-gray-600">
                                         {{ ucfirst($approval->approver_level) }} - 

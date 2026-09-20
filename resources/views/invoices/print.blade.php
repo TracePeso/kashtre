@@ -246,10 +246,10 @@
             <div class="company-info" style="justify-content: flex-end;">
                 <div class="invoice-details">
                     <h4>Invoice Details</h4>
-                    <p><strong>Date:</strong> {{ $invoice->created_at->format('M d, Y') }}</p>
-                    <p><strong>Time:</strong> {{ $invoice->created_at->format('H:i') }}</p>
+                    <p><strong>Date:</strong> {{ $invoice->created_at->inOperationalTimezone()->format('M d, Y') }}</p>
+                    <p><strong>Time:</strong> {{ $invoice->created_at->inOperationalTimezone()->format('H:i') }}</p>
                     @if($invoice->confirmed_at)
-                        <p><strong>Confirmed:</strong> {{ $invoice->confirmed_at->format('M d, Y H:i') }}</p>
+                        <p><strong>Confirmed:</strong> {{ $invoice->confirmed_at->inOperationalTimezone()->format('M d, Y H:i') }}</p>
                     @endif
                     @if($invoice->visit_id)
                         <p><strong>Visit ID:</strong> {{ $invoice->visit_id }}</p>

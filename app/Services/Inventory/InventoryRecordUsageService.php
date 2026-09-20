@@ -3,6 +3,7 @@
 namespace App\Services\Inventory;
 
 use App\Models\Client;
+use App\Support\SharedTime;
 use App\Models\InventoryDailyConsumption;
 use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
@@ -419,7 +420,7 @@ class InventoryRecordUsageService
                 $businessId,
                 $storeId,
                 $itemId,
-                now()->toDateString(),
+                SharedTime::businessToday(),
                 $quantity,
                 $consumptionSource,
                 (int) $user->id,

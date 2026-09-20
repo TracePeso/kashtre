@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Support\SharedTime;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
@@ -58,7 +59,7 @@ class AccountsReceivable extends Model
             }
             // Set invoice_date if not provided
             if (empty($ar->invoice_date)) {
-                $ar->invoice_date = now()->toDateString();
+                $ar->invoice_date = SharedTime::businessToday($ar->business_id ? (string) $ar->business_id : null);
             }
             // Calculate aging
             $ar->updateAging();

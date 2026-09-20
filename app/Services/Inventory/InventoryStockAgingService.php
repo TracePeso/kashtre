@@ -7,6 +7,7 @@ use App\Models\GoodsReceivedNoteLine;
 use App\Models\InventoryStockLevel;
 use App\Models\Store;
 use App\Support\StoreItemPairQuery;
+use App\Support\SharedTime;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -71,7 +72,7 @@ class InventoryStockAgingService
 
             $this->pageAgingCache[$key] = [
                 'last_delivery' => $lastDelivery,
-                'aging_days' => max(0, (int) $lastDelivery->diffInDays(Carbon::today())),
+                'aging_days' => max(0, (int) $lastDelivery->diffInDays(Carbon::parse(SharedTime::businessToday()))),
             ];
         }
     }
@@ -123,7 +124,7 @@ class InventoryStockAgingService
             return null;
         }
 
-        return max(0, (int) $lastDelivery->diffInDays(Carbon::today()));
+        return max(0, (int) $lastDelivery->diffInDays(Carbon::parse(SharedTime::businessToday())));
     }
 
     /**
@@ -144,7 +145,7 @@ class InventoryStockAgingService
 
         foreach ($query->get() as $stock) {
             $lastDelivery = $this->lastDeliveryDate($businessId, (int) $stock->store_id, (int) $stock->item_id);
-            $days = $lastDelivery ? max(0, (int) $lastDelivery->diffInDays(Carbon::today())) : null;
+            $days = $lastDelivery ? max(0, (int) $lastDelivery->diffInDays(Carbon::parse(SharedTime::businessToday()))) : null;
 
             $rows[] = [
                 'stock' => $stock,

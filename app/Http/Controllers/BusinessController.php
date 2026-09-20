@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\HandlesBusinessBranding;
 use App\Models\Business;
 use App\Models\Country;
 use App\Support\BusinessBranding;
+use App\Support\SharedTime;
 use App\Support\SupplierCategorySelection;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Http\Request;
@@ -46,6 +47,7 @@ class BusinessController extends Controller
             BusinessBranding::validationRules(logoRequired: true),
             [
                 'country_id' => 'required|exists:countries,id',
+                'operational_timezone' => SharedTime::timezoneValidationRule(),
                 'financial_year_start_month' => 'required|integer|min:1|max:12',
                 'financial_year_start_day' => 'required|integer|min:1|max:31',
                 'register_as_supplier' => 'sometimes|boolean',
@@ -70,8 +72,20 @@ class BusinessController extends Controller
             $validated = SupplierCategorySelection::normalize($registeredAsSupplier, $validated);
 
             // Create business
+            $timezone = $validated['operational_timezone'];
+            unset($validated['operational_timezone']);
+
             $business = Business::create($validated);
             $this->moveIncomingLogoToBusinessDirectory($business);
+
+            try {
+                SharedTime::assignBusinessTimezone($business, $timezone, 'Set when creating the business');
+            } catch (\Throwable $e) {
+                Log::warning('Business timezone was not applied: '.$e->getMessage(), [
+                    'business_id' => $business->id,
+                    'timezone' => $timezone,
+                ]);
+            }
 
             // dd($business->email);
 

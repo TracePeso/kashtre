@@ -25,7 +25,7 @@ class CashierDashboardController extends Controller
         // Get today's invoices created by this cashier (exclude insurer cascade trace copies)
         $todayInvoices = Invoice::where('created_by', $user->id)
             ->whereNull('parent_invoice_id')
-            ->whereDate('created_at', today())
+            ->whereOperationalPeriod('created_at', 'today')
             ->get();
 
         // Get today's sales total

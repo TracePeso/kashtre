@@ -5,6 +5,13 @@
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg p-6">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-xl font-bold text-gray-800 dark:text-white">Manage Transactions</h2>
+                    @if(!empty($operationalTime['ianaId'] ?? null))
+                        <p class="text-sm text-gray-500">
+                            Times shown in {{ $operationalTime['ianaId'] }}
+                            ({{ $operationalTime['sourceLabel'] }}).
+                            Business date {{ $operationalTime['businessDate'] }}.
+                        </p>
+                    @endif
 
                 </div>
 

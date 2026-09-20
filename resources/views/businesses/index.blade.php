@@ -92,6 +92,15 @@
                         </div>
                     </div>
 
+                    <div class="mt-4">
+                        @include('partials.timezone-fields', [
+                            'idPrefix' => 'create-',
+                            'name' => 'operational_timezone',
+                            'label' => 'Timezone',
+                            'selectedTimezone' => old('operational_timezone', \App\Support\SharedTime::defaultTimezoneId()),
+                        ])
+                    </div>
+
                     <div class="mt-4 border-t border-gray-200 dark:border-gray-600 pt-4">
                         <p class="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3">Financial year</p>
                         @include('partials.financial-year-fields', ['idPrefix' => 'create-'])
@@ -134,6 +143,7 @@
                         <label for="template" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Upload Template <span class="text-red-500">*</span></label>
                         <input type="file" name="template" id="template" accept=".xlsx,.xls" required
                             class="mt-1 block w-full text-gray-700 dark:text-gray-300">
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">The Timezone column must be an IANA name from Settings → Manage Timezones (e.g. Africa/Kampala). If blank, the default timezone is used.</p>
                         @error('template')
                             <span class="text-red-500 text-sm">{{ $message }}</span>
                         @enderror

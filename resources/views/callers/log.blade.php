@@ -57,7 +57,7 @@
                             @foreach($logs as $log)
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-500">
-                                        {{ $log->called_at->format('H:i:s') }}
+                                        {{ $log->called_at->inOperationalTimezone()->format('H:i:s') }}
                                     </td>
                                     <td class="px-5 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
                                         {{ optional($log->client)->visit_id ?? '—' }}

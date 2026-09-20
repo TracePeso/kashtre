@@ -32,7 +32,7 @@
         </tr>
         <tr>
             <th>Date</th>
-            <td>{{ $transaction->created_at->format('d M Y, H:i A') }}</td>
+            <td>{{ $transaction->created_at->inOperationalTimezone()->format('d M Y, H:i A') }}</td>
         </tr>
     </table>
 @endsection

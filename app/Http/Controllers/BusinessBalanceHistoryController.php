@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\BusinessBalanceHistory;
+use App\Support\SharedTime;
 use App\Models\Business;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -104,7 +105,7 @@ class BusinessBalanceHistoryController extends Controller
 
         // Fetch pending maturity (AccountsReceivable with future due_date)
         $pendingMaturityQuery = \App\Models\AccountsReceivable::with(['client', 'business', 'invoice', 'thirdPartyPayer'])
-            ->where('due_date', '>', now()->toDateString())
+            ->where('due_date', '>', SharedTime::businessToday())
             ->where('balance', '>', 0); // Only unpaid or partially paid
 
         if ($user->business_id == 1) {
@@ -120,7 +121,7 @@ class BusinessBalanceHistoryController extends Controller
         $pendingMaturityList = $pendingMaturityQuery->get()->map(function($ar) {
             // Calculate outstanding days to maturity (days remaining until due date)
             $dueDate = \Carbon\Carbon::parse($ar->due_date);
-            $today = \Carbon\Carbon::today();
+            $today = \Carbon\Carbon::parse(SharedTime::businessToday($ar->business_id ? (string) $ar->business_id : null));
             $ar->outstanding_days_to_maturity = max(0, $today->diffInDays($dueDate, false));
             return $ar;
         });

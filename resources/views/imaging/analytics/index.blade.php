@@ -102,7 +102,7 @@
                                     {{ $report->imagingStudy?->accession_number ?? '—' }}
                                 </a>
                                 <span class="text-gray-500">
-                                    · {{ ucfirst(strtolower($report->status)) }} · {{ $report->created_at->format('M d, Y') }}
+                                    · {{ ucfirst(strtolower($report->status)) }} · {{ $report->created_at->inOperationalTimezone()->format('M d, Y') }}
                                 </span>
                             </li>
                         @endforeach

@@ -129,7 +129,7 @@
                                                 <div class="text-sm font-medium text-gray-900">{{ number_format($movement->amount, 0) }} UGX</div>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
-                                                <div class="text-sm text-gray-900">{{ $movement->created_at->format('M d, Y H:i') }}</div>
+                                                <div class="text-sm text-gray-900">{{ $movement->created_at->inOperationalTimezone()->format('M d, Y H:i') }}</div>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
                                                 <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">

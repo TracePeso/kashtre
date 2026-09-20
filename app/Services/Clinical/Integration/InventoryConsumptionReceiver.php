@@ -3,6 +3,7 @@
 namespace App\Services\Clinical\Integration;
 
 use App\Services\Inventory\InventoryStockAnalyticsService;
+use App\Support\SharedTime;
 
 /**
  * Local receiver for the 'inventory'.'consumption-emit' fact. Deliberately
@@ -29,7 +30,7 @@ class InventoryConsumptionReceiver
             businessId: $payload['business_id'],
             storeId: $payload['store_id'],
             itemId: $payload['item_id'],
-            date: now()->toDateString(),
+            date: SharedTime::businessToday(),
             quantitySuom: $payload['quantity'],
             source: $payload['source'],
             recordedByUserId: $payload['recorded_by_user_id'],

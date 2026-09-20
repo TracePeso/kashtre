@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exports\InventoryConsumptionExport;
+use App\Support\SharedTime;
 use App\Http\Controllers\Concerns\RequiresInventoryModule;
 use App\Models\InventoryStockLevel;
 use App\Models\Item;
@@ -141,7 +142,7 @@ class InventoryDailyConsumptionController extends Controller
         $preset = $validated['period_preset'] ?? '10';
 
         if ($preset === 'custom') {
-            $until = $validated['date_until'] ?? now()->toDateString();
+            $until = $validated['date_until'] ?? SharedTime::businessToday();
             $from = $validated['date_from'] ?? $until;
 
             if (Carbon::parse($from)->gt(Carbon::parse($until))) {

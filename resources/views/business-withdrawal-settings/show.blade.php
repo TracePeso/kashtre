@@ -163,13 +163,13 @@
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div class="text-center p-4 bg-gray-50 rounded-lg">
                                 <p class="text-sm font-medium text-gray-500 mb-2">Created At</p>
-                                <p class="text-sm font-semibold text-gray-900">{{ $businessWithdrawalSetting->created_at->format('M d, Y') }}</p>
-                                <p class="text-xs text-gray-500">{{ $businessWithdrawalSetting->created_at->format('H:i:s') }}</p>
+                                <p class="text-sm font-semibold text-gray-900">{{ $businessWithdrawalSetting->created_at->inOperationalTimezone()->format('M d, Y') }}</p>
+                                <p class="text-xs text-gray-500">{{ $businessWithdrawalSetting->created_at->inOperationalTimezone()->format('H:i:s') }}</p>
                             </div>
                             <div class="text-center p-4 bg-gray-50 rounded-lg">
                                 <p class="text-sm font-medium text-gray-500 mb-2">Last Updated</p>
-                                <p class="text-sm font-semibold text-gray-900">{{ $businessWithdrawalSetting->updated_at->format('M d, Y') }}</p>
-                                <p class="text-xs text-gray-500">{{ $businessWithdrawalSetting->updated_at->format('H:i:s') }}</p>
+                                <p class="text-sm font-semibold text-gray-900">{{ $businessWithdrawalSetting->updated_at->inOperationalTimezone()->format('M d, Y') }}</p>
+                                <p class="text-xs text-gray-500">{{ $businessWithdrawalSetting->updated_at->inOperationalTimezone()->format('H:i:s') }}</p>
                             </div>
                             <div class="text-center p-4 bg-gray-50 rounded-lg">
                                 <p class="text-sm font-medium text-gray-500 mb-2">Created By</p>

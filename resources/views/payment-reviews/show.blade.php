@@ -51,7 +51,7 @@
                         </div>
                         <div>
                             <dt class="text-sm font-medium text-gray-500">Date</dt>
-                            <dd class="mt-1 text-sm text-gray-900">{{ $payment->created_at->format('M d, Y H:i') }}</dd>
+                            <dd class="mt-1 text-sm text-gray-900">{{ $payment->created_at->inOperationalTimezone()->format('M d, Y H:i') }}</dd>
                         </div>
                         @if($payment->notes)
                         <div class="md:col-span-2">

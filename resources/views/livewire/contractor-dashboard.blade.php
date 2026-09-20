@@ -166,7 +166,7 @@
                         @foreach($recentActivities as $activity)
                         <tr class="hover:bg-gray-50">
                             <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
-                                {{ $activity->created_at->format('M d, H:i') }}
+                                {{ $activity->created_at->inOperationalTimezone()->format('M d, H:i') }}
                             </td>
                             <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
                                 {{ $activity->client->name ?? 'N/A' }}

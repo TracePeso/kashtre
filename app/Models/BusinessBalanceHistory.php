@@ -157,7 +157,9 @@ class BusinessBalanceHistory extends Model
             return null;
         }
 
-        $today = Carbon::today();
+        $today = Carbon::parse(\App\Support\SharedTime::businessToday(
+            $this->business_id ? (string) $this->business_id : null
+        ));
         $end = $at->copy()->startOfDay();
 
         if ($end->lte($today)) {

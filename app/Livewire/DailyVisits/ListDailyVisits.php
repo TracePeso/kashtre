@@ -3,6 +3,7 @@
 namespace App\Livewire\DailyVisits;
 
 use App\Models\Client;
+use App\Support\SharedTime;
 use App\Models\Invoice;
 use App\Models\Business;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -125,10 +126,10 @@ class ListDailyVisits extends Component implements HasForms, HasTable
                     ->query(function ($query, array $data) {
                         if (empty($data['preset'])) return;
                         match ($data['preset']) {
-                            'yesterday' => $query->whereDate('created_at', now()->subDay()->toDateString()),
-                            'this_week' => $query->whereBetween('created_at', [now()->startOfWeek(), now()->endOfWeek()]),
-                            'this_month' => $query->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()]),
-                            default => $query->whereDate('created_at', now()->toDateString()),
+                            'yesterday' => $query->whereOperationalPeriod('created_at', 'yesterday'),
+                            'this_week' => $query->whereOperationalPeriod('created_at', 'this_week'),
+                            'this_month' => $query->whereOperationalPeriod('created_at', 'this_month'),
+                            default => $query->whereOperationalPeriod('created_at', 'today'),
                         };
                     })
                     ->indicateUsing(function (array $data): ?string {
@@ -156,10 +157,10 @@ class ListDailyVisits extends Component implements HasForms, HasTable
                     ->query(function ($query, array $data) {
                         if (empty($data['preset'])) return;
                         match ($data['preset']) {
-                            'yesterday' => $query->whereDate('visit_expires_at', now()->subDay()->toDateString()),
-                            'this_week' => $query->whereBetween('visit_expires_at', [now()->startOfWeek(), now()->endOfWeek()]),
-                            'this_month' => $query->whereBetween('visit_expires_at', [now()->startOfMonth(), now()->endOfMonth()]),
-                            default => $query->whereDate('visit_expires_at', now()->toDateString()),
+                            'yesterday' => $query->whereOperationalPeriod('visit_expires_at', 'yesterday'),
+                            'this_week' => $query->whereOperationalPeriod('visit_expires_at', 'this_week'),
+                            'this_month' => $query->whereOperationalPeriod('visit_expires_at', 'this_month'),
+                            default => $query->whereOperationalPeriod('visit_expires_at', 'today'),
                         };
                     })
                     ->indicateUsing(function (array $data): ?string {

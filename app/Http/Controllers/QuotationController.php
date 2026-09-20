@@ -30,13 +30,13 @@ class QuotationController extends Controller
         if ($request->has('date_filter') && $request->date_filter !== '') {
             switch ($request->date_filter) {
                 case 'today':
-                    $query->whereDate('created_at', today());
+                    $query->whereOperationalPeriod('created_at', 'today');
                     break;
                 case 'week':
-                    $query->whereBetween('created_at', [now()->startOfWeek(), now()->endOfWeek()]);
+                    $query->whereOperationalPeriod('created_at', 'this_week');
                     break;
                 case 'month':
-                    $query->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year);
+                    $query->whereOperationalPeriod('created_at', 'this_month');
                     break;
                 case 'year':
                     $query->whereYear('created_at', now()->year);

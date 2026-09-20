@@ -140,7 +140,7 @@
                             <dl class="space-y-3">
                                 <div>
                                     <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Tracking Number</dt>
-                                    <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ $packageSale->packageTracking->tracking_number ?? 'PKG-' . $packageSale->packageTracking->id . '-' . $packageSale->packageTracking->created_at->format('YmdHis') }}</dd>
+                                    <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ $packageSale->packageTracking->tracking_number ?? 'PKG-' . $packageSale->packageTracking->id . '-' . $packageSale->packageTracking->created_at->inOperationalTimezone()->format('YmdHis') }}</dd>
                                 </div>
 
                                 <div>

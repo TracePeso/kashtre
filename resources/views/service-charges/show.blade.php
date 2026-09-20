@@ -108,11 +108,11 @@
                         </div>
                         <div>
                             <dt class="text-sm font-medium text-gray-500">Created At</dt>
-                            <dd class="text-sm text-gray-900">{{ $serviceCharge->created_at->format('M d, Y H:i:s') }}</dd>
+                            <dd class="text-sm text-gray-900">{{ $serviceCharge->created_at->inOperationalTimezone()->format('M d, Y H:i:s') }}</dd>
                         </div>
                         <div>
                             <dt class="text-sm font-medium text-gray-500">Last Updated</dt>
-                            <dd class="text-sm text-gray-900">{{ $serviceCharge->updated_at->format('M d, Y H:i:s') }}</dd>
+                            <dd class="text-sm text-gray-900">{{ $serviceCharge->updated_at->inOperationalTimezone()->format('M d, Y H:i:s') }}</dd>
                         </div>
                     </dl>
                 </div>

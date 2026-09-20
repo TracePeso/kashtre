@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Support\SharedTime;
 use Carbon\Carbon;
 
 class ServiceQueue extends Model
@@ -89,10 +90,9 @@ class ServiceQueue extends Model
      */
     public static function generateQueueNumber($servicePointId, $businessId)
     {
-        $today = Carbon::today();
         $lastQueue = self::where('service_point_id', $servicePointId)
             ->where('business_id', $businessId)
-            ->whereDate('created_at', $today)
+            ->whereOperationalDay('created_at', SharedTime::businessToday((string) $businessId))
             ->orderBy('queue_number', 'desc')
             ->first();
 
@@ -191,7 +191,7 @@ class ServiceQueue extends Model
 
     public function scopeToday($query)
     {
-        return $query->whereDate('created_at', Carbon::today());
+        return SharedTime::constrainToOperationalDay($query, 'created_at');
     }
 
     public function scopeForUser($query, $userId)

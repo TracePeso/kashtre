@@ -1,3 +1,4 @@
+<div>
 @if ($canManage && ! $needsSelection)
     <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-4 mb-4">
         @if ($resultMessage)
@@ -52,3 +53,4 @@
         @endif
     </div>
 @endif
+</div>

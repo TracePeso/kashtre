@@ -9,6 +9,7 @@ use App\Models\KashtreCashTraySetting;
 use App\Support\BusinessBranding;
 use App\Support\DocumentViewData;
 use App\Support\InventoryBusinessContext;
+use App\Support\SharedTime;
 use App\Models\Transaction;
 
 
@@ -38,8 +39,10 @@ use App\Models\RadiationExposureLog;
 use App\Models\CallingModuleConfig;
 use App\Models\Caller;
 use App\Services\EmergencyAlertService;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -177,29 +180,35 @@ class AppServiceProvider extends ServiceProvider
         $activeEmergencyAlert = null;
 
         if ($user) {
-            $callingModuleConfig = CallingModuleConfig::query()
-                ->where('business_id', $user->business_id)
-                ->where('is_active', true)
-                ->first();
+            $callingModuleConfig = $this->optionalFirst('calling_module_configs', fn () =>
+                CallingModuleConfig::query()
+                    ->where('business_id', $user->business_id)
+                    ->where('is_active', true)
+                    ->first()
+            );
             $callingModuleEnabled = (bool) $callingModuleConfig;
 
             if ($callingModuleEnabled) {
                 $sessionCallerId = session('caller_id');
-                $userIsACaller = $sessionCallerId && Caller::query()
-                    ->where('id', $sessionCallerId)
-                    ->where('business_id', $user->business_id)
-                    ->where('status', 'active')
-                    ->exists();
+                $userIsACaller = (bool) $sessionCallerId && (bool) $this->optionalFirst('callers', fn () =>
+                    Caller::query()
+                        ->where('id', $sessionCallerId)
+                        ->where('business_id', $user->business_id)
+                        ->where('status', 'active')
+                        ->exists()
+                );
             }
 
             $inventoryBusinessId = InventoryBusinessContext::isKashtreAdmin() && InventoryBusinessContext::hasContext()
                 ? InventoryBusinessContext::effectiveBusinessId()
                 : (int) $user->business_id;
 
-            $inventoryModuleConfig = InventoryModuleConfig::query()
-                ->where('business_id', $inventoryBusinessId)
-                ->where('is_active', true)
-                ->first();
+            $inventoryModuleConfig = $this->optionalFirst('inventory_module_configs', fn () =>
+                InventoryModuleConfig::query()
+                    ->where('business_id', $inventoryBusinessId)
+                    ->where('is_active', true)
+                    ->first()
+            );
             $inventoryModuleEnabled = (bool) $inventoryModuleConfig;
 
             if (InventoryBusinessContext::isAdminBrowsing()) {
@@ -251,6 +260,20 @@ class AppServiceProvider extends ServiceProvider
             'hrModuleUrl' => $hrModuleUrl,
             'hrModuleEnabled' => $hrModuleEnabled,
             'hrNavigation' => $hrNavigation,
+            'operationalTime' => $user ? SharedTime::currentUserContext() : [],
         ];
+    }
+
+    private function optionalFirst(string $table, callable $query): mixed
+    {
+        if (! Schema::hasTable($table)) {
+            return null;
+        }
+
+        try {
+            return $query();
+        } catch (QueryException) {
+            return null;
+        }
     }
 }

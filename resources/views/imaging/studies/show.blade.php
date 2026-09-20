@@ -293,7 +293,7 @@
                                     <span class="text-gray-500">
                                         @if($log->exposure_time_ms) · {{ $log->exposure_time_ms }} ms @endif
                                         @if($log->kvp_metrics) · {{ $log->kvp_metrics }} kVp @endif
-                                        · {{ $log->created_at->format('M d, Y H:i') }}
+                                        · {{ $log->created_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                     </span>
                                 </li>
                             @endforeach
@@ -337,7 +337,7 @@
                                         <a href="{{ route('imaging-studies.show', $log->imagingStudy) }}" class="text-blue-600 hover:text-blue-800">
                                             {{ $log->imagingStudy?->accession_number }}
                                         </a>
-                                        — {{ $log->dose_area_product_gy ?? '—' }} Gy·cm² on {{ $log->created_at->format('M d, Y') }}
+                                        — {{ $log->dose_area_product_gy ?? '—' }} Gy·cm² on {{ $log->created_at->inOperationalTimezone()->format('M d, Y') }}
                                     </li>
                                 @endforeach
                             </ul>
@@ -508,7 +508,7 @@
                                     {{ $prior->accession_number }}
                                 </a>
                                 <span class="text-gray-500">
-                                    {{ $prior->created_at->format('M d, Y') }} · {{ ucfirst(strtolower(str_replace('_', ' ', $prior->status))) }}
+                                    {{ $prior->created_at->inOperationalTimezone()->format('M d, Y') }} · {{ ucfirst(strtolower(str_replace('_', ' ', $prior->status))) }}
                                 </span>
                             </li>
                         @endforeach
@@ -664,7 +664,7 @@
                                     <li class="text-xs text-gray-500 border-b border-gray-100 pb-2">
                                         <span class="font-medium text-gray-700">{{ ucfirst(strtolower($version->status)) }}</span>
                                         by {{ optional(\App\Models\User::find($version->modifier_user_id))->name ?? ('User #'.$version->modifier_user_id) }}
-                                        on {{ $version->created_at->format('M d, Y H:i') }}
+                                        on {{ $version->created_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                         @if($version->amendment_justification_reason)
                                             — {{ $version->amendment_justification_reason }}
                                         @endif

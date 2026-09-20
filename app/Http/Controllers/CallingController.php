@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Caller;
+use App\Support\SharedTime;
 use App\Models\CallerLog;
 use App\Models\CallingModuleConfig;
 use App\Models\PaSection;
@@ -273,7 +274,7 @@ class CallingController extends Controller
     public function log(Request $request)
     {
         $businessId = auth()->user()->business_id;
-        $date       = $request->input('date', now()->toDateString());
+        $date       = $request->input('date', SharedTime::businessToday());
 
         $logs = CallerLog::where('business_id', $businessId)
             ->whereDate('called_at', $date)

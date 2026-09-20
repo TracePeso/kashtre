@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\VisitArchive;
+use App\Support\SharedTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -35,7 +36,7 @@ class VisitArchivesController extends Controller
             $selectedBranchId = (int) $currentBranch->id;
         }
 
-        $selectedDate = $request->get('date', now()->format('Y-m-d'));
+        $selectedDate = $request->get('date', SharedTime::businessToday());
 
         return view('visits.archives.index', [
             'recordType' => $recordType,

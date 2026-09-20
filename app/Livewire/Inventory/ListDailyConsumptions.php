@@ -3,6 +3,7 @@
 namespace App\Livewire\Inventory;
 
 use App\Models\InventoryDailyConsumption;
+use App\Support\SharedTime;
 use App\Models\Store;
 use App\Services\Inventory\InventoryConsumptionQueryService;
 use App\Services\Inventory\InventoryConsumptionSampleDataService;
@@ -301,7 +302,7 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
     public function periodBounds(): array
     {
         if ($this->periodPreset === 'custom') {
-            $until = $this->dateUntil ?: now()->toDateString();
+            $until = $this->dateUntil ?: SharedTime::businessToday();
             $from = $this->dateFrom ?: $until;
 
             if (Carbon::parse($from)->gt(Carbon::parse($until))) {
@@ -317,7 +318,7 @@ class ListDailyConsumptions extends Component implements HasForms, HasTable
     private function syncPeriodDates(): void
     {
         if ($this->periodPreset === 'custom') {
-            $this->dateUntil ??= now()->toDateString();
+            $this->dateUntil ??= SharedTime::businessToday();
             $this->dateFrom ??= now()->subDays(self::DEFAULT_PERIOD_DAYS - 1)->toDateString();
 
             return;

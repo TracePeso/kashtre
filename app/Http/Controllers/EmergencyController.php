@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Caller;
+use App\Support\SharedTime;
 use App\Models\CallingModuleConfig;
 use App\Models\EmergencyAlert;
 use App\Models\Room;
@@ -278,7 +279,7 @@ class EmergencyController extends Controller
     public function log(Request $request)
     {
         $businessId = auth()->user()->business_id;
-        $date       = $request->input('date', now()->toDateString());
+        $date       = $request->input('date', SharedTime::businessToday());
 
         $alerts = EmergencyAlert::where('business_id', $businessId)
             ->whereDate('triggered_at', $date)

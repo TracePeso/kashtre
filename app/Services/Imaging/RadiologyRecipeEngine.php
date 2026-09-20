@@ -3,6 +3,7 @@
 namespace App\Services\Imaging;
 
 use App\Models\ImagingConsumption;
+use App\Support\SharedTime;
 use App\Models\ImagingConsumptionException;
 use App\Models\ImagingServicePointConfig;
 use App\Models\ImagingStudy;
@@ -104,7 +105,7 @@ class RadiologyRecipeEngine
             $businessId,
             $storeId,
             (int) $item->id,
-            now()->toDateString(),
+            SharedTime::businessToday(),
             $quantity,
             InventoryDailyConsumption::SOURCE_IMAGING,
             $userId,

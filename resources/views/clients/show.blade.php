@@ -387,7 +387,7 @@
                             </div>
                             <div>
                                 <label class="text-sm font-medium text-gray-500">Created Date</label>
-                                <p class="text-sm text-gray-900">{{ $client->created_at ? $client->created_at->format('M d, Y \a\t g:i A') : 'N/A' }}</p>
+                                <p class="text-sm text-gray-900">{{ $client->created_at ? $client->created_at->inOperationalTimezone()->format('M d, Y \a\t g:i A') : 'N/A' }}</p>
                             </div>
                         </div>
                     </div>
@@ -431,7 +431,7 @@
                                                 </a>
                                             </td>
                                             <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
-                                                {{ $invoice->created_at->format('M d, Y') }}
+                                                {{ $invoice->created_at->inOperationalTimezone()->format('M d, Y') }}
                                             </td>
                                             <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
                                                 UGX {{ number_format($invoice->total_amount, 2) }}

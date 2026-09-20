@@ -60,13 +60,9 @@ class FinancialYearService
 
     private function asOfToday(Business $business): Carbon
     {
-        if (SharedTime::enabled()) {
-            $date = SharedTime::businessToday((string) $business->id);
+        $date = SharedTime::businessToday((string) $business->id);
 
-            return Carbon::parse($date)->startOfDay();
-        }
-
-        return Carbon::today();
+        return Carbon::parse($date)->startOfDay();
     }
 
     private function resolveBusiness(Business|int $business): Business

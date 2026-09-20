@@ -97,12 +97,12 @@
                                 </div>
                                 <div>
                                     <dt class="text-sm font-medium text-gray-500">Date Created</dt>
-                                    <dd class="text-sm text-gray-900">{{ $invoice->created_at->format('M d, Y H:i') }}</dd>
+                                    <dd class="text-sm text-gray-900">{{ $invoice->created_at->inOperationalTimezone()->format('M d, Y H:i') }}</dd>
                                 </div>
                                 @if($invoice->confirmed_at)
                                 <div>
                                     <dt class="text-sm font-medium text-gray-500">Date Confirmed</dt>
-                                    <dd class="text-sm text-gray-900">{{ $invoice->confirmed_at->format('M d, Y H:i') }}</dd>
+                                    <dd class="text-sm text-gray-900">{{ $invoice->confirmed_at->inOperationalTimezone()->format('M d, Y H:i') }}</dd>
                                 </div>
                                 @endif
                             </dl>
@@ -730,7 +730,7 @@
                                     Reference: {{ $transaction->external_reference ?? $transaction->reference ?? 'N/A' }}
                                 </p>
                                 <p class="text-xs text-gray-500">
-                                    Failed: {{ $transaction->updated_at->format('M d, Y H:i:s') }}
+                                    Failed: {{ $transaction->updated_at->inOperationalTimezone()->format('M d, Y H:i:s') }}
                                 </p>
                             </div>
                             <div class="flex space-x-2">

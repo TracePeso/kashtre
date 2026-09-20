@@ -22,7 +22,7 @@ class InstallSharedTimeEngineCommand extends Command
         $this->info('Seeding Shared Time Engine…');
         $this->call('db:seed', ['--class' => CoreTimeEngineSeeder::class, '--force' => true]);
 
-        $this->info('Done. Set SHARED_TIME_ENABLED=true to activate consumer gateways.');
+        $this->info('Done. The time engine is enabled by default (SHARED_TIME_ENABLED).');
         $this->line('Cutover check: php artisan time:cutover --check');
         $this->line('Consumers: App\\Support\\SharedTime::now() / businessToday() / captureSnapshot()');
 

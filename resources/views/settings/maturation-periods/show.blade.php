@@ -145,7 +145,7 @@
                             <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
                                 <div>
                                     <dt class="text-sm font-medium text-gray-500">Created At</dt>
-                                    <dd class="mt-1 text-sm text-gray-900">{{ $maturationPeriod->created_at->format('M d, Y H:i:s') }}</dd>
+                                    <dd class="mt-1 text-sm text-gray-900">{{ $maturationPeriod->created_at->inOperationalTimezone()->format('M d, Y H:i:s') }}</dd>
                                 </div>
                                 @if($maturationPeriod->createdBy)
                                 <div>
@@ -155,7 +155,7 @@
                                 @endif
                                 <div>
                                     <dt class="text-sm font-medium text-gray-500">Updated At</dt>
-                                    <dd class="mt-1 text-sm text-gray-900">{{ $maturationPeriod->updated_at->format('M d, Y H:i:s') }}</dd>
+                                    <dd class="mt-1 text-sm text-gray-900">{{ $maturationPeriod->updated_at->inOperationalTimezone()->format('M d, Y H:i:s') }}</dd>
                                 </div>
                                 @if($maturationPeriod->updatedBy)
                                 <div>

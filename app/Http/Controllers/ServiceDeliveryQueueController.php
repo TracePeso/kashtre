@@ -242,7 +242,7 @@ class ServiceDeliveryQueueController extends Controller
 
             $completedItems = ServiceDeliveryQueue::where('service_point_id', $servicePointId)
                 ->where('status', 'completed')
-                ->whereDate('completed_at', today())
+                ->whereOperationalPeriod('completed_at', 'today')
                 ->with(['client', 'invoice'])
                 ->orderBy('completed_at', 'desc')
                 ->paginate(50);

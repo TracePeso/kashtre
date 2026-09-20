@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 // Version: 2025-09-20-20:30 - Fresh deployment with package transaction type support
 
 use App\Models\BalanceHistory;
+use App\Support\SharedTime;
 use App\Models\Client;
 use App\Models\Invoice;
 use App\Models\ServiceCharge;
@@ -117,7 +118,7 @@ class InvoiceController extends Controller
                 ->where('business_id', $businessId)
                 ->where('status', 'active')
                 ->where('remaining_quantity', '>', 0)
-                ->where('valid_until', '>=', now()->toDateString())
+                ->where('valid_until', '>=', SharedTime::businessToday())
                 ->with(['packageItem.packageItems.includedItem'])
                 ->get();
 
@@ -3535,16 +3536,16 @@ class InvoiceController extends Controller
         if ($request->has('date_filter') && $request->date_filter !== '') {
             switch ($request->date_filter) {
                 case 'today':
-                    $query->whereDate('created_at', today());
+                    $query->whereOperationalPeriod('created_at', 'today');
                     break;
                 case 'week':
-                    $query->whereBetween('created_at', [now()->startOfWeek(), now()->endOfWeek()]);
+                    $query->whereOperationalPeriod('created_at', 'this_week');
                     break;
                 case 'month':
-                    $query->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year);
+                    $query->whereOperationalPeriod('created_at', 'this_month');
                     break;
                 case 'year':
-                    $query->whereYear('created_at', now()->year);
+                    $query->whereYear('created_at', \App\Support\SharedTime::nowLocal()->year);
                     break;
             }
         }
@@ -4075,7 +4076,7 @@ class InvoiceController extends Controller
                 'total_quantity' => $quantity, // Total packages purchased
                 'used_quantity' => 0,
                 'remaining_quantity' => $quantity,
-                'valid_from' => now()->toDateString(),
+                'valid_from' => SharedTime::businessToday(),
                 'valid_until' => now()->addDays(365)->toDateString(), // Default 1 year validity
                 'status' => 'active',
                 'package_price' => $packagePrice,
@@ -4465,7 +4466,7 @@ class InvoiceController extends Controller
             ->where('business_id', $businessId)
             ->where('status', 'active')
             ->where('remaining_quantity', '>', 0)
-            ->where('valid_until', '>=', now()->toDateString())
+            ->where('valid_until', '>=', SharedTime::businessToday())
             ->with(['packageItem.packageItems.includedItem'])
             ->get();
 

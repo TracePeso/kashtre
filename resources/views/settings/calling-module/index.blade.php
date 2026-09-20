@@ -64,7 +64,7 @@
                                                 <p class="text-sm text-gray-400 mt-0.5">{{ $config->description }}</p>
                                             @endif
                                             <p class="text-xs text-gray-400 mt-0.5">
-                                                Added {{ $config->created_at->format('M d, Y') }}
+                                                Added {{ $config->created_at->inOperationalTimezone()->format('M d, Y') }}
                                                 @if($config->createdBy) by {{ $config->createdBy->name }} @endif
                                             </p>
                                         </div>

@@ -52,7 +52,7 @@
                                 </div>
                                 <div>
                                     <dt class="text-sm font-medium text-gray-500">Date Generated</dt>
-                                    <dd class="text-sm text-gray-900">{{ $quotation->generated_at ? $quotation->generated_at->format('M d, Y H:i') : $quotation->created_at->format('M d, Y H:i') }}</dd>
+                                    <dd class="text-sm text-gray-900">{{ $quotation->generated_at ? $quotation->generated_at->format('M d, Y H:i') : $quotation->created_at->inOperationalTimezone()->format('M d, Y H:i') }}</dd>
                                 </div>
                                 @if($quotation->valid_until)
                                 <div>

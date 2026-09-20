@@ -109,6 +109,16 @@
                                 <span class="text-red-500 text-sm">{{ $message }}</span>
                             @enderror
                         </div>
+
+                        <div class="md:col-span-2">
+                            @include('partials.timezone-fields', [
+                                'idPrefix' => 'branch-',
+                                'name' => 'timezone',
+                                'label' => 'Timezone',
+                                'allowInherit' => true,
+                                'selectedTimezone' => old('timezone', ''),
+                            ])
+                        </div>
                     </div>
 
                     <div class="mt-6 flex justify-end">
@@ -157,6 +167,7 @@
                         <label for="template" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Upload Template <span class="text-red-500">*</span></label>
                         <input type="file" name="template" id="template" accept=".xlsx,.xls" required
                             class="mt-1 block w-full text-gray-700 dark:text-gray-300">
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Leave Timezone blank to inherit the business timezone. Fill an IANA name from Settings → Manage Timezones only to override that branch.</p>
                         @error('template')
                             <span class="text-red-500 text-sm">{{ $message }}</span>
                         @enderror

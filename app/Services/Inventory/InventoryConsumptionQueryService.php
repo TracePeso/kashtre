@@ -3,6 +3,7 @@
 namespace App\Services\Inventory;
 
 use App\Models\InventoryDailyConsumption;
+use App\Support\SharedTime;
 use App\Models\InventoryConsumptionEvent;
 use App\Models\InventoryMonthlyConsumption;
 use App\Models\Item;
@@ -63,7 +64,7 @@ class InventoryConsumptionQueryService
      */
     public function recentDaysBounds(int $days = 10): array
     {
-        $until = now()->toDateString();
+        $until = SharedTime::businessToday();
         $from = now()->subDays(max(1, $days) - 1)->toDateString();
 
         return [$from, $until];

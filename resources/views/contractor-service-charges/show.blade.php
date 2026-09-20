@@ -78,11 +78,11 @@
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700">Created At</label>
-                        <p class="text-sm text-gray-900">{{ $contractorServiceCharge->created_at->format('M d, Y H:i') }}</p>
+                        <p class="text-sm text-gray-900">{{ $contractorServiceCharge->created_at->inOperationalTimezone()->format('M d, Y H:i') }}</p>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700">Last Updated</label>
-                        <p class="text-sm text-gray-900">{{ $contractorServiceCharge->updated_at->format('M d, Y H:i') }}</p>
+                        <p class="text-sm text-gray-900">{{ $contractorServiceCharge->updated_at->inOperationalTimezone()->format('M d, Y H:i') }}</p>
                     </div>
                 </div>
             </div>

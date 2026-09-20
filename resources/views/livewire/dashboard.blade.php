@@ -336,7 +336,7 @@
                             @foreach($allTransactions as $transaction)
                         <tr class="hover:bg-gray-50">
                             <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
-                                {{ $transaction->created_at->format('M d, H:i') }}
+                                {{ $transaction->created_at->inOperationalTimezone()->format('M d, H:i') }}
                             </td>
                             @if($business->id == 1)
                                 <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
@@ -424,7 +424,7 @@
                             @foreach($pendingTransactions as $transaction)
                             <tr class="hover:bg-gray-50">
                                 <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
-                                    {{ $transaction->created_at->format('M d, H:i') }}
+                                    {{ $transaction->created_at->inOperationalTimezone()->format('M d, H:i') }}
                                 </td>
                                 @if($business->id == 1)
                                     <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
@@ -498,7 +498,7 @@
                             @foreach($completedTransactions as $transaction)
                             <tr class="hover:bg-gray-50">
                                 <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
-                                    {{ $transaction->created_at->format('M d, H:i') }}
+                                    {{ $transaction->created_at->inOperationalTimezone()->format('M d, H:i') }}
                                 </td>
                                 @if($business->id == 1)
                                     <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
@@ -572,7 +572,7 @@
                             @foreach($failedTransactions as $transaction)
                             <tr class="hover:bg-gray-50">
                                 <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
-                                    {{ $transaction->created_at->format('M d, H:i') }}
+                                    {{ $transaction->created_at->inOperationalTimezone()->format('M d, H:i') }}
                                 </td>
                                 @if($business->id == 1)
                                     <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900">

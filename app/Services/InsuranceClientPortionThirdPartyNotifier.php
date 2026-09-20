@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\InsuranceCompany;
+use App\Support\SharedTime;
 use App\Models\Invoice;
 use App\Models\ThirdPartyPayerBalanceHistory;
 use App\Models\Transaction;
@@ -88,7 +89,7 @@ class InsuranceClientPortionThirdPartyNotifier
                 'connected_business_id'  => $invoice->business_id,
                 'payment_method'         => $method,
                 'mobile_money_number'    => $transaction->phone_number ?? null,
-                'payment_date'           => now()->format('Y-m-d'),
+                'payment_date'           => SharedTime::businessToday(),
             ];
 
             $result = $service->recordClientPortionPayment($payload);
@@ -185,7 +186,7 @@ class InsuranceClientPortionThirdPartyNotifier
                 'connected_business_id'   => $invoice->business_id,
                 'payment_method'          => $method,
                 'mobile_money_number'     => $transaction->phone_number ?? null,
-                'payment_date'            => now()->format('Y-m-d'),
+                'payment_date'            => SharedTime::businessToday(),
             ];
 
             try {

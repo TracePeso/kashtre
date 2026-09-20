@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Mail;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\BranchTemplateExport;
 use App\Imports\BranchTemplateImport;
+use App\Support\SharedTime;
 
 class BranchController extends Controller
 {
@@ -50,6 +51,7 @@ class BranchController extends Controller
         'phone'   => 'required|string|max:20',
         'address' => 'required|string|max:255',
         'business_id' => 'required|exists:businesses,id',
+        'timezone' => SharedTime::timezoneValidationRule(required: false, allowInherit: true),
     ]);
 
     try {
@@ -63,6 +65,21 @@ class BranchController extends Controller
         ]);
 
         $company = Business::find($request->business_id);
+
+        try {
+            SharedTime::assignBranchTimezone(
+                $branch,
+                $request->input('timezone'),
+                $request->filled('timezone')
+                    ? 'Set as a branch override when creating the branch'
+                    : 'Inherits the business timezone',
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Branch timezone was not applied: '.$e->getMessage(), [
+                'branch_id' => $branch->id,
+                'timezone' => $request->input('timezone'),
+            ]);
+        }
 
         Mail::send(new BranchCreatedMail($branch, $company));
 

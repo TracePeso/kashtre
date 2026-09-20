@@ -316,7 +316,7 @@
                                             </span>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {{ $branchPrice->updated_at->format('M d, Y H:i') }}
+                                            {{ $branchPrice->updated_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                         </td>
                                     </tr>
                                     @endif
@@ -354,7 +354,7 @@
                                             </span>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {{ $branchServicePoints->first()->updated_at->format('M d, Y H:i') }}
+                                            {{ $branchServicePoints->first()->updated_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                         </td>
                                     </tr>
                                     @endif
@@ -371,16 +371,16 @@
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-500 dark:text-gray-400">
                         <div>
                             <label class="block font-medium">Created</label>
-                            <p>{{ $item->created_at->format('M d, Y H:i') }}</p>
+                            <p>{{ $item->created_at->inOperationalTimezone()->format('M d, Y H:i') }}</p>
                         </div>
                         <div>
                             <label class="block font-medium">Last Updated</label>
-                            <p>{{ $item->updated_at->format('M d, Y H:i') }}</p>
+                            <p>{{ $item->updated_at->inOperationalTimezone()->format('M d, Y H:i') }}</p>
                         </div>
                         @if($item->deleted_at)
                         <div>
                             <label class="block font-medium text-red-600">Deleted</label>
-                            <p class="text-red-600">{{ $item->deleted_at->format('M d, Y H:i') }}</p>
+                            <p class="text-red-600">{{ $item->deleted_at->inOperationalTimezone()->format('M d, Y H:i') }}</p>
                         </div>
                         @endif
                     </div>

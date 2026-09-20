@@ -2,6 +2,7 @@
 
 return [
     App\Providers\AppServiceProvider::class,
+    App\Providers\OperationalTimeServiceProvider::class,
     App\Providers\ModuleDispatcherServiceProvider::class,
     App\Providers\ClinicalRisIntegrationServiceProvider::class,
     App\Providers\ClinicalInventoryIntegrationServiceProvider::class,

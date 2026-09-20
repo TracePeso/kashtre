@@ -124,6 +124,7 @@ trait AccessTrait
             'Manage System Settings',
             'Manage Settings',
             'Manage Countries & Currencies',
+            'Manage Timezones',
         ],
     ];
 

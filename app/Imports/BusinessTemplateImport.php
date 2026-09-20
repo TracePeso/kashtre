@@ -3,9 +3,11 @@
 namespace App\Imports;
 
 use App\Models\Business;
+use App\Support\SharedTime;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\WithValidation;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\NewBusinessCreatedMail;
 
@@ -75,6 +77,16 @@ class BusinessTemplateImport implements ToModel, WithHeadingRow, WithValidation
         // Save the business first
         $business->save();
 
+        $timezone = SharedTime::timezoneFromSpreadsheetRow($row) ?: SharedTime::defaultTimezoneId();
+        try {
+            SharedTime::assignBusinessTimezone($business, $timezone, 'Set from business bulk upload');
+        } catch (\Throwable $e) {
+            Log::warning('Business timezone was not applied during bulk upload: '.$e->getMessage(), [
+                'business_id' => $business->id,
+                'timezone' => $timezone,
+            ]);
+        }
+
         // Send welcome email
         try {
             Mail::to($business->email)->send(new NewBusinessCreatedMail($business));
@@ -93,6 +105,8 @@ class BusinessTemplateImport implements ToModel, WithHeadingRow, WithValidation
             'email' => 'required|email|unique:businesses,email',
             'phone' => 'required|max:20',
             'address' => 'required|string|max:255',
+            'timezone' => SharedTime::timezoneValidationRule(required: false),
+            'operational_timezone' => SharedTime::timezoneValidationRule(required: false),
         ];
     }
 
@@ -110,6 +124,8 @@ class BusinessTemplateImport implements ToModel, WithHeadingRow, WithValidation
             'address.required' => 'The address field is required.',
             'address.string' => 'The address must be a string.',
             'address.max' => 'The address may not be greater than 255 characters.',
+            'timezone.in' => 'The timezone must be an IANA name from Settings → Manage Timezones.',
+            'operational_timezone.in' => 'The timezone must be an IANA name from Settings → Manage Timezones.',
         ];
     }
 } 

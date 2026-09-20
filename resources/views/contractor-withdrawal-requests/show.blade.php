@@ -39,7 +39,7 @@
                                     @endif">
                                     {{ $contractorWithdrawalRequest->getStatusLabel() }}
                                 </span>
-                                <p class="text-sm text-gray-500 mt-1">{{ $contractorWithdrawalRequest->created_at->format('M d, Y H:i') }}</p>
+                                <p class="text-sm text-gray-500 mt-1">{{ $contractorWithdrawalRequest->created_at->inOperationalTimezone()->format('M d, Y H:i') }}</p>
                             </div>
                         </div>
                     </div>
@@ -85,7 +85,7 @@
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-600">Request Date:</span>
-                                    <span class="font-medium">{{ $contractorWithdrawalRequest->created_at->format('M d, Y H:i') }}</span>
+                                    <span class="font-medium">{{ $contractorWithdrawalRequest->created_at->inOperationalTimezone()->format('M d, Y H:i') }}</span>
                                 </div>
                                 
                                 @if($contractorWithdrawalRequest->kashtre_approved_at)
@@ -97,7 +97,7 @@
                                 @if($contractorWithdrawalRequest->completed_at)
                                     <div class="flex justify-between">
                                         <span class="text-gray-600">Completed:</span>
-                                        <span class="font-medium">{{ $contractorWithdrawalRequest->completed_at->format('M d, Y H:i') }}</span>
+                                        <span class="font-medium">{{ $contractorWithdrawalRequest->completed_at->inOperationalTimezone()->format('M d, Y H:i') }}</span>
                                     </div>
                                 @endif
                             </div>

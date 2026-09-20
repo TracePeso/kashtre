@@ -179,7 +179,7 @@
                                 @foreach($balanceHistories as $history)
                                 <tr>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        {{ $history->created_at->format('M d, Y H:i') }}
+                                        {{ $history->created_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                     </td>
                                     <td class="px-6 py-4 text-sm text-gray-900">
                                         {{ $history->description }}
@@ -286,7 +286,7 @@
                                                     </span>
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                    {{ $request->created_at->format('M d, Y') }}
+                                                    {{ $request->created_at->inOperationalTimezone()->format('M d, Y') }}
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                                     <a href="{{ route('credit-limit-requests.show', $request) }}" class="text-blue-600 hover:text-blue-900">

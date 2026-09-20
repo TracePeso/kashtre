@@ -13,6 +13,7 @@ use App\Models\InventoryStockMovement;
 use App\Models\Item;
 use App\Services\FinancialYearService;
 use App\Support\StoreItemPairQuery;
+use App\Support\SharedTime;
 use Carbon\Carbon;
 use DateTimeInterface;
 use Illuminate\Support\Collection;
@@ -50,7 +51,7 @@ class InventoryStockAnalyticsService
 
     public function movingAverage(int $businessId, int $storeId, int $itemId, int $days): float
     {
-        $from = Carbon::today()->subDays($days - 1);
+        $from = Carbon::parse(SharedTime::businessToday())->subDays($days - 1);
 
         $total = (float) InventoryDailyConsumption::query()
             ->where('business_id', $businessId)
@@ -209,13 +210,13 @@ class InventoryStockAnalyticsService
         }
 
         if ($daysLeft <= 0) {
-            return Carbon::today();
+            return Carbon::parse(SharedTime::businessToday());
         }
 
         $notifyLead = $this->notificationToOrderDays($stock, $config, $order);
         $daysUntilNotify = max(0, $daysLeft - $notifyLead);
 
-        return Carbon::today()->addDays((int) round($daysUntilNotify));
+        return Carbon::parse(SharedTime::businessToday())->addDays((int) round($daysUntilNotify));
     }
 
     /**
@@ -629,10 +630,10 @@ class InventoryStockAnalyticsService
 
             if ($daysLeft !== null) {
                 if ($daysLeft <= 0) {
-                    $notifyDate = Carbon::today()->format('M d, Y');
+                    $notifyDate = Carbon::parse(SharedTime::businessToday())->format('M d, Y');
                 } else {
                     $notifyLead = $this->notificationToOrderDays($stock, $config);
-                    $notifyDate = Carbon::today()
+                    $notifyDate = Carbon::parse(SharedTime::businessToday())
                         ->addDays((int) round(max(0, $daysLeft - $notifyLead)))
                         ->format('M d, Y');
                 }

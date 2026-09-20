@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Business;
+use App\Support\SharedTime;
 use App\Models\Branch;
 use App\Models\Client;
 use App\Models\InsuranceCompany;
@@ -143,7 +144,7 @@ class SeedVendorClients extends Command
             $visitResult = $apiService->registerAuthorizedVisit(
                 $client,
                 $client->visit_id,
-                now()->toDateString(),
+                SharedTime::businessToday(),
                 $client->visit_expires_at?->toDateTimeString(),
                 $d['category'],
                 $company->third_party_business_id

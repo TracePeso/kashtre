@@ -3,6 +3,7 @@
 namespace App\Services\Inventory;
 
 use App\Models\ActivityLog;
+use App\Support\SharedTime;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 
@@ -39,7 +40,7 @@ class InventoryProcurementAudit
             'ip_address' => request()?->ip(),
             'user_agent' => request()?->userAgent(),
             'description' => $description.($why ? ' — Why: '.$why : ''),
-            'date' => now()->toDateString(),
+            'date' => SharedTime::businessToday(),
         ]);
     }
 }

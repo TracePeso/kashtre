@@ -3,6 +3,7 @@
 namespace App\Services\Inventory;
 
 use App\Models\InventoryDailyConsumption;
+use App\Support\SharedTime;
 use App\Models\InventoryFulfillmentLine;
 use App\Models\InventoryModuleConfig;
 use App\Models\InventoryStockLevel;
@@ -115,7 +116,7 @@ class InventoryFulfillmentDispenseService
                 $businessId,
                 $storeId,
                 $itemId,
-                now()->toDateString(),
+                SharedTime::businessToday(),
                 $dispenseQty,
                 InventoryDailyConsumption::SOURCE_SALE,
                 (int) $user->id,

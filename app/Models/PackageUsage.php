@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Support\SharedTime;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -74,7 +75,7 @@ class PackageUsage extends Model
 
     public function scopeValid($query)
     {
-        return $query->where('expiry_date', '>=', now()->toDateString());
+        return $query->where('expiry_date', '>=', SharedTime::businessToday());
     }
 
     public function scopeForClient($query, $clientId)

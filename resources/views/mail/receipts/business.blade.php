@@ -8,7 +8,7 @@ A payment has been successfully received for one of your invoices.
 ## Transaction Details
 
 **Invoice Number:** {{ $invoice->invoice_number }}  
-**Payment Date:** {{ $invoice->created_at->format('F d, Y \a\t g:i A') }}  
+**Payment Date:** {{ $invoice->created_at->inOperationalTimezone()->format('F d, Y \a\t g:i A') }}  
 **Payment Method:** {{ ucfirst(implode(', ', $invoice->payment_methods ?? ['Cash'])) }}  
 **Amount Received:** UGX {{ number_format(max(0, $invoice->subtotal - ($invoice->package_adjustment ?? 0) - ($invoice->account_balance_adjustment ?? 0)), 2) }}
 

@@ -116,8 +116,8 @@ class ServicePoint extends Model
         $deliveryQueuePending = $this->pendingDeliveryQueues()->distinct('client_id')->count('client_id');
         $deliveryQueuePartiallyDone = $this->partiallyDoneDeliveryQueues()->distinct('client_id')->count('client_id');
         $deliveryQueueInProgress = $this->serviceDeliveryQueues()->whereNotNull('client_id')->where('status', 'in_progress')->distinct('client_id')->count('client_id');
-        $deliveryQueueCompletedToday = $this->serviceDeliveryQueues()->whereNotNull('client_id')->where('status', 'completed')->whereDate('completed_at', today())->distinct('client_id')->count('client_id');
-        $deliveryQueueTotalToday = $this->serviceDeliveryQueues()->whereNotNull('client_id')->whereDate('queued_at', today())->distinct('client_id')->count('client_id');
+        $deliveryQueueCompletedToday = $this->serviceDeliveryQueues()->whereNotNull('client_id')->where('status', 'completed')->whereOperationalPeriod('completed_at', 'today')->distinct('client_id')->count('client_id');
+        $deliveryQueueTotalToday = $this->serviceDeliveryQueues()->whereNotNull('client_id')->whereOperationalPeriod('queued_at', 'today')->distinct('client_id')->count('client_id');
         
         return [
             'pending' => $deliveryQueuePending,

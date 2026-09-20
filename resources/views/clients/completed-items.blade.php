@@ -50,9 +50,9 @@
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <div class="text-sm text-gray-900">
                                             @if($item->completed_at)
-                                                {{ $item->completed_at->format('M d, Y H:i') }}
+                                                {{ $item->completed_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                             @elseif($item->updated_at)
-                                                {{ $item->updated_at->format('M d, Y H:i') }}
+                                                {{ $item->updated_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                             @else
                                                 N/A
                                             @endif

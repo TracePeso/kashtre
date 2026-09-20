@@ -53,7 +53,7 @@
                                                 {{ ucfirst(str_replace('_', ' ', $payment->payment_method ?? 'N/A')) }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {{ $payment->created_at->format('M d, Y H:i') }}
+                                                {{ $payment->created_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm">
                                                 @if($payment->proof_of_payment_path)

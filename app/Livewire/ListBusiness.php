@@ -54,6 +54,15 @@ class ListBusiness extends Component implements HasForms, HasTable
                 Tables\Columns\TextColumn::make('name')
                     ->searchable()
                     ->sortable(),
+                Tables\Columns\TextColumn::make('timezone')
+                    ->label('Timezone')
+                    ->state(function (Business $record): string {
+                        $context = \App\Support\SharedTime::describe((string) $record->id);
+
+                        return $context['ianaId'];
+                    })
+                    ->description(fn (Business $record): string => \App\Support\SharedTime::describe((string) $record->id)['sourceLabel'])
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('email')
                     ->searchable()
                     ->sortable(),

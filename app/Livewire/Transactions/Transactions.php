@@ -14,6 +14,7 @@ use Livewire\Component;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
+use App\Support\SharedTime;
 
 class Transactions extends Component implements HasForms, HasTable
 {
@@ -23,7 +24,10 @@ class Transactions extends Component implements HasForms, HasTable
     public function table(Table $table): Table
     {
         // $query = Transaction::query()
-        $query = Transaction::query()->where('business_id', '!=', 1)->latest(); // Orders by created_at DESC by default
+        $query = Transaction::query()
+            ->with(['business', 'branch'])
+            ->where('business_id', '!=', 1)
+            ->latest();
 
          //get the lastest transactions
 
@@ -37,12 +41,30 @@ class Transactions extends Component implements HasForms, HasTable
         return $table
             ->query($query)
             ->columns([
-                // Time column
                 Tables\Columns\TextColumn::make('created_at')
-                    ->label('Time')
-                    ->dateTime('M d, Y H:i:s')
+                    ->label('Local time')
+                    ->formatStateUsing(function ($state, Transaction $record): string {
+                        return SharedTime::formatLocal(
+                            $state,
+                            $record->business_id ? (string) $record->business_id : null,
+                            $record->branch_id ? (string) $record->branch_id : null,
+                        );
+                    })
+                    ->description(function (Transaction $record): string {
+                        $context = SharedTime::describe(
+                            $record->business_id ? (string) $record->business_id : null,
+                            $record->branch_id ? (string) $record->branch_id : null,
+                        );
+
+                        return $context['ianaId'].' · '.$context['sourceLabel'];
+                    })
                     ->sortable()
                     ->searchable(),
+                Tables\Columns\TextColumn::make('date')
+                    ->label('Business date')
+                    ->date('M j, Y')
+                    ->sortable()
+                    ->toggleable(),
 
                 // Name column
                 Tables\Columns\TextColumn::make('names')

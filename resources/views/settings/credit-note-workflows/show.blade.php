@@ -67,11 +67,11 @@
                         </div>
                         <div>
                             <dt class="text-sm font-medium text-gray-500">Created</dt>
-                            <dd class="mt-1 text-sm text-gray-900">{{ $creditNoteWorkflow->created_at->format('M d, Y H:i') }}</dd>
+                            <dd class="mt-1 text-sm text-gray-900">{{ $creditNoteWorkflow->created_at->inOperationalTimezone()->format('M d, Y H:i') }}</dd>
                         </div>
                         <div>
                             <dt class="text-sm font-medium text-gray-500">Last Updated</dt>
-                            <dd class="mt-1 text-sm text-gray-900">{{ $creditNoteWorkflow->updated_at->format('M d, Y H:i') }}</dd>
+                            <dd class="mt-1 text-sm text-gray-900">{{ $creditNoteWorkflow->updated_at->inOperationalTimezone()->format('M d, Y H:i') }}</dd>
                         </div>
                     </dl>
                 </div>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Invoice;
+use App\Support\SharedTime;
 use App\Models\Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -43,7 +44,7 @@ class DailyVisitsController extends Controller
         $selectedBranch = \App\Models\Branch::find($selectedBranchId) ?? $currentBranch;
         
         // Date filter (default to today if not specified)
-        $selectedDate = $request->get('date', now()->format('Y-m-d'));
+        $selectedDate = $request->get('date', SharedTime::businessToday());
         
         // For Kashtre (business_id == 1), show all clients registered on selected date
         if ($business->id == 1) {

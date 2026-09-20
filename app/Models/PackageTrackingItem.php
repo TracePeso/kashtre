@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Support\SharedTime;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -52,7 +53,7 @@ class PackageTrackingItem extends Model
     public function scopeValid($query)
     {
         return $query->whereHas('packageTracking', function($q) {
-            $q->where('valid_until', '>=', now()->toDateString())
+            $q->where('valid_until', '>=', SharedTime::businessToday())
               ->where('status', 'active');
         });
     }

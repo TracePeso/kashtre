@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Support\SharedTime;
 use App\Models\Client;
 use App\Models\Item;
 use App\Models\BranchItemPrice;
@@ -695,7 +696,7 @@ class TransactionController extends Controller
                             'mobile_money_number' => $validated['payment_phone'] ?? null,
                             'transaction_id' => $transactionReference,
                             'payment_reference' => $reference,
-                            'payment_date' => now()->toDateString(),
+                            'payment_date' => SharedTime::businessToday(),
                             'payment_notes' => ($validated['notes'] ?? '') . ' - ' . ucfirst($type) . ' payment from Kashtre',
                             'status' => $paymentStatus,
                         ];

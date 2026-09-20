@@ -5,6 +5,7 @@ namespace App\Services;
 // Version: 2025-09-20-20:30 - Package functionality with comprehensive logging
 
 use App\Models\MoneyAccount;
+use App\Support\SharedTime;
 use App\Models\MoneyTransfer;
 use App\Models\PackageTracking;
 use App\Models\Client;
@@ -601,7 +602,7 @@ class MoneyTrackingService
                 $packageTracking = PackageTracking::where('client_id', $invoice->client_id)
                     ->where('included_item_id', $item->id)
                     ->where('status', 'active')
-                    ->where('valid_until', '>=', now()->toDateString())
+                    ->where('valid_until', '>=', SharedTime::businessToday())
                     ->where('remaining_quantity', '>', 0)
                     ->first();
 
@@ -3783,7 +3784,7 @@ class MoneyTrackingService
             ->where('business_id', $invoice->business_id)
             ->where('status', 'active')
             ->where('remaining_quantity', '>', 0)
-            ->where('valid_until', '>=', now()->toDateString())
+            ->where('valid_until', '>=', SharedTime::businessToday())
             ->with(['packageItem.packageItems.includedItem'])
             ->get();
             
@@ -3841,7 +3842,7 @@ class MoneyTrackingService
             ->where('business_id', $invoice->business_id)
             ->where('status', 'active')
             ->where('remaining_quantity', '>', 0)
-            ->where('valid_until', '>=', now()->toDateString())
+            ->where('valid_until', '>=', SharedTime::businessToday())
             ->get();
             
         Log::info("Getting package amount for invoice", [
@@ -3890,7 +3891,7 @@ class MoneyTrackingService
                 ->where('business_id', $invoice->business_id)
                 ->where('status', 'active')
                 ->where('remaining_quantity', '>', 0)
-                ->where('valid_until', '>=', now()->toDateString())
+                ->where('valid_until', '>=', SharedTime::businessToday())
                 ->with(['packageItem.packageItems.includedItem'])
                 ->get();
 
@@ -4176,7 +4177,7 @@ class MoneyTrackingService
                 ->where('business_id', $businessId)
                 ->where('status', 'active')
                 ->where('remaining_quantity', '>', 0)
-                ->where('valid_until', '>=', now()->toDateString())
+                ->where('valid_until', '>=', SharedTime::businessToday())
                 ->with(['packageItem.packageItems.includedItem'])
                 ->get();
                 
@@ -4377,7 +4378,7 @@ class MoneyTrackingService
                 ->where('business_id', $invoice->business_id)
                 ->where('status', 'active')
                 ->where('remaining_quantity', '>', 0)
-                ->where('valid_until', '>=', now()->toDateString())
+                ->where('valid_until', '>=', SharedTime::businessToday())
                 ->with(['packageItem.packageItems.includedItem', 'client'])
                 ->get();
                 
@@ -4531,7 +4532,7 @@ class MoneyTrackingService
                                     'name' => $packageTracking->client->name ?? 'Unknown Client',
                                     'invoice_number' => $invoice->invoice_number,
                                     'pkn' => $trackingNumber,
-                                    'date' => now()->toDateString(),
+                                    'date' => SharedTime::businessToday(),
                                     'qty' => $quantityToUse,
                                     'item_name' => $itemModel->name ?? 'Unknown Item',
                                     'amount' => $itemAmount,

@@ -23,7 +23,7 @@ final class TimeZoneCatalogueService
             return $existing;
         }
 
-        return CoreTimeZone::query()->create([
+        $row = CoreTimeZone::query()->create([
             'iana_id' => $vo->value(),
             'display_name' => str_replace('_', ' ', $vo->value()),
             'region_code' => str_contains($vo->value(), '/') ? explode('/', $vo->value(), 2)[0] : null,
@@ -32,6 +32,23 @@ final class TimeZoneCatalogueService
             'tzdb_release' => $this->tzdbRelease(),
             'is_fixed_offset' => str_starts_with($vo->value(), 'Etc/GMT') || $vo->value() === 'UTC',
         ]);
+
+        return $row;
+    }
+
+    public function add(string $ianaId, ?string $displayName = null): CoreTimeZone
+    {
+        $row = $this->ensureKnown($ianaId);
+        $name = trim((string) $displayName);
+
+        $row->update([
+            'display_name' => $name !== '' ? $name : ($row->display_name ?: str_replace('_', ' ', $row->iana_id)),
+            'region_code' => str_contains($row->iana_id, '/') ? explode('/', $row->iana_id, 2)[0] : $row->region_code,
+            'status' => 'ACTIVE',
+            'tzdb_release' => $this->tzdbRelease(),
+        ]);
+
+        return $row->fresh();
     }
 
     public function find(string $ianaId): ?CoreTimeZone

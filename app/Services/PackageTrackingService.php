@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\PackageTracking;
+use App\Support\SharedTime;
 use App\Models\PackageTrackingItem;
 use App\Models\Invoice;
 use App\Models\Item;
@@ -85,7 +86,7 @@ class PackageTrackingService
                 'total_quantity' => $totalQuantity,
                 'used_quantity' => 0,
                 'remaining_quantity' => $totalQuantity,
-                'valid_from' => now()->toDateString(),
+                'valid_from' => SharedTime::businessToday(),
                 'valid_until' => now()->addDays(365)->toDateString(),
                 'status' => 'active',
                 'package_price' => $packageItem['price'] ?? 0,
@@ -564,7 +565,7 @@ class PackageTrackingService
             ->where('business_id', $businessId)
             ->where('status', 'active')
             ->where('remaining_quantity', '>', 0)
-            ->where('valid_until', '>=', now()->toDateString())
+            ->where('valid_until', '>=', SharedTime::businessToday())
             ->with(['trackingItems.includedItem', 'packageItem'])
             ->get();
     }

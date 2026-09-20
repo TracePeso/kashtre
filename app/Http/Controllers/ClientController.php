@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
+use App\Support\SharedTime;
 use App\Models\Business;
 use App\Models\Branch;
 use App\Models\MaturationPeriod;
@@ -53,7 +54,7 @@ class ClientController extends Controller
                 
             // Get today's clients count for all businesses
             $todayClients = Client::where('business_id', '!=', 1)
-                ->whereDate('created_at', today())
+                ->whereOperationalPeriod('created_at', 'today')
                 ->count();
         } else {
             // Get clients for the selected business and branch
@@ -65,7 +66,7 @@ class ClientController extends Controller
             // Get today's clients count for the selected branch
             $todayClients = Client::where('business_id', $business->id)
                 ->where('branch_id', $selectedBranch->id)
-                ->whereDate('created_at', today())
+                ->whereOperationalPeriod('created_at', 'today')
                 ->count();
         }
             
@@ -1012,13 +1013,13 @@ class ClientController extends Controller
                 Log::info('FLOW: Starting authorized visit registration', [
                     'kashtre_client_id' => $client->client_id,
                     'visit_id' => $client->visit_id,
-                    'visit_date' => now()->toDateString(),
+                    'visit_date' => SharedTime::businessToday(),
                 ]);
                 
                 $visitRegistrationResult = $apiService->registerAuthorizedVisit(
                     $client,
                     $client->visit_id,
-                    now()->toDateString(),
+                    SharedTime::businessToday(),
                     $client->visit_expires_at ? $client->visit_expires_at->toDateTimeString() : null,
                     $client->services_category
                 );
@@ -1284,7 +1285,7 @@ class ClientController extends Controller
                 $visitRegistrationResult = $apiService->registerAuthorizedVisit(
                     $client,
                     $client->visit_id,
-                    now()->toDateString(),
+                    SharedTime::businessToday(),
                     $client->visit_expires_at ? $client->visit_expires_at->toDateTimeString() : null,
                     $client->services_category
                 );
@@ -1477,7 +1478,7 @@ class ClientController extends Controller
                 $visitRegistrationResult = $apiService->registerAuthorizedVisit(
                     $client,
                     $client->visit_id,
-                    now()->toDateString(),
+                    SharedTime::businessToday(),
                     $client->visit_expires_at ? $client->visit_expires_at->toDateTimeString() : null,
                     $client->services_category
                 );

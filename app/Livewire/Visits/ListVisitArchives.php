@@ -3,6 +3,7 @@
 namespace App\Livewire\Visits;
 
 use App\Models\VisitArchive;
+use App\Support\SharedTime;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Tables;
@@ -130,10 +131,10 @@ class ListVisitArchives extends Component implements HasForms, HasTable
                         ->query(function ($query, array $data) {
                             if (empty($data['preset'])) return;
                             match ($data['preset']) {
-                                'yesterday' => $query->whereDate('visit_created_at', now()->subDay()->toDateString()),
-                                'this_week' => $query->whereBetween('visit_created_at', [now()->startOfWeek(), now()->endOfWeek()]),
-                                'this_month' => $query->whereBetween('visit_created_at', [now()->startOfMonth(), now()->endOfMonth()]),
-                                default => $query->whereDate('visit_created_at', now()->toDateString()),
+                                'yesterday' => $query->whereOperationalPeriod('visit_created_at', 'yesterday'),
+                                'this_week' => $query->whereOperationalPeriod('visit_created_at', 'this_week'),
+                                'this_month' => $query->whereOperationalPeriod('visit_created_at', 'this_month'),
+                                default => $query->whereOperationalPeriod('visit_created_at', 'today'),
                             };
                         })
                         ->indicateUsing(function (array $data): ?string {
@@ -161,10 +162,10 @@ class ListVisitArchives extends Component implements HasForms, HasTable
                         ->query(function ($query, array $data) {
                             if (empty($data['preset'])) return;
                             match ($data['preset']) {
-                                'yesterday' => $query->whereDate('visit_end_at', now()->subDay()->toDateString()),
-                                'this_week' => $query->whereBetween('visit_end_at', [now()->startOfWeek(), now()->endOfWeek()]),
-                                'this_month' => $query->whereBetween('visit_end_at', [now()->startOfMonth(), now()->endOfMonth()]),
-                                default => $query->whereDate('visit_end_at', now()->toDateString()),
+                                'yesterday' => $query->whereOperationalPeriod('visit_end_at', 'yesterday'),
+                                'this_week' => $query->whereOperationalPeriod('visit_end_at', 'this_week'),
+                                'this_month' => $query->whereOperationalPeriod('visit_end_at', 'this_month'),
+                                default => $query->whereOperationalPeriod('visit_end_at', 'today'),
                             };
                         })
                         ->indicateUsing(function (array $data): ?string {
@@ -244,10 +245,10 @@ class ListVisitArchives extends Component implements HasForms, HasTable
                         ->query(function ($query, array $data) {
                             if (empty($data['preset'])) return;
                             match ($data['preset']) {
-                                'yesterday' => $query->whereDate('archived_at', now()->subDay()->toDateString()),
-                                'this_week' => $query->whereBetween('archived_at', [now()->startOfWeek(), now()->endOfWeek()]),
-                                'this_month' => $query->whereBetween('archived_at', [now()->startOfMonth(), now()->endOfMonth()]),
-                                default => $query->whereDate('archived_at', now()->toDateString()),
+                                'yesterday' => $query->whereOperationalPeriod('archived_at', 'yesterday'),
+                                'this_week' => $query->whereOperationalPeriod('archived_at', 'this_week'),
+                                'this_month' => $query->whereOperationalPeriod('archived_at', 'this_month'),
+                                default => $query->whereOperationalPeriod('archived_at', 'today'),
                             };
                         })
                         ->indicateUsing(function (array $data): ?string {

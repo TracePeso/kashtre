@@ -115,7 +115,7 @@
                             @forelse($recentTransfers as $transfer)
                             <tr>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                    {{ $transfer->created_at->format('M d, Y H:i') }}
+                                    {{ $transfer->created_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                 </td>
                                 @if($isSuperBusiness)
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

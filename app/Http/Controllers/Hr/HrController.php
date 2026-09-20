@@ -30,7 +30,7 @@ class HrController extends Controller
 
         try {
             $records = $this->hr->attendanceRecords($businessId, $request->only(['start_date', 'end_date', 'employee_id']));
-            $summary = $this->hr->attendanceSummary($businessId, $request->input('date', today()->toDateString()));
+            $summary = $this->hr->attendanceSummary($businessId, $request->input('date', \App\Support\SharedTime::businessToday((string) $businessId)));
         } catch (\Throwable $e) {
             $records = ['data' => [], 'error' => $e->getMessage()];
             $summary = [];
@@ -83,7 +83,7 @@ class HrController extends Controller
         $businessId = Auth::user()->business_id;
 
         try {
-            $attendance = $this->hr->attendanceSummary($businessId, today()->toDateString());
+            $attendance = $this->hr->attendanceSummary($businessId, \App\Support\SharedTime::businessToday((string) $businessId));
             $stats      = $this->hr->stats($businessId);
         } catch (\Throwable $e) {
             $attendance = [];

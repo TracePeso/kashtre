@@ -153,11 +153,11 @@ class PackageTrackingTable extends Component implements HasForms, HasTable
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return match ($data['date_filter'] ?? null) {
-                            'today' => $query->whereDate('created_at', today()),
-                            'yesterday' => $query->whereDate('created_at', today()->subDay()),
-                            'this_week' => $query->whereBetween('created_at', [now()->startOfWeek(), now()->endOfWeek()]),
-                            'this_month' => $query->whereMonth('created_at', now()->month),
-                            'last_month' => $query->whereMonth('created_at', now()->subMonth()->month),
+                            'today' => $query->whereOperationalPeriod('created_at', 'today'),
+                            'yesterday' => $query->whereOperationalPeriod('created_at', 'yesterday'),
+                            'this_week' => $query->whereOperationalPeriod('created_at', 'this_week'),
+                            'this_month' => $query->whereOperationalPeriod('created_at', 'this_month'),
+                            'last_month' => $query->whereOperationalPeriod('created_at', 'last_month'),
                             default => $query,
                         };
                     })

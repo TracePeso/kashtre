@@ -48,7 +48,7 @@
                                                 {{ $item->invoice->invoice_number }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {{ $item->queued_at->format('M d, Y H:i') }}
+                                                {{ $item->queued_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                                 <span class="waiting-time font-mono font-semibold text-blue-600" 

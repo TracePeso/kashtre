@@ -298,7 +298,7 @@
                                     </div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ $history->created_at->format('M d, Y H:i') }}
+                                    {{ $history->created_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ $history->businessStatementPaymentStatusBadgeClass() }}">
@@ -406,7 +406,7 @@
                                     </div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ $history->created_at->format('M d, Y H:i') }}
+                                    {{ $history->created_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ $history->businessStatementPaymentStatusBadgeClass() }}">

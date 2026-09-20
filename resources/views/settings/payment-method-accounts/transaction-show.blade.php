@@ -101,7 +101,7 @@
                             </div>
                             <div>
                                 <dt class="text-sm font-medium text-gray-500">Date</dt>
-                                <dd class="mt-1 text-sm text-gray-900">{{ $transaction->created_at->format('M d, Y H:i:s') }}</dd>
+                                <dd class="mt-1 text-sm text-gray-900">{{ $transaction->created_at->inOperationalTimezone()->format('M d, Y H:i:s') }}</dd>
                             </div>
                             <div>
                                 <dt class="text-sm font-medium text-gray-500">Transaction For</dt>
@@ -202,7 +202,7 @@
                         @endif
                         <div>
                             <dt class="text-sm font-medium text-gray-500">Invoice Date</dt>
-                            <dd class="mt-1 text-sm text-gray-900">{{ $transaction->invoice->created_at->format('M d, Y H:i:s') }}</dd>
+                            <dd class="mt-1 text-sm text-gray-900">{{ $transaction->invoice->created_at->inOperationalTimezone()->format('M d, Y H:i:s') }}</dd>
                         </div>
                         @if($transaction->invoice->payment_methods)
                         <div class="sm:col-span-2">
@@ -312,7 +312,7 @@
                     <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
                         <div>
                             <dt class="text-sm font-medium text-gray-500">Created At</dt>
-                            <dd class="mt-1 text-sm text-gray-900">{{ $transaction->created_at->format('M d, Y H:i:s') }}</dd>
+                            <dd class="mt-1 text-sm text-gray-900">{{ $transaction->created_at->inOperationalTimezone()->format('M d, Y H:i:s') }}</dd>
                         </div>
                         @if($transaction->createdBy)
                         <div>
@@ -323,7 +323,7 @@
                         @if($transaction->updated_at)
                         <div>
                             <dt class="text-sm font-medium text-gray-500">Updated At</dt>
-                            <dd class="mt-1 text-sm text-gray-900">{{ $transaction->updated_at->format('M d, Y H:i:s') }}</dd>
+                            <dd class="mt-1 text-sm text-gray-900">{{ $transaction->updated_at->inOperationalTimezone()->format('M d, Y H:i:s') }}</dd>
                         </div>
                         @endif
                     </dl>

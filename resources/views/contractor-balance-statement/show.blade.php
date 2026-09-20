@@ -102,7 +102,7 @@
                                     @forelse($contractorBalanceHistories as $history)
                                         <tr class="hover:bg-gray-50">
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {{ $history->created_at->format('M d, Y H:i') }}
+                                                {{ $history->created_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
                                                 @if($history->type === 'credit')
@@ -237,7 +237,7 @@
                                             <div class="flex items-center justify-between text-sm">
                                                 <div>
                                                     <span class="font-medium">UGX {{ number_format($request->amount, 2) }}</span>
-                                                    <span class="text-gray-500 ml-2">{{ $request->created_at->format('M d, Y') }}</span>
+                                                    <span class="text-gray-500 ml-2">{{ $request->created_at->inOperationalTimezone()->format('M d, Y') }}</span>
                                                 </div>
                                                 <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
                                                     @if($request->status === 'completed') bg-green-100 text-green-800

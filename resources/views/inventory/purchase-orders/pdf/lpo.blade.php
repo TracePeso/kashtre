@@ -19,7 +19,7 @@
        <strong>Store:</strong> {{ $po->store?->name }}<br>
        <strong>RFQ:</strong> {{ $po->inventoryOrder?->order_number }}<br>
        @if($po->issued_at)
-           <strong>Issued:</strong> {{ $po->issued_at->format('d M Y H:i') }} by {{ $po->issuedBy?->name ?? '—' }}<br>
+           <strong>Issued:</strong> {{ $po->issued_at->inOperationalTimezone()->format('d M Y H:i') }} by {{ $po->issuedBy?->name ?? '—' }}<br>
        @endif
     </p>
 

@@ -76,11 +76,11 @@
     <div class="grid grid-cols-2 gap-4">
         <div>
             <label class="block text-sm font-medium text-gray-700">Created At</label>
-            <p class="mt-1 text-sm text-gray-900">{{ $log->created_at->format('Y-m-d H:i:s') }}</p>
+            <p class="mt-1 text-sm text-gray-900">{{ $log->created_at->inOperationalTimezone()->format('Y-m-d H:i:s') }}</p>
         </div>
         <div>
             <label class="block text-sm font-medium text-gray-700">Updated At</label>
-            <p class="mt-1 text-sm text-gray-900">{{ $log->updated_at->format('Y-m-d H:i:s') }}</p>
+            <p class="mt-1 text-sm text-gray-900">{{ $log->updated_at->inOperationalTimezone()->format('Y-m-d H:i:s') }}</p>
         </div>
     </div>
 </div>

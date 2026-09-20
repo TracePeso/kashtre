@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Client;
+use App\Support\SharedTime;
 use App\Models\ClientVendor;
 use App\Models\InsuranceCompany;
 use App\Models\ThirdPartyPayer;
@@ -310,7 +311,7 @@ class MultiVendorClientService
                 $visitRegistrationResult = $this->apiService->registerAuthorizedVisit(
                     $client,
                     $client->visit_id,
-                    now()->toDateString(),
+                    SharedTime::businessToday(),
                     $client->visit_expires_at ? $client->visit_expires_at->toDateTimeString() : null,
                     $client->services_category,
                     $thirdPartyBusinessId

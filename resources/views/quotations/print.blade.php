@@ -162,7 +162,7 @@
                 </div>
                 <div class="info-row">
                     <span class="label">Date Generated:</span>
-                    <span class="value">{{ $quotation->generated_at ? $quotation->generated_at->format('M d, Y H:i') : $quotation->created_at->format('M d, Y H:i') }}</span>
+                    <span class="value">{{ $quotation->generated_at ? $quotation->generated_at->format('M d, Y H:i') : $quotation->created_at->inOperationalTimezone()->format('M d, Y H:i') }}</span>
                 </div>
                 <div class="info-row">
                     <span class="label">Status:</span>

@@ -77,7 +77,7 @@
                                 </td>
                                 <td class="px-5 py-4 whitespace-nowrap">
                                     <div class="text-slate-500 dark:text-slate-400">
-                                        {{ $call->created_at->format('M j, Y') }} at {{ $call->created_at->format('g:i A') }}
+                                        {{ $call->created_at->inOperationalTimezone()->format('M j, Y') }} at {{ $call->created_at->inOperationalTimezone()->format('g:i A') }}
                                     </div>
                                 </td>
                                 <td class="px-5 py-4 whitespace-nowrap">

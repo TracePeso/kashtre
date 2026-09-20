@@ -8,7 +8,7 @@ A transaction has been completed on the platform. Below are the complete transac
 ## Transaction Overview
 
 **Invoice Number:** {{ $invoice->invoice_number }}  
-**Transaction Date:** {{ $invoice->created_at->format('F d, Y \a\t g:i A') }}  
+**Transaction Date:** {{ $invoice->created_at->inOperationalTimezone()->format('F d, Y \a\t g:i A') }}  
 **Commission Earned:** UGX {{ number_format($chargeAmount, 2) }}  
 **Status:** {{ ucfirst($invoice->status) }}
 

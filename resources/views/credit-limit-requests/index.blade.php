@@ -188,7 +188,7 @@
                                                 {{ $request->initiatedBy->name ?? 'N/A' }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {{ $request->created_at->format('M d, Y') }}
+                                                {{ $request->created_at->inOperationalTimezone()->format('M d, Y') }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                                 <div class="flex items-center space-x-2">

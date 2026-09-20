@@ -79,7 +79,7 @@
                                                         @endif
                                                     </div>
                                                     <div class="text-sm text-gray-500">
-                                                        Created {{ $period->created_at->format('M d, Y') }}
+                                                        Created {{ $period->created_at->inOperationalTimezone()->format('M d, Y') }}
                                                         @if($period->createdBy)
                                                             by {{ $period->createdBy->name }}
                                                         @endif

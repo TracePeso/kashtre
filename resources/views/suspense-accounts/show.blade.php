@@ -173,7 +173,7 @@
                                         @foreach($moneyMovements as $movement)
                                             <tr class="hover:bg-gray-50">
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    {{ $movement->created_at->format('M d, Y H:i') }}
+                                                    {{ $movement->created_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap">
                                                     @if($movement->fromAccount)
@@ -251,7 +251,7 @@
                                         @foreach($balanceHistory as $history)
                                             <tr class="hover:bg-gray-50">
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    {{ $history->created_at->format('M d, Y H:i') }}
+                                                    {{ $history->created_at->inOperationalTimezone()->format('M d, Y H:i') }}
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap">
                                                     @if(isset($history->transaction_type))

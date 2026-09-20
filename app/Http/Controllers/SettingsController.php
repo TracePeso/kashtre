@@ -2,15 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Time\Models\CoreTimeZone;
 use App\Models\Country;
 use App\Models\Currency;
 use App\Models\InsuranceCompany;
 use App\Models\ThirdPartyVendorServiceCharge;
 use App\Services\ThirdPartyVendorServiceChargeService;
+use App\Support\SharedTime;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class SettingsController extends Controller
 {
@@ -171,6 +174,61 @@ class SettingsController extends Controller
             'countryOptions' => $this->countryOptions(),
             'currencyOptions' => $this->currencyOptions(),
         ]);
+    }
+
+    public function timezonesIndex(Request $request)
+    {
+        $user = Auth::user();
+        if ((int) ($user->business_id ?? 0) !== 1) {
+            abort(403);
+        }
+
+        $query = trim((string) $request->query('q', ''));
+        $zones = CoreTimeZone::query()
+            ->when($query !== '', function ($builder) use ($query) {
+                $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $query).'%';
+                $builder->where(function ($inner) use ($like) {
+                    $inner->where('iana_id', 'like', $like)
+                        ->orWhere('display_name', 'like', $like)
+                        ->orWhere('region_code', 'like', $like);
+                });
+            })
+            ->orderBy('iana_id')
+            ->paginate(20)
+            ->withQueryString();
+
+        $existing = CoreTimeZone::query()->pluck('iana_id')->all();
+        $availableIana = array_values(array_filter(
+            timezone_identifiers_list(),
+            fn (string $id) => ! in_array($id, $existing, true)
+        ));
+
+        return view('settings.timezones', [
+            'zones' => $zones,
+            'availableIana' => $availableIana,
+            'catalogueQuery' => $query,
+        ]);
+    }
+
+    public function storeTimezone(Request $request)
+    {
+        $user = Auth::user();
+        if ((int) ($user->business_id ?? 0) !== 1) {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'iana_id' => ['required', 'string', 'max:64', Rule::in(timezone_identifiers_list())],
+            'display_name' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $row = SharedTime::gateway()->catalogue()->add(
+            $validated['iana_id'],
+            $validated['display_name'] ?? null,
+        );
+
+        return redirect()->route('settings.timezones.index')
+            ->with('success', "Added {$row->iana_id}. It is now available when creating a business or assigning a branch timezone.");
     }
 
     public function storeCountry(Request $request)

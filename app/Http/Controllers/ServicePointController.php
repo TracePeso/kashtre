@@ -63,7 +63,7 @@ class ServicePointController extends Controller
             'serviceDeliveryQueues' => function($query) {
                 $query->where('status', 'completed')
                       ->whereNotNull('client_id')
-                      ->whereDate('completed_at', today())
+                      ->whereOperationalPeriod('completed_at', 'today')
                       ->with(['client', 'invoice', 'item'])
                       ->orderBy('queued_at', 'asc');
             }

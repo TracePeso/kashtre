@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\PackageSales;
+use App\Support\SharedTime;
 use App\Models\PackageTracking;
 use App\Models\Transaction;
 use App\Models\Business;
@@ -105,7 +106,7 @@ class PackageSalesService
                         'name' => $trackingItem->packageTracking->client->name ?? 'Unknown Client',
                         'invoice_number' => $invoiceNumber,
                         'pkn' => $trackingItem->packageTracking->tracking_number ?? "PKG-{$trackingItem->package_tracking_id}-{$trackingItem->created_at->format('YmdHis')}",
-                        'date' => now()->toDateString(),
+                        'date' => SharedTime::businessToday(),
                         'qty' => $quantityToUse,
                         'item_name' => $trackingItem->includedItem->name ?? 'Unknown Item',
                         'amount' => $portionAmount,
@@ -219,7 +220,7 @@ class PackageSalesService
                 'payment_status' => 'Paid', // Package sales are always paid
                 'type' => 'package_sale',
                 'origin' => 'package_sales',
-                'date' => now()->toDateString(),
+                'date' => SharedTime::businessToday(),
                 'currency' => 'UGX',
                 'method' => 'package_transfer'
             ]);
@@ -271,7 +272,7 @@ class PackageSalesService
                 'payment_status' => 'Paid', // Package usage transactions are always paid
                 'type' => 'package', // Special type for package transactions
                 'origin' => 'package_usage',
-                'date' => now()->toDateString(),
+                'date' => SharedTime::businessToday(),
                 'currency' => 'UGX',
                 'method' => 'package_usage',
                 'transaction_for' => 'client_statement' // Mark for client statement
@@ -313,7 +314,7 @@ class PackageSalesService
                 'payment_status' => 'Paid', // Package sales are always paid
                 'type' => 'package', // Special type for package transactions
                 'origin' => 'package_sales',
-                'date' => now()->toDateString(),
+                'date' => SharedTime::businessToday(),
                 'currency' => 'UGX',
                 'method' => 'package_sales',
                 'transaction_for' => 'business_statement' // Mark for business statement

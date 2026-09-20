@@ -8,7 +8,7 @@ Thank you for your payment! We are pleased to confirm that your transaction has 
 ## Transaction Details
 
 **Invoice Number:** {{ $invoice->invoice_number }}  
-**Payment Date:** {{ $invoice->created_at->format('F d, Y \a\t g:i A') }}  
+**Payment Date:** {{ $invoice->created_at->inOperationalTimezone()->format('F d, Y \a\t g:i A') }}  
 **Payment Method:** {{ ucfirst(implode(', ', $invoice->payment_methods ?? ['Cash'])) }}  
 **Amount Paid:** UGX {{ number_format($invoice->amount_paid, 2) }}
 

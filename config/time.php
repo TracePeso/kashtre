@@ -5,7 +5,7 @@ return [
     | Shared Time, Calendar and Period Engine (Main Module).
     | Built for Kashtre — not a pick-and-drop of external package code.
     */
-    'enabled' => (bool) env('SHARED_TIME_ENABLED', false),
+    'enabled' => (bool) env('SHARED_TIME_ENABLED', true),
 
     'default_timezone' => env('SHARED_TIME_DEFAULT_TIMEZONE', 'UTC'),
 
