@@ -72,6 +72,7 @@ class BusinessTemplateImport implements ToModel, WithHeadingRow, WithValidation
             'address' => $address,
             'account_number' => $accountNumber,
             'logo' => null, // Logo will need to be uploaded separately
+            'require_2fa' => $this->requireTwoFactorFromRow($row),
         ]);
 
         // Save the business first
@@ -107,6 +108,7 @@ class BusinessTemplateImport implements ToModel, WithHeadingRow, WithValidation
             'address' => 'required|string|max:255',
             'timezone' => SharedTime::timezoneValidationRule(required: false),
             'operational_timezone' => SharedTime::timezoneValidationRule(required: false),
+            'require_2fa' => 'nullable',
         ];
     }
 
@@ -127,5 +129,18 @@ class BusinessTemplateImport implements ToModel, WithHeadingRow, WithValidation
             'timezone.in' => 'The timezone must be an IANA name from Settings → Manage Timezones.',
             'operational_timezone.in' => 'The timezone must be an IANA name from Settings → Manage Timezones.',
         ];
+    }
+
+    private function requireTwoFactorFromRow(array $row): bool
+    {
+        foreach (['require_2fa', 'require_two_factor', 'two_factor', '2fa'] as $key) {
+            if (! array_key_exists($key, $row) || $row[$key] === null) {
+                continue;
+            }
+
+            return Business::parseRequireTwoFactorFlag($row[$key], true);
+        }
+
+        return true;
     }
 } 

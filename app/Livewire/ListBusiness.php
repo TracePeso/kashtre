@@ -63,6 +63,14 @@ class ListBusiness extends Component implements HasForms, HasTable
                     })
                     ->description(fn (Business $record): string => \App\Support\SharedTime::describe((string) $record->id)['sourceLabel'])
                     ->toggleable(),
+                Tables\Columns\IconColumn::make('require_2fa')
+                    ->label('2FA required')
+                    ->boolean()
+                    ->trueColor('success')
+                    ->falseColor('gray')
+                    ->tooltip(fn (Business $record): string => $record->requiresTwoFactor()
+                        ? 'Staff must set up 2FA'
+                        : '2FA is optional for this organisation'),
                 Tables\Columns\TextColumn::make('email')
                     ->searchable()
                     ->sortable(),
@@ -161,6 +169,36 @@ class ListBusiness extends Component implements HasForms, HasTable
 
             ])
             ->actions([
+                Tables\Actions\Action::make('require_2fa')
+                    ->label('Two-factor')
+                    ->modalHeading('Two-factor authentication')
+                    ->modalDescription('When required, staff of this organisation must set up 2FA before using the app.')
+                    ->modalSubmitActionLabel('Save')
+                    ->icon('heroicon-o-lock-closed')
+                    ->color('warning')
+                    ->visible(fn (): bool => (int) Auth::user()->business_id === 1)
+                    ->fillForm(fn (Business $record): array => [
+                        'require_2fa' => $record->requiresTwoFactor(),
+                    ])
+                    ->form([
+                        Forms\Components\Toggle::make('require_2fa')
+                            ->label('Require 2FA')
+                            ->helperText('On by default. Turn off so staff can sign in with a password only.'),
+                    ])
+                    ->action(function (Business $record, array $data): void {
+                        $record->update([
+                            'require_2fa' => (bool) ($data['require_2fa'] ?? true),
+                        ]);
+
+                        Notification::make()
+                            ->title('Two-factor setting saved')
+                            ->success()
+                            ->body($record->fresh()->requiresTwoFactor()
+                                ? 'Staff of this organisation must set up 2FA.'
+                                : '2FA is optional for this organisation.')
+                            ->send();
+                    }),
+
                 Tables\Actions\Action::make('supplier_registration')
                     ->label('Supplier profile')
                     ->modalHeading('Supplier registration')

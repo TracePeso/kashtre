@@ -117,6 +117,16 @@ class User extends Authenticatable
         return $this->belongsTo(Business::class);
     }
 
+    public function businessRequiresTwoFactor(): bool
+    {
+        $business = $this->business;
+        if (! $business) {
+            return true;
+        }
+
+        return $business->requiresTwoFactor();
+    }
+
     public function branch()
     {
         return $this->belongsTo(Branch::class);
@@ -173,11 +183,31 @@ class User extends Authenticatable
         return $this->two_factor_confirmed_at !== null;
     }
 
+    /**
+     * Whether the account already meets organisation 2FA.
+     * Security questions count on their own; an unconfirmed authenticator setup does not.
+     */
+    public function hasSatisfiedRequiredTwoFactor(): bool
+    {
+        return $this->hasAuthenticatorConfigured()
+            || $this->hasSecurityQuestionsConfigured();
+    }
+
     public function hasTwoFactorEnabled(): bool
     {
         return $this->hasAuthenticatorConfigured()
             || filled($this->two_factor_secret)
             || $this->hasSecurityQuestionsConfigured();
+    }
+
+    /**
+     * Fortify uses this to decide whether login needs a second factor.
+     * Questions-primary accounts must challenge on questions, not skip 2FA
+     * and later get forced into an authenticator code (3FA).
+     */
+    public function hasEnabledTwoFactorAuthentication(): bool
+    {
+        return $this->hasSatisfiedRequiredTwoFactor();
     }
 
     public function removeTwoFactorAuthentication(): void

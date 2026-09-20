@@ -16,11 +16,16 @@ class TwoFactorChallengeViewResponse implements TwoFactorChallengeViewResponseCo
     public function toResponse($request)
     {
         $canUseSecurityQuestions = false;
+        $canUseAuthenticator = false;
         $challengeQuestions = [];
         $defaultChallengeMode = 'code';
 
         if ($request->session()->has('login.id')) {
             $user = User::query()->find($request->session()->get('login.id'));
+
+            if ($user) {
+                $canUseAuthenticator = $user->hasAuthenticatorConfigured();
+            }
 
             if ($user && $this->securityQuestions->userHasConfigured($user)) {
                 $canUseSecurityQuestions = true;
@@ -29,23 +34,33 @@ class TwoFactorChallengeViewResponse implements TwoFactorChallengeViewResponseCo
             } else {
                 $request->session()->forget('login.security_question_keys');
             }
+
+            if (! $canUseAuthenticator && $canUseSecurityQuestions) {
+                $defaultChallengeMode = 'security';
+            }
         }
 
         $challengeMode = $this->resolveChallengeMode(
             $request->query('mode'),
             $defaultChallengeMode,
             $canUseSecurityQuestions,
+            $canUseAuthenticator,
         );
 
         return view('auth.two-factor-challenge', [
             'canUseSecurityQuestions' => $canUseSecurityQuestions,
+            'canUseAuthenticator' => $canUseAuthenticator,
             'challengeQuestions' => $challengeQuestions,
             'challengeMode' => $challengeMode,
         ]);
     }
 
-    private function resolveChallengeMode(mixed $requested, string $default, bool $canUseSecurityQuestions): string
-    {
+    private function resolveChallengeMode(
+        mixed $requested,
+        string $default,
+        bool $canUseSecurityQuestions,
+        bool $canUseAuthenticator,
+    ): string {
         $mode = is_string($requested) ? $requested : $default;
 
         if (! in_array($mode, ['code', 'recovery', 'security'], true)) {
@@ -53,7 +68,11 @@ class TwoFactorChallengeViewResponse implements TwoFactorChallengeViewResponseCo
         }
 
         if ($mode === 'security' && ! $canUseSecurityQuestions) {
-            return 'code';
+            return $canUseAuthenticator ? 'code' : $default;
+        }
+
+        if (in_array($mode, ['code', 'recovery'], true) && ! $canUseAuthenticator) {
+            return $canUseSecurityQuestions ? 'security' : $default;
         }
 
         return $mode;

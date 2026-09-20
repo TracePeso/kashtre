@@ -1,13 +1,17 @@
 <x-authentication-layout>
     @php
         $canUseSecurityQuestions = (bool) ($canUseSecurityQuestions ?? false);
+        $canUseAuthenticator = (bool) ($canUseAuthenticator ?? false);
         $challengeQuestions = $challengeQuestions ?? [];
         $challengeMode = $challengeMode ?? 'code';
         if (! in_array($challengeMode, ['code', 'recovery', 'security'], true)) {
-            $challengeMode = 'code';
+            $challengeMode = $canUseAuthenticator ? 'code' : ($canUseSecurityQuestions ? 'security' : 'code');
         }
         if ($challengeMode === 'security' && ! $canUseSecurityQuestions) {
-            $challengeMode = 'code';
+            $challengeMode = $canUseAuthenticator ? 'code' : $challengeMode;
+        }
+        if (in_array($challengeMode, ['code', 'recovery'], true) && ! $canUseAuthenticator && $canUseSecurityQuestions) {
+            $challengeMode = 'security';
         }
 
         $switchTo = fn (string $mode) => route('two-factor.login', ['mode' => $mode]);
@@ -99,9 +103,11 @@
         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pt-1">
             <div class="flex flex-col gap-2 text-sm">
                 @if ($challengeMode === 'code')
-                    <a href="{{ $switchTo('recovery') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
-                        {{ __('Use a recovery code') }}
-                    </a>
+                    @if ($canUseAuthenticator)
+                        <a href="{{ $switchTo('recovery') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
+                            {{ __('Use a recovery code') }}
+                        </a>
+                    @endif
 
                     @if ($canUseSecurityQuestions)
                         <a href="{{ $switchTo('security') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
@@ -109,9 +115,11 @@
                         </a>
                     @endif
                 @elseif ($challengeMode === 'recovery')
-                    <a href="{{ $switchTo('code') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
-                        {{ __('Use an authentication code') }}
-                    </a>
+                    @if ($canUseAuthenticator)
+                        <a href="{{ $switchTo('code') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
+                            {{ __('Use an authentication code') }}
+                        </a>
+                    @endif
 
                     @if ($canUseSecurityQuestions)
                         <a href="{{ $switchTo('security') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
@@ -119,13 +127,15 @@
                         </a>
                     @endif
                 @elseif ($challengeMode === 'security')
-                    <a href="{{ $switchTo('code') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
-                        {{ __('Use an authentication code') }}
-                    </a>
+                    @if ($canUseAuthenticator)
+                        <a href="{{ $switchTo('code') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
+                            {{ __('Use an authentication code') }}
+                        </a>
 
-                    <a href="{{ $switchTo('recovery') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
-                        {{ __('Use a recovery code') }}
-                    </a>
+                        <a href="{{ $switchTo('recovery') }}" class="text-blue-600 dark:text-blue-400 underline hover:no-underline">
+                            {{ __('Use a recovery code') }}
+                        </a>
+                    @endif
                 @endif
             </div>
 

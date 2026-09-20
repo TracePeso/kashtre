@@ -90,6 +90,12 @@
                     </div>
                 </div>
 
+                @include('partials.business-require-2fa-fields', [
+                    'idPrefix' => 'settings-',
+                    'requireTwoFactor' => old('require_2fa', $business->requiresTwoFactor()),
+                    'wrapperClass' => 'mb-6 border-t border-gray-200 dark:border-gray-700 pt-6',
+                ])
+
                 <!-- Location & Currency -->
                 <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Location & Currency</h3>

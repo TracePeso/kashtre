@@ -143,6 +143,7 @@ class BusinessSettingsController extends Controller
                 'third_party_excluded_items' => 'nullable|array',
                 'third_party_excluded_items.*' => 'integer|exists:items,id',
                 'grn_technical_supervisor_required' => 'nullable|boolean',
+                'require_2fa' => 'sometimes|boolean',
             ]
         ));
 
@@ -184,6 +185,9 @@ class BusinessSettingsController extends Controller
             'credit_excluded_items' => $validated['credit_excluded_items'] ?? [],
             'third_party_excluded_items' => $validated['third_party_excluded_items'] ?? [],
             'grn_technical_supervisor_required' => $request->boolean('grn_technical_supervisor_required'),
+            'require_2fa' => $request->has('require_2fa')
+                ? $request->boolean('require_2fa')
+                : $business->requiresTwoFactor(),
         ]);
 
         DB::transaction(function () use ($business, $request) {

@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
+use App\Actions\Fortify\RedirectIfTwoFactorAuthenticatable as AppRedirectIfTwoFactorAuthenticatable;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\UpdateUserPassword;
 use App\Actions\Fortify\UpdateUserProfileInformation;
@@ -17,6 +18,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Contracts\FailedTwoFactorLoginResponse;
+use Laravel\Fortify\Contracts\RedirectsIfTwoFactorAuthenticatable;
 use Laravel\Fortify\Contracts\TwoFactorChallengeViewResponse;
 use Laravel\Fortify\Fortify;
 
@@ -27,7 +29,10 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(
+            RedirectsIfTwoFactorAuthenticatable::class,
+            AppRedirectIfTwoFactorAuthenticatable::class
+        );
     }
 
     /**
@@ -46,6 +51,7 @@ class FortifyServiceProvider extends ServiceProvider
         // package providers).
         $this->app->singleton(TwoFactorChallengeViewResponse::class, AppTwoFactorChallengeViewResponse::class);
         $this->app->singleton(FailedTwoFactorLoginResponse::class, AppFailedTwoFactorLoginResponse::class);
+        $this->app->singleton(RedirectsIfTwoFactorAuthenticatable::class, AppRedirectIfTwoFactorAuthenticatable::class);
 
         RateLimiter::for('login', function (Request $request) {
             $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());

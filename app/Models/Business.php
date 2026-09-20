@@ -49,6 +49,7 @@ class Business extends Model
         'credit_excluded_items',
         'third_party_excluded_items',
         'grn_technical_supervisor_required',
+        'require_2fa',
     ];
 
     protected $casts = [
@@ -64,11 +65,16 @@ class Business extends Model
         'credit_excluded_items' => 'array',
         'third_party_excluded_items' => 'array',
         'grn_technical_supervisor_required' => 'boolean',
+        'require_2fa' => 'boolean',
         'financial_year_start_month' => 'integer',
         'financial_year_start_day' => 'integer',
         'registered_as_supplier' => 'boolean',
         'supplier_industry_id' => 'integer',
         'supplier_sub_category_id' => 'integer',
+    ];
+
+    protected $attributes = [
+        'require_2fa' => true,
     ];
 
     // a businness has many users
@@ -238,6 +244,47 @@ class Business extends Model
     public function isGrnTechnicalSupervisorRequired(): bool
     {
         return (bool) ($this->grn_technical_supervisor_required ?? false);
+    }
+
+    /**
+     * When true, staff of this organisation must set up 2FA before using the app.
+     */
+    public function requiresTwoFactor(): bool
+    {
+        if ($this->require_2fa === null) {
+            return true;
+        }
+
+        return (bool) $this->require_2fa;
+    }
+
+    /**
+     * Spreadsheet / form helper: blank means enabled (the create-business default).
+     */
+    public static function parseRequireTwoFactorFlag(mixed $value, bool $default = true): bool
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+        if ($normalized === '') {
+            return $default;
+        }
+
+        if (in_array($normalized, ['1', 'true', 'yes', 'y', 'on', 'enabled', 'required'], true)) {
+            return true;
+        }
+
+        if (in_array($normalized, ['0', 'false', 'no', 'n', 'off', 'disabled', 'optional'], true)) {
+            return false;
+        }
+
+        return $default;
     }
 
     public function inventoryModuleConfig()

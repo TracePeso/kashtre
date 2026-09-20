@@ -78,6 +78,41 @@ class SecurityQuestionsTest extends TestCase
         $response->assertSee(route('two-factor.login', ['mode' => 'recovery']), false);
     }
 
+    public function test_questions_only_challenge_does_not_ask_for_an_authenticator_code(): void
+    {
+        if (! Features::canManageTwoFactorAuthentication()) {
+            $this->markTestSkipped('Two factor authentication is not enabled.');
+        }
+
+        $user = User::factory()->create([
+            'two_factor_secret' => null,
+            'two_factor_confirmed_at' => null,
+            'primary_two_factor_method' => 'security_questions',
+        ]);
+
+        app(SecurityQuestionService::class)->storeForUser($user, [
+            ['question_key' => 'first_school', 'answer' => 'Green Valley'],
+            ['question_key' => 'first_pet', 'answer' => 'Rex'],
+            ['question_key' => 'birth_city', 'answer' => 'Kampala'],
+        ]);
+
+        $user->forceFill([
+            'primary_two_factor_method' => 'security_questions',
+        ])->save();
+
+        $response = $this->withSession([
+            'login.id' => $user->id,
+            'login.remember' => false,
+        ])->get(route('two-factor.login'));
+
+        $response->assertOk();
+        $response->assertSee('Answer your security questions to finish signing in.', false);
+        $response->assertSee(route('two-factor.security-questions'), false);
+        $response->assertDontSee(__('Use an authentication code'));
+        $response->assertDontSee(__('Use a recovery code'));
+        $response->assertDontSee('name="code"', false);
+    }
+
     public function test_security_question_login_completes_two_factor_challenge(): void
     {
         if (! Features::canManageTwoFactorAuthentication()) {
