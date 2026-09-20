@@ -9,6 +9,7 @@ use App\Models\Group;
 use App\Models\SubGroup;
 use App\Models\Department;
 use App\Models\ItemUnit;
+use App\Support\SharedUnits;
 use App\Models\ServicePoint;
 use App\Models\ContractorProfile;
 use App\Models\Item;
@@ -62,7 +63,7 @@ class ItemController extends Controller
             $groups = Group::where('business_id', $selectedBusinessId)->get();
             $subGroups = SubGroup::where('business_id', $selectedBusinessId)->get();
             $departments = Department::where('business_id', $selectedBusinessId)->get();
-            $itemUnits = ItemUnit::where('business_id', $selectedBusinessId)->get();
+            $itemUnits = $this->itemUnitsForBusiness((int) $selectedBusinessId);
             $servicePoints = ServicePoint::where('business_id', $selectedBusinessId)->get();
             $contractors = ContractorProfile::with(['business', 'user'])->where('business_id', $selectedBusinessId)->get();
             $branches = Branch::where('business_id', $selectedBusinessId)->get();
@@ -334,7 +335,7 @@ class ItemController extends Controller
         $selectedBusinessId = $item->business_id;
         $groups = Group::where('business_id', $selectedBusinessId)->get();
         $departments = Department::where('business_id', $selectedBusinessId)->get();
-        $itemUnits = ItemUnit::where('business_id', $selectedBusinessId)->get();
+        $itemUnits = $this->itemUnitsForBusiness((int) $selectedBusinessId);
         $servicePoints = ServicePoint::where('business_id', $selectedBusinessId)->get();
         $contractors = ContractorProfile::with('business')->where('business_id', $selectedBusinessId)->get();
         $branches = Branch::where('business_id', $selectedBusinessId)->get();
@@ -624,7 +625,7 @@ class ItemController extends Controller
         Log::info("Departments count: " . $departments->count());
 
         // Get item units
-        $itemUnits = ItemUnit::where('business_id', $businessId)->get();
+        $itemUnits = $this->itemUnitsForBusiness((int) $businessId);
         Log::info("Item units count: " . $itemUnits->count());
 
         // Get service points grouped by branches
@@ -653,7 +654,10 @@ class ItemController extends Controller
             'groups' => $groups,
             'subGroups' => $subGroups,
             'departments' => $departments,
-            'itemUnits' => $itemUnits,
+            'itemUnits' => $itemUnits->map(fn ($unit) => [
+                'id' => $unit->id,
+                'name' => SharedUnits::itemUnitLabel($unit),
+            ])->values(),
             'servicePoints' => $servicePoints,
             'contractors' => $contractors,
             'branches' => $branches,
@@ -718,5 +722,13 @@ class ItemController extends Controller
         $code = Item::generateUniqueCode($businessId);
         
         return response()->json(['code' => $code]);
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, ItemUnit>
+     */
+    private function itemUnitsForBusiness(int $businessId)
+    {
+        return SharedUnits::itemUnitsForBusiness($businessId);
     }
 }

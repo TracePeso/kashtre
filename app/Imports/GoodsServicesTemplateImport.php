@@ -8,6 +8,7 @@ use App\Models\Group;
 use App\Models\SubGroup;
 use App\Models\Department;
 use App\Models\ItemUnit;
+use App\Support\SharedUnits;
 use App\Models\ServicePoint;
 use App\Models\ContractorProfile;
 use App\Models\Branch;
@@ -32,6 +33,7 @@ class GoodsServicesTemplateImport implements ToModel, WithHeadingRow, SkipsOnErr
     public function __construct($businessId)
     {
         $this->businessId = $businessId;
+        SharedUnits::itemUnitsForBusiness((int) $businessId);
         
         // Log import initialization
         Log::info("=== GOODS & SERVICES IMPORT STARTED ===");
@@ -197,7 +199,7 @@ class GoodsServicesTemplateImport implements ToModel, WithHeadingRow, SkipsOnErr
                 $unitName = trim($unitName, '"\'');
                 $unitName = trim($unitName);
                 $itemUnit = ItemUnit::where('business_id', $this->businessId)
-                    ->where('name', $unitName)
+                    ->whereRaw('LOWER(name) = ?', [strtolower($unitName)])
                     ->first();
                 if (!$itemUnit) {
                     Log::warning("Row {$rowNumber}: Unit '{$unitName}' not found for business {$this->businessId}");

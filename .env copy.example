@@ -124,7 +124,7 @@ CLINICAL_MODULE_INBOUND_API_KEY=
 CLINICAL_MODULE_ENCOUNTER_WEBHOOK_ENABLED=true
 
 # Shared Unit Engine (Main Module)
-UNIT_ENGINE_ENABLED=false
+UNIT_ENGINE_ENABLED=true
 IMAGING_MODULE_API_KEY=
 
 # Clinical Module (Chunk 0) — cross-module dispatch transport.

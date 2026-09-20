@@ -11,7 +11,7 @@ use App\Models\Business;
 use App\Models\Department;
 use App\Models\ServicePoint;
 use App\Models\ContractorProfile;
-use App\Models\ItemUnit;
+use App\Support\SharedUnits;
 use App\Models\Group;
 use App\Models\SubGroup;
 use App\Models\Branch;
@@ -270,7 +270,7 @@ class UnitsSheet implements FromArray, WithHeadings, WithStyles
 
     public function array(): array
     {
-        $units = ItemUnit::where('business_id', $this->businessId)->get();
+        $units = SharedUnits::itemUnitsForBusiness((int) $this->businessId);
         
         $data = [];
         foreach ($units as $unit) {

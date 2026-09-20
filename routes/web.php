@@ -79,7 +79,6 @@ use App\Http\Controllers\InventoryCrashCartController;
 use App\Http\Controllers\InventoryPickRouteController;
 use App\Http\Controllers\InventoryInternalReplenishmentController;
 use App\Http\Controllers\InventorySettingsController;
-use App\Http\Controllers\InventoryUnitEngineController;
 use App\Http\Controllers\InventoryDailyConsumptionController;
 use App\Http\Controllers\InventoryOrderController;
 use App\Http\Controllers\InventoryIncomingRfqController;
@@ -185,6 +184,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::redirect('/platform/time', '/settings/timezones');
+    Route::redirect('/platform/units', '/settings/units');
     Route::get('/hr-module/open', [\App\Http\Controllers\HrSsoController::class, 'redirect'])->name('hr-module.open');
     Route::post('/dashboard/testing-environment-reset', [DashboardController::class, 'clearTestingEnvironment'])
         ->name('dashboard.testing-environment-reset')
@@ -323,6 +323,9 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
     Route::get('/settings/countries-exchange-rates', [SettingsController::class, 'countriesIndex'])->name('settings.countries.index');
     Route::get('/settings/timezones', [SettingsController::class, 'timezonesIndex'])->name('settings.timezones.index');
     Route::post('/settings/timezones', [SettingsController::class, 'storeTimezone'])->name('settings.timezones.store');
+    Route::get('/settings/units', [SettingsController::class, 'unitsIndex'])->name('settings.units.index');
+    Route::post('/settings/units', [SettingsController::class, 'storeUnit'])->name('settings.units.store');
+    Route::post('/settings/units/{unit}/retire', [SettingsController::class, 'retireUnit'])->name('settings.units.retire');
 
     // Superadmin currency & country management (settings tabs)
     Route::post('/settings/countries', [SettingsController::class, 'storeCountry'])->name('settings.countries.store');
@@ -471,7 +474,7 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::put('/settings/approvers', [InventorySettingsController::class, 'updateApprovers'])->name('settings.approvers.update');
         Route::put('/settings/evaluation-committee', [InventorySettingsController::class, 'updateEvaluationCommittee'])->name('settings.evaluation-committee.update');
         Route::put('/settings/capabilities', [InventorySettingsController::class, 'updateCapabilities'])->name('settings.capabilities.update');
-        Route::get('/units', [InventoryUnitEngineController::class, 'index'])->name('units.index');
+        Route::get('/units', fn () => redirect()->route('item-units.index'))->name('units.index');
         Route::get('/approvers', fn () => redirect()->route('inventory.settings.edit', ['tab' => 'approvers']))->name('approvers');
         Route::put('/approvers', [InventorySettingsController::class, 'updateApprovers'])->name('approvers.update');
         Route::get('/transfers', [InventoryStockTransferController::class, 'index'])->name('transfers.index');

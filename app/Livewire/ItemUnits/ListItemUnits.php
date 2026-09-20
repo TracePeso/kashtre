@@ -6,24 +6,27 @@ use App\Domain\Units\Models\CoreUnit;
 use App\Domain\Units\Models\LegacyUnitMapping;
 use App\Domain\Units\Services\InventoryUnitGateway;
 use App\Domain\Units\Services\UnitCatalogService;
-use App\Models\ItemUnit;
 use App\Models\Business;
+use App\Models\Item;
+use App\Models\ItemUnit;
+use App\Support\SharedUnits;
 use Filament\Forms;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Notifications\Notification;
 use Filament\Tables;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Actions\CreateAction;
-use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\DeleteAction;
+use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 
 class ListItemUnits extends Component implements HasForms, HasTable
@@ -43,25 +46,25 @@ class ListItemUnits extends Component implements HasForms, HasTable
             ->query($query)
             ->columns([
                 Tables\Columns\TextColumn::make('name')
-                    ->label('Item Unit')
+                    ->label('Unit')
+                    ->formatStateUsing(fn (ItemUnit $record): string => SharedUnits::itemUnitLabel($record))
                     ->searchable()
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('source')
+                    ->label('Source')
+                    ->state(fn (ItemUnit $record): string => SharedUnits::sourceLabel($record))
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'Shared catalog' => 'success',
+                        'Local' => 'info',
+                        default => 'gray',
+                    }),
 
                 Tables\Columns\TextColumn::make('business.name')
                     ->label('Business')
                     ->sortable()
                     ->searchable(),
-
-                Tables\Columns\TextColumn::make('engine_mapping')
-                    ->label('Engine mapping')
-                    ->state(fn (ItemUnit $record): string => $this->mappingLabel($record))
-                    ->badge()
-                    ->color(fn (string $state): string => match (true) {
-                        str_starts_with($state, 'Mapped') => 'success',
-                        $state === 'PENDING' => 'warning',
-                        $state === 'UNMATCHED' => 'danger',
-                        default => 'gray',
-                    }),
 
                 Tables\Columns\TextColumn::make('description')
                     ->label('Description')
@@ -99,23 +102,20 @@ class ListItemUnits extends Component implements HasForms, HasTable
             ])
             ->actions([
                 Action::make('mapToCoreUnit')
-                    ->label(fn (ItemUnit $record): string => str_starts_with($this->mappingLabel($record), 'Mapped')
-                        ? 'Remap'
-                        : 'Map')
+                    ->label('Link to catalog')
                     ->icon('heroicon-o-link')
                     ->color('primary')
-                    ->visible(fn (): bool => (bool) config('units.enabled'))
-                    ->modalHeading(fn (ItemUnit $record): string => 'Map "'.$record->name.'" to core unit')
-                    ->modalDescription('Link this Item Unit name to a Shared Unit Engine catalog unit so packaging dual-run can resolve it.')
+                    ->visible(fn (ItemUnit $record): bool => SharedUnits::enabled()
+                        && SharedUnits::sourceLabel($record) === 'Custom name')
+                    ->modalHeading(fn (ItemUnit $record): string => 'Link "'.$record->name.'" to a catalog unit')
+                    ->modalDescription('Use this only for leftover custom names. Prefer picking a catalog unit when adding a new one.')
                     ->form(function (ItemUnit $record): array {
-                        // Evaluate options when the modal opens. Nested option closures
-                        // break Filament/Livewire rehydration (empty select / broken search UI).
                         $options = $this->coreUnitOptionsForBusiness((int) $record->business_id);
                         $default = $this->currentMappedUnitId($record);
 
                         return [
                             Forms\Components\Select::make('core_unit_id')
-                                ->label('Core unit')
+                                ->label('Catalog unit')
                                 ->options($options)
                                 ->searchable()
                                 ->preload()
@@ -123,16 +123,14 @@ class ListItemUnits extends Component implements HasForms, HasTable
                                 ->required()
                                 ->default($default)
                                 ->helperText(count($options) === 0
-                                    ? 'No catalog units found. Run: php artisan units:install'
-                                    : 'Search by code, name, or symbol (e.g. BOX, Carton, ea).'),
+                                    ? 'No catalog units found. Ask Kashtre admin to add units under Settings → Units.'
+                                    : 'Search by code, name, or symbol (e.g. BOX, tablet, ea).'),
                         ];
                     })
                     ->action(function (ItemUnit $record, array $data): void {
                         $tenant = app(UnitCatalogService::class)
                             ->tenantKeyForBusiness((int) $record->business_id);
                         $gateway = app(InventoryUnitGateway::class);
-
-                        // Ensure a mapping row exists (PENDING if unmatched).
                         $gateway->mapLegacyName($tenant, $record->name);
 
                         $mapping = LegacyUnitMapping::query()
@@ -149,10 +147,7 @@ class ListItemUnits extends Component implements HasForms, HasTable
 
                         if (! $mapping || ! $unit) {
                             Notification::make()
-                                ->title('Could not map unit.')
-                                ->body(count($this->coreUnitOptionsForBusiness((int) $record->business_id)) === 0
-                                    ? 'Catalog is empty. Run php artisan units:install first.'
-                                    : 'Mapping row or core unit was not found.')
+                                ->title('Could not link unit.')
                                 ->danger()
                                 ->send();
 
@@ -161,8 +156,7 @@ class ListItemUnits extends Component implements HasForms, HasTable
 
                         $gateway->assignMapping($mapping, $unit, Auth::id());
 
-                        // Refresh item sale/order public IDs that use this Item Unit.
-                        \App\Models\Item::query()
+                        Item::query()
                             ->where('business_id', $record->business_id)
                             ->where(function ($q) use ($record) {
                                 $q->where('uom_id', $record->id)
@@ -176,62 +170,46 @@ class ListItemUnits extends Component implements HasForms, HasTable
                             });
 
                         Notification::make()
-                            ->title('Mapped to '.$unit->code.' ('.$unit->symbol.').')
+                            ->title('Linked to '.$unit->code.' ('.$unit->symbol.').')
                             ->success()
                             ->send();
                     }),
 
                 EditAction::make()
-                    ->modalHeading('Edit Item Unit')
+                    ->modalHeading('Edit unit')
                     ->form(fn (ItemUnit $record) => [
-                        Forms\Components\Select::make('business_id')
-                            ->label('Business')
-                            ->placeholder('Select a business')
-                            ->options(Business::pluck('name', 'id'))
-                            ->required()
-                            ->disabled(fn () => Auth::user()->business_id !== 1),
-
                         TextInput::make('name')
-                            ->label('Item Unit Name')
-                            ->placeholder('Enter item unit name')
-                            ->required()
-                            ->rule(function (Forms\Get $get, ?ItemUnit $record) {
-                                return function (string $attribute, $value, $fail) use ($get, $record) {
-                                    $businessId = $get('business_id') ?: $record?->business_id;
-                                    if (! $businessId || trim((string) $value) === '') {
-                                        return;
-                                    }
-
-                                    $exists = ItemUnit::query()
-                                        ->where('business_id', $businessId)
-                                        ->whereRaw('LOWER(name) = ?', [strtolower(trim((string) $value))])
-                                        ->when($record, fn ($q) => $q->where('id', '!=', $record->id))
-                                        ->exists();
-
-                                    if ($exists) {
-                                        $fail('This business already has an item unit with that name. Reuse it on items instead.');
-                                    }
-                                };
-                            }),
-
+                            ->label('Unit name')
+                            ->disabled()
+                            ->dehydrated(false)
+                            ->helperText('Names are not renamed after use. Retire this unit and add a new one instead.'),
                         Textarea::make('description')
                             ->label('Description')
-                            ->placeholder('Enter item unit description')
+                            ->placeholder('Optional note')
                             ->nullable(),
                     ])
-                    ->successNotificationTitle('Item Unit updated successfully.')
-                    ->after(function (ItemUnit $record) {
-                        if (config('units.enabled')) {
-                            $tenant = app(UnitCatalogService::class)
-                                ->tenantKeyForBusiness((int) $record->business_id);
-                            app(InventoryUnitGateway::class)
-                                ->mapLegacyName($tenant, $record->name);
-                        }
-                    }),
+                    ->successNotificationTitle('Unit updated.'),
 
                 DeleteAction::make()
-                    ->modalHeading('Delete Item Unit')
-                    ->successNotificationTitle('Item Unit deleted (soft) successfully.'),
+                    ->modalHeading('Remove unit')
+                    ->successNotificationTitle('Unit removed.')
+                    ->before(function (DeleteAction $action, ItemUnit $record): void {
+                        $inUse = Item::query()
+                            ->where('business_id', $record->business_id)
+                            ->where(function ($q) use ($record) {
+                                $q->where('uom_id', $record->id)
+                                    ->orWhere('order_unit_id', $record->id);
+                            })
+                            ->exists();
+
+                        if ($inUse) {
+                            Notification::make()
+                                ->title('This unit is used on items. Change those items first.')
+                                ->danger()
+                                ->send();
+                            $action->cancel();
+                        }
+                    }),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -242,79 +220,104 @@ class ListItemUnits extends Component implements HasForms, HasTable
             ])
             ->headerActions([
                 CreateAction::make()
-                    ->label('Create Item Unit')
-                    ->modalHeading('Add New Item Unit')
+                    ->label('Add unit')
+                    ->modalHeading('Add a unit for this business')
+                    ->createAnother(false)
                     ->form([
                         Forms\Components\Select::make('business_id')
                             ->label('Business')
                             ->placeholder('Select a business')
-                            ->options(Business::pluck('name', 'id'))
+                            ->options(Business::where('id', '!=', 1)->pluck('name', 'id'))
                             ->required()
                             ->default(Auth::user()->business_id)
                             ->disabled(fn () => Auth::user()->business_id !== 1)
+                            ->dehydrated()
                             ->live(),
 
-                        TextInput::make('name')
-                            ->label('Item Unit Name')
-                            ->placeholder('Enter item unit name')
+                        Forms\Components\Radio::make('source')
+                            ->label('How to add')
+                            ->options([
+                                'catalog' => 'Pick from shared catalog',
+                                'local' => 'Add a local packaging unit',
+                            ])
+                            ->default('catalog')
                             ->required()
-                            ->rule(function (Forms\Get $get) {
-                                return function (string $attribute, $value, $fail) use ($get) {
-                                    $businessId = $get('business_id');
-                                    if (! $businessId || trim((string) $value) === '') {
-                                        return;
-                                    }
+                            ->live(),
 
-                                    $exists = ItemUnit::query()
-                                        ->where('business_id', $businessId)
-                                        ->whereRaw('LOWER(name) = ?', [strtolower(trim((string) $value))])
-                                        ->exists();
+                        Forms\Components\Select::make('core_unit_public_id')
+                            ->label('Catalog unit')
+                            ->options(fn (Forms\Get $get) => SharedUnits::unusedCatalogOptions(
+                                (int) ($get('business_id') ?: Auth::user()->business_id)
+                            ))
+                            ->searchable()
+                            ->preload()
+                            ->native(false)
+                            ->visible(fn (Forms\Get $get) => $get('source') === 'catalog')
+                            ->required(fn (Forms\Get $get) => $get('source') === 'catalog')
+                            ->helperText('Tablet, box, mg, mL, and other shared units. Kashtre admin adds new ones under Settings → Units.'),
 
-                                    if ($exists) {
-                                        $fail('This business already has an item unit with that name. Reuse it on items instead.');
-                                    }
-                                };
-                            }),
+                        TextInput::make('name')
+                            ->label('Local unit name')
+                            ->placeholder('e.g. Hospital pack')
+                            ->visible(fn (Forms\Get $get) => $get('source') === 'local')
+                            ->required(fn (Forms\Get $get) => $get('source') === 'local'),
+
+                        TextInput::make('symbol')
+                            ->label('Symbol')
+                            ->placeholder('e.g. pack')
+                            ->visible(fn (Forms\Get $get) => $get('source') === 'local'),
+
+                        TextInput::make('code')
+                            ->label('Code')
+                            ->placeholder('Optional, e.g. HOSP_PACK')
+                            ->visible(fn (Forms\Get $get) => $get('source') === 'local'),
 
                         Textarea::make('description')
                             ->label('Description')
-                            ->placeholder('Enter item unit description')
+                            ->placeholder('Optional note')
+                            ->visible(fn (Forms\Get $get) => $get('source') === 'local')
                             ->nullable(),
                     ])
-                    ->createAnother(false)
-                    ->after(function (ItemUnit $record) {
-                        if (config('units.enabled')) {
-                            $tenant = app(UnitCatalogService::class)
-                                ->tenantKeyForBusiness((int) $record->business_id);
-                            app(InventoryUnitGateway::class)
-                                ->mapLegacyName($tenant, $record->name);
+                    ->using(function (array $data): ItemUnit {
+                        $businessId = (int) ($data['business_id'] ?? Auth::user()->business_id);
+                        if ($businessId < 2) {
+                            throw ValidationException::withMessages([
+                                'business_id' => 'Choose a hospital business.',
+                            ]);
                         }
 
-                        Notification::make()
-                            ->title('Item Unit created successfully.')
-                            ->success()
-                            ->send();
-                    }),
+                        if (($data['source'] ?? 'catalog') === 'local') {
+                            return SharedUnits::addLocalPackagingUnit(
+                                $businessId,
+                                (string) ($data['name'] ?? ''),
+                                (string) ($data['symbol'] ?? $data['name'] ?? ''),
+                                $data['code'] ?? null,
+                                $data['description'] ?? null,
+                            );
+                        }
+
+                        $core = CoreUnit::query()
+                            ->forTenant((string) $businessId)
+                            ->where('public_id', $data['core_unit_public_id'] ?? '')
+                            ->first();
+
+                        if (! $core) {
+                            throw ValidationException::withMessages([
+                                'core_unit_public_id' => 'Choose a catalog unit.',
+                            ]);
+                        }
+
+                        return SharedUnits::adoptCatalogUnit($businessId, $core);
+                    })
+                    ->successNotificationTitle('Unit added. It is available on item sale and order unit pickers.'),
             ]);
     }
 
-    protected function mappingLabel(ItemUnit $record): string
+    protected function currentMappedUnitId(ItemUnit $record): ?int
     {
-        if (! config('units.enabled')) {
-            return '—';
-        }
-
         $map = $this->mappingFor($record);
 
-        if (! $map) {
-            return 'Not linked';
-        }
-
-        if ($map->status === 'MAPPED' && $map->unit) {
-            return 'Mapped · '.$map->unit->code;
-        }
-
-        return (string) $map->status;
+        return $map?->status === 'MAPPED' ? $map->unit_id : null;
     }
 
     protected function mappingFor(ItemUnit $record): ?LegacyUnitMapping
@@ -331,27 +334,14 @@ class ListItemUnits extends Component implements HasForms, HasTable
             ->first();
     }
 
-    protected function currentMappedUnitId(ItemUnit $record): ?int
-    {
-        $map = $this->mappingFor($record);
-
-        return $map?->status === 'MAPPED' ? $map->unit_id : null;
-    }
-
     /**
      * @return array<int, string>
      */
     protected function coreUnitOptionsForBusiness(int $businessId): array
     {
-        $tenant = app(UnitCatalogService::class)->tenantKeyForBusiness($businessId);
-
-        return CoreUnit::query()
-            ->forTenant($tenant)
-            ->active()
-            ->orderBy('canonical_name')
-            ->get(['id', 'code', 'canonical_name', 'symbol'])
+        return SharedUnits::inventoryCatalogUnits($businessId)
             ->mapWithKeys(fn (CoreUnit $u) => [
-                (string) $u->id => trim($u->code.' — '.$u->canonical_name.' ('.$u->symbol.')'),
+                (string) $u->id => SharedUnits::catalogLabel($u),
             ])
             ->all();
     }

@@ -14,7 +14,7 @@ use App\Models\Business;
 use App\Models\Group;
 use App\Models\SubGroup;
 use App\Models\Department;
-use App\Models\ItemUnit;
+use App\Support\SharedUnits;
 use App\Models\ServicePoint;
 use App\Models\ContractorProfile;
 use App\Models\Branch;
@@ -109,7 +109,7 @@ class GoodsServicesTemplateExport implements FromArray, WithHeadings, WithStyles
         $groups = Group::where('business_id', $this->businessId)->pluck('name')->toArray();
         $subGroups = SubGroup::where('business_id', $this->businessId)->pluck('name')->toArray();
         $departments = Department::where('business_id', $this->businessId)->pluck('name')->toArray();
-        $units = ItemUnit::where('business_id', $this->businessId)->pluck('name')->toArray();
+        $units = SharedUnits::itemUnitsForBusiness((int) $this->businessId)->pluck('name')->toArray();
         $servicePoints = ServicePoint::where('business_id', $this->businessId)->pluck('name')->toArray();
         $contractors = ContractorValidationService::getAvailableContractors($this->businessId);
         $branches = Branch::where('business_id', $this->businessId)->orderBy('name')->get();

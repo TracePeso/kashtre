@@ -12,7 +12,7 @@ use Maatwebsite\Excel\Facades\Excel;
 use App\Models\Business;
 use App\Models\Group;
 use App\Models\Department;
-use App\Models\ItemUnit;
+use App\Support\SharedUnits;
 use App\Models\ServicePoint;
 use App\Models\ContractorProfile;
 
@@ -162,7 +162,7 @@ class ItemBulkUploadController extends Controller
         $data = [
             'groups' => Group::where('business_id', $businessId)->get(),
             'departments' => Department::where('business_id', $businessId)->get(),
-            'itemUnits' => ItemUnit::where('business_id', $businessId)->get(),
+            'itemUnits' => SharedUnits::itemUnitsForBusiness((int) $businessId),
             'servicePoints' => ServicePoint::where('business_id', $businessId)->get(),
             'contractors' => ContractorProfile::with('business')->where('business_id', $businessId)->get(),
         ];

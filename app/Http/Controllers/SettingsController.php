@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Domain\Time\Models\CoreTimeZone;
+use App\Domain\Units\Models\CoreUnit;
+use App\Support\SharedUnits;
 use App\Models\Country;
 use App\Models\Currency;
 use App\Models\InsuranceCompany;
@@ -229,6 +231,89 @@ class SettingsController extends Controller
 
         return redirect()->route('settings.timezones.index')
             ->with('success', "Added {$row->iana_id}. It is now available when creating a business or assigning a branch timezone.");
+    }
+
+    public function unitsIndex(Request $request)
+    {
+        $user = Auth::user();
+        if ((int) ($user->business_id ?? 0) !== 1) {
+            abort(403);
+        }
+
+        SharedUnits::ensureSeedPack();
+
+        $query = trim((string) $request->query('q', ''));
+        $units = CoreUnit::query()
+            ->with('quantityKind')
+            ->where('tenant_key', config('units.system_tenant_key', 'SYSTEM'))
+            ->when($query !== '', function ($builder) use ($query) {
+                $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $query).'%';
+                $builder->where(function ($inner) use ($like) {
+                    $inner->where('code', 'like', $like)
+                        ->orWhere('canonical_name', 'like', $like)
+                        ->orWhere('symbol', 'like', $like);
+                });
+            })
+            ->orderBy('canonical_name')
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('settings.units', [
+            'units' => $units,
+            'catalogueQuery' => $query,
+        ]);
+    }
+
+    public function storeUnit(Request $request)
+    {
+        $user = Auth::user();
+        if ((int) ($user->business_id ?? 0) !== 1) {
+            abort(403);
+        }
+
+        SharedUnits::ensureSeedPack();
+
+        $validated = $request->validate([
+            'code' => ['required', 'string', 'max:64', 'regex:/^[A-Za-z0-9_]+$/'],
+            'name' => ['required', 'string', 'max:180'],
+            'symbol' => ['required', 'string', 'max:80'],
+            'unit_class' => ['required', Rule::in(['PACKAGING_CONTEXTUAL', 'COUNT_CONTEXTUAL'])],
+        ]);
+
+        try {
+            $unit = SharedUnits::catalog()->createSystemUnit(
+                $validated['code'],
+                $validated['name'],
+                $validated['symbol'],
+                $validated['unit_class'],
+                'COUNT',
+                (int) $user->id,
+            );
+        } catch (\InvalidArgumentException $e) {
+            return redirect()->route('settings.units.index')
+                ->withErrors(['code' => $e->getMessage()])
+                ->withInput();
+        }
+
+        return redirect()->route('settings.units.index')
+            ->with('success', 'Added '.$unit->canonical_name.'. Hospitals can pick it on items and Manage Item Units.');
+    }
+
+    public function retireUnit(CoreUnit $unit)
+    {
+        $user = Auth::user();
+        if ((int) ($user->business_id ?? 0) !== 1) {
+            abort(403);
+        }
+
+        if ($unit->tenant_key !== config('units.system_tenant_key', 'SYSTEM')) {
+            abort(404);
+        }
+
+        SharedUnits::catalog()->retireUnit($unit, 'Retired from Settings → Units', (int) $user->id);
+
+        return redirect()->route('settings.units.index')
+            ->with('success', $unit->canonical_name.' is retired. Existing stock keeps it; new item picks will not show it.');
     }
 
     public function storeCountry(Request $request)

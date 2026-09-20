@@ -191,11 +191,11 @@
                                 <option value="" disabled selected>Select sale unit</option>
                                 @foreach($itemUnits as $itemUnit)
                                     <option value="{{ $itemUnit->id }}" {{ old('uom_id') == $itemUnit->id ? 'selected' : '' }}>
-                                        {{ $itemUnit->name }}
+                                        {{ \App\Support\SharedUnits::itemUnitLabel($itemUnit) }}
                                     </option>
                                 @endforeach
                             </select>
-                            <p class="mt-1 text-xs text-gray-500">Unit in which the business sells or issues this item.</p>
+                            <p class="mt-1 text-xs text-gray-500">Unit in which the business sells or issues this item. Shared catalog plus any local packaging units.</p>
                         </div>
 
                         <div class="good-only inventory-good-fields">
@@ -204,7 +204,7 @@
                                 <option value="">Same as sale unit</option>
                                 @foreach($itemUnits as $itemUnit)
                                     <option value="{{ $itemUnit->id }}" {{ old('order_unit_id') == $itemUnit->id ? 'selected' : '' }}>
-                                        {{ $itemUnit->name }}
+                                        {{ \App\Support\SharedUnits::itemUnitLabel($itemUnit) }}
                                     </option>
                                 @endforeach
                             </select>

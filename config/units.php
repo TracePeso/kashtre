@@ -2,10 +2,10 @@
 
 return [
     /*
-    | Shared Unit Engine (Main Module). Feature-flagged so Inventory can dual-run
-    | against legacy item_units / suom_per_ouom until migration is complete.
+    | Shared Unit Engine (Main Module). Inventory dual-runs packaging conversion
+    | against the catalog. Default on so item sale/order units resolve from Settings → Units.
     */
-    'enabled' => (bool) env('UNIT_ENGINE_ENABLED', false),
+    'enabled' => (bool) env('UNIT_ENGINE_ENABLED', true),
 
     /*
     | When true, Inventory/Clinical/LIMS gateways rethrow ConversionException

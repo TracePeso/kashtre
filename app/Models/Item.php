@@ -315,7 +315,7 @@ class Item extends Model
 
     /**
      * Convert an order/packaging quantity into sale units.
-     * Dual-runs Shared Unit Engine when UNIT_ENGINE_ENABLED=true.
+     * Convert an order/packaging quantity into sale units.
      */
     public function convertOrderQuantityToSale(string|float|int $orderQuantity, string|float|int|null $factorOverride = null): float
     {

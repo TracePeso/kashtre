@@ -10,13 +10,13 @@ use App\Models\InventoryModuleConfig;
 use App\Models\InventoryOrder;
 use App\Models\InventoryPurchaseOrder;
 use App\Models\Item;
-use App\Models\ItemUnit;
 use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\GoodsReceivedNoteService;
 use App\Services\GrnBulkImportService;
 use App\Support\InventoryBusinessContext;
+use App\Support\SharedUnits;
 use App\Support\SupplierCategorySelection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -403,8 +403,7 @@ class GoodsReceivedNoteController extends Controller
     private function validateGrn(Request $request): array
     {
         $businessId = \App\Support\InventoryBusinessContext::effectiveBusinessId();
-        $itemUnitNames = ItemUnit::query()
-            ->where('business_id', $businessId)
+        $itemUnitNames = SharedUnits::itemUnitsForBusiness((int) $businessId)
             ->pluck('name')
             ->all();
 
@@ -558,10 +557,7 @@ class GoodsReceivedNoteController extends Controller
                 ->orderByRaw('CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END')
                 ->orderBy('name')
                 ->get(),
-            'itemUnits' => ItemUnit::query()
-                ->where('business_id', $businessId)
-                ->orderBy('name')
-                ->get(),
+            'itemUnits' => SharedUnits::itemUnitsForBusiness((int) $businessId),
             'items' => $items,
             'grnFormItems' => $this->service->itemsForGrnForm($items, $lastGrnPurchasePricesByItem, $lastGrnLineSnapshots),
             'lastGrnPurchasePricesByItem' => $lastGrnPurchasePricesByItem,

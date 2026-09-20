@@ -49,7 +49,7 @@ class InstallCoreUnitEngineCommand extends Command
             $this->info("Updated {$linked} item(s).");
         }
 
-        $this->info('Done. Set UNIT_ENGINE_ENABLED=true to dual-run Inventory packaging conversions.');
+        $this->info('Done. Shared catalog units are available on Settings → Units and item sale/order unit pickers.');
 
         return self::SUCCESS;
     }
