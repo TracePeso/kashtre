@@ -73,6 +73,7 @@ class BusinessTemplateImport implements ToModel, WithHeadingRow, WithValidation
             'account_number' => $accountNumber,
             'logo' => null, // Logo will need to be uploaded separately
             'require_2fa' => $this->requireTwoFactorFromRow($row),
+            'send_password_reset' => $this->sendPasswordResetFromRow($row),
         ]);
 
         // Save the business first
@@ -109,6 +110,7 @@ class BusinessTemplateImport implements ToModel, WithHeadingRow, WithValidation
             'timezone' => SharedTime::timezoneValidationRule(required: false),
             'operational_timezone' => SharedTime::timezoneValidationRule(required: false),
             'require_2fa' => 'nullable',
+            'send_password_reset' => 'nullable',
         ];
     }
 
@@ -139,6 +141,19 @@ class BusinessTemplateImport implements ToModel, WithHeadingRow, WithValidation
             }
 
             return Business::parseRequireTwoFactorFlag($row[$key], true);
+        }
+
+        return true;
+    }
+
+    private function sendPasswordResetFromRow(array $row): bool
+    {
+        foreach (['send_password_reset', 'send_reset_password_link', 'password_reset', 'reset_link'] as $key) {
+            if (! array_key_exists($key, $row) || $row[$key] === null) {
+                continue;
+            }
+
+            return Business::parseSendPasswordResetFlag($row[$key], true);
         }
 
         return true;

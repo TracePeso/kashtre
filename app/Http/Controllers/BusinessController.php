@@ -49,6 +49,7 @@ class BusinessController extends Controller
                 'country_id' => 'required|exists:countries,id',
                 'operational_timezone' => SharedTime::timezoneValidationRule(),
                 'require_2fa' => 'sometimes|boolean',
+                'send_password_reset' => 'sometimes|boolean',
                 'financial_year_start_month' => 'required|integer|min:1|max:12',
                 'financial_year_start_day' => 'required|integer|min:1|max:31',
                 'register_as_supplier' => 'sometimes|boolean',
@@ -77,6 +78,9 @@ class BusinessController extends Controller
             unset($validated['operational_timezone']);
             $validated['require_2fa'] = $request->has('require_2fa')
                 ? $request->boolean('require_2fa')
+                : true;
+            $validated['send_password_reset'] = $request->has('send_password_reset')
+                ? $request->boolean('send_password_reset')
                 : true;
 
             $business = Business::create($validated);

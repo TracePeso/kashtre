@@ -71,6 +71,14 @@ class ListBusiness extends Component implements HasForms, HasTable
                     ->tooltip(fn (Business $record): string => $record->requiresTwoFactor()
                         ? 'Staff must set up 2FA'
                         : '2FA is optional for this organisation'),
+                Tables\Columns\IconColumn::make('send_password_reset')
+                    ->label('Reset link')
+                    ->boolean()
+                    ->trueColor('success')
+                    ->falseColor('gray')
+                    ->tooltip(fn (Business $record): string => $record->sendsPasswordResetLink()
+                        ? 'Imported users receive a password reset email'
+                        : 'Imported users get the default password "password"'),
                 Tables\Columns\TextColumn::make('email')
                     ->searchable()
                     ->sortable(),
@@ -196,6 +204,35 @@ class ListBusiness extends Component implements HasForms, HasTable
                             ->body($record->fresh()->requiresTwoFactor()
                                 ? 'Staff of this organisation must set up 2FA.'
                                 : '2FA is optional for this organisation.')
+                            ->send();
+                    }),
+                Tables\Actions\Action::make('send_password_reset')
+                    ->label('Password invite')
+                    ->modalHeading('Imported user passwords')
+                    ->modalDescription('Choose whether imported users receive a reset link or the default password.')
+                    ->modalSubmitActionLabel('Save')
+                    ->icon('heroicon-o-key')
+                    ->color('info')
+                    ->visible(fn (): bool => (int) Auth::user()->business_id === 1)
+                    ->fillForm(fn (Business $record): array => [
+                        'send_password_reset' => $record->sendsPasswordResetLink(),
+                    ])
+                    ->form([
+                        Forms\Components\Toggle::make('send_password_reset')
+                            ->label('Send a password reset link')
+                            ->helperText('On by default. Turn off so imported users can sign in with the default password "password".'),
+                    ])
+                    ->action(function (Business $record, array $data): void {
+                        $record->update([
+                            'send_password_reset' => (bool) ($data['send_password_reset'] ?? true),
+                        ]);
+
+                        Notification::make()
+                            ->title('Password invite setting saved')
+                            ->success()
+                            ->body($record->fresh()->sendsPasswordResetLink()
+                                ? 'Imported users will receive a password reset email.'
+                                : 'Imported users will get the default password "password".')
                             ->send();
                     }),
 

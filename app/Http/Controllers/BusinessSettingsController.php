@@ -144,6 +144,7 @@ class BusinessSettingsController extends Controller
                 'third_party_excluded_items.*' => 'integer|exists:items,id',
                 'grn_technical_supervisor_required' => 'nullable|boolean',
                 'require_2fa' => 'sometimes|boolean',
+                'send_password_reset' => 'sometimes|boolean',
             ]
         ));
 
@@ -188,6 +189,9 @@ class BusinessSettingsController extends Controller
             'require_2fa' => $request->has('require_2fa')
                 ? $request->boolean('require_2fa')
                 : $business->requiresTwoFactor(),
+            'send_password_reset' => $request->has('send_password_reset')
+                ? $request->boolean('send_password_reset')
+                : $business->sendsPasswordResetLink(),
         ]);
 
         DB::transaction(function () use ($business, $request) {

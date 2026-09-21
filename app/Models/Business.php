@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Support\BusinessBranding;
 use App\Support\BusinessEntityCode;
+use Illuminate\Support\Facades\Hash;
 
 class Business extends Model
 {
@@ -50,6 +51,7 @@ class Business extends Model
         'third_party_excluded_items',
         'grn_technical_supervisor_required',
         'require_2fa',
+        'send_password_reset',
     ];
 
     protected $casts = [
@@ -66,6 +68,7 @@ class Business extends Model
         'third_party_excluded_items' => 'array',
         'grn_technical_supervisor_required' => 'boolean',
         'require_2fa' => 'boolean',
+        'send_password_reset' => 'boolean',
         'financial_year_start_month' => 'integer',
         'financial_year_start_day' => 'integer',
         'registered_as_supplier' => 'boolean',
@@ -73,8 +76,11 @@ class Business extends Model
         'supplier_sub_category_id' => 'integer',
     ];
 
+    public const IMPORTED_USER_DEFAULT_PASSWORD = 'password';
+
     protected $attributes = [
         'require_2fa' => true,
+        'send_password_reset' => true,
     ];
 
     // a businness has many users
@@ -259,9 +265,35 @@ class Business extends Model
     }
 
     /**
+     * When true, newly created or imported users receive a password-reset email.
+     * When false, they get the default password "password".
+     */
+    public function sendsPasswordResetLink(): bool
+    {
+        if ($this->send_password_reset === null) {
+            return true;
+        }
+
+        return (bool) $this->send_password_reset;
+    }
+
+    /**
+     * Password hash to store for a newly imported or enrolled user.
+     * Empty string means the user cannot sign in until they use the reset link.
+     */
+    public function importedUserPasswordHash(): string
+    {
+        if ($this->sendsPasswordResetLink()) {
+            return '';
+        }
+
+        return Hash::make(self::IMPORTED_USER_DEFAULT_PASSWORD);
+    }
+
+    /**
      * Spreadsheet / form helper: blank means enabled (the create-business default).
      */
-    public static function parseRequireTwoFactorFlag(mixed $value, bool $default = true): bool
+    public static function parseOnOffFlag(mixed $value, bool $default = true): bool
     {
         if ($value === null) {
             return $default;
@@ -285,6 +317,16 @@ class Business extends Model
         }
 
         return $default;
+    }
+
+    public static function parseRequireTwoFactorFlag(mixed $value, bool $default = true): bool
+    {
+        return self::parseOnOffFlag($value, $default);
+    }
+
+    public static function parseSendPasswordResetFlag(mixed $value, bool $default = true): bool
+    {
+        return self::parseOnOffFlag($value, $default);
     }
 
     public function inventoryModuleConfig()

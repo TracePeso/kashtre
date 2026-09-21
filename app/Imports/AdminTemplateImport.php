@@ -7,8 +7,6 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\WithValidation;
 use App\Models\User;
 use App\Models\Business;
-use Illuminate\Support\Facades\Password;
-use Illuminate\Support\Facades\Hash;
 
 class AdminTemplateImport implements ToModel, WithHeadingRow, WithValidation
 {
@@ -27,7 +25,6 @@ class AdminTemplateImport implements ToModel, WithHeadingRow, WithValidation
         $nin = is_string($row['nin'] ?? '') ? $row['nin'] : '';
         $gender = in_array($row['gender'] ?? '', ['male', 'female']) ? $row['gender'] : 'male';
 
-        // Get default business and branch
         $business = Business::find(1);
         $branch = $business?->branches()->first();
 
@@ -42,7 +39,7 @@ class AdminTemplateImport implements ToModel, WithHeadingRow, WithValidation
             'status' => 'active', // Default status
             'allowed_branches' => [1],
             'permissions' => [''], // Default permission
-            'password' => '', // Will be set by password reset
+            'password' => $business?->importedUserPasswordHash() ?? '',
             'service_points' => [],
         ]);
     }

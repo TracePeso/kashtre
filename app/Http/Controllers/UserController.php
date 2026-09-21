@@ -149,6 +149,7 @@ class UserController extends Controller
             $isCashier = in_array('Cashier', $validated['permissions_menu']);
 
             // Create the user
+            $enrolmentBusiness = Business::query()->find($validated['business_id']);
             $user = User::create([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
@@ -169,13 +170,14 @@ class UserController extends Controller
                 'allowed_branches' => $validated['allowed_branches'] ?? [],
                 'permissions' => $validated['permissions_menu'],
                 'hr_role' => $validated['hr_role'] ?? null,
-                'password' => '',
+                'password' => $enrolmentBusiness?->importedUserPasswordHash() ?? '',
                 // Keep balances non-null for all users (DB constraint on some environments).
                 'total_balance' => 0.00,
                 'current_balance' => 0.00,
             ]);
-            // Send password setup link (uses Laravel’s password reset logic)
-            Password::sendResetLink(['email' => $user->email]);
+            if ($enrolmentBusiness?->sendsPasswordResetLink()) {
+                Password::sendResetLink(['email' => $user->email]);
+            }
 
             // If Contractor permission is selected, create ContractorProfile
             if (in_array('Contractor', $validated['permissions_menu'])) {
@@ -422,13 +424,17 @@ class UserController extends Controller
             // Import the data
             Excel::import(new StaffTemplateImport($validated['business_id'], $validated['branch_id']), $request->file('template'));
 
-            // Send password reset emails to newly created users (excluding business ID 1)
-            $newUsers = User::where('password', '')->where('business_id', $validated['business_id'])->get();
-            foreach ($newUsers as $user) {
-                Password::sendResetLink(['email' => $user->email]);
+            $business = \App\Models\Business::find($validated['business_id']);
+            if ($business?->sendsPasswordResetLink()) {
+                $newUsers = User::where('password', '')->where('business_id', $validated['business_id'])->get();
+                foreach ($newUsers as $user) {
+                    Password::sendResetLink(['email' => $user->email]);
+                }
+
+                return redirect()->route('users.index')->with('success', 'Staff data uploaded and processed successfully! Password reset emails have been sent to new users.');
             }
 
-            return redirect()->route('users.index')->with('success', 'Staff data uploaded and processed successfully! Password reset emails have been sent to new users.');
+            return redirect()->route('users.index')->with('success', 'Staff data uploaded and processed successfully! New users can sign in with the default password.');
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'An error occurred during import: '.$e->getMessage());
         }

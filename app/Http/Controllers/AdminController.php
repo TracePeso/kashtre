@@ -49,6 +49,7 @@ class AdminController extends Controller
         try {
             $validated['name'] = trim($validated['surname'] . ' ' . $validated['first_name'] . ' ' . ($validated['middle_name'] ?? ''));
 
+            $kashtre = Business::find(1);
             $user = User::create([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
@@ -56,15 +57,17 @@ class AdminController extends Controller
                 'nin' => $validated['nin'],
                 'gender' => $validated['gender'],
                 'business_id' => 1,
-                'branch_id' => Business::find(1)?->branches()->first()?->id,
+                'branch_id' => $kashtre?->branches()->first()?->id,
                 'status' => $validated['status'],
                 'allowed_branches' => [1],
                 'permissions' => $validated['permissions_menu'],
-                'password' => '',
+                'password' => $kashtre?->importedUserPasswordHash() ?? '',
                 'service_points' => [],
             ]);
 
-            Password::sendResetLink(['email' => $user->email]);
+            if ($kashtre?->sendsPasswordResetLink()) {
+                Password::sendResetLink(['email' => $user->email]);
+            }
 
             return redirect()->route('admins.index')->with('success', 'Admin created successfully.');
         } catch (\Exception $e) {
@@ -159,13 +162,17 @@ class AdminController extends Controller
             // Import the data
             Excel::import(new AdminTemplateImport(), $request->file('template'));
 
-            // Send password reset emails to newly created users
-            $newUsers = User::where('password', '')->get();
-            foreach ($newUsers as $user) {
-                Password::sendResetLink(['email' => $user->email]);
+            $kashtre = Business::find(1);
+            if ($kashtre?->sendsPasswordResetLink()) {
+                $newUsers = User::where('password', '')->where('business_id', 1)->get();
+                foreach ($newUsers as $user) {
+                    Password::sendResetLink(['email' => $user->email]);
+                }
+
+                return redirect()->route('admins.index')->with('success', 'Admin data uploaded and processed successfully! Password reset emails have been sent to new users.');
             }
 
-            return redirect()->route('admins.index')->with('success', 'Admin data uploaded and processed successfully! Password reset emails have been sent to new users.');
+            return redirect()->route('admins.index')->with('success', 'Admin data uploaded and processed successfully! New users can sign in with the default password.');
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'An error occurred during import: ' . $e->getMessage());
         }

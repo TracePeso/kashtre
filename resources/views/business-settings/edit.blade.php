@@ -96,6 +96,12 @@
                     'wrapperClass' => 'mb-6 border-t border-gray-200 dark:border-gray-700 pt-6',
                 ])
 
+                @include('partials.business-send-password-reset-fields', [
+                    'idPrefix' => 'settings-',
+                    'sendPasswordReset' => old('send_password_reset', $business->sendsPasswordResetLink()),
+                    'wrapperClass' => 'mb-6',
+                ])
+
                 <!-- Location & Currency -->
                 <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Location & Currency</h3>

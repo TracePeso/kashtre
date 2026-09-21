@@ -3,13 +3,13 @@
 namespace App\Imports;
 
 use App\Models\Branch;
+use App\Models\Business;
 use App\Models\Department;
 use App\Models\Qualification;
 use App\Models\ServicePoint;
 use App\Models\Title;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Password;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
@@ -19,10 +19,13 @@ class StaffTemplateImport implements ToModel, WithHeadingRow
 
     protected $branchId;
 
+    protected string $passwordHash = '';
+
     public function __construct($businessId, $branchId)
     {
         $this->businessId = $businessId;
         $this->branchId = $branchId;
+        $this->passwordHash = Business::query()->find($businessId)?->importedUserPasswordHash() ?? '';
     }
 
     public function model(array $row)
@@ -345,7 +348,7 @@ class StaffTemplateImport implements ToModel, WithHeadingRow
             'service_points' => $servicePoints,
             'allowed_branches' => $allowedBranches,
             'permissions' => $permissions,
-            'password' => '', // Empty password for password reset
+            'password' => $this->passwordHash,
         ]);
 
         // Save the user first
