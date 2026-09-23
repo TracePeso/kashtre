@@ -10,9 +10,9 @@ use Filament\Tables;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Livewire\Component;
 use Illuminate\Contracts\View\View;
-use App\Models\Business;
 use Illuminate\Support\Facades\Auth;
 
 class ListUsers extends Component implements HasForms, HasTable
@@ -21,13 +21,35 @@ class ListUsers extends Component implements HasForms, HasTable
     use InteractsWithForms;
     use InteractsWithTable;
 
+    public string $activeTab = 'staff';
+
+    public function setActiveTab(string $tab): void
+    {
+        if (! in_array($tab, ['staff', 'contractors'], true)) {
+            return;
+        }
+
+        $this->activeTab = $tab;
+        $this->resetTable();
+    }
+
+    public function staffCount(): int
+    {
+        return $this->baseUsersQuery()->tap(fn (Builder $query) => $this->constrainToStaff($query))->count();
+    }
+
+    public function contractorCount(): int
+    {
+        return $this->baseUsersQuery()->tap(fn (Builder $query) => $this->constrainToContractors($query))->count();
+    }
+
     public function table(Table $table): Table
     {
-        $query = User::query()->where('business_id', '!=', 1)->latest()->with('business');
-
-        // Restrict users based on authenticated user's business_id
-        if (Auth::check() && Auth::user()->business_id !== 1) {
-            $query->where('business_id', Auth::user()->business_id);
+        $query = $this->baseUsersQuery()->latest();
+        if ($this->activeTab === 'contractors') {
+            $this->constrainToContractors($query);
+        } else {
+            $this->constrainToStaff($query);
         }
 
         return $table
@@ -53,6 +75,12 @@ class ListUsers extends Component implements HasForms, HasTable
                     })
                     ->sortable()
                     ->searchable(),
+                Tables\Columns\TextColumn::make('employment_type')
+                    ->label('Type')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => $this->activeTab === 'contractors' || $state === 'contractor' ? 'Contractor' : 'Staff')
+                    ->color(fn (?string $state): string => $this->activeTab === 'contractors' || $state === 'contractor' ? 'warning' : 'info')
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('business.name')
                     ->label('Business Name')
                     ->searchable()
@@ -174,5 +202,42 @@ class ListUsers extends Component implements HasForms, HasTable
     public function render(): View
     {
         return view('livewire.list-users');
+    }
+
+    private function baseUsersQuery(): Builder
+    {
+        $query = User::query()
+            ->where('business_id', '!=', 1)
+            ->with(['business', 'branch']);
+
+        if (Auth::check() && Auth::user()->business_id !== 1) {
+            $query->where('business_id', Auth::user()->business_id);
+        }
+
+        return $query;
+    }
+
+    private function constrainToContractors(Builder $query): void
+    {
+        $query->where(function (Builder $q): void {
+            $q->where('employment_type', 'contractor')
+                ->orWhereHas('contractorProfile')
+                ->orWhereJsonContains('permissions', 'Contractor');
+        });
+    }
+
+    private function constrainToStaff(Builder $query): void
+    {
+        $query->where(function (Builder $q): void {
+            $q->where(function (Builder $inner): void {
+                $inner->whereNull('employment_type')
+                    ->orWhere('employment_type', '!=', 'contractor');
+            })
+                ->whereDoesntHave('contractorProfile')
+                ->where(function (Builder $inner): void {
+                    $inner->whereNull('permissions')
+                        ->orWhereJsonDoesntContain('permissions', 'Contractor');
+                });
+        });
     }
 }

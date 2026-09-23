@@ -36,7 +36,8 @@ class Items extends Component implements HasForms, HasTable
                 TextColumn::make('business.name')
                 ->label('Business')
                 ->sortable()
-                ->searchable(),
+                ->searchable()
+                ->visible(fn (): bool => auth()->check() && auth()->user()->business_id === 1),
                 TextColumn::make('name')
                     ->label('Name')
                     ->searchable(),

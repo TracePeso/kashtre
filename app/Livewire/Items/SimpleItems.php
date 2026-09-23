@@ -30,18 +30,19 @@ class SimpleItems extends Component implements HasForms, HasTable
             ->where('business_id', '!=', 1)
             ->whereIn('type', ['service', 'good']) // Filter for simple items only
             ->latest();
-            
-        // if (auth()->check() && auth()->user()->business_id !== 1) {
-        //     $query->where('business_id', auth()->user()->business_id);
-        // }
-        
+
+        if (auth()->check() && auth()->user()->business_id !== 1) {
+            $query->where('business_id', auth()->user()->business_id);
+        }
+
         return $table
             ->query($query)
             ->columns([
                 TextColumn::make('business.name')
                 ->label('Business')
                 ->sortable()
-                ->searchable(),
+                ->searchable()
+                ->visible(fn (): bool => auth()->check() && auth()->user()->business_id === 1),
                 TextColumn::make('name')
                     ->label('Name')
                     ->searchable(),
