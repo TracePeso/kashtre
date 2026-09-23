@@ -193,6 +193,13 @@ final class SharedTime
         $tenantKey = (string) ($business instanceof Business ? $business->id : $business);
         $time = self::gateway();
         $time->catalogue()->ensureKnown($ianaId);
+        self::cancelActiveScopePolicies(
+            $time,
+            $tenantKey,
+            PolicyScopeType::TENANT,
+            $tenantKey,
+            $reason ?? 'Replace business timezone',
+        );
         $time->setScopeTimezone(
             $tenantKey,
             PolicyScopeType::TENANT,
@@ -224,6 +231,13 @@ final class SharedTime
         }
 
         $time->catalogue()->ensureKnown($ianaId);
+        self::cancelActiveScopePolicies(
+            $time,
+            $tenantKey,
+            PolicyScopeType::BRANCH,
+            (string) $branch->id,
+            $reason ?? 'Replace branch timezone',
+        );
         $time->setScopeTimezone(
             $tenantKey,
             PolicyScopeType::BRANCH,
@@ -233,6 +247,23 @@ final class SharedTime
             $reason ?? 'Branch timezone override',
         );
         self::$contextCache = [];
+    }
+
+    private static function cancelActiveScopePolicies(
+        SharedTimeGateway $time,
+        string $tenantKey,
+        PolicyScopeType $scope,
+        string $subjectPublicId,
+        string $reason,
+    ): void {
+        TimeZonePolicy::query()
+            ->where('tenant_key', $tenantKey)
+            ->where('scope_type', $scope->value)
+            ->where('subject_public_id', $subjectPublicId)
+            ->where('purpose', PolicyPurpose::OPERATIONAL->value)
+            ->where('status', PolicyStatus::ACTIVE->value)
+            ->get()
+            ->each(fn (TimeZonePolicy $policy) => $time->policies()->cancel($policy, $reason));
     }
 
     /**

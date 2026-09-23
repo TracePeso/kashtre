@@ -3,6 +3,7 @@
 namespace App\Support\DemoWorkbook;
 
 use App\Models\Branch;
+use App\Models\BranchServicePoint;
 use App\Models\BulkItem;
 use App\Models\Business;
 use App\Models\ClientSpace;
@@ -173,7 +174,11 @@ final class DemoWorkbookImporter
         $business->save();
 
         try {
-            SharedTime::assignBusinessTimezone($business, SharedTime::defaultTimezoneId(), 'Set from demonstration workbook import');
+            SharedTime::assignBusinessTimezone(
+                $business,
+                $this->demoBusinessTimezone($code),
+                'Set from demonstration workbook import',
+            );
         } catch (\Throwable $e) {
             $this->line('  Timezone skipped for '.$code.': '.$e->getMessage());
         }
@@ -207,10 +212,20 @@ final class DemoWorkbookImporter
         ]);
         $branch->save();
 
+        try {
+            SharedTime::assignBranchTimezone(
+                $branch,
+                $this->demoBranchTimezone($code, $name),
+                'Set from demonstration workbook import',
+            );
+        } catch (\Throwable $e) {
+            $this->line('  Branch timezone skipped for '.$name.': '.$e->getMessage());
+        }
+
         if ($extId !== '') {
             $this->branches[$extId] = $branch;
         }
-        $this->branches[$this->entityCode($row).'|'.$name] = $branch;
+        $this->branches[$code.'|'.$name] = $branch;
     }
 
     /**
@@ -532,6 +547,8 @@ final class DemoWorkbookImporter
         ]);
         $item->save();
 
+        $this->attachItemToServicePoints($item, $row, $business);
+
         $extId = trim((string) ($row['item_id'] ?? ''));
         if ($extId !== '') {
             $this->items[$extId] = $item;
@@ -759,6 +776,62 @@ final class DemoWorkbookImporter
         return null;
     }
 
+    private function attachItemToServicePoints(Item $item, array $row, Business $business): void
+    {
+        $point = $this->servicePointFromRow($row);
+        if (! $point) {
+            return;
+        }
+
+        foreach ($this->branchesForBusiness($business) as $branch) {
+            BranchServicePoint::query()->updateOrCreate(
+                [
+                    'business_id' => $business->id,
+                    'branch_id' => $branch->id,
+                    'item_id' => $item->id,
+                ],
+                ['service_point_id' => $point->id],
+            );
+        }
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, Branch>
+     */
+    private function branchesForBusiness(Business $business): \Illuminate\Support\Collection
+    {
+        $matched = collect($this->branches)
+            ->filter(fn (Branch $branch) => (int) $branch->business_id === (int) $business->id)
+            ->unique('id')
+            ->values();
+
+        if ($matched->isNotEmpty()) {
+            return $matched;
+        }
+
+        return Branch::query()->where('business_id', $business->id)->get();
+    }
+
+    private function demoBusinessTimezone(string $code): string
+    {
+        return match ($code) {
+            'LSH' => 'Europe/London',
+            'CCTH' => 'Africa/Nairobi',
+            default => SharedTime::defaultTimezoneId(),
+        };
+    }
+
+    private function demoBranchTimezone(string $code, string $branchName): ?string
+    {
+        return match ([$code, $branchName]) {
+            ['LSH', 'Riverside Outpatient Centre'] => 'America/New_York',
+            ['CCTH', 'East Ambulatory Centre'] => 'Asia/Dubai',
+            ['CCTH', 'Women and Children Centre'] => 'Asia/Singapore',
+            ['CCTH', 'Health Sciences Campus'] => 'America/Los_Angeles',
+            default => null,
+        };
+    }
+
     private function contractorProfileFromRow(array $row): ?ContractorProfile
     {
         $extId = trim((string) ($row['contractor_user_id'] ?? ''));
@@ -850,7 +923,7 @@ final class DemoWorkbookImporter
         $lines = [];
         foreach ($this->businesses as $code => $business) {
             $lines[] = sprintf(
-                '%s (%s): users %d, branches %d, rooms %d, service points %d, items %d',
+                '%s (%s): users %d, branches %d, rooms %d, service points %d, items %d, item queues %d',
                 $business->name,
                 $code,
                 User::query()->where('business_id', $business->id)->count(),
@@ -858,7 +931,20 @@ final class DemoWorkbookImporter
                 Room::query()->where('business_id', $business->id)->count(),
                 ServicePoint::query()->where('business_id', $business->id)->count(),
                 Item::query()->where('business_id', $business->id)->count(),
+                BranchServicePoint::query()->where('business_id', $business->id)->count(),
             );
+
+            $businessTz = SharedTime::describe((string) $business->id);
+            $lines[] = sprintf('  timezone %s', $businessTz['ianaId']);
+            foreach (Branch::query()->where('business_id', $business->id)->orderBy('id')->get() as $branch) {
+                $tz = SharedTime::describe((string) $business->id, (string) $branch->id);
+                $lines[] = sprintf(
+                    '  %s → %s%s',
+                    $branch->name,
+                    $tz['ianaId'],
+                    $tz['inherited'] ? ' (inherited)' : '',
+                );
+            }
         }
 
         return $lines;
