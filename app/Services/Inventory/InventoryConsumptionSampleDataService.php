@@ -3,18 +3,19 @@
 namespace App\Services\Inventory;
 
 use App\Models\InventoryDailyConsumption;
-use App\Models\InventoryConsumptionEvent;
 use App\Models\InventoryStockLevel;
 use App\Models\Item;
 use App\Support\ConsumptionItemMatcher;
 use App\Support\HospitalConsumptionMatrix;
-use App\Support\HourlyConsumptionDistribution;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class InventoryConsumptionSampleDataService
 {
     public const SAMPLE_NOTE = 'Sample hospital matrix (test backfill)';
+
+    /** Enough weeks for Inventory AI, short enough for a Livewire request. */
+    public const MAX_BACKFILL_DAYS = 28;
 
     /**
      * @return array{from: ?string, until: ?string, days: int, already_current: bool}
@@ -81,16 +82,19 @@ class InventoryConsumptionSampleDataService
         $generator = new HospitalConsumptionMatrix();
         $rows = $generator->generateForRange($matrixItems, $from, $until);
 
-        $hourly = new HourlyConsumptionDistribution();
         $insertRows = [];
-        $eventRows = [];
         $matchedItemIds = [];
+        $matchedByName = [];
         $now = now();
 
         foreach ($rows as $row) {
-            $item = $matcher->match($row['item_name']);
+            $name = $row['item_name'];
+            if (! array_key_exists($name, $matchedByName)) {
+                $matchedByName[$name] = $matcher->match($name);
+            }
 
-            if (! $item) {
+            $item = $matchedByName[$name];
+            if ($item === null) {
                 continue;
             }
 
@@ -108,19 +112,6 @@ class InventoryConsumptionSampleDataService
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
-
-            foreach ($hourly->distribute((int) $row['quantity'], (int) $item->id, $row['date']) as $hour => $hourQty) {
-                $eventRows[] = [
-                    'business_id' => $businessId,
-                    'store_id' => $storeId,
-                    'item_id' => $item->id,
-                    'quantity_suom' => $hourQty,
-                    'occurred_at' => Carbon::parse($row['date'])->setTime($hour, 0),
-                    'source' => InventoryDailyConsumption::SOURCE_SALE,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-            }
         }
 
         if ($insertRows === []) {
@@ -135,7 +126,9 @@ class InventoryConsumptionSampleDataService
             ];
         }
 
-        DB::transaction(function () use ($businessId, $storeId, $insertRows, $eventRows, $matchedItemIds): void {
+        $itemIds = array_keys($matchedItemIds);
+
+        DB::transaction(function () use ($businessId, $storeId, $insertRows, $itemIds, $from, $until): void {
             foreach (array_chunk($insertRows, 500) as $chunk) {
                 DB::table('inventory_daily_consumptions')->upsert(
                     $chunk,
@@ -144,43 +137,8 @@ class InventoryConsumptionSampleDataService
                 );
             }
 
-            $itemIds = array_keys($matchedItemIds);
-
-            InventoryConsumptionEvent::query()
-                ->where('business_id', $businessId)
-                ->where('store_id', $storeId)
-                ->whereIn('item_id', $itemIds)
-                ->whereDate('occurred_at', '>=', $insertRows[0]['consumption_date'])
-                ->whereDate('occurred_at', '<=', $insertRows[array_key_last($insertRows)]['consumption_date'])
-                ->delete();
-
-            foreach (array_chunk($eventRows, 500) as $chunk) {
-                DB::table('inventory_consumption_events')->insert($chunk);
-            }
-
-            $analytics = app(InventoryStockAnalyticsService::class);
-            $monthly = app(InventoryMonthlyConsumptionService::class);
-
-            foreach ($itemIds as $itemId) {
-                $stock = InventoryStockLevel::firstOrCreate(
-                    [
-                        'business_id' => $businessId,
-                        'store_id' => $storeId,
-                        'item_id' => $itemId,
-                    ],
-                    ['quantity_suom' => 0]
-                );
-
-                $analytics->recalculateForStockLevel($stock);
-
-                $cursor = Carbon::parse($insertRows[0]['consumption_date'])->startOfMonth();
-                $endMonth = Carbon::parse($insertRows[array_key_last($insertRows)]['consumption_date'])->startOfMonth();
-
-                while ($cursor->lte($endMonth)) {
-                    $monthly->syncMonthFromDaily($businessId, $storeId, (int) $itemId, $cursor->toDateString());
-                    $cursor->addMonth();
-                }
-            }
+            $this->refreshStockAverages($businessId, $storeId, $itemIds);
+            $this->syncMonthlyTotals($businessId, $storeId, $itemIds, $from, $until);
         });
 
         return [
@@ -193,22 +151,156 @@ class InventoryConsumptionSampleDataService
             'from' => $from->toDateString(),
             'until' => $until->toDateString(),
             'rows' => count($insertRows),
-            'events' => count($eventRows),
+            'events' => 0,
             'items' => count($matchedItemIds),
         ];
     }
 
     private function backfillStartDate(int $businessId, int $storeId): Carbon
     {
+        $today = now()->startOfDay();
+        $earliest = $today->copy()->subDays(self::MAX_BACKFILL_DAYS - 1);
+
         $lastDate = InventoryDailyConsumption::query()
             ->where('business_id', $businessId)
             ->where('store_id', $storeId)
             ->max('consumption_date');
 
-        if ($lastDate) {
-            return Carbon::parse($lastDate)->addDay()->startOfDay();
+        if (! $lastDate) {
+            return $earliest;
         }
 
-        return now()->subDays(9)->startOfDay();
+        $from = Carbon::parse($lastDate)->addDay()->startOfDay();
+
+        return $from->gt($earliest) ? $from : $earliest;
+    }
+
+    /**
+     * @param  list<int>  $itemIds
+     */
+    private function refreshStockAverages(int $businessId, int $storeId, array $itemIds): void
+    {
+        $today = now()->startOfDay();
+        $windows = InventoryStockAnalyticsService::MOVING_AVERAGE_WINDOWS;
+        $maxDays = max(array_keys($windows));
+        $from = $today->copy()->subDays($maxDays - 1)->toDateString();
+
+        $daily = DB::table('inventory_daily_consumptions')
+            ->selectRaw('item_id, consumption_date, SUM(quantity_suom) as value')
+            ->where('business_id', $businessId)
+            ->where('store_id', $storeId)
+            ->whereIn('item_id', $itemIds)
+            ->whereIn('source', InventoryDailyConsumption::demandSources())
+            ->whereDate('consumption_date', '>=', $from)
+            ->groupBy('item_id', 'consumption_date')
+            ->get()
+            ->groupBy('item_id');
+
+        $now = now();
+        $rows = [];
+
+        foreach ($itemIds as $itemId) {
+            $points = $daily->get($itemId, collect());
+            $updates = [
+                'business_id' => $businessId,
+                'store_id' => $storeId,
+                'item_id' => $itemId,
+                'quantity_suom' => 0,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            foreach ($windows as $days => $column) {
+                $windowFrom = $today->copy()->subDays($days - 1);
+                $total = 0.0;
+                foreach ($points as $point) {
+                    if (Carbon::parse($point->consumption_date)->gte($windowFrom)) {
+                        $total += (float) $point->value;
+                    }
+                }
+                $updates[$column] = round($total / max(1, $days), 4);
+            }
+
+            $updates['daily_usage_suom'] = $updates['ma_30_days'];
+            $rows[] = $updates;
+        }
+
+        foreach (array_chunk($rows, 200) as $chunk) {
+            DB::table('inventory_stock_levels')->upsert(
+                $chunk,
+                ['business_id', 'store_id', 'item_id'],
+                array_merge(array_values($windows), ['daily_usage_suom', 'updated_at'])
+            );
+        }
+    }
+
+    /**
+     * @param  list<int>  $itemIds
+     */
+    private function syncMonthlyTotals(int $businessId, int $storeId, array $itemIds, Carbon $from, Carbon $until): void
+    {
+        $cursor = $from->copy()->startOfMonth();
+        $endMonth = $until->copy()->startOfMonth();
+        $now = now();
+
+        while ($cursor->lte($endMonth)) {
+            $monthStart = $cursor->toDateString();
+            $monthEnd = $cursor->copy()->endOfMonth()->toDateString();
+
+            $totals = DB::table('inventory_daily_consumptions')
+                ->selectRaw('item_id, COALESCE(SUM(quantity_suom), 0) as total_quantity_suom, COUNT(DISTINCT consumption_date) as days_with_usage')
+                ->where('business_id', $businessId)
+                ->where('store_id', $storeId)
+                ->whereIn('item_id', $itemIds)
+                ->whereIn('source', InventoryDailyConsumption::demandSources())
+                ->whereBetween('consumption_date', [$monthStart, $monthEnd])
+                ->groupBy('item_id')
+                ->get()
+                ->keyBy('item_id');
+
+            $upserts = [];
+            $emptyIds = [];
+
+            foreach ($itemIds as $itemId) {
+                $row = $totals->get($itemId);
+                $total = (float) ($row->total_quantity_suom ?? 0);
+
+                if ($total <= 0) {
+                    $emptyIds[] = $itemId;
+
+                    continue;
+                }
+
+                $upserts[] = [
+                    'business_id' => $businessId,
+                    'store_id' => $storeId,
+                    'item_id' => $itemId,
+                    'consumption_month' => $monthStart,
+                    'total_quantity_suom' => $total,
+                    'days_with_usage' => (int) ($row->days_with_usage ?? 0),
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+
+            if ($emptyIds !== []) {
+                DB::table('inventory_monthly_consumptions')
+                    ->where('business_id', $businessId)
+                    ->where('store_id', $storeId)
+                    ->whereIn('item_id', $emptyIds)
+                    ->whereDate('consumption_month', $monthStart)
+                    ->delete();
+            }
+
+            foreach (array_chunk($upserts, 200) as $chunk) {
+                DB::table('inventory_monthly_consumptions')->upsert(
+                    $chunk,
+                    ['business_id', 'store_id', 'item_id', 'consumption_month'],
+                    ['total_quantity_suom', 'days_with_usage', 'updated_at']
+                );
+            }
+
+            $cursor->addMonth();
+        }
     }
 }

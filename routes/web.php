@@ -79,6 +79,7 @@ use App\Http\Controllers\InventoryCrashCartController;
 use App\Http\Controllers\InventoryPickRouteController;
 use App\Http\Controllers\InventoryInternalReplenishmentController;
 use App\Http\Controllers\InventorySettingsController;
+use App\Http\Controllers\InventoryAiAdviceController;
 use App\Http\Controllers\InventoryDailyConsumptionController;
 use App\Http\Controllers\InventoryOrderController;
 use App\Http\Controllers\InventoryIncomingRfqController;
@@ -434,6 +435,8 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/consumption/items/{item}/days/{date}', [InventoryDailyConsumptionController::class, 'showDay'])
             ->name('consumption.day')
             ->where('date', '[0-9]{4}-[0-9]{2}-[0-9]{2}');
+        Route::get('/ai-advice', [InventoryAiAdviceController::class, 'index'])->name('ai.index');
+        Route::get('/ai-advice/logs/{log}', [InventoryAiAdviceController::class, 'show'])->name('ai.logs.show');
         Route::get('/orders', [InventoryOrderController::class, 'index'])->name('orders.index');
         Route::get('/incoming-rfqs', [InventoryIncomingRfqController::class, 'index'])->name('incoming-rfqs.index');
         Route::get('/incoming-rfqs/{invitation}', [InventoryIncomingRfqController::class, 'show'])->name('incoming-rfqs.show');

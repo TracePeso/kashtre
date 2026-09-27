@@ -195,6 +195,11 @@
                                 </a>
                             </li>
                             <li>
+                                <a href="{{ route('inventory.ai.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.ai*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
+                                    AI briefing
+                                </a>
+                            </li>
+                            <li>
                                 <a href="{{ route('inventory.orders.index') }}" class="block text-sm text-gray-700 hover:text-blue-700 py-1.5 {{ request()->routeIs('inventory.orders*') ? 'text-blue-700 font-medium' : '' }}" @click.stop>
                                     Orders
                                 </a>

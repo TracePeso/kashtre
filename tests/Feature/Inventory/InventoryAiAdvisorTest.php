@@ -2,13 +2,16 @@
 
 namespace Tests\Feature\Inventory;
 
+use App\Models\InventoryAiAdviceLog;
 use App\Services\AiGateway\CapabilityInvokeClient;
 use App\Services\Inventory\InventoryAiAdvisor;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class InventoryAiAdvisorTest extends TestCase
 {
+    use DatabaseTransactions;
     protected function setUp(): void
     {
         parent::setUp();
@@ -187,7 +190,20 @@ class InventoryAiAdvisorTest extends TestCase
         $this->assertSame('DEMAND_FORECAST', $advice['capability']);
         $this->assertContains('2026-W38: 12.50 (8.00–16.00)', $advice['lines']);
         $this->assertContains('Assumption: Peak period next month', $advice['lines']);
-        $this->assertStringContainsString('Draft demand forecast', (string) $advice['summary']);
+        $this->assertContains('Peak period next month', $advice['assumptions']);
+        $this->assertSame('WEEK', $advice['sent']['input']['grain']);
+        $this->assertDatabaseHas('inventory_ai_advice_logs', [
+            'capability' => 'DEMAND_FORECAST',
+            'ok' => 1,
+            'business_id' => 4,
+        ]);
+        $this->assertSame(
+            'Peak period next month',
+            InventoryAiAdviceLog::query()->latest('id')->value('response_payload')['result']['assumptions'][0] ?? null
+        );
+        $this->assertStringContainsString('Draft demand forecast for the next four weeks', (string) $advice['summary']);
+        $this->assertNotEmpty($advice['series']);
+        $this->assertSame('2026-W38', $advice['series'][0]['period']);
 
         Http::assertSent(function ($request) {
             return str_contains($request->url(), 'DEMAND_FORECAST:invoke')

@@ -60,5 +60,7 @@ class AiAdvicePanel extends Component
             $this->itemId ?: null,
             trim($this->question) !== '' ? trim($this->question) : null,
         );
+
+        $this->dispatch('inventory-ai-logged');
     }
 }

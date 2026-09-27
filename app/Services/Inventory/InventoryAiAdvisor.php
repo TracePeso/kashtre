@@ -3,6 +3,7 @@
 namespace App\Services\Inventory;
 
 use App\Models\Business;
+use App\Models\InventoryAiAdviceLog;
 use App\Models\InventoryDailyConsumption;
 use App\Models\InventoryStockLevel;
 use App\Models\Item;
@@ -11,6 +12,10 @@ use App\Services\AiGateway\CapabilityInvokeClient;
 use App\Support\SharedTime;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 /**
  * Builds inventory facts and asks the AI gateway for advice only.
@@ -129,6 +134,38 @@ class InventoryAiAdvisor
             $warnings[] = $warning;
         }
 
+        $briefing = $this->briefing($businessId, $storeId, $itemId, $useCase, $history, $snapshot, $timezone);
+        $sent = [
+            'capability' => $capability,
+            'purposeOfUse' => 'REPLENISHMENT_PLANNING',
+            'dataClassification' => 'CONFIDENTIAL',
+            'input' => $input,
+        ];
+        $received = [
+            'ok' => $response['ok'],
+            'status' => $response['status'] ?? null,
+            'requestId' => $response['requestId'],
+            'result' => $result,
+            'warnings' => array_values(array_unique($warnings)),
+            'error' => $response['error'],
+            'errorCode' => $response['errorCode'],
+            'details' => $response['details'],
+        ];
+
+        $this->recordLog(
+            $useCase,
+            $capability,
+            $meta['label'],
+            $businessId,
+            $storeId,
+            $itemId,
+            $question,
+            $sent,
+            $received,
+            $response,
+            $this->summaryFrom($result, $useCase),
+        );
+
         return [
             'ok' => $response['ok'],
             'available' => $response['available'],
@@ -136,12 +173,81 @@ class InventoryAiAdvisor
             'title' => $meta['label'],
             'summary' => $this->summaryFrom($result, $useCase),
             'lines' => $this->linesFrom($result),
+            'series' => $this->seriesFrom($result),
+            'assumptions' => $this->listFrom($result, 'assumptions'),
+            'risks' => $this->listFrom($result, 'risks'),
+            'patterns' => $this->listFrom($result, 'patterns'),
             'warnings' => array_values(array_unique($warnings)),
             'requiresHumanReview' => true,
             'requestId' => $response['requestId'],
             'error' => $response['error'],
             'errorCode' => $response['errorCode'],
             'details' => $response['details'],
+            'briefing' => $briefing,
+            'sent' => $sent,
+            'received' => $received,
+        ];
+    }
+
+    /**
+     * Facts the operator can read before or after asking the gateway.
+     *
+     * @param  list<array{period: string, value: float|null, missing: bool}>|null  $history
+     * @param  list<array{name: string, code: ?string, on_hand: float, ma_15: float}>|null  $snapshot
+     * @return array{
+     *     store_name: ?string,
+     *     item_name: ?string,
+     *     scope_label: string,
+     *     unit_label: string,
+     *     timezone: string,
+     *     horizon_label: string,
+     *     history: list<array{period: string, value: float|null, missing: bool}>,
+     *     usable_weeks: int,
+     *     history_total: float,
+     *     average_week: float,
+     *     snapshot: list<array{name: string, code: ?string, on_hand: float, ma_15: float}>
+     * }
+     */
+    public function briefing(
+        int $businessId,
+        ?int $storeId = null,
+        ?int $itemId = null,
+        string $useCase = 'consumption',
+        ?array $history = null,
+        ?array $snapshot = null,
+        ?string $timezone = null,
+    ): array {
+        $timezone ??= $this->timezoneFor($businessId, $storeId);
+        $source = $useCase === 'wastage' ? 'wastage' : 'demand';
+        $history ??= $this->weeklyHistory($businessId, $storeId, $itemId, $source, $timezone);
+        $snapshot ??= $this->stockSnapshot($businessId, $storeId, $itemId);
+        $usable = $this->usableHistory($history);
+        $total = array_sum(array_map(fn (array $point): float => (float) $point['value'], $usable));
+        $storeName = $storeId ? Store::query()->where('business_id', $businessId)->find($storeId)?->name : null;
+        $itemName = $this->itemLabel($businessId, $itemId);
+
+        if ($itemName !== null) {
+            $scope = $itemName.($storeName ? ' at '.$storeName : '');
+        } elseif ($storeName) {
+            $scope = 'All items at '.$storeName;
+        } else {
+            $scope = 'All stores in this organisation';
+        }
+
+        return [
+            'store_name' => $storeName,
+            'item_name' => $itemName,
+            'scope_label' => $scope,
+            'unit_label' => $itemName
+                ? 'Sale units (SUOM) for this item only'
+                : 'Sale units (SUOM) added across every item in scope. Litres, tablets, and vials are summed together — this is not money.',
+            'timezone' => $timezone,
+            'horizon_label' => 'Next 4 weeks',
+            'history' => $history,
+            'usable_weeks' => count($usable),
+            'history_total' => $total,
+            'average_week' => count($usable) > 0 ? $total / count($usable) : 0.0,
+            'snapshot' => $snapshot,
         ];
     }
 
@@ -323,14 +429,10 @@ class InventoryAiAdvisor
 
         $series = is_array($result['series'] ?? null) ? $result['series'] : [];
         if ($series !== []) {
-            $horizon = is_string($result['horizon'] ?? null) && $result['horizon'] !== ''
-                ? $result['horizon']
-                : 'the next four weeks';
-
             return match ($useCase) {
-                'demand' => 'Draft demand forecast for '.$horizon.'. Review before anyone orders.',
-                'consumption' => 'Draft consumption forecast for '.$horizon.'. History was not changed.',
-                default => 'Draft forecast for '.$horizon.'. Inventory numbers stay as they are.',
+                'demand' => 'Draft demand forecast for the next four weeks. Review before anyone orders.',
+                'consumption' => 'Draft consumption forecast for the next four weeks. History was not changed.',
+                default => 'Draft forecast for the next four weeks. Inventory numbers stay as they are.',
             };
         }
 
@@ -377,6 +479,58 @@ class InventoryAiAdvisor
         }
 
         return $lines;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $result
+     * @return list<array{period: string, central: float, lower: ?float, upper: ?float}>
+     */
+    public function seriesFrom(?array $result): array
+    {
+        if ($result === null) {
+            return [];
+        }
+
+        $series = [];
+        foreach ($result['series'] ?? [] as $point) {
+            if (! is_array($point)) {
+                continue;
+            }
+            $period = (string) ($point['period'] ?? '');
+            $central = $point['central'] ?? null;
+            if ($period === '' || ! is_numeric($central)) {
+                continue;
+            }
+            $series[] = [
+                'period' => $period,
+                'central' => (float) $central,
+                'lower' => is_numeric($point['lower'] ?? null) ? (float) $point['lower'] : null,
+                'upper' => is_numeric($point['upper'] ?? null) ? (float) $point['upper'] : null,
+            ];
+        }
+
+        return $series;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $result
+     * @return list<string>
+     */
+    private function listFrom(?array $result, string $key): array
+    {
+        if ($result === null) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($result[$key] ?? [] as $item) {
+            $text = $this->stringifyAdviceItem($item);
+            if ($text !== null) {
+                $out[] = $text;
+            }
+        }
+
+        return $out;
     }
 
     private function stringifyAdviceItem(mixed $item): ?string
@@ -497,12 +651,64 @@ class InventoryAiAdvisor
             'title' => $meta['label'] ?? 'AI advice',
             'summary' => null,
             'lines' => [],
+            'series' => [],
+            'assumptions' => [],
+            'risks' => [],
+            'patterns' => [],
             'warnings' => [],
             'requiresHumanReview' => true,
             'requestId' => null,
             'error' => $error,
             'errorCode' => null,
             'details' => null,
+            'briefing' => null,
+            'sent' => null,
+            'received' => null,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $sent
+     * @param  array<string, mixed>  $received
+     * @param  array<string, mixed>  $response
+     */
+    private function recordLog(
+        string $useCase,
+        string $capability,
+        string $title,
+        int $businessId,
+        ?int $storeId,
+        ?int $itemId,
+        ?string $question,
+        array $sent,
+        array $received,
+        array $response,
+        ?string $summary,
+    ): void {
+        if (! Schema::hasTable('inventory_ai_advice_logs')) {
+            return;
+        }
+
+        try {
+            InventoryAiAdviceLog::query()->create([
+                'business_id' => $businessId,
+                'store_id' => $storeId,
+                'item_id' => $itemId,
+                'recorded_by_user_id' => Auth::id(),
+                'use_case' => $useCase,
+                'capability' => $capability,
+                'title' => $title,
+                'question' => $question,
+                'request_id' => is_string($response['requestId'] ?? null) ? $response['requestId'] : null,
+                'ok' => (bool) $response['ok'],
+                'error_code' => is_string($response['errorCode'] ?? null) ? $response['errorCode'] : null,
+                'error' => is_string($response['error'] ?? null) ? $response['error'] : null,
+                'summary' => $summary,
+                'request_payload' => $sent,
+                'response_payload' => $received,
+            ]);
+        } catch (Throwable $e) {
+            Log::warning('Could not store Inventory AI advice log: '.$e->getMessage());
+        }
     }
 }
