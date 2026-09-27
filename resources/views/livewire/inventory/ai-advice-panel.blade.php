@@ -4,7 +4,6 @@
             <h3 class="text-sm font-semibold text-slate-900">AI advice</h3>
             <p class="mt-0.5 text-xs text-slate-500">
                 Draft only. Inventory still creates orders, transfers, and write-offs.
-                Calls <span class="font-mono">{{ $gatewayUrl }}</span>
             </p>
         </div>
         @if($advice['requiresHumanReview'] ?? false)
@@ -15,10 +14,25 @@
     <div class="px-4 py-4 space-y-3">
         @unless($configured)
             <p class="text-sm text-slate-600">
-                Inventory is aimed at the live gateway, but it needs a module token.
-                Set <span class="font-mono text-xs">AI_GATEWAY_INVENTORY_TOKEN</span> from the Inventory app on the AI gateway.
+                Aimed at <span class="font-mono text-xs">{{ $gatewayUrl }}</span>.
+                Set <span class="font-mono text-xs">AI_GATEWAY_INVENTORY_TOKEN</span> from Apps → Inventory on the gateway.
+                If the Inventory app can assume more than one business, also set
+                <span class="font-mono text-xs">AI_GATEWAY_TENANT_ID</span> to that app’s tenant UUID.
             </p>
         @else
+            <p class="text-xs text-slate-500">
+                @if($needsHistory)
+                    {{ $usableWeeks }} of {{ $historyWeeks }} recent weeks have numbers
+                    @if($usableWeeks < 3)
+                        — need at least three before a forecast will run.
+                    @else
+                        — enough to ask.
+                    @endif
+                @else
+                    Advice only. A person still decides what to order.
+                @endif
+            </p>
+
             <label class="block">
                 <span class="text-xs font-medium text-slate-600">Optional note</span>
                 <textarea wire:model="question" rows="2"
@@ -31,6 +45,7 @@
                         wire:click="check"
                         wire:loading.attr="disabled"
                         wire:target="check,ask"
+                        @disabled($needsHistory && $usableWeeks < 3)
                         class="inline-flex items-center px-3 py-2 rounded-md text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-60">
                     <span wire:loading.remove wire:target="check">{{ $actionLabel }}</span>
                     <span wire:loading wire:target="check">Asking AI…</span>

@@ -11,7 +11,7 @@ class AiAdvicePanel extends Component
 {
     public string $useCase = 'stockout';
 
-    public bool $allowAsk = false;
+    public bool $allowAsk = true;
 
     public ?int $storeId = null;
 
@@ -36,11 +36,18 @@ class AiAdvicePanel extends Component
     {
         $advisor = app(InventoryAiAdvisor::class);
         $meta = InventoryAiAdvisor::USE_CASES[$this->useCase] ?? InventoryAiAdvisor::USE_CASES['stockout'];
+        $businessId = (int) InventoryBusinessContext::effectiveBusinessId();
+        $source = $this->useCase === 'wastage' ? 'wastage' : 'demand';
+        $history = $advisor->weeklyHistory($businessId, $this->storeId ?: null, $this->itemId ?: null, $source);
+        $usableWeeks = count($advisor->usableHistory($history));
 
         return view('livewire.inventory.ai-advice-panel', [
             'configured' => $advisor->isConfigured(),
             'gatewayUrl' => $advisor->gatewayUrl(),
             'actionLabel' => $meta['label'],
+            'needsHistory' => (bool) ($meta['needs_history'] ?? false),
+            'usableWeeks' => $usableWeeks,
+            'historyWeeks' => InventoryAiAdvisor::HISTORY_WEEKS,
         ]);
     }
 

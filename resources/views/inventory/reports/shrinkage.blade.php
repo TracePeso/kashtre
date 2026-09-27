@@ -5,7 +5,7 @@
         <h2 class="mt-2 text-2xl font-bold text-gray-900">Shrinkage Report</h2>
         @include('inventory.partials.subnav')
         <div class="mt-6">
-            @livewire('inventory.ai-advice-panel', ['useCase' => 'wastage'])
+            @livewire('inventory.ai-advice-panel', ['useCase' => 'wastage', 'allowAsk' => true])
         </div>
         <div class="mt-6 bg-white shadow sm:rounded-lg p-6">@livewire('inventory.shrinkage-report-table')</div>
     </div>

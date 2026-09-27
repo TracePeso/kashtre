@@ -53,8 +53,49 @@ class InventoryAiAdvisorTest extends TestCase
                 && $request->hasHeader('X-Module-Code', 'INVENTORY_ORCHESTRATOR')
                 && $request->hasHeader('X-Tenant-ID', '11111111-1111-4111-8111-111111111111')
                 && $request->hasHeader('X-Request-ID')
+                && $request['purposeOfUse'] === 'REPLENISHMENT_PLANNING'
+                && $request['dataClassification'] === 'CONFIDENTIAL'
+                && $request['contractVersion'] === '1.0.0'
+                && $request['responseMode'] === 'SYNC'
                 && $request['input']['measure'] === 'Stockout risk';
         });
+    }
+
+    public function test_invoke_explains_missing_tenant_context(): void
+    {
+        Http::fake([
+            'https://ai.kashtre.com/*' => Http::response([
+                'error' => [
+                    'code' => 'CALLER_CONTEXT_REQUIRED',
+                    'message' => 'X-Tenant-ID is required when this app can assume more than one business.',
+                ],
+            ], 400),
+        ]);
+
+        $result = app(CapabilityInvokeClient::class)->invoke('STOCKOUT_RISK', ['measure' => 'x'], 'inventory');
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame('CALLER_CONTEXT_REQUIRED', $result['errorCode']);
+        $this->assertStringContainsString('AI_GATEWAY_TENANT_ID', (string) $result['error']);
+    }
+
+    public function test_invoke_explains_a_queued_forecast(): void
+    {
+        Http::fake([
+            'https://ai.kashtre.com/*' => Http::response([
+                'requestId' => 'req-queued',
+                'status' => 'QUEUED',
+                'result' => null,
+                'warnings' => [],
+                'requiresHumanReview' => true,
+            ], 202),
+        ]);
+
+        $result = app(CapabilityInvokeClient::class)->invoke('DEMAND_FORECAST', ['measure' => 'x'], 'inventory');
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame('QUEUED', $result['errorCode']);
+        $this->assertStringContainsString('still working', (string) $result['error']);
     }
 
     public function test_invoke_does_not_call_the_gateway_without_a_token(): void
@@ -146,12 +187,38 @@ class InventoryAiAdvisorTest extends TestCase
         $this->assertSame('DEMAND_FORECAST', $advice['capability']);
         $this->assertContains('2026-W38: 12.50 (8.00–16.00)', $advice['lines']);
         $this->assertContains('Assumption: Peak period next month', $advice['lines']);
+        $this->assertStringContainsString('Draft demand forecast', (string) $advice['summary']);
 
         Http::assertSent(function ($request) {
             return str_contains($request->url(), 'DEMAND_FORECAST:invoke')
+                && $request['purposeOfUse'] === 'REPLENISHMENT_PLANNING'
                 && $request['input']['grain'] === 'WEEK'
+                && $request['input']['horizon'] === 'P4W'
+                && isset($request['input']['timezone'])
                 && count($request['input']['history']) >= 3;
         });
+    }
+
+    public function test_fill_weekly_window_keeps_gaps_as_missing(): void
+    {
+        $advisor = app(InventoryAiAdvisor::class);
+        $end = \Carbon\Carbon::parse('2026-09-21')->startOfWeek(\Carbon\Carbon::MONDAY);
+
+        $history = $advisor->fillWeeklyWindow([
+            '2026-W36' => 4.0,
+            '2026-W38' => 9.0,
+        ], $end, 4);
+
+        $this->assertCount(4, $history);
+        $this->assertSame('2026-W36', $history[0]['period']);
+        $this->assertSame(4.0, $history[0]['value']);
+        $this->assertFalse($history[0]['missing']);
+        $this->assertSame('2026-W37', $history[1]['period']);
+        $this->assertTrue($history[1]['missing']);
+        $this->assertSame('2026-W38', $history[2]['period']);
+        $this->assertSame(9.0, $history[2]['value']);
+        $this->assertSame('2026-W39', $history[3]['period']);
+        $this->assertTrue($history[3]['missing']);
     }
 
     public function test_ask_before_ordering_uses_agent_run(): void
@@ -180,6 +247,8 @@ class InventoryAiAdvisorTest extends TestCase
 
         Http::assertSent(function ($request) {
             return str_contains($request->url(), 'AGENT_RUN:invoke')
+                && $request['purposeOfUse'] === 'REPLENISHMENT_PLANNING'
+                && $request['input']['profileCode'] === 'DEFAULT'
                 && str_contains((string) $request['input']['goal'], 'Paracetamol is running low.');
         });
     }

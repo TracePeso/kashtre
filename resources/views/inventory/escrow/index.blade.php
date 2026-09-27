@@ -9,7 +9,7 @@
         @include('inventory.partials.subnav')
 
         <div class="mt-6">
-            @livewire('inventory.ai-advice-panel', ['useCase' => 'wastage'])
+            @livewire('inventory.ai-advice-panel', ['useCase' => 'wastage', 'allowAsk' => true])
         </div>
 
         @if(session('success'))

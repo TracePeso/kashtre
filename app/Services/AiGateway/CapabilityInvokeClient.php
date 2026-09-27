@@ -30,7 +30,7 @@ class CapabilityInvokeClient
     }
 
     /**
-     * @param  array<string, mixed>  $input
+     * @param  array<string, mixed>  $input  Capability input, or a full invoke envelope with an `input` key
      * @return array{
      *     ok: bool,
      *     available: bool,
@@ -44,8 +44,13 @@ class CapabilityInvokeClient
      *     details: mixed
      * }
      */
-    public function invoke(string $capability, array $input, string $module = 'inventory', ?string $message = null): array
-    {
+    public function invoke(
+        string $capability,
+        array $input,
+        string $module = 'inventory',
+        ?string $message = null,
+        ?string $tenantId = null,
+    ): array {
         $token = $this->tokenFor($module);
         $moduleCode = $this->moduleCodeFor($module);
 
@@ -53,20 +58,38 @@ class CapabilityInvokeClient
             return $this->failure('Inventory AI is not connected. Set AI_GATEWAY_INVENTORY_TOKEN.', available: false);
         }
 
-        $body = $input;
+        $capabilityInput = $this->capabilityInput($input);
         if ($message !== null && $message !== '') {
-            $body['message'] = $message;
+            $capabilityInput['message'] = $message;
         }
+
+        $requestId = (string) Str::uuid();
+        $body = [
+            'correlationId' => is_string($input['correlationId'] ?? null) && $input['correlationId'] !== ''
+                ? $input['correlationId']
+                : $requestId,
+            'contractVersion' => is_string($input['contractVersion'] ?? null) && $input['contractVersion'] !== ''
+                ? $input['contractVersion']
+                : '1.0.0',
+            'purposeOfUse' => is_string($input['purposeOfUse'] ?? null) && $input['purposeOfUse'] !== ''
+                ? $input['purposeOfUse']
+                : $this->purposeFor($module, $capability),
+            'dataClassification' => is_string($input['dataClassification'] ?? null) && $input['dataClassification'] !== ''
+                ? $input['dataClassification']
+                : $this->classificationFor($module),
+            'input' => $capabilityInput,
+            'responseMode' => 'SYNC',
+        ];
 
         $headers = [
             'Accept' => 'application/json',
             'X-Module-Code' => $moduleCode,
-            'X-Request-ID' => (string) Str::uuid(),
+            'X-Request-ID' => $requestId,
         ];
 
-        $tenantId = trim((string) config('services.ai_gateway.tenant_id', ''));
-        if ($tenantId !== '') {
-            $headers['X-Tenant-ID'] = $tenantId;
+        $resolvedTenant = $this->tenantId($tenantId);
+        if ($resolvedTenant !== '') {
+            $headers['X-Tenant-ID'] = $resolvedTenant;
         }
 
         try {
@@ -83,20 +106,39 @@ class CapabilityInvokeClient
             $error = is_array($payload['error'] ?? null) ? $payload['error'] : null;
 
             if ($response->successful()) {
+                $status = is_string($payload['status'] ?? null) ? $payload['status'] : null;
+                $result = is_array($payload['result'] ?? null) ? $payload['result'] : null;
+
+                if ($result === null && in_array($status, ['QUEUED', 'RUNNING'], true)) {
+                    return [
+                        'ok' => false,
+                        'available' => true,
+                        'status' => $status,
+                        'result' => null,
+                        'warnings' => $this->stringList($payload['warnings'] ?? []),
+                        'requiresHumanReview' => true,
+                        'requestId' => is_string($payload['requestId'] ?? null) ? $payload['requestId'] : $requestId,
+                        'error' => 'AI accepted the request and is still working. Ask again in a moment.',
+                        'errorCode' => $status,
+                        'details' => null,
+                    ];
+                }
+
                 return [
                     'ok' => true,
                     'available' => true,
-                    'status' => is_string($payload['status'] ?? null) ? $payload['status'] : null,
-                    'result' => is_array($payload['result'] ?? null) ? $payload['result'] : null,
+                    'status' => $status,
+                    'result' => $result,
                     'warnings' => $this->stringList($payload['warnings'] ?? []),
                     'requiresHumanReview' => (bool) ($payload['requiresHumanReview'] ?? true),
-                    'requestId' => is_string($payload['requestId'] ?? null) ? $payload['requestId'] : null,
+                    'requestId' => is_string($payload['requestId'] ?? null) ? $payload['requestId'] : $requestId,
                     'error' => null,
                     'errorCode' => null,
                     'details' => null,
                 ];
             }
 
+            $errorCode = is_string($error['code'] ?? null) ? $error['code'] : null;
             $messageText = is_string($error['message'] ?? null)
                 ? $error['message']
                 : ('AI request failed (HTTP '.$response->status().').');
@@ -108,9 +150,9 @@ class CapabilityInvokeClient
                 'result' => null,
                 'warnings' => [],
                 'requiresHumanReview' => true,
-                'requestId' => is_string($payload['requestId'] ?? null) ? $payload['requestId'] : $headers['X-Request-ID'],
-                'error' => $messageText,
-                'errorCode' => is_string($error['code'] ?? null) ? $error['code'] : null,
+                'requestId' => is_string($payload['requestId'] ?? null) ? $payload['requestId'] : $requestId,
+                'error' => $this->friendlyError($errorCode, $messageText),
+                'errorCode' => $errorCode,
                 'details' => $error['details'] ?? null,
             ];
         } catch (ConnectionException $e) {
@@ -155,6 +197,60 @@ class CapabilityInvokeClient
             'errorCode' => null,
             'details' => null,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>
+     */
+    private function capabilityInput(array $input): array
+    {
+        $inner = $input['input'] ?? null;
+
+        return is_array($inner) ? $inner : $input;
+    }
+
+    private function tenantId(?string $tenantId): string
+    {
+        $passed = trim((string) $tenantId);
+        if ($passed !== '') {
+            return $passed;
+        }
+
+        return trim((string) config('services.ai_gateway.tenant_id', ''));
+    }
+
+    private function purposeFor(string $module, string $capability): string
+    {
+        if ($module === 'inventory') {
+            return 'REPLENISHMENT_PLANNING';
+        }
+
+        return match ($capability) {
+            'ROSTER_SUGGEST', 'COVERAGE_GAP_ANALYZE', 'LEAVE_CONFLICT_ANALYZE' => 'WORKFORCE_PLANNING',
+            'REPORT_NARRATIVE', 'ANOMALY_EXPLAIN' => 'MANAGEMENT_REPORTING',
+            default => 'CLINICAL_DOCUMENTATION',
+        };
+    }
+
+    private function classificationFor(string $module): string
+    {
+        return $module === 'inventory' ? 'CONFIDENTIAL' : 'CLINICAL';
+    }
+
+    private function friendlyError(?string $code, string $fallback): string
+    {
+        return match ($code) {
+            'CALLER_CONTEXT_REQUIRED' => 'Inventory AI needs the Inventory app tenant. Set AI_GATEWAY_TENANT_ID to the UUID shown when you created the Inventory app on the gateway.',
+            'AUTHENTICATION_FAILED' => 'The Inventory AI token was rejected. Mint a new token from Apps → Inventory on the gateway and set AI_GATEWAY_INVENTORY_TOKEN.',
+            'TENANT_SCOPE_DENIED' => 'This Inventory token cannot assume that business. Use the tenant UUID granted to the Inventory app.',
+            'AUTHORIZATION_DENIED' => 'Inventory is not subscribed to this AI task, or the purpose is not allowed. Grant Inventory access on the gateway.',
+            'CAPABILITY_REJECTED_INPUT' => 'The gateway refused the forecast history. Need at least three weeks of real (non-missing) numbers.',
+            'CAPABILITY_NOT_FOUND' => 'That AI task is not published on the gateway yet.',
+            'CAPABILITY_UNAVAILABLE' => 'No approved AI route is available for Inventory on the gateway.',
+            'BUDGET_EXCEEDED' => 'The Inventory AI budget on the gateway has been reached.',
+            default => $fallback,
+        };
     }
 
     private function tokenFor(string $module): string

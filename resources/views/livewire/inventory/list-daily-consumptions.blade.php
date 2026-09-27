@@ -115,6 +115,7 @@
     <div class="mb-4">
         @livewire('inventory.ai-advice-panel', [
             'useCase' => 'consumption',
+            'allowAsk' => true,
             'storeId' => $storeId,
             'itemId' => $itemId,
         ], key('ai-consumption-'.$storeId.'-'.$itemId))

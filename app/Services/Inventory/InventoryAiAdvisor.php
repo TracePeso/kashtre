@@ -2,10 +2,13 @@
 
 namespace App\Services\Inventory;
 
+use App\Models\Business;
 use App\Models\InventoryDailyConsumption;
 use App\Models\InventoryStockLevel;
+use App\Models\Item;
 use App\Models\Store;
 use App\Services\AiGateway\CapabilityInvokeClient;
+use App\Support\SharedTime;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -15,6 +18,8 @@ use Illuminate\Support\Collection;
  */
 class InventoryAiAdvisor
 {
+    public const HISTORY_WEEKS = 12;
+
     public const USE_CASES = [
         'stockout' => [
             'capability' => 'STOCKOUT_RISK',
@@ -85,8 +90,9 @@ class InventoryAiAdvisor
 
         $capability = $meta['capability'];
         $historySource = $useCase === 'wastage' ? 'wastage' : 'demand';
-        $history = $this->weeklyHistory($businessId, $storeId, $itemId, $historySource);
-        $snapshot = $this->stockSnapshot($businessId, $storeId);
+        $timezone = $this->timezoneFor($businessId, $storeId);
+        $history = $this->weeklyHistory($businessId, $storeId, $itemId, $historySource, $timezone);
+        $snapshot = $this->stockSnapshot($businessId, $storeId, $itemId);
 
         if ($meta['needs_history'] && count($this->usableHistory($history)) < 3) {
             return $this->localFailure(
@@ -105,20 +111,32 @@ class InventoryAiAdvisor
                 'measure' => $measure,
                 'grain' => 'WEEK',
                 'horizon' => 'P4W',
-                'timezone' => 'Africa/Kampala',
+                'timezone' => $timezone,
                 'history' => $history,
             ];
 
-        $response = $this->client->invoke($capability, ['input' => $input], 'inventory');
+        $response = $this->client->invoke(
+            $capability,
+            $input,
+            'inventory',
+            null,
+            $this->tenantId($businessId),
+        );
+
+        $result = is_array($response['result'] ?? null) ? $response['result'] : null;
+        $warnings = $response['warnings'];
+        foreach ($this->stringList($result['warnings'] ?? []) as $warning) {
+            $warnings[] = $warning;
+        }
 
         return [
             'ok' => $response['ok'],
             'available' => $response['available'],
             'capability' => $capability,
             'title' => $meta['label'],
-            'summary' => $this->summaryFrom($response['result'] ?? null),
-            'lines' => $this->linesFrom($response['result'] ?? null),
-            'warnings' => $response['warnings'],
+            'summary' => $this->summaryFrom($result, $useCase),
+            'lines' => $this->linesFrom($result),
+            'warnings' => array_values(array_unique($warnings)),
             'requiresHumanReview' => true,
             'requestId' => $response['requestId'],
             'error' => $response['error'],
@@ -142,9 +160,16 @@ class InventoryAiAdvisor
     /**
      * @return list<array{period: string, value: float|null, missing: bool}>
      */
-    public function weeklyHistory(int $businessId, ?int $storeId, ?int $itemId, string $source = 'demand'): array
-    {
-        $from = now()->subWeeks(11)->startOfWeek(Carbon::MONDAY)->toDateString();
+    public function weeklyHistory(
+        int $businessId,
+        ?int $storeId,
+        ?int $itemId,
+        string $source = 'demand',
+        ?string $timezone = null,
+    ): array {
+        $timezone ??= $this->timezoneFor($businessId, $storeId);
+        $end = Carbon::now($timezone)->startOfWeek(Carbon::MONDAY);
+        $from = $end->copy()->subWeeks(self::HISTORY_WEEKS - 1)->toDateString();
 
         $query = InventoryDailyConsumption::query()
             ->where('business_id', $businessId)
@@ -159,30 +184,50 @@ class InventoryAiAdvisor
         }
 
         $rows = $query
-            ->selectRaw("DATE_FORMAT(consumption_date, '%x-W%v') as period, SUM(quantity_suom) as value")
-            ->groupBy('period')
-            ->orderBy('period')
+            ->selectRaw('consumption_date, SUM(quantity_suom) as value')
+            ->groupBy('consumption_date')
             ->get();
 
-        return $rows->map(function ($row): array {
-            $value = $row->value === null ? null : (float) $row->value;
+        $byPeriod = [];
+        foreach ($rows as $row) {
+            $period = $this->isoWeekPeriod(Carbon::parse($row->consumption_date)->timezone($timezone));
+            $byPeriod[$period] = ($byPeriod[$period] ?? 0) + (float) $row->value;
+        }
 
-            return [
-                'period' => (string) $row->period,
-                'value' => $value,
-                'missing' => $value === null,
+        return $this->fillWeeklyWindow($byPeriod, $end, self::HISTORY_WEEKS);
+    }
+
+    /**
+     * @param  array<string, float>  $byPeriod
+     * @return list<array{period: string, value: float|null, missing: bool}>
+     */
+    public function fillWeeklyWindow(array $byPeriod, Carbon $endMonday, int $weeks = self::HISTORY_WEEKS): array
+    {
+        $history = [];
+        $start = $endMonday->copy()->subWeeks($weeks - 1)->startOfWeek(Carbon::MONDAY);
+
+        for ($i = 0; $i < $weeks; $i++) {
+            $period = $this->isoWeekPeriod($start->copy()->addWeeks($i));
+            $hasValue = array_key_exists($period, $byPeriod);
+            $history[] = [
+                'period' => $period,
+                'value' => $hasValue ? (float) $byPeriod[$period] : null,
+                'missing' => ! $hasValue,
             ];
-        })->all();
+        }
+
+        return $history;
     }
 
     /**
      * @return list<array{name: string, code: ?string, on_hand: float, ma_15: float}>
      */
-    public function stockSnapshot(int $businessId, ?int $storeId, int $limit = 8): array
+    public function stockSnapshot(int $businessId, ?int $storeId, ?int $itemId = null, int $limit = 8): array
     {
         return InventoryStockLevel::query()
             ->where('inventory_stock_levels.business_id', $businessId)
             ->when($storeId, fn ($q) => $q->where('inventory_stock_levels.store_id', $storeId))
+            ->when($itemId, fn ($q) => $q->where('inventory_stock_levels.item_id', $itemId))
             ->where(function ($q) {
                 $q->whereNull('inventory_stock_levels.stock_zone')
                     ->orWhere('inventory_stock_levels.stock_zone', 'active');
@@ -218,6 +263,7 @@ class InventoryAiAdvisor
     ): string {
         $storeName = $storeId ? Store::query()->where('business_id', $businessId)->find($storeId)?->name : null;
         $scope = $storeName ? 'store '.$storeName : 'this organisation';
+        $itemName = $this->itemLabel($businessId, $itemId);
 
         $itemBits = Collection::make($snapshot)
             ->take(6)
@@ -229,15 +275,15 @@ class InventoryAiAdvisor
             ->implode('; ');
 
         $base = match ($useCase) {
-            'stockout' => 'Stockout risk for '.$scope.' over the next four weeks. Inventory rules remain authoritative.',
-            'demand' => 'Weekly demand for '.$scope.' over the next four weeks. Do not create replenishment orders.',
-            'consumption' => 'Weekly consumption for '.$scope.' over the next four weeks. Never modify source history.',
-            'wastage' => 'Wastage and expiry patterns for '.$scope.'. Do not write off stock.',
+            'stockout' => 'stockout_risk. Stockout risk for '.$scope.' over the next four weeks. Inventory rules remain authoritative.',
+            'demand' => 'weekly_demand. Weekly demand for '.$scope.' over the next four weeks. Do not create replenishment orders.',
+            'consumption' => 'weekly_consumption. Weekly consumption for '.$scope.' over the next four weeks. Never modify source history.',
+            'wastage' => 'wastage_pattern. Wastage and expiry patterns for '.$scope.'. Do not write off stock.',
             default => 'What should we check before ordering for '.$scope.'?',
         };
 
-        if ($itemId) {
-            $base .= ' Focus on the selected item.';
+        if ($itemName !== null) {
+            $base .= ' Focus on '.$itemName.'.';
         }
 
         if ($itemBits !== '') {
@@ -263,7 +309,7 @@ class InventoryAiAdvisor
     /**
      * @param  array<string, mixed>|null  $result
      */
-    private function summaryFrom(?array $result): ?string
+    private function summaryFrom(?array $result, string $useCase = 'stockout'): ?string
     {
         if ($result === null) {
             return null;
@@ -273,6 +319,19 @@ class InventoryAiAdvisor
             if (is_string($result[$key] ?? null) && trim($result[$key]) !== '') {
                 return trim($result[$key]);
             }
+        }
+
+        $series = is_array($result['series'] ?? null) ? $result['series'] : [];
+        if ($series !== []) {
+            $horizon = is_string($result['horizon'] ?? null) && $result['horizon'] !== ''
+                ? $result['horizon']
+                : 'the next four weeks';
+
+            return match ($useCase) {
+                'demand' => 'Draft demand forecast for '.$horizon.'. Review before anyone orders.',
+                'consumption' => 'Draft consumption forecast for '.$horizon.'. History was not changed.',
+                default => 'Draft forecast for '.$horizon.'. Inventory numbers stay as they are.',
+            };
         }
 
         return null;
@@ -339,6 +398,76 @@ class InventoryAiAdvisor
         $encoded = json_encode($item);
 
         return is_string($encoded) ? $encoded : null;
+    }
+
+    private function timezoneFor(int $businessId, ?int $storeId): string
+    {
+        $branchId = null;
+        if ($storeId) {
+            $branchId = Store::query()
+                ->where('business_id', $businessId)
+                ->where('id', $storeId)
+                ->value('branch_id');
+        }
+
+        try {
+            return SharedTime::displayTimezone(
+                (string) $businessId,
+                $branchId ? (string) $branchId : null,
+            );
+        } catch (\Throwable) {
+            return (string) config('app.timezone', 'Africa/Kampala');
+        }
+    }
+
+    private function tenantId(int $businessId): ?string
+    {
+        $configured = trim((string) config('services.ai_gateway.tenant_id', ''));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        $uuid = Business::query()->where('id', $businessId)->value('uuid');
+
+        return is_string($uuid) && $uuid !== '' ? $uuid : null;
+    }
+
+    private function itemLabel(int $businessId, ?int $itemId): ?string
+    {
+        if (! $itemId) {
+            return null;
+        }
+
+        $item = Item::query()->where('business_id', $businessId)->find($itemId);
+        if ($item === null) {
+            return 'the selected item';
+        }
+
+        return $item->code ? $item->name.' ('.$item->code.')' : (string) $item->name;
+    }
+
+    private function isoWeekPeriod(Carbon $date): string
+    {
+        return sprintf('%d-W%02d', $date->isoWeekYear(), $date->isoWeek());
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function stringList(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $item) {
+            if (is_string($item) && trim($item) !== '') {
+                $out[] = $item;
+            }
+        }
+
+        return array_values($out);
     }
 
     /**

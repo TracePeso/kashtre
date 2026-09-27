@@ -148,6 +148,8 @@ CLINICAL_DB_PASSWORD=
 
 # Shared AI Gateway. Inventory talks to the live service over HTTP.
 # Mint the Inventory module token on the gateway (Apps → Inventory).
+# AI_GATEWAY_TENANT_ID is the tenant UUID shown when that Inventory app was created.
+# Required when the Inventory app can assume more than one business.
 AI_GATEWAY_URL=https://ai.kashtre.com
 AI_GATEWAY_API_KEY=
 AI_GATEWAY_TOKEN=
