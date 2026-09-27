@@ -29,26 +29,36 @@ class InventoryAiAdvisor
         'stockout' => [
             'capability' => 'STOCKOUT_RISK',
             'label' => 'Check stockout risk',
+            'short' => 'What might run out',
+            'help' => 'Items in this scope that may run short soon.',
             'needs_history' => true,
         ],
         'demand' => [
             'capability' => 'DEMAND_FORECAST',
             'label' => 'Ask for a demand forecast',
+            'short' => 'How much we may need',
+            'help' => 'A draft of what this scope may need over the next 4 weeks.',
             'needs_history' => true,
         ],
         'consumption' => [
             'capability' => 'CONSUMPTION_FORECAST',
             'label' => 'Ask for a consumption forecast',
+            'short' => 'How much we may use',
+            'help' => 'A draft of usage for the next 4 weeks, from your history.',
             'needs_history' => true,
         ],
         'wastage' => [
             'capability' => 'WASTAGE_PATTERN',
             'label' => 'Look for wastage patterns',
+            'short' => 'What we are wasting',
+            'help' => 'Patterns in expired or written-off stock.',
             'needs_history' => true,
         ],
         'ask' => [
             'capability' => 'AGENT_RUN',
             'label' => 'Ask before ordering',
+            'short' => 'Ask a question',
+            'help' => 'Write your own question before anyone orders.',
             'needs_history' => false,
         ],
     ];
@@ -249,6 +259,22 @@ class InventoryAiAdvisor
             'average_week' => count($usable) > 0 ? $total / count($usable) : 0.0,
             'snapshot' => $snapshot,
         ];
+    }
+
+    public static function formatIsoWeek(string $period): string
+    {
+        if (! preg_match('/^(\d{4})-W(\d{2})$/', $period, $matches)) {
+            return $period;
+        }
+
+        $start = Carbon::now()->setISODate((int) $matches[1], (int) $matches[2])->startOfWeek(Carbon::MONDAY);
+        $end = $start->copy()->endOfWeek(Carbon::SUNDAY);
+
+        if ($start->isSameMonth($end)) {
+            return $start->format('j').'–'.$end->format('j M');
+        }
+
+        return $start->format('j M').'–'.$end->format('j M');
     }
 
     /**

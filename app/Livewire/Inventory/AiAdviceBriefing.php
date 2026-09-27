@@ -62,7 +62,7 @@ class AiAdviceBriefing extends Component
 
     public function setUseCase(string $useCase): void
     {
-        if (! isset(InventoryAiAdvisor::USE_CASES[$useCase]) || $useCase === 'ask') {
+        if (! isset(InventoryAiAdvisor::USE_CASES[$useCase])) {
             return;
         }
 
@@ -80,6 +80,11 @@ class AiAdviceBriefing extends Component
         $this->run('ask');
     }
 
+    public function submit(): void
+    {
+        $this->run($this->useCase);
+    }
+
     public function render(): View
     {
         $advisor = app(InventoryAiAdvisor::class);
@@ -93,12 +98,14 @@ class AiAdviceBriefing extends Component
 
         return view('livewire.inventory.ai-advice-briefing', [
             'configured' => $advisor->isConfigured(),
-            'actionLabel' => $meta['label'],
+            'actionLabel' => $meta['short'] ?? $meta['label'],
             'needsHistory' => (bool) $meta['needs_history'],
             'briefing' => $briefing,
-            'tasks' => collect(InventoryAiAdvisor::USE_CASES)
-                ->except('ask')
-                ->all(),
+            'historyMax' => max(1.0, ...array_map(
+                fn (array $point): float => ($point['missing'] ?? false) ? 0.0 : (float) ($point['value'] ?? 0),
+                $briefing['history'],
+            )),
+            'tasks' => InventoryAiAdvisor::USE_CASES,
         ]);
     }
 

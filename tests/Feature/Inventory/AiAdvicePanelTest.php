@@ -78,11 +78,11 @@ class AiAdvicePanelTest extends TestCase
         $this->actingAs($this->hospitalUser());
 
         Livewire::test(AiAdviceBriefing::class)
-            ->assertSee('What you are looking at')
+            ->assertSee('Choose what to review')
             ->assertSee('Last 12 weeks')
-            ->assertSee('Sale units')
-            ->assertSee('Next 4 weeks')
-            ->assertSee('AI request log');
+            ->assertSee('How much we may use')
+            ->assertSee('Ask for a draft')
+            ->assertSee('Recent asks');
     }
 
     public function test_shared_log_table_renders_on_inventory_ai_surfaces(): void
@@ -102,7 +102,7 @@ class AiAdvicePanelTest extends TestCase
         ]);
 
         Livewire::test(AiAdviceLogTable::class)
-            ->assertSee('AI request log')
+            ->assertSee('Recent asks')
             ->assertSee('Feedback')
             ->assertSee('View')
             ->assertSee('Ask for a consumption forecast');

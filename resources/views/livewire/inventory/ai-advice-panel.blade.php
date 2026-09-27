@@ -6,7 +6,7 @@
                 <p class="mt-0.5 text-xs text-slate-500">
                     Draft only. Inventory still creates orders, transfers, and write-offs.
                     <a href="{{ route('inventory.ai.index', array_filter(['use_case' => $useCase, 'store_id' => $storeId, 'item_id' => $itemId])) }}"
-                       class="ml-1 text-blue-700 hover:text-blue-900">Open full briefing</a>
+                       class="ml-1 text-blue-700 hover:text-blue-900">Open stock advice</a>
                 </p>
             </div>
             @if($advice['requiresHumanReview'] ?? false)

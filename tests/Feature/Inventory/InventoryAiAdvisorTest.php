@@ -269,6 +269,12 @@ class InventoryAiAdvisorTest extends TestCase
         });
     }
 
+    public function test_iso_week_is_shown_as_calendar_dates(): void
+    {
+        $this->assertSame('21–27 Sep', InventoryAiAdvisor::formatIsoWeek('2026-W39'));
+        $this->assertSame('2026-Wxx', InventoryAiAdvisor::formatIsoWeek('2026-Wxx'));
+    }
+
     private function partialAdvisorWithHistory(): InventoryAiAdvisor
     {
         $advisor = \Mockery::mock(InventoryAiAdvisor::class, [app(CapabilityInvokeClient::class)])

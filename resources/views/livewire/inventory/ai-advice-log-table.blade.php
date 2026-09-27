@@ -1,7 +1,7 @@
 <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
     <div class="px-4 py-3 border-b border-slate-100">
-        <h3 class="text-sm font-semibold text-slate-900">AI request log</h3>
-        <p class="mt-0.5 text-xs text-slate-500">Open View for the full page of what Inventory sent and what the gateway returned.</p>
+        <h3 class="text-sm font-semibold text-slate-900">Recent asks</h3>
+        <p class="mt-0.5 text-xs text-slate-500">Open View for what Inventory sent and what came back.</p>
     </div>
     <div class="overflow-x-auto">
         <table class="min-w-full text-sm">
