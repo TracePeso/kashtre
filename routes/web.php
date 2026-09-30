@@ -171,6 +171,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/employees',        [\App\Http\Controllers\Hr\HrController::class, 'employees'])->name('employees');
         Route::get('/employee-records', [\App\Http\Controllers\Hr\HrController::class, 'employeeRecords'])->name('employee-records');
         Route::get('/attendance',  [\App\Http\Controllers\Hr\HrController::class, 'attendance'])->name('attendance');
+        Route::get('/attendance/exceptions', [\App\Http\Controllers\Hr\HrController::class, 'attendanceExceptions'])->name('attendance-exceptions');
         Route::get('/leave',       [\App\Http\Controllers\Hr\HrController::class, 'leave'])->name('leave');
         Route::get('/payroll',     [\App\Http\Controllers\Hr\HrController::class, 'payroll'])->name('payroll');
         Route::get('/performance',  [\App\Http\Controllers\Hr\HrController::class, 'performance'])->name('performance');
