@@ -2,7 +2,13 @@
     <div class="py-8">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-            <h1 class="text-xl font-bold text-gray-900 mb-6">HR — Attendance</h1>
+            <div class="flex items-center justify-between mb-6">
+                <h1 class="text-xl font-bold text-gray-900">HR — Attendance</h1>
+                <a href="{{ route('hr.attendance-exceptions') }}"
+                   class="inline-flex items-center px-4 py-2 bg-[#011478] text-white text-sm font-medium rounded-lg hover:bg-[#011478]/90">
+                    Review Pending Exceptions
+                </a>
+            </div>
 
             @if(isset($records['error']))
                 <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">

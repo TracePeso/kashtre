@@ -108,6 +108,11 @@ class HrController extends Controller
         return redirect()->route('hr.embed', ['path' => '/hr/settings']);
     }
 
+    public function attendanceExceptions(Request $request)
+    {
+        return redirect()->route('hr.embed', ['path' => '/hr/attendance/exceptions/pending']);
+    }
+
     public function embed(Request $request)
     {
         $user    = Auth::user();
