@@ -12,6 +12,7 @@ use App\Models\Store;
 use App\Models\SubGroup;
 use App\Models\Supplier;
 use App\Models\User;
+use App\Services\Inventory\InventoryAiAdvisor;
 use App\Services\Inventory\InventoryOrderApprovalService;
 use App\Services\Inventory\InventoryOrderFulfillmentService;
 use App\Services\Inventory\InventoryOrderService;
@@ -62,6 +63,7 @@ class InventoryOrderController extends Controller
             ->first();
 
         return view('inventory.orders.create', [
+            'aiConfigured' => app(InventoryAiAdvisor::class)->isConfigured(),
             'stores' => Store::optionsForSelect($businessId),
             'storesList' => Store::query()
                 ->forBusiness($businessId)
@@ -104,7 +106,7 @@ class InventoryOrderController extends Controller
             'store_id' => 'required|exists:stores,id',
             'source_store_id' => 'nullable|required_if:order_type,internal|exists:stores,id|different:store_id',
             'supplier_id' => 'nullable|exists:suppliers,id',
-            'ordering_approach' => 'nullable|in:period,budget',
+            'ordering_approach' => 'nullable|in:period,budget,ai',
             'importance_filter' => array_merge(
                 ['nullable', 'string', 'max:64'],
                 $request->filled('importance_filter') ? [Rule::in($importanceSlugs)] : []
@@ -142,6 +144,10 @@ class InventoryOrderController extends Controller
             $validated['budget_mode'] = InventoryOrder::BUDGET_MODE_AMOUNT;
             $validated['budget_value'] = (float) $request->input('budget_value');
             $validated['period_of_order_days'] = null;
+        } elseif ($orderingApproach === 'ai') {
+            $validated['budget_mode'] = null;
+            $validated['budget_value'] = null;
+            $validated['period_of_order_days'] = 28;
         } else {
             $validated['budget_mode'] = null;
             $validated['budget_value'] = null;
@@ -214,6 +220,47 @@ class InventoryOrderController extends Controller
         }
 
         $itemIds = $validated['item_ids'] ?? null;
+
+        if ($orderingApproach === 'ai') {
+            $advisor = app(InventoryAiAdvisor::class);
+            if (! $advisor->isConfigured()) {
+                return back()
+                    ->withInput()
+                    ->withErrors([
+                        'ordering_approach' => 'Inventory AI is not connected. Set AI_GATEWAY_INVENTORY_TOKEN, then try again.',
+                    ]);
+            }
+
+            $focusItemId = is_array($itemIds) && count($itemIds) === 1 ? (int) $itemIds[0] : null;
+            $advice = $advisor->advise(
+                'stockout',
+                $businessId,
+                (int) $validated['store_id'],
+                $focusItemId,
+                $validated['notes'] ?? null,
+            );
+
+            if (! ($advice['ok'] ?? false)) {
+                return back()
+                    ->withInput()
+                    ->withErrors([
+                        'ordering_approach' => $advice['error'] ?? 'AI could not review this store, so no order was created.',
+                    ]);
+            }
+
+            $summary = is_string($advice['summary'] ?? null) ? trim($advice['summary']) : '';
+            $reviewLines = array_values(array_filter(array_merge(
+                $summary !== '' ? [$summary] : [],
+                array_map('strval', $advice['risks'] ?? []),
+                array_map('strval', $advice['warnings'] ?? []),
+            ), fn (string $line): bool => trim($line) !== '' && trim($line) !== '[]'));
+            $note = trim((string) ($validated['notes'] ?? ''));
+            $prefix = 'Ordered by AI.';
+            if ($reviewLines !== []) {
+                $prefix .= "\n".implode("\n", $reviewLines);
+            }
+            $validated['notes'] = mb_substr(trim($prefix.($note !== '' ? "\n".$note : '')), 0, 2000);
+        }
 
         if ($itemIds !== null && $itemIds !== []) {
             $validItemCount = Item::query()

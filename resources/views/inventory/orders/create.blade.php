@@ -5,7 +5,10 @@
     $defaultSafetyDays = (float) old('safety_stock_days', $config?->safety_stock_days ?? 0);
     $defaultBufferDays = (float) old('buffer_stock_days', $config?->buffer_stock_days ?? 0);
     $defaultNotificationDays = (float) old('notification_to_order_days', $config?->notification_to_order_days ?? 0);
-    $initialOrderApproach = old('ordering_approach', in_array(old('budget_mode'), ['amount', 'days'], true) ? 'budget' : 'period');
+    $postedApproach = old('ordering_approach');
+    $initialOrderApproach = in_array($postedApproach, ['period', 'budget', 'ai'], true)
+        ? $postedApproach
+        : (in_array(old('budget_mode'), ['amount', 'days'], true) ? 'budget' : 'period');
     $budgetAmountValue = $initialOrderApproach === 'budget' ? old('budget_value') : '';
     $oldItemIds = collect(old('item_ids', []))->map(fn ($id) => (int) $id)->values();
     $defaultImportance = old('importance_filter', '');
@@ -19,6 +22,25 @@
 @endphp
 <div class="min-h-screen bg-gray-50 py-6" x-data="{
     orderApproach: '{{ $initialOrderApproach }}',
+    orderTab: '{{ $initialOrderApproach === 'ai' ? 'ai' : 'rules' }}',
+    rulesApproach: '{{ $initialOrderApproach === 'ai' ? 'period' : $initialOrderApproach }}',
+    aiConfigured: @js((bool) ($aiConfigured ?? false)),
+    showRulesTab() {
+        this.orderTab = 'rules';
+        this.orderApproach = this.rulesApproach || 'period';
+    },
+    showAiTab() {
+        if (this.orderApproach !== 'ai') {
+            this.rulesApproach = this.orderApproach;
+        }
+        this.orderTab = 'ai';
+        this.orderApproach = 'ai';
+    },
+    chooseRulesApproach(approach) {
+        this.rulesApproach = approach;
+        this.orderApproach = approach;
+        this.orderTab = 'rules';
+    },
     orderType: '{{ $initialOrderType }}',
     storesList: @js($storesList),
     sourceStoreId: '{{ $initialSourceStoreId }}',
@@ -354,12 +376,36 @@
             <section class="space-y-4 border-t border-gray-200 pt-8">
                 <div>
                     <h3 class="text-base font-semibold text-gray-900">Ordering rules</h3>
-                    <p class="mt-0.5 text-sm text-gray-500">Period or budget, peak adjustments, and stock-day settings.</p>
+                    <p class="mt-0.5 text-sm text-gray-500">Use the inventory rules, or let AI build the draft. Peak adjustments and stock-day settings apply to both.</p>
                 </div>
-            <div class="border border-gray-200 rounded-lg p-4 space-y-4">
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
+                <div class="flex border-b border-gray-200" role="tablist" aria-label="How to order">
+                    <button type="button"
+                            role="tab"
+                            @click="showRulesTab()"
+                            :aria-selected="orderTab === 'rules'"
+                            :class="orderTab === 'rules'
+                                ? 'border-blue-600 text-blue-700'
+                                : 'border-transparent text-gray-500 hover:text-gray-800'"
+                            class="flex-1 px-4 py-3 text-sm font-medium border-b-2 -mb-px bg-white">
+                        Order by rules
+                    </button>
+                    <button type="button"
+                            role="tab"
+                            @click="showAiTab()"
+                            :aria-selected="orderTab === 'ai'"
+                            :class="orderTab === 'ai'
+                                ? 'border-blue-600 text-blue-700'
+                                : 'border-transparent text-gray-500 hover:text-gray-800'"
+                            class="flex-1 px-4 py-3 text-sm font-medium border-b-2 -mb-px bg-white">
+                        Order by AI
+                    </button>
+                </div>
+
+                <div class="p-4 space-y-4" x-show="orderTab === 'rules'">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                        <p class="text-sm font-medium text-gray-900">How to order</p>
+                        <p class="text-sm font-medium text-gray-900">How to calculate quantities</p>
                     </div>
                     <a href="{{ route('inventory.orders.how-it-works') }}"
                        class="shrink-0 text-sm font-medium text-blue-600 hover:text-blue-800">
@@ -369,7 +415,7 @@
 
                 <div class="inline-flex flex-wrap gap-1 rounded-lg border border-gray-200 p-1 bg-gray-50" role="group" aria-label="Ordering method">
                     <button type="button"
-                            @click="orderApproach = 'period'"
+                            @click="chooseRulesApproach('period')"
                             :class="orderApproach === 'period'
                                 ? 'bg-white text-blue-700 shadow-sm ring-1 ring-gray-200'
                                 : 'text-gray-600 hover:text-gray-900'"
@@ -377,7 +423,7 @@
                         By period (days)
                     </button>
                     <button type="button"
-                            @click="orderApproach = 'budget'"
+                            @click="chooseRulesApproach('budget')"
                             :class="orderApproach === 'budget'
                                 ? 'bg-white text-blue-700 shadow-sm ring-1 ring-gray-200'
                                 : 'text-gray-600 hover:text-gray-900'"
@@ -413,6 +459,16 @@
                 </template>
 
                 @error('period_of_order_days')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
+                </div>
+
+                <div class="p-4" x-show="orderTab === 'ai'" x-cloak>
+                    <div class="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                        <p>AI reviews this store for the next 4 weeks, then Inventory builds a complete draft order for 28 days. You still review quantities before approval.</p>
+                        <p class="mt-2 text-xs text-slate-500" x-show="aiConfigured">A note below is sent with the review. One selected item focuses the review on that item.</p>
+                        <p class="mt-2 text-sm text-amber-800" x-show="!aiConfigured">Inventory AI is not connected. Set AI_GATEWAY_INVENTORY_TOKEN before using this option.</p>
+                    </div>
+                    @error('ordering_approach')<p class="mt-3 text-sm text-red-600">{{ $message }}</p>@enderror
+                </div>
             </div>
 
             <div class="border border-gray-200 rounded-lg p-4 space-y-4">
@@ -524,8 +580,9 @@
             <div class="flex flex-wrap justify-between gap-3 pt-6 border-t border-gray-200">
                 <a href="{{ route('inventory.orders.index') }}" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</a>
                 <button type="submit"
-                        class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                    Generate order
+                        :disabled="orderApproach === 'ai' && !aiConfigured"
+                        class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60">
+                    <span x-text="orderApproach === 'ai' ? 'Order with AI' : 'Generate order'"></span>
                 </button>
             </div>
             </div>
