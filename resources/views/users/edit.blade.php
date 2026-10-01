@@ -196,7 +196,6 @@
                             <select name="hr_role" id="hr_role" class="form-select w-full">
                                 <option value="" {{ !$hrRole ? 'selected' : '' }}>Default (Staff)</option>
                                 <option value="staff" {{ $hrRole == 'staff' ? 'selected' : '' }}>Staff</option>
-                                <option value="supervisor" {{ $hrRole == 'supervisor' ? 'selected' : '' }}>Supervisor</option>
                                 <option value="roster_manager" {{ $hrRole == 'roster_manager' ? 'selected' : '' }}>Roster Manager</option>
                                 <option value="hr_manager" {{ $hrRole == 'hr_manager' ? 'selected' : '' }}>HR Manager</option>
                                 <option value="admin" {{ $hrRole == 'admin' ? 'selected' : '' }}>Admin</option>
