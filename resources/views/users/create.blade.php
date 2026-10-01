@@ -218,7 +218,6 @@ return ['id' => $sp->id, 'name' => $sp->name];
                                 <select name="hr_role" id="hr_role" class="form-select w-full">
                                     <option value="">Default (Staff)</option>
                                     <option value="staff">Staff</option>
-                                    <option value="supervisor">Supervisor</option>
                                     <option value="roster_manager">Roster Manager</option>
                                     <option value="hr_manager">HR Manager</option>
                                     <option value="admin">Admin</option>
