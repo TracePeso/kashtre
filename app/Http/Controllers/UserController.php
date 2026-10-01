@@ -119,7 +119,7 @@ class UserController extends Controller
             'service_points.*' => 'exists:service_points,id',
             'allowed_branches' => 'nullable|array',
             'permissions_menu' => 'required|array|min:1',
-            'hr_role' => 'nullable|in:staff,roster_manager,hr_manager,admin,super_admin',
+            'hr_role' => 'nullable|in:staff,roster_manager,hr_manager,admin',
             // Contractor profile fields (conditionally required)
             'bank_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
             'account_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
@@ -292,7 +292,7 @@ class UserController extends Controller
             'allowed_branches' => 'nullable|array',
             'allowed_branches.*' => 'exists:branches,id',
             'permissions_menu' => 'required|array|min:1',
-            'hr_role' => 'nullable|in:staff,roster_manager,hr_manager,admin,super_admin',
+            'hr_role' => 'nullable|in:staff,roster_manager,hr_manager,admin',
             // Contractor profile fields (conditionally required)
             'bank_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
             'account_name' => 'required_if:permissions_menu.*,Contractor|string|nullable',
