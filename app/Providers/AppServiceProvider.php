@@ -242,6 +242,11 @@ class AppServiceProvider extends ServiceProvider
                     $hrNavigation = [];
                 }
             }
+
+            // The cached manifest is business-wide and permission-blind (see
+            // HrNavigationVisibility's own docblock) -- filter it per the
+            // actual signed-in user on every request, not just at cache time.
+            $hrNavigation = \App\Support\Hr\HrNavigationVisibility::filter($hrNavigation, (array) ($user->permissions ?? []));
         }
 
         return [
