@@ -175,8 +175,28 @@ trait AccessTrait
             'View HR Setup',
             'Add HR Setup',
             'Edit HR Setup',
+            // Kept alongside the two split-out pairs below rather than
+            // removed, so a role that already has these checked keeps
+            // exactly what it had — these permission names are just
+            // strings stored on the role's own record, nothing renames or
+            // migrates them automatically.
             'View HR Approvals',
             'Edit HR Approvals',
+            'View HR Roster Approvals',
+            'Edit HR Roster Approvals',
+            'View HR Attendance Exceptions',
+            'Edit HR Attendance Exceptions',
+            'View HR Attendance',
+            'Edit HR Attendance',
+            'View HR Leave',
+            'Edit HR Leave',
+            'View HR Payroll',
+            'View HR Performance',
+            'View HR Recognition',
+            'Edit HR Recognition',
+            'View HR Reports',
+            'View HR Device Pairing',
+            'Edit HR Device Pairing',
         ],
     ];
 
