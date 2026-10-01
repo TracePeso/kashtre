@@ -167,36 +167,82 @@ trait AccessTrait
     ],
     ];
 
+    /**
+     * Sub-grouped the same way $clientAccess already splits "Clients" /
+     * "Third Party Payers" under one trait array -- getAllPermissions()'s
+     * spreadArrayKeys() flattens any depth, and the real permission-editing
+     * UI (resources/views/users/edit.blade.php) already renders a
+     * group -> category -> permission three-tier checkbox list, each
+     * category getting its own "select all in this category" toggle. A
+     * single flat 23-item "HR Module" list gave every category that same
+     * generic label, with no way to tell at a glance which checkboxes
+     * controlled which actual HR feature.
+     *
+     * No permission string below changed -- only how they're labelled and
+     * grouped -- so no existing role's stored `permissions` JSON needs
+     * migrating; every string a role already has checked still matches
+     * exactly the same checkbox, just filed under a clearer heading.
+     *
+     * Every category name is prefixed "HR " even though it's nested under
+     * an "HR Module" group already -- getAllPermissions() merges every
+     * property's top-level keys with a plain array_merge(), which silently
+     * drops one side of any name collision (verified live: an unprefixed
+     * "Staff" category here clobbered $staffAccess's own "Staff" entry,
+     * and "Reports" clobbered $reportAccess's "Reports" -- both real
+     * permissions vanished from getAllPermissions()'s flattened list
+     * without any error). $clientAccess's "Clients" already collides with
+     * $clients's own "Clients" the same way, a pre-existing instance of
+     * this same fragility -- not fixed here, out of scope, but the reason
+     * every name below is deliberately namespaced rather than trusting
+     * "no other property happens to use this word" to stay true forever.
+     *
+     * Deliberately no "HR Rosters" category: HR module roster viewing is
+     * self-service for anyone with HR module access at all (matches the
+     * HR module's own default -- every staff member can see their own
+     * roster without a separate grant), not gated behind its own
+     * permission here. "HR Roster Approvals" below is the admin-facing
+     * half of rosters (approving/publishing), which already had its own
+     * pair.
+     */
     public static $hrModule = [
-        "HR Module" => [
-            'View HR Staff',
-            'Add HR Staff',
-            'Edit HR Staff',
-            'View HR Setup',
-            'Add HR Setup',
-            'Edit HR Setup',
-            // Kept alongside the two split-out pairs below rather than
-            // removed, so a role that already has these checked keeps
-            // exactly what it had — these permission names are just
-            // strings stored on the role's own record, nothing renames or
-            // migrates them automatically.
-            'View HR Approvals',
-            'Edit HR Approvals',
-            'View HR Roster Approvals',
-            'Edit HR Roster Approvals',
-            'View HR Attendance Exceptions',
-            'Edit HR Attendance Exceptions',
-            'View HR Attendance',
-            'Edit HR Attendance',
-            'View HR Leave',
-            'Edit HR Leave',
+        "HR Staff" => [
+            'View HR Staff', 'Add HR Staff', 'Edit HR Staff',
+        ],
+        "HR Setup" => [
+            'View HR Setup', 'Add HR Setup', 'Edit HR Setup',
+        ],
+        // Kept alongside the two split-out pairs below rather than
+        // removed, so a role that already has these checked keeps exactly
+        // what it had.
+        "HR Approvals" => [
+            'View HR Approvals', 'Edit HR Approvals',
+        ],
+        "HR Roster Approvals" => [
+            'View HR Roster Approvals', 'Edit HR Roster Approvals',
+        ],
+        "HR Attendance Exceptions" => [
+            'View HR Attendance Exceptions', 'Edit HR Attendance Exceptions',
+        ],
+        "HR Attendance" => [
+            'View HR Attendance', 'Edit HR Attendance',
+        ],
+        "HR Leave" => [
+            'View HR Leave', 'Edit HR Leave',
+        ],
+        "HR Payroll" => [
             'View HR Payroll',
+        ],
+        "HR Performance" => [
             'View HR Performance',
-            'View HR Recognition',
-            'Edit HR Recognition',
+        ],
+        "HR Recognition" => [
+            'View HR Recognition', 'Edit HR Recognition',
+        ],
+        "HR Reports" => [
             'View HR Reports',
-            'View HR Device Pairing',
-            'Edit HR Device Pairing',
+        ],
+        "HR Device Pairing" => [
+            'View HR Device Pairing', 'Edit HR Device Pairing',
         ],
     ];
 
