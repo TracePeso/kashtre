@@ -13,9 +13,13 @@ use App\Models\Department;
 use App\Models\Group;
 use App\Models\Item;
 use App\Models\ItemUnit;
+use App\Models\OrgAssignment;
+use App\Models\OrgUnit;
 use App\Models\PackageItem;
 use App\Models\Qualification;
+use App\Models\ReportingRelationship;
 use App\Models\Room;
+use App\Models\StaffDeployment;
 use App\Models\ServicePoint;
 use App\Models\ServicePointSupervisor;
 use App\Models\StaffCategory;
@@ -51,6 +55,15 @@ final class DemoWorkbookImporter
 
     /** @var array<int, true> */
     private array $defaultClientSpaces = [];
+
+    /** @var array<string, OrgUnit> */
+    private array $orgUnits = [];
+
+    /** @var array<string, OrgAssignment> */
+    private array $orgAssignments = [];
+
+    /** @var array<string, ClientSpace> */
+    private array $clientSpaces = [];
 
     public function __construct(
         private readonly string $path,
@@ -91,6 +104,7 @@ final class DemoWorkbookImporter
         foreach ($this->filterByEntity($reader->rows('Assignments')) as $row) {
             $this->importAssignment($row);
         }
+        $this->linkOrgUnitHeads();
 
         $this->line('Importing rooms, client spaces, service points…');
         foreach ($this->filterByEntity($reader->rows('Rooms')) as $row) {
@@ -106,6 +120,15 @@ final class DemoWorkbookImporter
             $this->importUserServicePoint($row);
         }
         $this->persistUserServicePoints();
+
+        $this->line('Importing reporting lines and deployments…');
+        $this->linkAssignmentClientSpaces();
+        foreach ($this->filterByEntity($reader->rows('Reporting Relationships')) as $row) {
+            $this->importReportingRelationship($row);
+        }
+        foreach ($this->filterByEntity($reader->rows('Deployments')) as $row) {
+            $this->importDeployment($row);
+        }
 
         $this->line('Importing items…');
         foreach ($this->filterByEntity($reader->rows('Items')) as $row) {
@@ -295,6 +318,45 @@ final class DemoWorkbookImporter
                     $this->firstNamed(Department::class, $business->id, $name);
                 }
             }
+
+            $extId = trim((string) ($row['org_unit_id'] ?? ''));
+            $name = trim((string) ($row['org_unit_name'] ?? ''));
+            if ($extId === '' || $name === '') {
+                continue;
+            }
+
+            $departmentName = trim((string) ($row['department'] ?? ''));
+            $branch = $this->branchFromRow($row, $business);
+            $unit = OrgUnit::query()->updateOrCreate(
+                ['business_id' => $business->id, 'external_id' => $extId],
+                [
+                    'branch_id' => $branch?->id,
+                    'department_id' => $departmentName !== ''
+                        ? $this->firstNamed(Department::class, $business->id, $departmentName)->id
+                        : null,
+                    'name' => $name,
+                    'org_unit_type' => $this->nullableString($row['org_unit_type'] ?? null),
+                    'head_name' => $this->nullableString($row['head_name'] ?? null),
+                    'head_assignment_external_id' => $this->nullableString($row['unit_head_assignment_id'] ?? null),
+                    'org_level' => max(1, (int) round((float) ($row['org_level'] ?? 1))),
+                    'is_terminal' => $this->isYes($row['is_terminal'] ?? 'no'),
+                    'org_path' => $this->nullableString($row['org_path'] ?? null),
+                ],
+            );
+            $this->orgUnits[$extId] = $unit;
+        }
+
+        foreach ($rows as $row) {
+            $extId = trim((string) ($row['org_unit_id'] ?? ''));
+            $unit = $this->orgUnits[$extId] ?? null;
+            if (! $unit) {
+                continue;
+            }
+            $parentExt = trim((string) ($row['parent_org_unit_id'] ?? ''));
+            $parent = $parentExt !== '' ? ($this->orgUnits[$parentExt] ?? null) : null;
+            if ((int) $unit->parent_id !== (int) ($parent?->id ?? 0)) {
+                $unit->forceFill(['parent_id' => $parent?->id])->save();
+            }
         }
     }
 
@@ -375,24 +437,210 @@ final class DemoWorkbookImporter
     {
         $user = $this->userFromRow($row);
         $business = $this->business($row);
-        if (! $user || ! $business || ! $this->isYes($row['is_primary'] ?? 'yes')) {
+        if (! $user || ! $business) {
             return;
         }
 
         $title = trim((string) ($row['position_title'] ?? ''));
         $department = trim((string) ($row['department'] ?? $row['organizational_home'] ?? ''));
         $branch = $this->branchFromClientSpace((string) ($row['client_space'] ?? ''), $business)
+            ?? $this->branchFromRow($row, $business)
             ?? $this->mainBranch($business);
+        $isPrimary = $this->isYes($row['is_primary'] ?? 'yes');
+        $titleId = $title !== '' ? $this->firstNamed(Title::class, $business->id, $title)->id : null;
+        $departmentId = $department !== '' ? $this->firstNamed(Department::class, $business->id, $department)->id : null;
+        $orgUnit = $this->orgUnitFromRow($row, 'organizational_home_id', 'organizational_home');
+        $terminal = $this->orgUnitFromRow($row, 'terminal_node_id', 'terminal_node');
+
+        $extId = trim((string) ($row['assignment_id'] ?? ''));
+        if ($extId !== '') {
+            $assignment = OrgAssignment::query()->updateOrCreate(
+                ['business_id' => $business->id, 'external_id' => $extId],
+                [
+                    'user_id' => $user->id,
+                    'org_unit_id' => $orgUnit?->id,
+                    'terminal_org_unit_id' => $terminal?->id,
+                    'department_id' => $departmentId,
+                    'branch_id' => $branch?->id,
+                    'title_id' => $titleId,
+                    'position_title' => $this->nullableString($title),
+                    'assignment_type' => $this->nullableString($row['assignment_type'] ?? null),
+                    'is_primary' => $isPrimary,
+                    'hierarchy_level' => max(1, (int) round((float) ($row['hierarchy_level'] ?? 1))),
+                    'roster_eligible' => $this->isYes($row['roster_eligible'] ?? 'no'),
+                    'client_space_label' => $this->nullableString($row['client_space'] ?? null),
+                    'scope_note' => $this->nullableString($row['scope_note'] ?? null),
+                    'effective_from' => $this->excelDate($row['effective_from'] ?? null),
+                    'effective_to' => $this->excelDate($row['effective_to'] ?? null),
+                ],
+            );
+            $this->orgAssignments[$extId] = $assignment;
+        }
+
+        if (! $isPrimary) {
+            return;
+        }
 
         $user->forceFill([
-            'title_id' => $title !== '' ? $this->firstNamed(Title::class, $business->id, $title)->id : $user->title_id,
-            'department_id' => $department !== '' ? $this->firstNamed(Department::class, $business->id, $department)->id : $user->department_id,
+            'title_id' => $titleId ?: $user->title_id,
+            'department_id' => $departmentId ?: $user->department_id,
             'branch_id' => $branch?->id ?: $user->branch_id,
             'permissions' => DemoWorkbookPermissions::forImportedUser(
                 in_array('Contractor', $user->permissions ?? [], true)
                 || $user->employment_type === 'contractor'
             ),
         ])->save();
+    }
+
+    private function linkOrgUnitHeads(): void
+    {
+        foreach ($this->orgUnits as $unit) {
+            $extId = trim((string) $unit->head_assignment_external_id);
+            $assignment = $extId !== '' ? ($this->orgAssignments[$extId] ?? null) : null;
+            $unit->forceFill([
+                'head_assignment_id' => $assignment?->id,
+                'head_user_id' => $assignment?->user_id,
+            ])->save();
+        }
+    }
+
+    private function importReportingRelationship(array $row): void
+    {
+        $business = $this->business($row);
+        $subjectExt = trim((string) ($row['subject_assignment_id'] ?? ''));
+        $subject = $subjectExt !== '' ? ($this->orgAssignments[$subjectExt] ?? null) : null;
+        if (! $business || ! $subject) {
+            return;
+        }
+
+        $manager = $this->assignmentByExternalId($row['line_manager_assignment_id'] ?? null);
+        $parent = $this->assignmentByExternalId($row['approval_parent_assignment_id'] ?? null);
+        $terminal = $this->assignmentByExternalId($row['approval_terminal_assignment_id'] ?? null);
+
+        ReportingRelationship::query()->updateOrCreate(
+            ['subject_assignment_id' => $subject->id],
+            [
+                'business_id' => $business->id,
+                'subject_user_id' => $subject->user_id,
+                'line_manager_assignment_id' => $manager?->id,
+                'approval_parent_assignment_id' => $parent?->id,
+                'approval_terminal_assignment_id' => $terminal?->id,
+                'hierarchy_level' => max(1, (int) round((float) ($row['hierarchy_level'] ?? 1))),
+                'approval_route' => $this->nullableString($row['approval_route'] ?? null),
+                'approval_path_names' => $this->nullableString($row['approval_path_names'] ?? null),
+                'approval_path_external_ids' => $this->externalIdList($row['approval_path_assignment_ids'] ?? null),
+                'approval_depth' => max(0, (int) round((float) ($row['approval_depth'] ?? 0))),
+                'notes' => $this->nullableString($row['notes'] ?? null),
+            ],
+        );
+    }
+
+    private function importDeployment(array $row): void
+    {
+        $business = $this->business($row);
+        $user = $this->userFromRow($row);
+        $extId = trim((string) ($row['deployment_id'] ?? ''));
+        if (! $business || ! $user || $extId === '') {
+            return;
+        }
+
+        $assignment = $this->orgAssignments[trim((string) ($row['assignment_id'] ?? ''))] ?? null;
+        $terminal = $this->orgUnitFromRow($row, 'terminal_node_id', 'source_terminal_node');
+        $branch = $this->branchFromRow($row, $business);
+        $spaceExt = trim((string) ($row['client_space_id'] ?? ''));
+        $space = $spaceExt !== '' ? ($this->clientSpaces[$spaceExt] ?? null) : null;
+        if (! $space) {
+            $spaceName = trim((string) ($row['client_space_name'] ?? ''));
+            if ($spaceName !== '') {
+                $space = ClientSpace::query()
+                    ->where('business_id', $business->id)
+                    ->when($branch, fn ($query) => $query->where('branch_id', $branch->id))
+                    ->where('name', $spaceName)
+                    ->first();
+            }
+        }
+
+        StaffDeployment::query()->updateOrCreate(
+            ['business_id' => $business->id, 'external_id' => $extId],
+            [
+                'user_id' => $user->id,
+                'org_assignment_id' => $assignment?->id,
+                'org_unit_id' => $terminal?->id,
+                'branch_id' => $branch?->id,
+                'client_space_id' => $space?->id,
+                'client_space_external_id' => $this->nullableString($spaceExt),
+                'position_title' => $this->nullableString($row['position_title'] ?? null),
+                'allocation_percent' => $this->toPercent($row['allocation_pct'] ?? 1),
+                'effective_from' => $this->excelDate($row['effective_from'] ?? null),
+                'effective_to' => $this->excelDate($row['effective_to'] ?? null),
+                'purpose' => $this->nullableString($row['deployment_purpose'] ?? null),
+            ],
+        );
+    }
+
+    private function linkAssignmentClientSpaces(): void
+    {
+        foreach ($this->orgAssignments as $assignment) {
+            $label = trim((string) $assignment->client_space_label);
+            if ($label === '' || $assignment->client_space_id) {
+                continue;
+            }
+
+            $parts = array_values(array_filter(array_map('trim', explode('/', $label))));
+            $spaceName = $parts[count($parts) - 1] ?? '';
+            if ($spaceName === '') {
+                continue;
+            }
+
+            $space = collect($this->clientSpaces)->first(function (ClientSpace $candidate) use ($assignment, $spaceName) {
+                return (int) $candidate->business_id === (int) $assignment->business_id
+                    && $candidate->name === $spaceName
+                    && ($assignment->branch_id === null || (int) $candidate->branch_id === (int) $assignment->branch_id);
+            });
+
+            if ($space) {
+                $assignment->forceFill(['client_space_id' => $space->id])->save();
+            }
+        }
+    }
+
+    private function assignmentByExternalId(mixed $externalId): ?OrgAssignment
+    {
+        $externalId = trim((string) $externalId);
+
+        return $externalId === '' ? null : ($this->orgAssignments[$externalId] ?? null);
+    }
+
+    private function orgUnitFromRow(array $row, string $idField, string $nameField): ?OrgUnit
+    {
+        $extId = trim((string) ($row[$idField] ?? ''));
+        if ($extId !== '' && isset($this->orgUnits[$extId])) {
+            return $this->orgUnits[$extId];
+        }
+
+        $business = $this->business($row);
+        $name = trim((string) ($row[$nameField] ?? ''));
+        if (! $business || $name === '') {
+            return null;
+        }
+
+        return OrgUnit::query()
+            ->where('business_id', $business->id)
+            ->where('name', $name)
+            ->first();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function externalIdList(mixed $value): array
+    {
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('trim', preg_split('/\s*,\s*/', $raw) ?: [])));
     }
 
     private function importRoom(array $row): void
@@ -435,6 +683,11 @@ final class DemoWorkbookImporter
         ]);
         $space->save();
         $this->defaultClientSpaces[$business->id] = true;
+
+        $extId = trim((string) ($row['client_space_id'] ?? ''));
+        if ($extId !== '') {
+            $this->clientSpaces[$extId] = $space;
+        }
     }
 
     private function importServicePoint(array $row): void
@@ -923,11 +1176,13 @@ final class DemoWorkbookImporter
         $lines = [];
         foreach ($this->businesses as $code => $business) {
             $lines[] = sprintf(
-                '%s (%s): users %d, branches %d, rooms %d, service points %d, items %d, item queues %d',
+                '%s (%s): users %d, branches %d, org units %d, assignments %d, rooms %d, service points %d, items %d, item queues %d',
                 $business->name,
                 $code,
                 User::query()->where('business_id', $business->id)->count(),
                 Branch::query()->where('business_id', $business->id)->count(),
+                OrgUnit::query()->where('business_id', $business->id)->count(),
+                OrgAssignment::query()->where('business_id', $business->id)->count(),
                 Room::query()->where('business_id', $business->id)->count(),
                 ServicePoint::query()->where('business_id', $business->id)->count(),
                 Item::query()->where('business_id', $business->id)->count(),

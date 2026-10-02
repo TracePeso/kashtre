@@ -135,6 +135,12 @@ Route::middleware('hr.api')->group(function () {
     Route::get('/cadres', [\App\Http\Controllers\API\HrIntegrationController::class, 'cadres']);
     Route::get('/designations', [\App\Http\Controllers\API\HrIntegrationController::class, 'designations']);
     Route::get('/client-spaces', [\App\Http\Controllers\API\HrIntegrationController::class, 'clientSpaces']);
+    Route::get('/org-units', [\App\Http\Controllers\API\HrOrganizationController::class, 'orgUnits']);
+    Route::get('/org-units/{orgUnit}', [\App\Http\Controllers\API\HrOrganizationController::class, 'orgUnitShow']);
+    Route::get('/assignments', [\App\Http\Controllers\API\HrOrganizationController::class, 'assignments']);
+    Route::get('/assignments/{assignment}', [\App\Http\Controllers\API\HrOrganizationController::class, 'assignmentShow']);
+    Route::get('/reporting-relationships', [\App\Http\Controllers\API\HrOrganizationController::class, 'reportingRelationships']);
+    Route::get('/deployments', [\App\Http\Controllers\API\HrOrganizationController::class, 'deployments']);
     Route::get('/users', [\App\Http\Controllers\API\HrIntegrationController::class, 'users']);
     Route::get('/users/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'userShow']);
     Route::get('/employee-identities', [\App\Http\Controllers\API\HrIntegrationController::class, 'employeeIdentities']);
@@ -158,8 +164,13 @@ Route::prefix('hr')->middleware('hr.api')->group(function () {
     Route::get('/cadres', [\App\Http\Controllers\API\HrIntegrationController::class, 'cadres']);
     Route::get('/designations', [\App\Http\Controllers\API\HrIntegrationController::class, 'designations']);
     Route::get('/client-spaces', [\App\Http\Controllers\API\HrIntegrationController::class, 'clientSpaces']);
-    
-    
+    Route::get('/org-units', [\App\Http\Controllers\API\HrOrganizationController::class, 'orgUnits']);
+    Route::get('/org-units/{orgUnit}', [\App\Http\Controllers\API\HrOrganizationController::class, 'orgUnitShow']);
+    Route::get('/assignments', [\App\Http\Controllers\API\HrOrganizationController::class, 'assignments']);
+    Route::get('/assignments/{assignment}', [\App\Http\Controllers\API\HrOrganizationController::class, 'assignmentShow']);
+    Route::get('/reporting-relationships', [\App\Http\Controllers\API\HrOrganizationController::class, 'reportingRelationships']);
+    Route::get('/deployments', [\App\Http\Controllers\API\HrOrganizationController::class, 'deployments']);
+
     Route::get('/users', [\App\Http\Controllers\API\HrIntegrationController::class, 'users']);
     Route::get('/users/{uuid}', [\App\Http\Controllers\API\HrIntegrationController::class, 'userShow']);
     Route::get('/employee-identities', [\App\Http\Controllers\API\HrIntegrationController::class, 'employeeIdentities']);
