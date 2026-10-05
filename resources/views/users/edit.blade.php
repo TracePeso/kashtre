@@ -198,7 +198,6 @@
                                 <option value="staff" {{ $hrRole == 'staff' ? 'selected' : '' }}>Staff</option>
                                 <option value="roster_manager" {{ $hrRole == 'roster_manager' ? 'selected' : '' }}>Roster Manager</option>
                                 <option value="hr_manager" {{ $hrRole == 'hr_manager' ? 'selected' : '' }}>HR Manager</option>
-                                <option value="admin" {{ $hrRole == 'admin' ? 'selected' : '' }}>Admin</option>
                             </select>
                         </div>
                     </div>

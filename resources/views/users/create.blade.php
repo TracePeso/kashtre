@@ -220,7 +220,6 @@ return ['id' => $sp->id, 'name' => $sp->name];
                                     <option value="staff">Staff</option>
                                     <option value="roster_manager">Roster Manager</option>
                                     <option value="hr_manager">HR Manager</option>
-                                    <option value="admin">Admin</option>
                                 </select>
                             </div>
                             <!-- Business Info fields end -->
