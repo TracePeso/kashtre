@@ -100,6 +100,28 @@ class HrOrganizationApiTest extends TestCase
             'is_terminal' => true,
             'org_path' => 'Executive Office > Nursing and Recovery Team',
         ]);
+        $wing = OrgUnit::query()->create([
+            'business_id' => $business->id,
+            'branch_id' => $branch->id,
+            'parent_id' => $root->id,
+            'external_id' => 'MCC-OU-010',
+            'name' => 'Clinical Wing',
+            'org_unit_type' => 'Department',
+            'org_level' => 2,
+            'is_terminal' => false,
+            'org_path' => 'Executive Office > Clinical Wing',
+        ]);
+        OrgUnit::query()->create([
+            'business_id' => $business->id,
+            'branch_id' => $branch->id,
+            'parent_id' => $wing->id,
+            'external_id' => 'MCC-OU-011',
+            'name' => 'Recovery Bay Team',
+            'org_unit_type' => 'Team',
+            'org_level' => 3,
+            'is_terminal' => true,
+            'org_path' => 'Executive Office > Clinical Wing > Recovery Bay Team',
+        ]);
         OrgUnit::query()->create([
             'business_id' => $other->id,
             'external_id' => 'OTH-OU-001',
@@ -158,19 +180,37 @@ class HrOrganizationApiTest extends TestCase
 
         $headers = ['X-API-Key' => self::API_KEY];
 
-        $this->getJson('/api/org-units?business_id='.$business->id.'&is_terminal=yes', $headers)
+        $terminals = $this->getJson('/api/org-units?business_id='.$business->id.'&is_terminal=yes', $headers)
             ->assertOk()
-            ->assertJsonCount(1)
+            ->assertJsonCount(2)
             ->assertJsonPath('0.external_id', 'MCC-OU-005')
             ->assertJsonPath('0.parent_external_id', 'MCC-OU-001')
             ->assertJsonPath('0.department.name', 'Nursing')
             ->assertJsonPath('0.head_user.uuid', $user->uuid)
-            ->assertJsonPath('0.is_terminal', true);
+            ->assertJsonPath('0.is_terminal', true)
+            ->assertJsonPath('0.terminal_nodes.0.external_id', 'MCC-OU-005');
+        $this->assertSame(
+            ['MCC-OU-005', 'MCC-OU-011'],
+            collect($terminals->json())->pluck('external_id')->all()
+        );
 
-        $this->getJson('/api/org-units/MCC-OU-001', $headers)
+        $rootPayload = $this->getJson('/api/org-units/MCC-OU-001', $headers)
             ->assertOk()
             ->assertJsonPath('external_id', 'MCC-OU-001')
-            ->assertJsonPath('name', 'Executive Office');
+            ->assertJsonPath('name', 'Executive Office')
+            ->assertJsonPath('is_terminal', false);
+        $this->assertSame(
+            ['MCC-OU-005', 'MCC-OU-011'],
+            collect($rootPayload->json('terminal_nodes'))->pluck('external_id')->all()
+        );
+        $this->assertSame('MCC-OU-010', $rootPayload->json('terminal_nodes.1.parent_external_id'));
+
+        $this->getJson('/api/org-units/MCC-OU-010', $headers)
+            ->assertOk()
+            ->assertJsonCount(1, 'terminal_nodes')
+            ->assertJsonPath('terminal_nodes.0.external_id', 'MCC-OU-011')
+            ->assertJsonPath('terminal_nodes.0.name', 'Recovery Bay Team')
+            ->assertJsonPath('terminal_nodes.0.is_terminal', true);
 
         $this->getJson('/api/hr/assignments?business_id='.$business->id.'&user_uuid='.$user->uuid.'&is_primary=yes', $headers)
             ->assertOk()

@@ -10,6 +10,7 @@ use App\Models\StaffDeployment;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 class HrOrganizationController extends Controller
 {
@@ -40,8 +41,11 @@ class HrOrganizationController extends Controller
 
         $this->applyBooleanFilter($query, $request, 'is_terminal', 'is_terminal');
 
+        $units = $query->get();
+        $terminalNodes = $this->terminalNodesByUnitId($units);
+
         return response()->json(
-            $query->get()->map(fn (OrgUnit $unit) => $this->orgUnitPayload($unit))->values()
+            $units->map(fn (OrgUnit $unit) => $this->orgUnitPayload($unit, $terminalNodes[$unit->id] ?? []))->values()
         );
     }
 
@@ -50,7 +54,12 @@ class HrOrganizationController extends Controller
      */
     public function orgUnitShow(string $orgUnit): JsonResponse
     {
-        return response()->json($this->orgUnitPayload($this->findOrgUnit($orgUnit)));
+        $unit = $this->findOrgUnit($orgUnit);
+
+        return response()->json($this->orgUnitPayload(
+            $unit,
+            $this->terminalNodesByUnitId(collect([$unit]))[$unit->id] ?? [],
+        ));
     }
 
     /**
@@ -257,9 +266,122 @@ class HrOrganizationController extends Controller
     }
 
     /**
+     * Terminal org units that belong to this node: the node itself when it is terminal,
+     * plus every terminal descendant. Intermediate organisational nodes are not included.
+     *
+     * @param  Collection<int, OrgUnit>  $units
+     * @return array<int, list<array<string, mixed>>>
+     */
+    private function terminalNodesByUnitId(Collection $units): array
+    {
+        $businessIds = $units->pluck('business_id')->filter()->unique()->values();
+        if ($businessIds->isEmpty()) {
+            return [];
+        }
+
+        $tree = OrgUnit::query()
+            ->whereIn('business_id', $businessIds)
+            ->orderBy('org_level')
+            ->orderBy('name')
+            ->get([
+                'id',
+                'uuid',
+                'business_id',
+                'branch_id',
+                'department_id',
+                'parent_id',
+                'external_id',
+                'name',
+                'org_unit_type',
+                'org_level',
+                'is_terminal',
+                'org_path',
+            ]);
+
+        $byId = [];
+        $childrenOf = [];
+        foreach ($tree as $node) {
+            $byId[$node->id] = $node;
+            $childrenOf[(int) $node->parent_id][] = $node;
+        }
+
+        $resolved = [];
+        foreach ($units as $unit) {
+            $resolved[$unit->id] = $this->collectTerminalNodes((int) $unit->id, $byId, $childrenOf);
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * @param  array<int, OrgUnit>  $byId
+     * @param  array<int, list<OrgUnit>>  $childrenOf
+     * @return list<array<string, mixed>>
+     */
+    private function collectTerminalNodes(int $unitId, array $byId, array $childrenOf): array
+    {
+        $found = [];
+        $seen = [];
+        $stack = [$unitId];
+
+        while ($stack !== []) {
+            $currentId = array_pop($stack);
+            if (isset($seen[$currentId])) {
+                continue;
+            }
+            $seen[$currentId] = true;
+
+            $node = $byId[$currentId] ?? null;
+            if ($node === null) {
+                continue;
+            }
+
+            if ($node->is_terminal) {
+                $found[] = $this->terminalNodeRef($node, $byId);
+            }
+
+            foreach ($childrenOf[$currentId] ?? [] as $child) {
+                $stack[] = $child->id;
+            }
+        }
+
+        usort($found, function (array $left, array $right): int {
+            return [$left['org_level'] ?? 0, $left['name'] ?? '']
+                <=> [$right['org_level'] ?? 0, $right['name'] ?? ''];
+        });
+
+        return $found;
+    }
+
+    /**
+     * @param  array<int, OrgUnit>  $byId
      * @return array<string, mixed>
      */
-    private function orgUnitPayload(OrgUnit $unit): array
+    private function terminalNodeRef(OrgUnit $node, array $byId): array
+    {
+        $parent = $node->parent_id ? ($byId[$node->parent_id] ?? null) : null;
+
+        return [
+            'id' => $node->id,
+            'uuid' => $node->uuid,
+            'external_id' => $node->external_id,
+            'name' => $node->name,
+            'org_unit_type' => $node->org_unit_type,
+            'org_level' => $node->org_level,
+            'org_path' => $node->org_path,
+            'is_terminal' => true,
+            'parent_id' => $node->parent_id,
+            'parent_external_id' => $parent?->external_id,
+            'branch_id' => $node->branch_id,
+            'department_id' => $node->department_id,
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $terminalNodes
+     * @return array<string, mixed>
+     */
+    private function orgUnitPayload(OrgUnit $unit, array $terminalNodes = []): array
     {
         return [
             'id' => $unit->id,
@@ -280,6 +402,7 @@ class HrOrganizationController extends Controller
             'head_assignment_external_id' => $unit->head_assignment_external_id,
             'org_level' => $unit->org_level,
             'is_terminal' => $unit->is_terminal,
+            'terminal_nodes' => $terminalNodes,
             'org_path' => $unit->org_path,
             'business_id' => $unit->business_id,
             'branch_id' => $unit->branch_id,
