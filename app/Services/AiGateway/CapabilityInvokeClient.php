@@ -101,60 +101,7 @@ class CapabilityInvokeClient
                 ->asJson()
                 ->post('/api/ai/v1/capabilities/'.$capability.':invoke', $body);
 
-            $json = $response->json();
-            $payload = is_array($json) ? $json : [];
-            $error = is_array($payload['error'] ?? null) ? $payload['error'] : null;
-
-            if ($response->successful()) {
-                $status = is_string($payload['status'] ?? null) ? $payload['status'] : null;
-                $result = is_array($payload['result'] ?? null) ? $payload['result'] : null;
-
-                if ($result === null && in_array($status, ['QUEUED', 'RUNNING'], true)) {
-                    return [
-                        'ok' => false,
-                        'available' => true,
-                        'status' => $status,
-                        'result' => null,
-                        'warnings' => $this->stringList($payload['warnings'] ?? []),
-                        'requiresHumanReview' => true,
-                        'requestId' => is_string($payload['requestId'] ?? null) ? $payload['requestId'] : $requestId,
-                        'error' => 'AI accepted the request and is still working. Ask again in a moment.',
-                        'errorCode' => $status,
-                        'details' => null,
-                    ];
-                }
-
-                return [
-                    'ok' => true,
-                    'available' => true,
-                    'status' => $status,
-                    'result' => $result,
-                    'warnings' => $this->stringList($payload['warnings'] ?? []),
-                    'requiresHumanReview' => (bool) ($payload['requiresHumanReview'] ?? true),
-                    'requestId' => is_string($payload['requestId'] ?? null) ? $payload['requestId'] : $requestId,
-                    'error' => null,
-                    'errorCode' => null,
-                    'details' => null,
-                ];
-            }
-
-            $errorCode = is_string($error['code'] ?? null) ? $error['code'] : null;
-            $messageText = is_string($error['message'] ?? null)
-                ? $error['message']
-                : ('AI request failed (HTTP '.$response->status().').');
-
-            return [
-                'ok' => false,
-                'available' => true,
-                'status' => null,
-                'result' => null,
-                'warnings' => [],
-                'requiresHumanReview' => true,
-                'requestId' => is_string($payload['requestId'] ?? null) ? $payload['requestId'] : $requestId,
-                'error' => $this->friendlyError($errorCode, $messageText),
-                'errorCode' => $errorCode,
-                'details' => $error['details'] ?? null,
-            ];
+            return $this->interpret($response, $requestId);
         } catch (ConnectionException $e) {
             Log::warning('AI Gateway unreachable: '.$e->getMessage(), ['url' => $this->url()]);
 
@@ -167,6 +114,125 @@ class CapabilityInvokeClient
 
             return $this->failure('AI Gateway request failed.');
         }
+    }
+
+    /**
+     * @return array{
+     *     ok: bool,
+     *     available: bool,
+     *     status: ?string,
+     *     result: ?array,
+     *     warnings: list<string>,
+     *     requiresHumanReview: bool,
+     *     requestId: ?string,
+     *     error: ?string,
+     *     errorCode: ?string,
+     *     details: mixed
+     * }
+     */
+    public function fetch(string $requestId, string $module = 'inventory', ?string $tenantId = null): array
+    {
+        $token = $this->tokenFor($module);
+        if ($token === '') {
+            return $this->failure('Inventory AI is not connected. Set AI_GATEWAY_INVENTORY_TOKEN.', available: false);
+        }
+
+        $headers = [
+            'Accept' => 'application/json',
+            'X-Module-Code' => $this->moduleCodeFor($module),
+            'X-Request-ID' => (string) Str::uuid(),
+        ];
+        $resolvedTenant = $this->tenantId($tenantId);
+        if ($resolvedTenant !== '') {
+            $headers['X-Tenant-ID'] = $resolvedTenant;
+        }
+
+        try {
+            $response = Http::baseUrl($this->url())
+                ->withToken($token)
+                ->withHeaders($headers)
+                ->timeout((int) config('services.ai_gateway.timeout', 90))
+                ->acceptJson()
+                ->get('/api/ai/v1/requests/'.$requestId);
+
+            return $this->interpret($response, $requestId);
+        } catch (ConnectionException $e) {
+            return $this->failure('Could not reach the AI gateway at '.$this->url().'.');
+        } catch (Throwable $e) {
+            return $this->failure('AI Gateway request failed.');
+        }
+    }
+
+    /**
+     * @return array{
+     *     ok: bool,
+     *     available: bool,
+     *     status: ?string,
+     *     result: ?array,
+     *     warnings: list<string>,
+     *     requiresHumanReview: bool,
+     *     requestId: ?string,
+     *     error: ?string,
+     *     errorCode: ?string,
+     *     details: mixed
+     * }
+     */
+    private function interpret(\Illuminate\Http\Client\Response $response, string $requestId): array
+    {
+        $json = $response->json();
+        $payload = is_array($json) ? $json : [];
+        $error = is_array($payload['error'] ?? null) ? $payload['error'] : null;
+
+        if ($response->successful()) {
+            $status = is_string($payload['status'] ?? null) ? $payload['status'] : null;
+            $result = is_array($payload['result'] ?? null) ? $payload['result'] : null;
+
+            if ($result === null && in_array($status, ['QUEUED', 'RUNNING'], true)) {
+                return [
+                    'ok' => false,
+                    'available' => true,
+                    'status' => $status,
+                    'result' => null,
+                    'warnings' => $this->stringList($payload['warnings'] ?? []),
+                    'requiresHumanReview' => true,
+                    'requestId' => is_string($payload['requestId'] ?? null) ? $payload['requestId'] : $requestId,
+                    'error' => 'AI accepted the request and is still working. Ask again in a moment.',
+                    'errorCode' => $status,
+                    'details' => null,
+                ];
+            }
+
+            return [
+                'ok' => true,
+                'available' => true,
+                'status' => $status,
+                'result' => $result,
+                'warnings' => $this->stringList($payload['warnings'] ?? []),
+                'requiresHumanReview' => (bool) ($payload['requiresHumanReview'] ?? true),
+                'requestId' => is_string($payload['requestId'] ?? null) ? $payload['requestId'] : $requestId,
+                'error' => null,
+                'errorCode' => null,
+                'details' => null,
+            ];
+        }
+
+        $errorCode = is_string($error['code'] ?? null) ? $error['code'] : null;
+        $messageText = is_string($error['message'] ?? null)
+            ? $error['message']
+            : ('AI request failed (HTTP '.$response->status().').');
+
+        return [
+            'ok' => false,
+            'available' => true,
+            'status' => null,
+            'result' => null,
+            'warnings' => [],
+            'requiresHumanReview' => true,
+            'requestId' => is_string($payload['requestId'] ?? null) ? $payload['requestId'] : $requestId,
+            'error' => $this->friendlyError($errorCode, $messageText),
+            'errorCode' => $errorCode,
+            'details' => $error['details'] ?? null,
+        ];
     }
 
     /**

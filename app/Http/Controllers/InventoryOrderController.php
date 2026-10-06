@@ -221,47 +221,6 @@ class InventoryOrderController extends Controller
 
         $itemIds = $validated['item_ids'] ?? null;
 
-        if ($orderingApproach === 'ai') {
-            $advisor = app(InventoryAiAdvisor::class);
-            if (! $advisor->isConfigured()) {
-                return back()
-                    ->withInput()
-                    ->withErrors([
-                        'ordering_approach' => 'Inventory AI is not connected. Set AI_GATEWAY_INVENTORY_TOKEN, then try again.',
-                    ]);
-            }
-
-            $focusItemId = is_array($itemIds) && count($itemIds) === 1 ? (int) $itemIds[0] : null;
-            $advice = $advisor->advise(
-                'stockout',
-                $businessId,
-                (int) $validated['store_id'],
-                $focusItemId,
-                $validated['notes'] ?? null,
-            );
-
-            if (! ($advice['ok'] ?? false)) {
-                return back()
-                    ->withInput()
-                    ->withErrors([
-                        'ordering_approach' => $advice['error'] ?? 'AI could not review this store, so no order was created.',
-                    ]);
-            }
-
-            $summary = is_string($advice['summary'] ?? null) ? trim($advice['summary']) : '';
-            $reviewLines = array_values(array_filter(array_merge(
-                $summary !== '' ? [$summary] : [],
-                array_map('strval', $advice['risks'] ?? []),
-                array_map('strval', $advice['warnings'] ?? []),
-            ), fn (string $line): bool => trim($line) !== '' && trim($line) !== '[]'));
-            $note = trim((string) ($validated['notes'] ?? ''));
-            $prefix = 'Ordered by AI.';
-            if ($reviewLines !== []) {
-                $prefix .= "\n".implode("\n", $reviewLines);
-            }
-            $validated['notes'] = mb_substr(trim($prefix.($note !== '' ? "\n".$note : '')), 0, 2000);
-        }
-
         if ($itemIds !== null && $itemIds !== []) {
             $validItemCount = Item::query()
                 ->where('business_id', $businessId)
@@ -274,6 +233,51 @@ class InventoryOrderController extends Controller
                     ->withInput()
                     ->withErrors(['item_ids' => 'One or more selected items are invalid for your organisation.']);
             }
+        }
+
+        if ($orderingApproach === 'ai') {
+            $advisor = app(InventoryAiAdvisor::class);
+            if (! $advisor->isConfigured()) {
+                return back()
+                    ->withInput()
+                    ->withErrors([
+                        'ordering_approach' => 'Inventory AI is not connected. Set AI_GATEWAY_INVENTORY_TOKEN, then try again.',
+                    ]);
+            }
+
+            $selectedIds = array_values(array_unique(array_map('intval', is_array($itemIds) ? $itemIds : [])));
+            $advice = $advisor->advise(
+                'stockout',
+                $businessId,
+                (int) $validated['store_id'],
+                count($selectedIds) === 1 ? $selectedIds[0] : null,
+                $validated['notes'] ?? null,
+                $selectedIds,
+            );
+
+            if (! ($advice['ok'] ?? false)) {
+                return back()
+                    ->withInput()
+                    ->withErrors([
+                        'ordering_approach' => $advice['error'] ?? 'AI could not review this store, so no order was created.',
+                    ]);
+            }
+
+            $summary = is_string($advice['summary'] ?? null) ? trim($advice['summary']) : '';
+            $reviewLines = array_values(array_unique(array_filter(array_map(
+                fn (mixed $line): string => trim((string) $line),
+                array_merge(
+                    $summary !== '' ? [$summary] : [],
+                    is_array($advice['lines'] ?? null) ? $advice['lines'] : [],
+                    is_array($advice['warnings'] ?? null) ? $advice['warnings'] : [],
+                ),
+            ), fn (string $line): bool => $line !== '' && $line !== '[]')));
+            $note = trim((string) ($validated['notes'] ?? ''));
+            $prefix = 'Ordered by AI.';
+            if ($reviewLines !== []) {
+                $prefix .= "\n".implode("\n", $reviewLines);
+            }
+            $validated['notes'] = mb_substr(trim($prefix.($note !== '' ? "\n".$note : '')), 0, 2000);
         }
 
         $order = $this->service->createDraft(

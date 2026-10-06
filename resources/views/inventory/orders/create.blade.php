@@ -364,12 +364,16 @@
                             </label>
                         </template>
                     </div>
-                    <template x-for="id in selectedItemIds" :key="'item-id-' + id">
-                        <input type="hidden" name="item_ids[]" :value="id">
-                    </template>
                     @error('item_ids')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
                     @error('item_ids.*')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
+                <template x-if="limitItems">
+                    <div>
+                        <template x-for="id in selectedItemIds" :key="'item-id-' + id">
+                            <input type="hidden" name="item_ids[]" :value="id">
+                        </template>
+                    </div>
+                </template>
             </div>
             </section>
 
@@ -464,7 +468,7 @@
                 <div class="p-4" x-show="orderTab === 'ai'" x-cloak>
                     <div class="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
                         <p>AI reviews this store for the next 4 weeks, then Inventory builds a complete draft order for 28 days. You still review quantities before approval.</p>
-                        <p class="mt-2 text-xs text-slate-500" x-show="aiConfigured">A note below is sent with the review. One selected item focuses the review on that item.</p>
+                        <p class="mt-2 text-xs text-slate-500" x-show="aiConfigured">A note below is sent with the review. Selected items limit both the review and the draft to those items.</p>
                         <p class="mt-2 text-sm text-amber-800" x-show="!aiConfigured">Inventory AI is not connected. Set AI_GATEWAY_INVENTORY_TOKEN before using this option.</p>
                     </div>
                     @error('ordering_approach')<p class="mt-3 text-sm text-red-600">{{ $message }}</p>@enderror
@@ -572,6 +576,7 @@
 
             <div>
                 <label for="notes" class="block text-sm font-medium text-gray-700">Notes</label>
+                <p class="mt-0.5 text-xs text-gray-500" x-show="orderApproach === 'ai'" x-cloak>Sent with the AI review, then saved on the draft. Leave it blank for a review of the store as a whole, or of the items you selected above.</p>
                 <textarea name="notes" id="notes" rows="3"
                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">{{ old('notes') }}</textarea>
             </div>

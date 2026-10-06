@@ -2,8 +2,10 @@
 
 namespace App\Listeners;
 
-use Illuminate\Auth\Events\Login;
 use App\Notifications\LoginAlertNotification;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class SendLoginAlert
 {
@@ -12,7 +14,10 @@ class SendLoginAlert
      */
     public function handle(Login $event): void
     {
-        // Send login alert notification to the user
-        $event->user->notify(new LoginAlertNotification);
+        try {
+            $event->user->notify(new LoginAlertNotification);
+        } catch (Throwable $e) {
+            Log::warning('Login alert email failed: '.$e->getMessage());
+        }
     }
 }

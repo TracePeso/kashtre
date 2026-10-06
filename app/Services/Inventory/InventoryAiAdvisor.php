@@ -97,26 +97,34 @@ class InventoryAiAdvisor
         ?int $storeId = null,
         ?int $itemId = null,
         ?string $question = null,
+        array $scopeItemIds = [],
     ): array {
         $meta = self::USE_CASES[$useCase] ?? null;
         if ($meta === null) {
             return $this->localFailure('Unknown AI task.', $useCase);
         }
 
+        $scopeItemIds = $this->scopeIds($itemId, $scopeItemIds);
+        $itemId = count($scopeItemIds) === 1 ? $scopeItemIds[0] : $itemId;
+
         $capability = $meta['capability'];
         $historySource = $useCase === 'wastage' ? 'wastage' : 'demand';
         $timezone = $this->timezoneFor($businessId, $storeId);
-        $history = $this->weeklyHistory($businessId, $storeId, $itemId, $historySource, $timezone);
-        $snapshot = $this->stockSnapshot($businessId, $storeId, $itemId);
+        $history = $this->weeklyHistory($businessId, $storeId, null, $historySource, $timezone, $scopeItemIds);
+        $snapshot = $this->stockSnapshot($businessId, $storeId, null, $scopeItemIds === [] ? 8 : max(8, count($scopeItemIds)), $scopeItemIds);
 
         if ($meta['needs_history'] && count($this->usableHistory($history)) < 3) {
+            $scope = $this->focusPhrase($businessId, $scopeItemIds);
+
             return $this->localFailure(
-                'Need at least three weeks of history before AI can advise. Inventory numbers stay as they are.',
+                'Need at least three weeks of history'
+                .($scope !== null ? ' for '.$scope : '')
+                .' before AI can review this order. Inventory numbers stay as they are.',
                 $useCase,
             );
         }
 
-        $measure = $this->measure($useCase, $businessId, $storeId, $itemId, $snapshot, $question);
+        $measure = $this->measure($useCase, $businessId, $storeId, $scopeItemIds, $snapshot, $question);
         $input = $useCase === 'ask'
             ? [
                 'goal' => $this->askGoal($measure, $question),
@@ -130,12 +138,15 @@ class InventoryAiAdvisor
                 'history' => $history,
             ];
 
-        $response = $this->client->invoke(
-            $capability,
-            $input,
-            'inventory',
-            null,
-            $this->tenantId($businessId),
+        $response = $this->awaitIfQueued(
+            $this->client->invoke(
+                $capability,
+                $input,
+                'inventory',
+                null,
+                $this->tenantId($businessId),
+            ),
+            $businessId,
         );
 
         $result = is_array($response['result'] ?? null) ? $response['result'] : null;
@@ -145,6 +156,11 @@ class InventoryAiAdvisor
         }
 
         $briefing = $this->briefing($businessId, $storeId, $itemId, $useCase, $history, $snapshot, $timezone);
+        if (count($scopeItemIds) > 1 || ($briefing['item_name'] === null && $scopeItemIds !== [])) {
+            $briefing['scope_label'] = $this->focusPhrase($businessId, $scopeItemIds)
+                .($briefing['store_name'] ? ' at '.$briefing['store_name'] : '');
+            $briefing['item_name'] = null;
+        }
         $sent = [
             'capability' => $capability,
             'purposeOfUse' => 'REPLENISHMENT_PLANNING',
@@ -298,16 +314,18 @@ class InventoryAiAdvisor
         ?int $itemId,
         string $source = 'demand',
         ?string $timezone = null,
+        array $itemIds = [],
     ): array {
         $timezone ??= $this->timezoneFor($businessId, $storeId);
         $end = Carbon::now($timezone)->startOfWeek(Carbon::MONDAY);
         $from = $end->copy()->subWeeks(self::HISTORY_WEEKS - 1)->toDateString();
+        $scopeItemIds = $this->scopeIds($itemId, $itemIds);
 
         $query = InventoryDailyConsumption::query()
             ->where('business_id', $businessId)
             ->whereDate('consumption_date', '>=', $from)
             ->when($storeId, fn ($q) => $q->where('store_id', $storeId))
-            ->when($itemId, fn ($q) => $q->where('item_id', $itemId));
+            ->when($scopeItemIds !== [], fn ($q) => $q->whereIn('item_id', $scopeItemIds));
 
         if ($source === 'wastage') {
             $query->where('source', InventoryDailyConsumption::SOURCE_WASTAGE_EXPIRED);
@@ -354,12 +372,15 @@ class InventoryAiAdvisor
     /**
      * @return list<array{name: string, code: ?string, on_hand: float, ma_15: float}>
      */
-    public function stockSnapshot(int $businessId, ?int $storeId, ?int $itemId = null, int $limit = 8): array
+    public function stockSnapshot(int $businessId, ?int $storeId, ?int $itemId = null, int $limit = 8, array $itemIds = []): array
     {
+        $scopeItemIds = $this->scopeIds($itemId, $itemIds);
+        $limit = min(40, max(1, $scopeItemIds === [] ? $limit : max($limit, count($scopeItemIds))));
+
         return InventoryStockLevel::query()
             ->where('inventory_stock_levels.business_id', $businessId)
             ->when($storeId, fn ($q) => $q->where('inventory_stock_levels.store_id', $storeId))
-            ->when($itemId, fn ($q) => $q->where('inventory_stock_levels.item_id', $itemId))
+            ->when($scopeItemIds !== [], fn ($q) => $q->whereIn('inventory_stock_levels.item_id', $scopeItemIds))
             ->where(function ($q) {
                 $q->whereNull('inventory_stock_levels.stock_zone')
                     ->orWhere('inventory_stock_levels.stock_zone', 'active');
@@ -389,13 +410,13 @@ class InventoryAiAdvisor
         string $useCase,
         int $businessId,
         ?int $storeId,
-        ?int $itemId,
+        array $scopeItemIds,
         array $snapshot,
         ?string $question,
     ): string {
         $storeName = $storeId ? Store::query()->where('business_id', $businessId)->find($storeId)?->name : null;
         $scope = $storeName ? 'store '.$storeName : 'this organisation';
-        $itemName = $this->itemLabel($businessId, $itemId);
+        $focus = $this->focusPhrase($businessId, $scopeItemIds);
 
         $itemBits = Collection::make($snapshot)
             ->take(6)
@@ -414,8 +435,8 @@ class InventoryAiAdvisor
             default => 'What should we check before ordering for '.$scope.'?',
         };
 
-        if ($itemName !== null) {
-            $base .= ' Focus on '.$itemName.'.';
+        if ($focus !== null) {
+            $base .= ' Focus on '.$focus.'.';
         }
 
         if ($itemBits !== '') {
@@ -565,7 +586,7 @@ class InventoryAiAdvisor
             return trim($item);
         }
 
-        if (! is_array($item)) {
+        if (! is_array($item) || $item === []) {
             return null;
         }
 
@@ -620,10 +641,73 @@ class InventoryAiAdvisor
 
         $item = Item::query()->where('business_id', $businessId)->find($itemId);
         if ($item === null) {
-            return 'the selected item';
+            return null;
         }
 
         return $item->code ? $item->name.' ('.$item->code.')' : (string) $item->name;
+    }
+
+    /**
+     * @param  array<int|string>  $itemIds
+     * @return list<int>
+     */
+    private function scopeIds(?int $itemId, array $itemIds): array
+    {
+        $ids = array_map('intval', $itemIds);
+        if ($itemId) {
+            $ids[] = (int) $itemId;
+        }
+
+        return array_values(array_unique(array_filter($ids, fn (int $id): bool => $id > 0)));
+    }
+
+    /**
+     * @param  list<int>  $scopeItemIds
+     */
+    private function focusPhrase(int $businessId, array $scopeItemIds): ?string
+    {
+        if ($scopeItemIds === []) {
+            return null;
+        }
+
+        $labels = [];
+        foreach (array_slice($scopeItemIds, 0, 12) as $id) {
+            $labels[] = $this->itemLabel($businessId, $id) ?? ('item '.$id);
+        }
+
+        $phrase = implode(', ', $labels);
+        $extra = count($scopeItemIds) - count($labels);
+        if ($extra > 0) {
+            $phrase .= ', and '.$extra.' more';
+        }
+
+        return count($scopeItemIds) === 1 ? $phrase : 'these items only: '.$phrase;
+    }
+
+    /**
+     * @param  array<string, mixed>  $response
+     * @return array<string, mixed>
+     */
+    private function awaitIfQueued(array $response, int $businessId): array
+    {
+        $attempts = 0;
+        while (
+            $attempts < 6
+            && ($response['ok'] ?? false) !== true
+            && in_array($response['errorCode'] ?? null, ['QUEUED', 'RUNNING'], true)
+            && is_string($response['requestId'] ?? null)
+            && $response['requestId'] !== ''
+        ) {
+            usleep(750000);
+            $attempts++;
+            $response = $this->client->fetch($response['requestId'], 'inventory', $this->tenantId($businessId));
+        }
+
+        if (($response['ok'] ?? false) !== true && in_array($response['errorCode'] ?? null, ['QUEUED', 'RUNNING'], true)) {
+            $response['error'] = 'AI accepted the review and is still working. Wait a moment, then generate the order again.';
+        }
+
+        return $response;
     }
 
     private function isoWeekPeriod(Carbon $date): string

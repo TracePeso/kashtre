@@ -183,7 +183,8 @@ class InventoryAiAdvisorTest extends TestCase
         ]);
 
         $advisor = $this->partialAdvisorWithHistory();
-        $advice = $advisor->advise('demand', 4);
+        $businessId = (int) \App\Models\Business::query()->value('id');
+        $advice = $advisor->advise('demand', $businessId);
 
         $this->assertTrue($advice['ok']);
         $this->assertTrue($advice['requiresHumanReview']);
@@ -195,7 +196,7 @@ class InventoryAiAdvisorTest extends TestCase
         $this->assertDatabaseHas('inventory_ai_advice_logs', [
             'capability' => 'DEMAND_FORECAST',
             'ok' => 1,
-            'business_id' => 4,
+            'business_id' => $businessId,
         ]);
         $this->assertSame(
             'Peak period next month',
@@ -267,6 +268,76 @@ class InventoryAiAdvisorTest extends TestCase
                 && $request['input']['profileCode'] === 'DEFAULT'
                 && str_contains((string) $request['input']['goal'], 'Paracetamol is running low.');
         });
+    }
+
+    public function test_selected_items_limit_the_stockout_review(): void
+    {
+        Http::fake([
+            'https://ai.kashtre.com/api/ai/v1/capabilities/STOCKOUT_RISK:invoke' => Http::response([
+                'requestId' => 'req-scope',
+                'status' => 'REQUIRES_REVIEW',
+                'result' => [
+                    'risks' => ['These items may run out inside four weeks.'],
+                    'warnings' => [],
+                ],
+                'warnings' => [],
+                'requiresHumanReview' => true,
+            ], 200),
+        ]);
+
+        $advisor = \Mockery::mock(InventoryAiAdvisor::class, [app(CapabilityInvokeClient::class)])
+            ->makePartial()
+            ->shouldAllowMockingProtectedMethods();
+        $advisor->shouldReceive('weeklyHistory')->once()->withArgs(function (...$args): bool {
+            return ($args[5] ?? null) === [11, 12];
+        })->andReturn([
+            ['period' => '2026-W32', 'value' => 4, 'missing' => false],
+            ['period' => '2026-W33', 'value' => 6, 'missing' => false],
+            ['period' => '2026-W34', 'value' => 5, 'missing' => false],
+        ]);
+        $advisor->shouldReceive('stockSnapshot')->once()->withArgs(function (...$args): bool {
+            return ($args[4] ?? null) === [11, 12];
+        })->andReturn([]);
+
+        $advice = $advisor->advise('stockout', 4, 9, null, 'Ward round next week', [11, 12]);
+
+        $this->assertTrue($advice['ok']);
+        $this->assertStringContainsString('These items may run out inside four weeks.', implode("\n", $advice['lines']));
+        Http::assertSent(function ($request) {
+            $measure = (string) ($request['input']['measure'] ?? '');
+
+            return str_contains($request->url(), 'STOCKOUT_RISK:invoke')
+                && str_contains($measure, 'these items only: item 11, item 12')
+                && str_contains($measure, 'Ward round next week');
+        });
+    }
+
+    public function test_a_queued_review_is_collected_before_the_order_continues(): void
+    {
+        Http::fake([
+            'https://ai.kashtre.com/api/ai/v1/capabilities/STOCKOUT_RISK:invoke' => Http::response([
+                'requestId' => 'req-wait',
+                'status' => 'QUEUED',
+                'result' => null,
+                'warnings' => [],
+            ], 202),
+            'https://ai.kashtre.com/api/ai/v1/requests/req-wait' => Http::response([
+                'requestId' => 'req-wait',
+                'status' => 'REQUIRES_REVIEW',
+                'result' => [
+                    'risks' => ['Gloves may run out next week.'],
+                    'warnings' => [],
+                ],
+                'warnings' => [],
+                'requiresHumanReview' => true,
+            ], 200),
+        ]);
+
+        $advice = $this->partialAdvisorWithHistory()->advise('stockout', 4, 9);
+
+        $this->assertTrue($advice['ok']);
+        $this->assertStringContainsString('Gloves may run out next week.', implode("\n", $advice['lines']));
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/api/ai/v1/requests/req-wait'));
     }
 
     public function test_iso_week_is_shown_as_calendar_dates(): void
