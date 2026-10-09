@@ -11,8 +11,8 @@ use Throwable;
 /** UI/session bridge only. Clinical owns all task/evidence/permission decisions. */
 class ClinicalReplacementController extends Controller
 {
-    private const ASSETS = ['main-workflow-page.mjs', 'workflow-application-gateway.mjs', 'task-view.mjs', 'task-workspace.mjs', 'demo-note-page.mjs'];
-    private const OPERATIONS = ['tasks.mine', 'tasks.open', 'tasks.execute', 'tasks.lookup', 'tasks.mainProgress', 'notes.open', 'notes.create', 'notes.save', 'notes.lookup'];
+    private const ASSETS = ['main-workflow-page.mjs', 'workflow-application-gateway.mjs', 'task-view.mjs', 'task-workspace.mjs', 'demo-note-page.mjs', 'demo-patient-file.mjs', 'patient-file-workspace.mjs', 'patient-overview.mjs', 'patient-timeline.mjs', 'patient-allergy-banner.mjs', 'assertion-view.mjs', 'assertion-workspace.mjs', 'allergy-view.mjs', 'allergy-workspace.mjs'];
+    private const OPERATIONS = ['tasks.mine', 'tasks.open', 'tasks.execute', 'tasks.lookup', 'tasks.mainProgress', 'notes.open', 'notes.create', 'notes.save', 'notes.lookup', 'patient.open', 'patient.execute', 'patient.lookup'];
 
     public function __construct(private readonly ClinicalRequestContext $identity) {}
 
