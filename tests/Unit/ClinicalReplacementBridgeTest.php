@@ -55,11 +55,21 @@ final class ClinicalReplacementBridgeTest extends TestCase
         self::assertSame(503,$this->controller->workflow($this->request())->getStatusCode());
         $r=$this->controller->workflow($this->request());self::assertSame(403,$r->getStatusCode());self::assertSame('ACCESS_REVOKED',$r->getData(true)['code']);Http::assertSentCount(2);
     }
-    public function test_only_task_operations_are_forwarded(): void
+    public function test_only_allowlisted_operations_are_forwarded(): void
     {
         Http::fake();
-        foreach ([['operation'=>'settings.execute','value'=>[]],['operation'=>'tasks.mine','value'=>[],'actor'=>'substitution']] as $input)self::assertSame(400,$this->controller->workflow($this->request($input))->getStatusCode());
+        foreach ([['operation'=>'settings.delete','value'=>[]],['operation'=>'tasks.mine','value'=>[],'actor'=>'substitution']] as $input)self::assertSame(400,$this->controller->workflow($this->request($input))->getStatusCode());
         Http::assertNothingSent();
+    }
+    public function test_settings_use_the_same_current_session_bridge(): void
+    {
+        Http::fake(['*'=>Http::response(['ok'=>true,'result'=>['scope'=>'synthetic']],200)]);
+        foreach (['settings.context','settings.open','settings.read','settings.execute','settings.lookup'] as $operation) {
+            $input=['operation'=>$operation,'value'=>['operationId'=>'same-operation']];
+            self::assertSame(200,$this->controller->workflow($this->request($input))->getStatusCode());
+            Http::assertSent(fn($r)=>$r->data()===$input&&$r->hasHeader('X-User-Id','11')&&$r->hasHeader('X-Tenant-Id','41'));
+        }
+        Http::assertSentCount(5);
     }
     public function test_active_authorized_session_is_required(): void
     {
