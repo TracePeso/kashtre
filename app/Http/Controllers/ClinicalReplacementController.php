@@ -82,7 +82,7 @@ class ClinicalReplacementController extends Controller
 
     private function selectedClient(Request $request): Client
     {
-        $clientId = $request->query('client_id');
+        $clientId = $request->route('client_id') ?? $request->query('client_id');
         abort_unless(is_string($clientId) && preg_match('/\A[A-Z0-9]{4,32}\z/D', $clientId), 404);
         $user = $request->user();
         $client = Client::query()->where('client_id', $clientId)
