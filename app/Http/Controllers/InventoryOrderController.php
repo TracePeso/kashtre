@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\RequiresInventoryModule;
 use App\Models\Group;
+use App\Models\InventoryAiAdviceLog;
 use App\Models\ItemImportanceCategory;
 use App\Models\InventoryModuleConfig;
 use App\Models\InventoryOrder;
@@ -21,6 +22,7 @@ use App\Services\Inventory\InventoryStockTransferService;
 use App\Support\InventoryBusinessContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -145,9 +147,21 @@ class InventoryOrderController extends Controller
             $validated['budget_value'] = (float) $request->input('budget_value');
             $validated['period_of_order_days'] = null;
         } elseif ($orderingApproach === 'ai') {
+            Validator::make(
+                $request->only(['period_of_order_days']),
+                [
+                    'period_of_order_days' => 'required|numeric|min:1|max:366',
+                ],
+                [
+                    'period_of_order_days.required' => 'Enter how many days this AI order should cover.',
+                    'period_of_order_days.min' => 'Period of order must be at least 1 day.',
+                    'period_of_order_days.max' => 'Period of order cannot be more than 366 days.',
+                ]
+            )->validate();
+
             $validated['budget_mode'] = null;
             $validated['budget_value'] = null;
-            $validated['period_of_order_days'] = 28;
+            $validated['period_of_order_days'] = (int) round((float) $request->input('period_of_order_days'));
         } else {
             $validated['budget_mode'] = null;
             $validated['budget_value'] = null;
@@ -235,6 +249,8 @@ class InventoryOrderController extends Controller
             }
         }
 
+        $aiLogId = null;
+
         if ($orderingApproach === 'ai') {
             $advisor = app(InventoryAiAdvisor::class);
             if (! $advisor->isConfigured()) {
@@ -253,6 +269,7 @@ class InventoryOrderController extends Controller
                 count($selectedIds) === 1 ? $selectedIds[0] : null,
                 $validated['notes'] ?? null,
                 $selectedIds,
+                (int) $validated['period_of_order_days'],
             );
 
             if (! ($advice['ok'] ?? false)) {
@@ -278,6 +295,7 @@ class InventoryOrderController extends Controller
                 $prefix .= "\n".implode("\n", $reviewLines);
             }
             $validated['notes'] = mb_substr(trim($prefix.($note !== '' ? "\n".$note : '')), 0, 2000);
+            $aiLogId = is_int($advice['logId'] ?? null) ? $advice['logId'] : null;
         }
 
         $order = $this->service->createDraft(
@@ -302,6 +320,16 @@ class InventoryOrderController extends Controller
             $validated['order_type'] === InventoryOrder::TYPE_INTERNAL ? (int) $validated['source_store_id'] : null,
             $validated['forecast_basis'] ?? InventoryOrder::FORECAST_CONSUMPTION,
         );
+
+        if (
+            $aiLogId !== null
+            && Schema::hasColumn('inventory_ai_advice_logs', 'inventory_order_id')
+        ) {
+            InventoryAiAdviceLog::query()
+                ->whereKey($aiLogId)
+                ->where('business_id', $businessId)
+                ->update(['inventory_order_id' => $order->id]);
+        }
 
         $redirect = redirect()->route('inventory.orders.show', $order);
 
@@ -371,12 +399,21 @@ class InventoryOrderController extends Controller
 
         $canApprove = $this->approvalService->userCanApprove($order, Auth::user());
         $receiptOptions = [];
+        $aiExchange = null;
+        if (Schema::hasTable('inventory_ai_advice_logs') && Schema::hasColumn('inventory_ai_advice_logs', 'inventory_order_id')) {
+            $aiExchange = InventoryAiAdviceLog::query()
+                ->where('business_id', $order->business_id)
+                ->where('inventory_order_id', $order->id)
+                ->latest('id')
+                ->first();
+        }
 
         return view('inventory.orders.show', compact(
             'order',
             'emptyOrderReason',
             'canApprove',
             'receiptOptions',
+            'aiExchange',
         ));
     }
 

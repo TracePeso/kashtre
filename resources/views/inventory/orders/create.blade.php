@@ -2,6 +2,7 @@
 @php
     $config = $moduleConfig ?? null;
     $periodOfOrderDaysValue = old('period_of_order_days');
+    $aiPeriodValue = old('period_of_order_days', 28);
     $defaultSafetyDays = (float) old('safety_stock_days', $config?->safety_stock_days ?? 0);
     $defaultBufferDays = (float) old('buffer_stock_days', $config?->buffer_stock_days ?? 0);
     $defaultNotificationDays = (float) old('notification_to_order_days', $config?->notification_to_order_days ?? 0);
@@ -465,12 +466,22 @@
                 @error('period_of_order_days')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
 
-                <div class="p-4" x-show="orderTab === 'ai'" x-cloak>
+                <div class="p-4 space-y-4" x-show="orderTab === 'ai'" x-cloak>
                     <div class="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                        <p>AI reviews this store for the next 4 weeks, then Inventory builds a complete draft order for 28 days. You still review quantities before approval.</p>
+                        <p>AI reviews this store for the period you set, then Inventory builds a draft order for the same number of days. You still review quantities before approval. After the draft is created, the order page shows what was sent and what came back.</p>
                         <p class="mt-2 text-xs text-slate-500" x-show="aiConfigured">A note below is sent with the review. Selected items limit both the review and the draft to those items.</p>
                         <p class="mt-2 text-sm text-amber-800" x-show="!aiConfigured">Inventory AI is not connected. Set AI_GATEWAY_INVENTORY_TOKEN before using this option.</p>
                     </div>
+                    <template x-if="orderApproach === 'ai'">
+                        <div>
+                            <label for="ai_period_of_order_days" class="block text-sm font-medium text-gray-700">Period of order (days)</label>
+                            <input type="number" step="1" min="1" max="366" name="period_of_order_days" id="ai_period_of_order_days"
+                                   value="{{ $aiPeriodValue }}"
+                                   class="mt-1 block w-full max-w-xs rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <p class="mt-1 text-xs text-gray-500">The AI looks ahead this many days. The draft quantities use the same period. 28 days is four weeks.</p>
+                        </div>
+                    </template>
+                    @error('period_of_order_days')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
                     @error('ordering_approach')<p class="mt-3 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
             </div>

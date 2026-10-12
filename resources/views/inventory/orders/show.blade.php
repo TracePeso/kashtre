@@ -325,6 +325,8 @@
             @endif
         </div>
 
+        @include('inventory.orders.partials.ai-exchange', ['aiExchange' => $aiExchange ?? null])
+
         @if($order->isExternal() && $order->canDownloadRfqPdf() && $order->isDraft())
             <div class="mt-6 bg-white shadow sm:rounded-lg p-4 sm:p-6">
                 <h3 class="text-sm font-semibold text-gray-900">Purchase request document</h3>

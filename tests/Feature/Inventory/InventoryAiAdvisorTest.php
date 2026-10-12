@@ -340,6 +340,38 @@ class InventoryAiAdvisorTest extends TestCase
         Http::assertSent(fn ($request) => str_contains($request->url(), '/api/ai/v1/requests/req-wait'));
     }
 
+    public function test_a_chosen_order_period_is_sent_as_the_horizon(): void
+    {
+        Http::fake([
+            'https://ai.kashtre.com/api/ai/v1/capabilities/STOCKOUT_RISK:invoke' => Http::response([
+                'requestId' => 'req-period',
+                'status' => 'REQUIRES_REVIEW',
+                'result' => [
+                    'horizon' => 'P3W',
+                    'series' => [
+                        ['period' => '2026-W40', 'central' => 9, 'lower' => 6, 'upper' => 12],
+                    ],
+                    'warnings' => [],
+                    'requiresHumanReview' => true,
+                ],
+                'warnings' => [],
+                'requiresHumanReview' => true,
+                'error' => null,
+            ], 200),
+        ]);
+
+        $businessId = (int) \App\Models\Business::query()->value('id');
+        $advice = $this->partialAdvisorWithHistory()->advise('stockout', $businessId, null, null, null, [], 21);
+
+        $this->assertTrue($advice['ok']);
+        $this->assertSame(21, $advice['sent']['periodDays']);
+        $this->assertSame('P3W', $advice['sent']['input']['horizon']);
+        $this->assertStringContainsString('the next 3 weeks', $advice['sent']['input']['measure']);
+        $this->assertStringContainsString('Draft forecast for the next 3 weeks', (string) $advice['summary']);
+        $this->assertIsInt($advice['logId']);
+        Http::assertSent(fn ($request) => ($request['input']['horizon'] ?? null) === 'P3W');
+    }
+
     public function test_iso_week_is_shown_as_calendar_dates(): void
     {
         $this->assertSame('21–27 Sep', InventoryAiAdvisor::formatIsoWeek('2026-W39'));

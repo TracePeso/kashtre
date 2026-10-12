@@ -10,6 +10,7 @@ class InventoryAiAdviceLog extends Model
     protected $fillable = [
         'business_id',
         'store_id',
+        'inventory_order_id',
         'item_id',
         'recorded_by_user_id',
         'use_case',
@@ -39,6 +40,11 @@ class InventoryAiAdviceLog extends Model
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
+    }
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(InventoryOrder::class, 'inventory_order_id');
     }
 
     public function item(): BelongsTo

@@ -88,7 +88,8 @@ class InventoryAiAdvisor
      *     requestId: ?string,
      *     error: ?string,
      *     errorCode: ?string,
-     *     details: mixed
+     *     details: mixed,
+     *     logId: ?int
      * }
      */
     public function advise(
@@ -98,6 +99,7 @@ class InventoryAiAdvisor
         ?int $itemId = null,
         ?string $question = null,
         array $scopeItemIds = [],
+        ?int $horizonDays = null,
     ): array {
         $meta = self::USE_CASES[$useCase] ?? null;
         if ($meta === null) {
@@ -124,7 +126,9 @@ class InventoryAiAdvisor
             );
         }
 
-        $measure = $this->measure($useCase, $businessId, $storeId, $scopeItemIds, $snapshot, $question);
+        $horizonDays = $horizonDays === null ? 28 : max(1, min(366, $horizonDays));
+        $horizonPhrase = self::horizonPhrase($horizonDays);
+        $measure = $this->measure($useCase, $businessId, $storeId, $scopeItemIds, $snapshot, $question, $horizonPhrase);
         $input = $useCase === 'ask'
             ? [
                 'goal' => $this->askGoal($measure, $question),
@@ -133,7 +137,7 @@ class InventoryAiAdvisor
             : [
                 'measure' => $measure,
                 'grain' => 'WEEK',
-                'horizon' => 'P4W',
+                'horizon' => self::horizonCode($horizonDays),
                 'timezone' => $timezone,
                 'history' => $history,
             ];
@@ -165,6 +169,7 @@ class InventoryAiAdvisor
             'capability' => $capability,
             'purposeOfUse' => 'REPLENISHMENT_PLANNING',
             'dataClassification' => 'CONFIDENTIAL',
+            'periodDays' => $horizonDays,
             'input' => $input,
         ];
         $received = [
@@ -178,7 +183,8 @@ class InventoryAiAdvisor
             'details' => $response['details'],
         ];
 
-        $this->recordLog(
+        $summary = $this->summaryFrom($result, $useCase, $horizonPhrase);
+        $logId = $this->recordLog(
             $useCase,
             $capability,
             $meta['label'],
@@ -189,7 +195,7 @@ class InventoryAiAdvisor
             $sent,
             $received,
             $response,
-            $this->summaryFrom($result, $useCase),
+            $summary,
         );
 
         return [
@@ -197,7 +203,7 @@ class InventoryAiAdvisor
             'available' => $response['available'],
             'capability' => $capability,
             'title' => $meta['label'],
-            'summary' => $this->summaryFrom($result, $useCase),
+            'summary' => $summary,
             'lines' => $this->linesFrom($result),
             'series' => $this->seriesFrom($result),
             'assumptions' => $this->listFrom($result, 'assumptions'),
@@ -212,7 +218,34 @@ class InventoryAiAdvisor
             'briefing' => $briefing,
             'sent' => $sent,
             'received' => $received,
+            'logId' => $logId,
         ];
+    }
+
+    public static function horizonCode(int $days): string
+    {
+        $days = max(1, $days);
+        if ($days % 7 === 0) {
+            return 'P'.intdiv($days, 7).'W';
+        }
+
+        return 'P'.$days.'D';
+    }
+
+    public static function horizonPhrase(int $days): string
+    {
+        $days = max(1, $days);
+        if ($days === 28) {
+            return 'the next four weeks';
+        }
+
+        if ($days % 7 === 0) {
+            $weeks = intdiv($days, 7);
+
+            return 'the next '.$weeks.' '.($weeks === 1 ? 'week' : 'weeks');
+        }
+
+        return 'the next '.$days.' '.($days === 1 ? 'day' : 'days');
     }
 
     /**
@@ -413,6 +446,7 @@ class InventoryAiAdvisor
         array $scopeItemIds,
         array $snapshot,
         ?string $question,
+        string $horizonPhrase = 'the next four weeks',
     ): string {
         $storeName = $storeId ? Store::query()->where('business_id', $businessId)->find($storeId)?->name : null;
         $scope = $storeName ? 'store '.$storeName : 'this organisation';
@@ -428,9 +462,9 @@ class InventoryAiAdvisor
             ->implode('; ');
 
         $base = match ($useCase) {
-            'stockout' => 'stockout_risk. Stockout risk for '.$scope.' over the next four weeks. Inventory rules remain authoritative.',
-            'demand' => 'weekly_demand. Weekly demand for '.$scope.' over the next four weeks. Do not create replenishment orders.',
-            'consumption' => 'weekly_consumption. Weekly consumption for '.$scope.' over the next four weeks. Never modify source history.',
+            'stockout' => 'stockout_risk. Stockout risk for '.$scope.' over '.$horizonPhrase.'. Inventory rules remain authoritative.',
+            'demand' => 'weekly_demand. Weekly demand for '.$scope.' over '.$horizonPhrase.'. Do not create replenishment orders.',
+            'consumption' => 'weekly_consumption. Weekly consumption for '.$scope.' over '.$horizonPhrase.'. Never modify source history.',
             'wastage' => 'wastage_pattern. Wastage and expiry patterns for '.$scope.'. Do not write off stock.',
             default => 'What should we check before ordering for '.$scope.'?',
         };
@@ -462,7 +496,7 @@ class InventoryAiAdvisor
     /**
      * @param  array<string, mixed>|null  $result
      */
-    private function summaryFrom(?array $result, string $useCase = 'stockout'): ?string
+    private function summaryFrom(?array $result, string $useCase = 'stockout', string $horizonPhrase = 'the next four weeks'): ?string
     {
         if ($result === null) {
             return null;
@@ -477,9 +511,9 @@ class InventoryAiAdvisor
         $series = is_array($result['series'] ?? null) ? $result['series'] : [];
         if ($series !== []) {
             return match ($useCase) {
-                'demand' => 'Draft demand forecast for the next four weeks. Review before anyone orders.',
-                'consumption' => 'Draft consumption forecast for the next four weeks. History was not changed.',
-                default => 'Draft forecast for the next four weeks. Inventory numbers stay as they are.',
+                'demand' => 'Draft demand forecast for '.$horizonPhrase.'. Review before anyone orders.',
+                'consumption' => 'Draft consumption forecast for '.$horizonPhrase.'. History was not changed.',
+                default => 'Draft forecast for '.$horizonPhrase.'. Inventory numbers stay as they are.',
             };
         }
 
@@ -774,6 +808,7 @@ class InventoryAiAdvisor
             'briefing' => null,
             'sent' => null,
             'received' => null,
+            'logId' => null,
         ];
     }
 
@@ -794,13 +829,13 @@ class InventoryAiAdvisor
         array $received,
         array $response,
         ?string $summary,
-    ): void {
+    ): ?int {
         if (! Schema::hasTable('inventory_ai_advice_logs')) {
-            return;
+            return null;
         }
 
         try {
-            InventoryAiAdviceLog::query()->create([
+            $log = InventoryAiAdviceLog::query()->create([
                 'business_id' => $businessId,
                 'store_id' => $storeId,
                 'item_id' => $itemId,
@@ -817,8 +852,12 @@ class InventoryAiAdvisor
                 'request_payload' => $sent,
                 'response_payload' => $received,
             ]);
+
+            return (int) $log->id;
         } catch (Throwable $e) {
             Log::warning('Could not store Inventory AI advice log: '.$e->getMessage());
+
+            return null;
         }
     }
 }
