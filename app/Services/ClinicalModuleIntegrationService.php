@@ -165,6 +165,7 @@ class ClinicalModuleIntegrationService
             'county' => $client->county,
             'business_id' => $client->business_id,
             'branch_id' => $client->branch_id,
+            'operational_time' => $this->operationalTime($client),
             'visit_id' => $client->visit_id,
             'visit_expires_at' => $client->visit_expires_at?->toIso8601String(),
             'status' => $client->status,
@@ -180,6 +181,33 @@ class ClinicalModuleIntegrationService
                 'name' => $client->branch->name,
             ] : null,
         ];
+    }
+
+    /** Main's current operational policy; an unavailable policy is never guessed. */
+    private function operationalTime(Client $client): ?array
+    {
+        try {
+            $time = \App\Support\SharedTime::gateway();
+            $resolved = $time->resolution()->resolve(
+                new \App\Domain\Time\ValueObjects\TimeContext(
+                    tenantId: (string) $client->business_id,
+                    branchId: (string) $client->branch_id,
+                    purpose: \App\Domain\Time\Enums\PolicyPurpose::OPERATIONAL,
+                ),
+                (string) $client->business_id,
+            );
+            // Do not pass a platform default off as this branch's configuration.
+            if ($resolved->usedFallback || $resolved->policyId === null) {
+                return null;
+            }
+            return $resolved->toArray() + [
+                'tenantId' => (string) $client->business_id,
+                'branchId' => (string) $client->branch_id,
+                'nowUtc' => $time->now()->toIso8601(),
+            ];
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -811,3 +839,4 @@ class ClinicalModuleIntegrationService
         }
     }
 }
+
