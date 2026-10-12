@@ -391,20 +391,19 @@
                 </div>
             </div>
 
-            <!-- Section 3: Client Notes -->
+            <!-- Section 3: Client file -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
                 <div class="p-6">
-                    <h3 class="text-lg font-medium text-gray-900 mb-4">Client Notes</h3>
-                    <div class="border border-gray-200 rounded-lg">
-                        <div class="p-4">
-                            <textarea placeholder="Add notes about this client..." class="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" rows="3"></textarea>
-                            <div class="mt-3 flex justify-end">
-                                <button class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">
-                                    Save Notes
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2">Client file</h3>
+                    @if(config('clinical_replacement.enabled') === true
+                        && in_array('View Ward Census', (array) (auth()->user()?->permissions ?? []), true))
+                        <a href="{{ route('clinical.replacement.show', ['client_id' => $client->client_id]) }}"
+                           class="inline-flex items-center bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">
+                            Open client file
+                        </a>
+                    @else
+                        <p class="text-sm text-gray-600">You do not have permission to open this client's clinical file.</p>
+                    @endif
                 </div>
             </div>
 
