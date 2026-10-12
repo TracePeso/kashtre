@@ -823,3 +823,5 @@ Route::get('/suspense-accounts-api/data', [SuspenseAccountController::class, 'ge
         Route::get('/results/{testId}', [\App\Http\Controllers\SystemTestController::class, 'results'])->name('results');
     });
 });
+
+require __DIR__.'/clinical_replacement.php';
