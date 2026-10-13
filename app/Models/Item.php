@@ -19,6 +19,8 @@ class Item extends Model
         'name',
         'generic_name',
         'strength',
+        'is_medicine',
+        'strength_not_applicable',
         'category',
         'code',
         'type',
@@ -45,6 +47,8 @@ class Item extends Model
     ];
 
     protected $casts = [
+        'is_medicine' => 'boolean',
+        'strength_not_applicable' => 'boolean',
         'max_qty' => 'integer',
         'suom_per_ouom' => 'decimal:4',
         'purchase_price' => 'decimal:2',
@@ -52,6 +56,12 @@ class Item extends Model
     
     protected static function booted()
     {
+        static::saving(function ($item) {
+            $errors = \App\Support\ItemMedicineMetadata::errors($item->getAttributes());
+            if ($errors !== []) {
+                throw \Illuminate\Validation\ValidationException::withMessages($errors);
+            }
+        });
         static::creating(function ($item) {
             $item->uuid = (string) Str::uuid();
             
@@ -356,3 +366,4 @@ class Item extends Model
             : (float) $saleQuantity;
     }
 }
+

@@ -49,7 +49,15 @@
 
                         <!-- Strength -->
                         <div>
-                            <label for="strength" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Strength</label>
+                            <input type="hidden" name="is_medicine" value="0">
+                            <label class="block"><input type="checkbox" name="is_medicine" value="1" id="is_medicine" @checked(old('is_medicine'))> This goods item is a medicine</label>
+                            <p class="text-sm">Medicine items require a generic name and an applicable strength. Existing unclassified items are not classified automatically.</p>
+                            <input type="hidden" name="strength_not_applicable" value="0">
+                            <label class="block"><input type="checkbox" name="strength_not_applicable" value="1" id="strength_not_applicable" @checked(old('strength_not_applicable'))> Strength is not applicable to this medicine</label>
+                            @error('is_medicine')<p class="text-red-600">{{ $message }}</p>@enderror
+                            @error('strength')<p class="text-red-600">{{ $message }}</p>@enderror
+                            @error('generic_name')<p class="text-red-600">{{ $message }}</p>@enderror
+                            <label for="strength" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Strength — required for applicable medicine items</label>
                             <input type="text" name="strength" id="strength" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="e.g. 500mg" value="{{ old('strength') }}">
                         </div>
 
@@ -1069,3 +1077,13 @@
         });
     </script>
 </x-app-layout>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+ const medicine=document.getElementById('is_medicine'),na=document.getElementById('strength_not_applicable'),strength=document.getElementById('strength'),generic=document.getElementById('generic_name');
+ const refresh=()=>{if(!medicine||!na||!strength||!generic)return;generic.required=medicine.checked;strength.required=medicine.checked&&!na.checked;};
+ medicine?.addEventListener('change',refresh);na?.addEventListener('change',refresh);refresh();
+});
+</script>
+

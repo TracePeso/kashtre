@@ -120,6 +120,8 @@ class ItemController extends Controller
             'name' => 'required|string|max:255',
             'generic_name' => 'nullable|string|max:255',
             'strength' => 'nullable|string|max:255',
+            'is_medicine' => 'nullable|boolean',
+            'strength_not_applicable' => 'nullable|boolean',
             'category' => 'nullable|string|max:255',
             'code' => 'nullable|string|unique:items,code',
             'type' => 'required|in:service,good,package,bulk',
@@ -155,6 +157,9 @@ class ItemController extends Controller
             'bulk_items.*.included_item_id' => 'nullable|exists:items,id',
             'bulk_items.*.fixed_quantity' => 'nullable|integer|min:1',
         ]);
+
+        $metadataErrors = \App\Support\ItemMedicineMetadata::errors($validated);
+        if ($metadataErrors !== []) { throw \Illuminate\Validation\ValidationException::withMessages($metadataErrors); }
 
         // Set business_id based on user permissions
         if (Auth::user()->business_id != 1) {
@@ -387,6 +392,8 @@ class ItemController extends Controller
             'name' => 'required|string|max:255',
             'generic_name' => 'nullable|string|max:255',
             'strength' => 'nullable|string|max:255',
+            'is_medicine' => 'nullable|boolean',
+            'strength_not_applicable' => 'nullable|boolean',
             'category' => 'nullable|string|max:255',
             'code' => 'nullable|string|unique:items,code,' . $item->id,
             'type' => 'required|in:service,good,package,bulk',
@@ -422,6 +429,9 @@ class ItemController extends Controller
             'bulk_items.*.included_item_id' => 'nullable|exists:items,id',
             'bulk_items.*.fixed_quantity' => 'nullable|integer|min:1',
         ]);
+
+        $metadataErrors = \App\Support\ItemMedicineMetadata::errors($validated);
+        if ($metadataErrors !== []) { throw \Illuminate\Validation\ValidationException::withMessages($metadataErrors); }
 
         // Set business_id based on user permissions
         if (Auth::user()->business_id != 1) {
@@ -732,3 +742,4 @@ class ItemController extends Controller
         return SharedUnits::itemUnitsForBusiness($businessId);
     }
 }
+

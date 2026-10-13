@@ -110,6 +110,11 @@ class ClinicalModuleIntegrationService
             'item_name' => $item->name,
             'alternative_names' => array_values($alternatives),
             'strength_descriptor' => $item->strength ?: ItemStrengthParser::parse($item->name),
+            'generic_name' => filled($item->generic_name) ? $item->generic_name : null,
+            'stored_strength' => filled($item->strength) ? $item->strength : null,
+            'stored_strength_source' => filled($item->strength) ? 'main_item_strength' : null,
+            'is_medicine' => (bool) $item->is_medicine,
+            'strength_not_applicable' => (bool) $item->strength_not_applicable,
             'is_offer_item' => $isOffer,
             'service_code' => $item->type === 'service' ? $item->code : null,
             'drug_code' => $drugCode,
@@ -839,4 +844,5 @@ class ClinicalModuleIntegrationService
         }
     }
 }
+
 
