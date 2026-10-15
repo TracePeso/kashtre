@@ -66,9 +66,16 @@ class HrModuleApiClient
         ));
     }
 
-    public function navigation(): array
+    /**
+     * AppServiceProvider always passes a token (HrSsoToken::make($user)):
+     * the HR module then filters the manifest itself, using its own real
+     * permissions for that one user — see KashtreNavigationVisibility on
+     * the HR module side. $token stays optional here only because the API
+     * itself still accepts a tokenless, unfiltered call.
+     */
+    public function navigation(?string $token = null): array
     {
-        $result = $this->get('navigation');
+        $result = $this->get('navigation', $token ? ['token' => $token] : []);
         if (!is_array($result)) return [];
         // Accept either a flat array [{label,path},...] or a wrapped {items:[...]}
         return isset($result['items']) ? $result['items'] : $result;

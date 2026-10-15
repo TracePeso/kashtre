@@ -190,7 +190,6 @@ class HrController extends Controller
     public function embed(Request $request)
     {
         $user    = Auth::user();
-        $apiKey  = config('services.hr_module.api_key', '');
         $hrUrl   = rtrim((string) config('services.hr_module.url', ''), '/');
 
         // SameSite=Lax cookies only care about scheme + registrable domain,
@@ -206,9 +205,7 @@ class HrController extends Controller
             }
         }
 
-        $payload = $user->email . '|' . ($user->business_id ?? '') . '|' . time();
-        $sig     = hash_hmac('sha256', $payload, $apiKey);
-        $token   = base64_encode($payload . ':' . $sig);
+        $token = \App\Support\Hr\HrSsoToken::make($user);
 
         $iframeSrc = $hrUrl . '/hr/sso'
             . '?token='    . urlencode($token)
