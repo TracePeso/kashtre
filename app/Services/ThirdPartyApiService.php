@@ -853,6 +853,48 @@ class ThirdPartyApiService
     }
 
     /**
+     * Ask the insurer for the current authorization rows on a KashTre invoice.
+     *
+     * @return array{success: bool, authorizations?: list<array<string, mixed>>, message?: string}|null
+     */
+    public function fetchInvoiceAuthorizationStatus(string $kashtreInvoiceId): ?array
+    {
+        $url = "{$this->baseUrl}/api/v1/invoice-authorization/status";
+
+        try {
+            $response = Http::timeout($this->timeout)
+                ->acceptJson()
+                ->get($url, [
+                    'kashtre_invoice_id' => $kashtreInvoiceId,
+                ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+
+                return is_array($data) ? $data : null;
+            }
+
+            Log::warning('[Kashtre->ThirdParty] Authorization status HTTP error', [
+                'status' => $response->status(),
+                'kashtre_invoice_id' => $kashtreInvoiceId,
+                'body' => $response->body(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => $response->json('message') ?? 'The insurer could not be reached.',
+            ];
+        } catch (Exception $e) {
+            Log::error('[Kashtre->ThirdParty] Authorization status exception', [
+                'kashtre_invoice_id' => $kashtreInvoiceId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
      * Record a client-portion payment in the third-party system.
      * This is called after mobile money payment succeeds in Kashtre for an insurance invoice.
      *

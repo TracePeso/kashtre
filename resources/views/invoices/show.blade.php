@@ -36,6 +36,17 @@
                 </div>
             </div>
 
+            @if(session('status'))
+                <div class="bg-blue-50 border border-blue-200 text-blue-800 rounded-lg shadow-sm mb-6 p-4">
+                    {{ session('status') }}
+                </div>
+            @endif
+            @if(session('error'))
+                <div class="bg-red-50 border border-red-200 text-red-800 rounded-lg shadow-sm mb-6 p-4">
+                    {{ session('error') }}
+                </div>
+            @endif
+
             @if($invoice->parent_invoice_id && $invoice->parentInvoice)
                 <div class="bg-amber-50 border border-amber-200 rounded-lg shadow-sm mb-6 p-4">
                     <p class="text-sm font-medium text-amber-900">Vendor portion invoice (label {{ $invoice->vendor_portion_label ?? '—' }})</p>
@@ -341,6 +352,14 @@
                             <svg class="h-6 w-6 text-orange-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                             <h3 class="text-lg font-semibold text-orange-800">Insurance Authorization — Pending Review</h3>
                         @endif
+                        @if($isPending)
+                            <form method="POST" action="{{ route('invoices.check-authorization-status', $invoice) }}" class="ml-auto">
+                                @csrf
+                                <button type="submit" class="px-3 py-1.5 bg-orange-600 text-white text-sm font-medium rounded hover:bg-orange-700 transition-colors">
+                                    Check status
+                                </button>
+                            </form>
+                        @endif
                     </div>
 
                     @if($isMultiVendor && !empty($authSnap['vendors']))
@@ -490,7 +509,7 @@
                     @endif
 
                     @if($isPending)
-                        <p class="mt-3 text-xs text-orange-700">The insurer is reviewing this authorization. You can collect the client portion in the meantime. This page will show updated status once the insurer decides.</p>
+                        <p class="mt-3 text-xs text-orange-700">The insurer is reviewing this authorization. You can collect the client portion in the meantime. Use Check status to ask the insurer now.</p>
                     @endif
                 </div>
             @endif

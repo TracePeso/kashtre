@@ -5,6 +5,7 @@ namespace App\Services\Inventory;
 use App\Jobs\NotifyClinicalToteStaged;
 use App\Models\InventoryFulfillmentLine;
 use App\Models\InventoryHandoffToken;
+use App\Models\Store;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -23,9 +24,9 @@ class InventoryFulfillmentStageService
         InventoryFulfillmentLine $seedLine,
         User $user,
         bool $entireBasket = true,
-        ?string $toteBarcode = null
-    ): array
-    {
+        ?string $toteBarcode = null,
+        bool $notifyClinical = true,
+    ): array {
         $seedLine->loadMissing(['store', 'client']);
 
         if (! $seedLine->isInpatient()) {
@@ -102,9 +103,75 @@ class InventoryFulfillmentStageService
             ];
         });
 
-        NotifyClinicalToteStaged::dispatch($result['token']->id)->afterResponse();
+        if ($notifyClinical) {
+            NotifyClinicalToteStaged::dispatch($result['token']->id)->afterResponse();
+        }
 
         return $result;
+    }
+
+    /**
+     * Stage every open inpatient basket in a ward collection into one tote.
+     * Stock is not reduced. Each patient envelope keeps its own handoff.
+     *
+     * @return list<array{token: InventoryHandoffToken, lines: Collection<int, InventoryFulfillmentLine>}>
+     */
+    public function stageReservoir(
+        Store $store,
+        User $user,
+        string $toteBarcode,
+        ?int $clientSpaceId = null,
+        ?string $visitId = null,
+    ): array {
+        if (! $store->isEndStore()) {
+            throw ValidationException::withMessages([
+                'store_id' => 'Staging is only allowed from an End Store.',
+            ]);
+        }
+
+        $tote = trim($toteBarcode);
+        if ($tote === '') {
+            throw ValidationException::withMessages([
+                'tote_barcode' => 'Scan the ward tote barcode before staging.',
+            ]);
+        }
+
+        $seeds = InventoryFulfillmentLine::query()
+            ->where('business_id', $store->business_id)
+            ->where('store_id', $store->id)
+            ->where('fulfillment_strategy', InventoryFulfillmentStrategy::BATCH_AND_STAGE)
+            ->when($clientSpaceId, fn ($q) => $q->where('client_space_id', $clientSpaceId))
+            ->when($visitId !== null && $visitId !== '', fn ($q) => $q->where('visit_id', $visitId))
+            ->whereIn('status', [
+                InventoryFulfillmentLine::STATUS_PENDING,
+                InventoryFulfillmentLine::STATUS_PICKING,
+                InventoryFulfillmentLine::STATUS_PARTIAL,
+            ])
+            ->orderBy('id')
+            ->get()
+            ->unique('basket_key')
+            ->values();
+
+        if ($seeds->isEmpty()) {
+            throw ValidationException::withMessages([
+                'status' => 'Nothing left to stage on this pick route.',
+            ]);
+        }
+
+        $staged = DB::transaction(function () use ($seeds, $user, $tote) {
+            $out = [];
+            foreach ($seeds as $seed) {
+                $out[] = $this->stageBasket($seed, $user, true, $tote, false);
+            }
+
+            return $out;
+        });
+
+        foreach ($staged as $result) {
+            NotifyClinicalToteStaged::dispatch($result['token']->id)->afterResponse();
+        }
+
+        return $staged;
     }
 
     /**

@@ -70,10 +70,17 @@
 
         <div class="flex flex-wrap items-center gap-2">
             @if($selectedStoreId)
+                @foreach($this->wardReservoirs() as $ward)
+                    <a href="{{ route('inventory.fulfillment.ward-pick-route', ['store' => $selectedStoreId, 'client_space' => $ward['space']]) }}"
+                       target="_blank"
+                       class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100">
+                        Pick {{ $ward['space']->name }} ({{ $ward['count'] }})
+                    </a>
+                @endforeach
                 <a href="{{ route('inventory.fulfillment.ward-pick', $selectedStoreId) }}"
                    target="_blank"
-                   class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100">
-                    Ward pick route
+                   class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    Pick all wards
                 </a>
             @endif
             <div class="flex flex-wrap gap-2 text-xs text-gray-500">

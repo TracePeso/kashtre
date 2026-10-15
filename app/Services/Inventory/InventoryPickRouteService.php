@@ -26,7 +26,7 @@ class InventoryPickRouteService
         $seed->loadMissing('store');
 
         $open = InventoryFulfillmentLine::query()
-            ->with('item:id,name,code')
+            ->with(['item:id,name,code', 'client:id,name', 'clientSpace:id,name'])
             ->where('business_id', $seed->business_id)
             ->where('store_id', $seed->store_id)
             ->where('fulfillment_strategy', InventoryFulfillmentStrategy::BATCH_AND_STAGE)
@@ -35,7 +35,6 @@ class InventoryPickRouteService
                 InventoryFulfillmentLine::STATUS_PENDING,
                 InventoryFulfillmentLine::STATUS_PICKING,
                 InventoryFulfillmentLine::STATUS_PARTIAL,
-                InventoryFulfillmentLine::STATUS_STAGED,
             ])
             ->get();
 
@@ -62,7 +61,7 @@ class InventoryPickRouteService
     public function forWardRun(Store $store, ?int $clientSpaceId = null, ?string $visitId = null): array
     {
         $open = InventoryFulfillmentLine::query()
-            ->with(['item:id,name,code', 'clientSpace:id,name'])
+            ->with(['item:id,name,code', 'client:id,name', 'clientSpace:id,name'])
             ->where('business_id', $store->business_id)
             ->where('store_id', $store->id)
             ->where('fulfillment_strategy', InventoryFulfillmentStrategy::BATCH_AND_STAGE)
@@ -72,7 +71,6 @@ class InventoryPickRouteService
                 InventoryFulfillmentLine::STATUS_PENDING,
                 InventoryFulfillmentLine::STATUS_PICKING,
                 InventoryFulfillmentLine::STATUS_PARTIAL,
-                InventoryFulfillmentLine::STATUS_STAGED,
             ])
             ->get();
 
@@ -121,10 +119,10 @@ class InventoryPickRouteService
             ->get(['item_id', 'location_layer_3', 'location_layer_2', 'location_layer_1'])
             ->keyBy('item_id');
 
-        $rows = collect($bySku)->map(function (array $row) use ($locations) {
+        $rows = [];
+        foreach ($bySku as $row) {
             $loc = $locations->get($row['item_id']);
-
-            return [
+            $rows[] = [
                 'item_id' => $row['item_id'],
                 'item_name' => $row['item_name'],
                 'quantity' => $row['quantity'],
@@ -132,12 +130,35 @@ class InventoryPickRouteService
                 'location_layer_2' => $loc?->location_layer_2,
                 'location_layer_1' => $loc?->location_layer_1,
             ];
-        })->sortBy([
-            ['location_layer_3', 'asc'],
-            ['location_layer_2', 'asc'],
-            ['location_layer_1', 'asc'],
-            ['item_name', 'asc'],
-        ])->values()->all();
+        }
+
+        $envelopes = [];
+        foreach ($open as $line) {
+            $remaining = max(0, (float) $line->quantity - (float) $line->quantity_fulfilled);
+            if ($remaining <= 0) {
+                continue;
+            }
+            $basket = (string) $line->basket_key;
+            if (! isset($envelopes[$basket])) {
+                $envelopes[$basket] = [
+                    'basket_key' => $basket,
+                    'client_name' => $line->client?->name ?: 'Patient '.$basket,
+                    'visit_id' => $line->visit_id,
+                    'client_space_name' => $line->clientSpace?->name,
+                    'line_ids' => [],
+                    'lines' => [],
+                ];
+            }
+            $envelopes[$basket]['line_ids'][] = (int) $line->id;
+            $envelopes[$basket]['lines'][] = [
+                'item_id' => (int) $line->item_id,
+                'item_name' => $line->item_name ?: ($line->item?->name ?? 'Item'),
+                'quantity' => round($remaining, 4),
+            ];
+        }
+
+        $envelopes = array_values($envelopes);
+        usort($envelopes, fn (array $a, array $b): int => strnatcasecmp($a['client_name'], $b['client_name']));
 
         return [
             'store' => $store,
@@ -145,8 +166,48 @@ class InventoryPickRouteService
             'scope' => $meta['scope'],
             'visit_id' => $meta['visit_id'] ?? null,
             'client_space' => $meta['client_space'] ?? null,
-            'lines' => $rows,
+            'lines' => self::sortWalk($rows),
+            'envelopes' => $envelopes,
             'labels' => $store->locationLayerLabels() ?? Store::defaultLocationLabels($store->distribution_type),
         ];
+    }
+
+    /**
+     * One-way shelf walk: macro, then meso, then micro. Blank places go last.
+     *
+     * @param  list<array{item_name:string,location_layer_3:?string,location_layer_2:?string,location_layer_1:?string}>  $rows
+     * @return list<array{item_name:string,location_layer_3:?string,location_layer_2:?string,location_layer_1:?string}>
+     */
+    public static function sortWalk(array $rows): array
+    {
+        usort($rows, function (array $a, array $b): int {
+            foreach (['location_layer_3', 'location_layer_2', 'location_layer_1'] as $layer) {
+                $cmp = self::comparePlace($a[$layer] ?? null, $b[$layer] ?? null);
+                if ($cmp !== 0) {
+                    return $cmp;
+                }
+            }
+
+            return strnatcasecmp((string) ($a['item_name'] ?? ''), (string) ($b['item_name'] ?? ''));
+        });
+
+        return array_values($rows);
+    }
+
+    public static function comparePlace(?string $left, ?string $right): int
+    {
+        $leftBlank = $left === null || trim($left) === '';
+        $rightBlank = $right === null || trim($right) === '';
+        if ($leftBlank && $rightBlank) {
+            return 0;
+        }
+        if ($leftBlank) {
+            return 1;
+        }
+        if ($rightBlank) {
+            return -1;
+        }
+
+        return strnatcasecmp(trim($left), trim($right));
     }
 }

@@ -444,55 +444,12 @@ class InvoiceController extends Controller
             return response()->json(['success' => false, 'message' => 'Invoice not found.'], 404);
         }
 
-        $decision = $validated['decision'];
+        app(\App\Services\InsuranceAuthorizationDecisionService::class)->apply($invoice, $validated);
 
-        if ($decision === 'approved') {
-            $snapshot = $invoice->insurance_authorization_snapshot ?? [];
-            $snapshot['authorization_status'] = 'approved';
-            $snapshot['decided_at'] = $validated['decided_at'] ?? now()->toIso8601String();
+        $message = $validated['decision'] === 'approved'
+            ? 'Authorization approved. Invoice updated.'
+            : 'Authorization rejected. Invoice updated.';
 
-            if (isset($validated['insurance_total'])) {
-                $snapshot['insurance_total'] = (float) $validated['insurance_total'];
-            }
-            if (isset($validated['client_total'])) {
-                $snapshot['client_total'] = (float) $validated['client_total'];
-            }
-            if (isset($validated['breakdown'])) {
-                $snapshot['breakdown'] = $validated['breakdown'];
-            }
-
-            $invoice->update([
-                'insurance_authorization_reference' => $validated['authorization_reference'] ?? $invoice->insurance_authorization_reference,
-                'insurance_client_total' => $validated['client_total'] ?? $invoice->insurance_client_total,
-                'insurance_insurance_total' => $validated['insurance_total'] ?? $invoice->insurance_insurance_total,
-                'insurance_authorized_at' => now(),
-                'insurance_authorization_snapshot' => $snapshot,
-            ]);
-
-            Log::info('[Kashtre API] Authorization APPROVED — invoice updated', [
-                'invoice_id' => $invoice->id,
-                'insurance_total' => $validated['insurance_total'] ?? null,
-                'client_total' => $validated['client_total'] ?? null,
-            ]);
-
-            return response()->json(['success' => true, 'message' => 'Authorization approved. Invoice updated.']);
-        }
-
-        // Rejected
-        $snapshot = $invoice->insurance_authorization_snapshot ?? [];
-        $snapshot['authorization_status'] = 'rejected';
-        $snapshot['rejection_reason'] = $validated['rejection_reason'] ?? 'Rejected by insurer';
-        $snapshot['decided_at'] = $validated['decided_at'] ?? now()->toIso8601String();
-
-        $invoice->update([
-            'insurance_authorization_snapshot' => $snapshot,
-        ]);
-
-        Log::info('[Kashtre API] Authorization REJECTED — invoice updated', [
-            'invoice_id' => $invoice->id,
-            'rejection_reason' => $validated['rejection_reason'] ?? null,
-        ]);
-
-        return response()->json(['success' => true, 'message' => 'Authorization rejected. Invoice updated.']);
+        return response()->json(['success' => true, 'message' => $message]);
     }
 }

@@ -401,7 +401,9 @@ Route::post('/package-bulk-upload/import', [PackageBulkUploadController::class, 
         Route::get('/monitor/items/{item}/history', [InventoryController::class, 'stockHistory'])->name('monitor.history');
         Route::get('/fulfillment', [InventoryFulfillmentController::class, 'index'])->name('fulfillment.index');
         Route::get('/fulfillment/ward-pick/{store}/{client_space}', [InventoryPickRouteController::class, 'ward'])->name('fulfillment.ward-pick-route');
+        Route::post('/fulfillment/ward-pick/{store}/{client_space}', [InventoryPickRouteController::class, 'stageWard'])->name('fulfillment.ward-pick-route.stage');
         Route::get('/fulfillment/ward-pick/{store}', [InventoryPickRouteController::class, 'ward'])->name('fulfillment.ward-pick');
+        Route::post('/fulfillment/ward-pick/{store}', [InventoryPickRouteController::class, 'stageWard'])->name('fulfillment.ward-pick.stage');
         Route::get('/fulfillment/{fulfillmentLine}/pick-route', [InventoryPickRouteController::class, 'show'])->name('fulfillment.pick-route');
         Route::get('/approved-pool', [InventoryApprovedPoolController::class, 'index'])->name('approved-pool.index');
         Route::get('/usage', [InventoryRecordUsageController::class, 'index'])->name('usage.index');
@@ -668,6 +670,7 @@ Route::post('/invoices/generate-invoice-number', [InvoiceController::class, 'gen
 Route::post('/invoices/{invoice}/generate-quotation', [QuotationController::class, 'generateFromInvoice'])->name('invoices.generate-quotation');
 Route::get('/invoices/{invoice}/print', [InvoiceController::class, 'print'])->name('invoices.print');
 Route::get('/invoices/{invoice}/insurance-authorization', [InvoiceController::class, 'getInsuranceAuthorization'])->name('invoices.insurance-authorization');
+Route::post('/invoices/{invoice}/check-authorization-status', [InvoiceController::class, 'checkAuthorizationStatus'])->name('invoices.check-authorization-status');
 Route::post('/invoices/{invoice}/complete-insurance-service-delivery', [InvoiceController::class, 'completeInsuranceServiceDelivery'])->name('invoices.complete-insurance-service-delivery');
 Route::patch('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])->name('invoices.cancel');
 Route::resource('invoices', InvoiceController::class);

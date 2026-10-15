@@ -803,7 +803,7 @@ class MoneyTrackingService
                 } else {
                 foreach ($authSnapshot['vendors'] as $vendor) {
                     $vendorStatus = (string) ($vendor['authorization_status'] ?? '');
-                    if (in_array($vendorStatus, ['failed', 'skipped'], true)) {
+                    if (in_array($vendorStatus, ['failed', 'skipped', 'pending_review', 'rejected', 'auto_rejected'], true)) {
                         continue;
                     }
 

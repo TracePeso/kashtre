@@ -24,7 +24,13 @@ trait RequiresInventoryModule
         }
 
         if (InventoryBusinessContext::isAdminBrowsing() && ! in_array($request->method(), ['GET', 'HEAD'], true)) {
-            abort(403, 'Read-only while browsing another organisation\'s inventory.');
+            $stagingThePick = $request->routeIs(
+                'inventory.fulfillment.ward-pick.stage',
+                'inventory.fulfillment.ward-pick-route.stage',
+            );
+            if (! $stagingThePick) {
+                abort(403, 'Read-only while browsing another organisation\'s inventory.');
+            }
         }
 
         return $next($request);

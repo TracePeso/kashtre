@@ -80,6 +80,46 @@ class EndStoreFulfillmentQueue extends Component implements HasForms, HasTable
             ->all();
     }
 
+    /**
+     * Open inpatient wards at the selected End Store, for the spatial pick run.
+     *
+     * @return list<array{space: \App\Models\ClientSpace, count: int}>
+     */
+    public function wardReservoirs(): array
+    {
+        if ($this->selectedStoreId === null || $this->selectedStoreId === '') {
+            return [];
+        }
+
+        $lines = InventoryFulfillmentLine::query()
+            ->with('clientSpace:id,uuid,name')
+            ->where('business_id', InventoryBusinessContext::effectiveBusinessId())
+            ->where('store_id', (int) $this->selectedStoreId)
+            ->where('fulfillment_strategy', InventoryFulfillmentStrategy::BATCH_AND_STAGE)
+            ->whereIn('status', [
+                InventoryFulfillmentLine::STATUS_PENDING,
+                InventoryFulfillmentLine::STATUS_PICKING,
+                InventoryFulfillmentLine::STATUS_PARTIAL,
+            ])
+            ->whereNotNull('client_space_id')
+            ->get();
+
+        return $lines
+            ->groupBy('client_space_id')
+            ->map(function ($group) {
+                $space = $group->first()?->clientSpace;
+                if ($space === null) {
+                    return null;
+                }
+
+                return ['space' => $space, 'count' => $group->count()];
+            })
+            ->filter()
+            ->sortBy(fn (array $row) => $row['space']->name)
+            ->values()
+            ->all();
+    }
+
     public function openCount(): int
     {
         return $this->baseCountQuery()->whereIn('status', $this->openStatuses())->count();

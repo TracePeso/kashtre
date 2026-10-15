@@ -2195,7 +2195,7 @@ class InvoiceController extends Controller
                 try {
                     $insurancePortion = (float) ($insuranceAuthorization['insurance_total'] ?? 0);
                     $isGracePeriod = (bool) ($insuranceAuthorization['grace_period']['active'] ?? false);
-                    if (! $isGracePeriod && $authStatus !== 'auto_rejected' && $insurancePortion > 0) {
+                    if (! $isGracePeriod && ! in_array($authStatus, ['auto_rejected', 'pending_review'], true) && $insurancePortion > 0) {
                         $thirdPartyPayer = \App\Models\ThirdPartyPayer::where('insurance_company_id', $client->insurance_company_id)
                             ->where('business_id', $business->id)
                             ->where('type', 'insurance_company')
@@ -2299,7 +2299,7 @@ class InvoiceController extends Controller
                     $authorizedClientTotal = (float) ($insuranceAuthorization['client_total'] ?? 0);
                     $authorizedInsuranceTotal = (float) ($insuranceAuthorization['insurance_total'] ?? 0);
 
-                    if ($authStatus !== 'auto_rejected' && $authorizedInsuranceTotal > 0 && $authorizedClientTotal <= 0.01) {
+                    if (! in_array($authStatus, ['auto_rejected', 'pending_review'], true) && $authorizedInsuranceTotal > 0 && $authorizedClientTotal <= 0.01) {
                         $this->postImmediateInsuranceGuaranteeDebits($invoice, $client, $business, $insuranceAuthorization);
                     }
                 } catch (\Throwable $e) {
@@ -2375,10 +2375,31 @@ class InvoiceController extends Controller
     }
 
     /**
+     * A vendor still waiting on a person keeps the invoice pending.
+     * Otherwise an automatic rejection on any vendor rejects the invoice.
+     *
+     * @param  list<array<string, mixed>>  $vendorResults
+     */
+    private function rollUpCascadeAuthorizationStatus(array $vendorResults): string
+    {
+        $statuses = collect($vendorResults)->pluck('authorization_status');
+
+        if ($statuses->contains('pending_review')) {
+            return 'pending_review';
+        }
+
+        if ($statuses->contains('auto_rejected')) {
+            return 'auto_rejected';
+        }
+
+        return 'auto_approved';
+    }
+
+    /**
      * Post insurer guarantee debits immediately for full-cover approvals (client_total ~= 0).
      * Duplicate-safe: checks existing invoice+description debit before creating.
      */
-    private function postImmediateInsuranceGuaranteeDebits(Invoice $invoice, Client $client, $business, array $authorization): void
+    public function postImmediateInsuranceGuaranteeDebits(Invoice $invoice, Client $client, $business, array $authorization): void
     {
         // Ensure the client statement always has an insurance tracking row
         // even when earlier insurance-tracking creation paths are skipped.
@@ -2402,7 +2423,7 @@ class InvoiceController extends Controller
 
         foreach ($vendors as $vendor) {
             $vendorStatus = (string) ($vendor['authorization_status'] ?? '');
-            if (in_array($vendorStatus, ['failed', 'skipped', 'auto_rejected'], true)) {
+            if (in_array($vendorStatus, ['failed', 'skipped', 'auto_rejected', 'rejected', 'pending_review'], true)) {
                 continue;
             }
 
@@ -3982,6 +4003,130 @@ class InvoiceController extends Controller
     }
 
     /**
+     * Ask the insurer whether a pending manual review has been decided, and apply it.
+     */
+    public function checkAuthorizationStatus(Invoice $invoice)
+    {
+        $user = Auth::user();
+        if ($user->business_id !== 1 && $invoice->business_id !== $user->business_id) {
+            abort(403, 'Unauthorized access to invoice.');
+        }
+
+        $snapshot = is_array($invoice->insurance_authorization_snapshot)
+            ? $invoice->insurance_authorization_snapshot
+            : [];
+
+        if (! $this->invoiceHasPendingAuthorization($snapshot)) {
+            return back()->with('status', 'This invoice is not waiting on the insurer.');
+        }
+
+        $result = app(\App\Services\ThirdPartyApiService::class)
+            ->fetchInvoiceAuthorizationStatus((string) $invoice->id);
+
+        if (! is_array($result) || empty($result['success'])) {
+            return back()->with('error', $result['message'] ?? 'The insurer could not be reached. Try again in a moment.');
+        }
+
+        $rows = is_array($result['authorizations'] ?? null) ? $result['authorizations'] : [];
+        if ($rows === []) {
+            return back()->with('status', 'The insurer has no authorization record for this invoice yet.');
+        }
+
+        $applied = 0;
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $decision = (string) ($row['decision'] ?? 'pending');
+            if (! in_array($decision, ['approved', 'rejected'], true)) {
+                continue;
+            }
+
+            $invoice->refresh();
+            $snapshot = is_array($invoice->insurance_authorization_snapshot)
+                ? $invoice->insurance_authorization_snapshot
+                : [];
+            if (! $this->decisionMatchesPendingAuthorization($snapshot, (string) ($row['authorization_reference'] ?? ''))) {
+                continue;
+            }
+
+            app(\App\Services\InsuranceAuthorizationDecisionService::class)->apply($invoice, [
+                'decision' => $decision,
+                'approved_amount' => $row['approved_amount'] ?? null,
+                'insurance_total' => $row['insurance_total'] ?? null,
+                'client_total' => $row['client_total'] ?? null,
+                'breakdown' => $row['breakdown'] ?? null,
+                'authorization_reference' => $row['authorization_reference'] ?? null,
+                'external_invoice_number' => $row['external_invoice_number'] ?? null,
+                'rejection_reason' => $row['rejection_reason'] ?? null,
+                'decided_at' => $row['decided_at'] ?? null,
+            ]);
+            $applied++;
+        }
+
+        if ($applied === 0) {
+            return back()->with('status', 'Still waiting. The insurer has not decided yet.');
+        }
+
+        $invoice->refresh();
+        $snapshot = is_array($invoice->insurance_authorization_snapshot) ? $invoice->insurance_authorization_snapshot : [];
+        $status = (string) ($snapshot['authorization_status'] ?? '');
+        $label = match ($status) {
+            'approved', 'auto_approved' => 'Approved',
+            'rejected', 'auto_rejected' => 'Rejected',
+            'pending_review' => 'updated, and another insurer is still reviewing',
+            default => 'updated',
+        };
+
+        return back()->with('status', 'Checked with the insurer. This authorization is '.$label.'.');
+    }
+
+    /**
+     * @param  array<string, mixed>  $snapshot
+     */
+    private function invoiceHasPendingAuthorization(array $snapshot): bool
+    {
+        if (($snapshot['authorization_status'] ?? '') === 'pending_review') {
+            return true;
+        }
+
+        foreach ($snapshot['vendors'] ?? [] as $vendor) {
+            if (is_array($vendor) && ($vendor['authorization_status'] ?? '') === 'pending_review') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $snapshot
+     */
+    private function decisionMatchesPendingAuthorization(array $snapshot, string $reference): bool
+    {
+        $reference = trim($reference);
+        $vendors = is_array($snapshot['vendors'] ?? null) ? $snapshot['vendors'] : [];
+
+        if (! empty($snapshot['multi_vendor']) && $vendors !== []) {
+            $pending = [];
+            foreach ($vendors as $vendor) {
+                if (! is_array($vendor) || ($vendor['authorization_status'] ?? '') !== 'pending_review') {
+                    continue;
+                }
+                $rowReference = trim((string) ($vendor['authorization_reference'] ?? ''));
+                if ($reference !== '' && $rowReference === $reference) {
+                    return true;
+                }
+                $pending[] = $rowReference;
+            }
+
+            return count($pending) === 1 && ($pending[0] === '' || $pending[0] === $reference);
+        }
+
+        return ($snapshot['authorization_status'] ?? '') === 'pending_review';
+    }
+
+    /**
      * Create package tracking records for package items
      */
     private function createPackageTrackingRecords($invoice, $items)
@@ -5081,7 +5226,7 @@ class InvoiceController extends Controller
             'client_portion_allocated_total' => (float) collect($vendorResults)->sum('client_portion_allocated'),
             'insurance_total' => $totalInsuranceTotal,
             'authorization_reference' => $authRefs,
-            'authorization_status' => collect($vendorResults)->contains('authorization_status', 'auto_rejected') ? 'auto_rejected' : 'auto_approved',
+            'authorization_status' => $this->rollUpCascadeAuthorizationStatus($vendorResults),
             'warnings' => array_values(array_unique($allWarnings)),
         ];
 

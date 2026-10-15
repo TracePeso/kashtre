@@ -176,6 +176,6 @@ final class InsurerStatementInvoiceItems
     {
         $status = strtolower((string) ($v['authorization_status'] ?? ''));
 
-        return ! in_array($status, ['failed', 'skipped'], true);
+        return ! in_array($status, ['failed', 'skipped', 'pending_review', 'rejected', 'auto_rejected'], true);
     }
 }
