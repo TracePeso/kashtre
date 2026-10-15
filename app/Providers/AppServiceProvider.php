@@ -226,27 +226,29 @@ class AppServiceProvider extends ServiceProvider
 
         $hrNavigation = [];
         if ($hrModuleEnabled && $user) {
-            // Normally just a cache read — the scheduled `hr:refresh-navigation`
-            // command (routes/console.php, every 4 minutes) keeps this warm from
-            // the HR module's live navigation endpoint. But that requires
-            // Laravel's scheduler to actually be running (schedule:work locally,
-            // or a cron hitting schedule:run in production), so on a cold cache
-            // we self-heal by fetching live, once, and re-warming the cache —
-            // no hardcoded copy of the HR module's nav list to keep in sync.
-            $hrNavigation = Cache::get('hr.navigation');
+            // Gap register — direct instruction: this used to cache one
+            // business-wide manifest and filter it locally against this
+            // app's OWN, separately maintained "View HR X" permission
+            // strings (HrNavigationVisibility, now removed) — nobody kept
+            // those in sync with the HR module's own role/permission
+            // system, so a correctly-granted HR module permission still
+            // showed no matching link here. The HR module now filters the
+            // manifest itself, server-side, for this one person (see
+            // HrSsoToken and KashtreNavigationVisibility on its side) — one
+            // real permission system, not two. Cache is per-user rather
+            // than business-wide for the same reason; still self-healing
+            // on a cold cache exactly as before.
+            $cacheKey = "hr.navigation.{$user->id}";
+            $hrNavigation = Cache::get($cacheKey);
             if ($hrNavigation === null) {
                 try {
-                    $hrNavigation = app(\App\Services\HrModuleApiClient::class)->navigation();
-                    Cache::put('hr.navigation', $hrNavigation, 300);
+                    $token = \App\Support\Hr\HrSsoToken::make($user);
+                    $hrNavigation = app(\App\Services\HrModuleApiClient::class)->navigation($token);
+                    Cache::put($cacheKey, $hrNavigation, 300);
                 } catch (\Throwable $e) {
                     $hrNavigation = [];
                 }
             }
-
-            // The cached manifest is business-wide and permission-blind (see
-            // HrNavigationVisibility's own docblock) -- filter it per the
-            // actual signed-in user on every request, not just at cache time.
-            $hrNavigation = \App\Support\Hr\HrNavigationVisibility::filter($hrNavigation, (array) ($user->permissions ?? []));
         }
 
         return [
