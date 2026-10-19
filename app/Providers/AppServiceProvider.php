@@ -121,7 +121,7 @@ class AppServiceProvider extends ServiceProvider
         // assignment.
         \Illuminate\Support\Facades\Event::listen(
             \Illuminate\Auth\Events\Login::class,
-            fn (\Illuminate\Auth\Events\Login $event) => Cache::forget("hr.navigation.{$event->user->getAuthIdentifier()}")
+            fn (\Illuminate\Auth\Events\Login $event) => Cache::forget("hr.manifest.{$event->user->getAuthIdentifier()}")
         );
 
         // View::composer('*', function ($view) {
@@ -235,6 +235,7 @@ class AppServiceProvider extends ServiceProvider
         $hrModuleEnabled = $hrModuleUrl !== '' && config('services.hr_module.api_key') !== null;
 
         $hrNavigation = [];
+        $hrRoleLabel = null;
         if ($hrModuleEnabled && $user) {
             // Gap register — direct instruction: this used to cache one
             // business-wide manifest and filter it locally against this
@@ -248,17 +249,22 @@ class AppServiceProvider extends ServiceProvider
             // real permission system, not two. Cache is per-user rather
             // than business-wide for the same reason; still self-healing
             // on a cold cache exactly as before.
-            $cacheKey = "hr.navigation.{$user->id}";
-            $hrNavigation = Cache::get($cacheKey);
-            if ($hrNavigation === null) {
+            // Cached together with the person's effective role label (one
+            // HR call serves both); the key moved to hr.manifest so stale
+            // list-shaped entries under the old key are never misread.
+            $cacheKey = "hr.manifest.{$user->id}";
+            $manifest = Cache::get($cacheKey);
+            if ($manifest === null) {
                 try {
                     $token = \App\Support\Hr\HrSsoToken::make($user);
-                    $hrNavigation = app(\App\Services\HrModuleApiClient::class)->navigation($token);
-                    Cache::put($cacheKey, $hrNavigation, 300);
+                    $manifest = app(\App\Services\HrModuleApiClient::class)->navigationManifest($token);
+                    Cache::put($cacheKey, $manifest, 300);
                 } catch (\Throwable $e) {
-                    $hrNavigation = [];
+                    $manifest = ['items' => [], 'role_label' => null];
                 }
             }
+            $hrNavigation = $manifest['items'];
+            $hrRoleLabel = $manifest['role_label'];
         }
 
         return [
@@ -277,6 +283,7 @@ class AppServiceProvider extends ServiceProvider
             'hrModuleUrl' => $hrModuleUrl,
             'hrModuleEnabled' => $hrModuleEnabled,
             'hrNavigation' => $hrNavigation,
+            'hrRoleLabel' => $hrRoleLabel,
             'operationalTime' => $user ? SharedTime::currentUserContext() : [],
         ];
     }

@@ -75,10 +75,24 @@ class HrModuleApiClient
      */
     public function navigation(?string $token = null): array
     {
+        return $this->navigationManifest($token)['items'];
+    }
+
+    /**
+     * The menu plus the person's effective HR role label (their stored role,
+     * plus "Roster Manager" while HR has delegated that to them).
+     *
+     * @return array{items: array, role_label: ?string}
+     */
+    public function navigationManifest(?string $token = null): array
+    {
         $result = $this->get('navigation', $token ? ['token' => $token] : []);
-        if (!is_array($result)) return [];
+        if (!is_array($result)) return ['items' => [], 'role_label' => null];
         // Accept either a flat array [{label,path},...] or a wrapped {items:[...]}
-        return isset($result['items']) ? $result['items'] : $result;
+        return [
+            'items' => isset($result['items']) ? $result['items'] : $result,
+            'role_label' => $result['role_label'] ?? null,
+        ];
     }
 
     public function get(string $endpoint, array $params = []): array

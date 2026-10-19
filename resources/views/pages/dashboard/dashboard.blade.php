@@ -64,9 +64,10 @@
                     <div class="flex items-center mt-2 space-x-4">
                         <p class="text-gray-600 font-medium">User: {{ Auth::user()->name }}</p>
 
-                        @if (Auth::user()->hr_role)
+                        @php($roleLabel = $hrRoleLabel ?? (Auth::user()->hr_role ? \Illuminate\Support\Str::headline(Auth::user()->hr_role) : null))
+                        @if ($roleLabel)
                             <span class="text-gray-400">|</span>
-                            <p class="text-gray-600 font-medium">Role: {{ \Illuminate\Support\Str::headline(Auth::user()->hr_role) }}</p>
+                            <p class="text-gray-600 font-medium">Role: {{ $roleLabel }}</p>
                         @endif
 
                         @if ($currentBranch)
