@@ -114,6 +114,16 @@ class AppServiceProvider extends ServiceProvider
                 );
             });
 
+        // The HR menu is cached per user for five minutes (see the
+        // hrNavigation composer below). HR can assign someone as a roster
+        // manager at any moment, so a fresh login must rebuild it — otherwise
+        // the new manager signs in and still sees the menu built before the
+        // assignment.
+        \Illuminate\Support\Facades\Event::listen(
+            \Illuminate\Auth\Events\Login::class,
+            fn (\Illuminate\Auth\Events\Login $event) => Cache::forget("hr.navigation.{$event->user->getAuthIdentifier()}")
+        );
+
         // View::composer('*', function ($view) {
         //     $view->with('business', Auth::check() ? Auth::user()->business : null);
         // });
