@@ -64,6 +64,11 @@
                     <div class="flex items-center mt-2 space-x-4">
                         <p class="text-gray-600 font-medium">User: {{ Auth::user()->name }}</p>
 
+                        @if (Auth::user()->hr_role)
+                            <span class="text-gray-400">|</span>
+                            <p class="text-gray-600 font-medium">Role: {{ \Illuminate\Support\Str::headline(Auth::user()->hr_role) }}</p>
+                        @endif
+
                         @if ($currentBranch)
                             <span class="text-gray-400">|</span>
                             <p class="text-gray-600 font-medium">
