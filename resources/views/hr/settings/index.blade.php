@@ -25,6 +25,12 @@
                 ['title' => 'Governance Hierarchy',     'desc' => 'Define reporting lines and organisational governance nodes.',    'path' => '/hr/settings/governance',  'icon' => 'M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z'],
                 ['title' => 'Workforce Settings',       'desc' => 'RVU task weights and revenue attribution rules.',                'path' => '/hr/settings/workforce',   'icon' => 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'],
             ];
+
+            // Master shift templates are an HR-manager screen; the HR module returns 403 to everyone else,
+            // so don't offer the card to staff or roster managers.
+            if (Auth::user()->hr_role !== 'hr_manager') {
+                $sections = array_values(array_filter($sections, fn ($s) => $s['path'] !== '/hr/settings/shifts'));
+            }
             @endphp
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
